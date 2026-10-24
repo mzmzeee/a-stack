@@ -12,11 +12,18 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - The Task read data has `question_preview`, the start of the open Needs you question, and `last_action`, the action of the Task's latest change. The schema does not change.
 - In the Graph tab, selecting a Task highlights it, its direct prerequisites and dependents, and dims the rest. Escape or a click on empty space clears it.
 - The Working status icon spins, unless the system asks for reduced motion.
+- The Task details in the browser view have a Task mail section. It loads nothing until you open it, then shows the messages oldest first as plain text, with the sender, the age and styled mentions, and "Load more" for long threads. New messages appear on the next poll.
+- The Task read data has `mail_count`, and each mail message has `sender_name`.
+- `task archive` and `task unarchive` archive a Finished or Cancelled Task, or undo it. The Orchestrator or the Operator runs them; `task reopen` clears the archive. a-stack also counts a done Task as archived when every Task that depends on it is done, or 24 hours after it ended. The Task read data has `archived`, `archived_reason`, `archived_at` and `ended_at`, and the details in the view say why a Task is archived.
+- Each Task history entry has `actor_kind`, `agent` or `operator`.
 
 ### Changed
 
 - The graph is back to the v0.1.0 look: one column per rank and bracket lines between columns. Tasks without lines sit in rows below. The graph draws a dependency line only when no other path connects the two Tasks; the details still list every dependency.
-- Finished and cancelled Tasks are archived in the graph: hidden by default and shown dimmed with the Archived (N) toggle. This is a view setting only.
+- Finished and cancelled Tasks show in the graph again, unless they are archived. The graph hides archived Tasks by default and shows them dimmed with the Archived (N) toggle. On the Now board, archived Tasks leave Recently finished and appear under "Show archive".
+- The database schema is version 6. It adds `archived_at` and `ended_at` to Tasks and lets the Task history name the Operator. The upgrade runs once, in one transaction.
+- The browser view credential can read the Task mail of its own Session with `POST /v1/mail/read`. It still cannot send or check mail. The Operator credential still has no mail access.
+- A mail send raises the Session read revision, so a polling view sees the new `mail_count`.
 - The service is faster under heavy use. It keeps prepared SQLite statements, `mail check` no longer checks each scanned Task's assignment a second time, and the dependency cycle check searches only the edges it follows. The service process sets the Go garbage collector target to 400 unless `GOGC` is set. With 20 Agents, 2,000 Tasks and 50,000 messages, service CPU per CLI call fell from 5.6-6.3 ms to 1.5-1.7 ms, and the service memory high-water mark rose from 35-37 MB to 48-50 MB. A worst-case `dependency add` took 0.8 ms instead of 70 ms. No contract or schema changes.
 - `mail check` checks a saved cursor only when it reads that Task. A malformed cursor for a Task that you are no longer assigned to is ignored, not rejected.
 - When the browser view stays stale for thirty seconds but the service still answers, the footer says that the service is busy instead of unreachable.

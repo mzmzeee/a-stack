@@ -50,6 +50,11 @@ type Task struct {
 	ReportPreview                                   string `json:"report_preview,omitempty"`
 	QuestionPreview                                 string `json:"question_preview,omitempty"`
 	LastAction                                      string `json:"last_action,omitempty"`
+	MailCount                                       int64  `json:"mail_count"`
+	Archived                                        bool   `json:"archived"`
+	ArchivedReason                                  string `json:"archived_reason,omitempty"`
+	ArchivedAt                                      string `json:"archived_at,omitempty"`
+	EndedAt                                         string `json:"ended_at,omitempty"`
 	ID                                              string `json:"id"`
 	SessionID                                       string `json:"session_id"`
 	Title                                           string `json:"title"`
@@ -68,6 +73,7 @@ type Task struct {
 	UpdatedAt                                       string `json:"updated_at"`
 	ReportAt                                        string `json:"report_at,omitempty"`
 	descriptionRef, reportRef, reasonRef, resultRef string
+	chainDone                                       bool
 }
 type Question struct {
 	ID         string `json:"id"`
@@ -170,12 +176,23 @@ const taskColumns = `t.id,t.session_id,t.title,t.ticket_ref,t.progress,t.revisio
  (SELECT count(*) FROM dependencies d JOIN tasks p ON p.id=d.prerequisite_id WHERE d.session_id=t.session_id AND d.dependent_id=t.id AND p.progress='cancelled'),
  COALESCE((SELECT substr(c.body,1,160) FROM task_content c WHERE c.id=t.report_ref),''),
  COALESCE((SELECT substr(q.question,1,160) FROM task_questions q WHERE q.task_id=t.id AND q.resolved_at IS NULL),''),
- COALESCE((SELECT h.action FROM task_history h WHERE h.task_id=t.id ORDER BY h.sequence DESC LIMIT 1),'')`
+ COALESCE((SELECT h.action FROM task_history h WHERE h.task_id=t.id ORDER BY h.sequence DESC LIMIT 1),''),
+ COALESCE((SELECT max(m.sequence) FROM mail_messages m WHERE m.task_id=t.id),0),
+ t.archived_at,t.ended_at,
+ CASE WHEN t.progress IN ('finished','cancelled') THEN EXISTS(SELECT 1 FROM dependencies d WHERE d.session_id=t.session_id AND d.prerequisite_id=t.id)
+  AND NOT EXISTS(SELECT 1 FROM dependencies d JOIN tasks n ON n.id=d.dependent_id WHERE d.session_id=t.session_id AND d.prerequisite_id=t.id AND n.progress NOT IN ('finished','cancelled')) ELSE 0 END`
+
+// Mail is append-only with sequences 1..n, so the last sequence is mail_count.
+// The last column is the chain rule of deriveArchive: a done Task whose
+// dependents are all done.
+
+const taskByID = "SELECT " + taskColumns + " FROM tasks t WHERE t.id=? AND t.session_id=?"
 
 func scanTask(row interface{ Scan(...any) error }) (Task, error) {
 	var t Task
-	err := row.Scan(&t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction)
+	err := row.Scan(&t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction, &t.MailCount, &t.ArchivedAt, &t.EndedAt, &t.chainDone)
 	t.Unassigned = t.AssigneeCount == 0
+	deriveArchive(&t, clockNow())
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, failure("not_found", "Task not found in Session")
 	}
@@ -188,7 +205,7 @@ func taskInSession(ctx context.Context, tx *sql.Tx, id, session string) (Task, e
 	if !validToken(id) {
 		return Task{}, failure("invalid_input", "Task ID required")
 	}
-	return scanTask(tx.QueryRowContext(ctx, "SELECT "+taskColumns+" FROM tasks t WHERE t.id=? AND t.session_id=?", id, session))
+	return scanTask(tx.QueryRowContext(ctx, taskByID, id, session))
 }
 
 // ReadTask and ReadAssignedTask are the small shared authority boundary used by
@@ -259,7 +276,11 @@ func contentBody(ctx context.Context, tx *sql.Tx, id string) (string, error) {
 }
 func recordTask(ctx context.Context, tx *sql.Tx, p Principal, taskID, action string, revision int64, change TaskChange) error {
 	b, _ := json.Marshal(change)
-	_, err := tx.ExecContext(ctx, "INSERT INTO task_history(task_id,actor_id,action,revision,received_at,changes) VALUES(?,?,?,?,?,?)", taskID, p.SubjectID, action, revision, now(), string(b))
+	kind, actor := "agent", any(p.SubjectID)
+	if p.Kind == OperatorCapability {
+		kind, actor = "operator", nil
+	}
+	_, err := tx.ExecContext(ctx, "INSERT INTO task_history(task_id,actor_kind,actor_id,action,revision,received_at,changes) VALUES(?,?,?,?,?,?,?)", taskID, kind, actor, action, revision, now(), string(b))
 	return err
 }
 func bumpGraph(ctx context.Context, tx *sql.Tx, session string) error {
@@ -343,6 +364,8 @@ func taskChangeFields(action string, r TaskChangeRequest) error {
 		allowed = "progress reason summary"
 	case "reopen":
 		allowed = "reason"
+	case "archive", "unarchive":
+		allowed = ""
 	case "report":
 		allowed = "report"
 	case "attention.set":
@@ -367,7 +390,8 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 	if err := taskChangeFields(action, r); err != nil {
 		return Receipt{}, err
 	}
-	assigned := action != "edit" && action != "assign" && action != "unassign"
+	archiving := action == "archive" || action == "unarchive"
+	assigned := action != "edit" && action != "assign" && action != "unassign" && !archiving
 	return s.Mutate(ctx, token, operation(r.OperationID, "task."+action, r.SessionID, r), replayTask(assigned), func(ctx context.Context, tx *sql.Tx, p Principal) (Receipt, error) {
 		session, err := OpenSession(ctx, tx, p, r.Context)
 		if err != nil {
@@ -377,9 +401,11 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 		if err != nil {
 			return Receipt{}, err
 		}
-		if assigned {
+		switch {
+		case assigned:
 			err = RequireTaskAssignee(ctx, tx, p, task)
-		} else {
+		case archiving && p.Kind == OperatorCapability:
+		default:
 			err = RequireOrchestrator(p, session)
 		}
 		if err != nil {
@@ -499,6 +525,9 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 			}
 			task.Progress = r.Progress
 			change.Progress = r.Progress
+			if r.Progress == "finished" || r.Progress == "cancelled" {
+				task.EndedAt = now()
+			}
 		case "reopen":
 			if task.Progress != "finished" && task.Progress != "cancelled" {
 				return Receipt{}, failure("conflict", "only Finished or Cancelled Tasks can be reopened")
@@ -508,6 +537,20 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 			}
 			task.Progress = "waiting"
 			change.Progress = "waiting"
+			task.ArchivedAt, task.EndedAt = "", ""
+		case "archive":
+			if task.Progress != "finished" && task.Progress != "cancelled" {
+				return Receipt{}, failure("conflict", "only Finished or Cancelled Tasks can be archived")
+			}
+			if task.ArchivedAt != "" {
+				return Receipt{}, failure("conflict", "Task is already archived")
+			}
+			task.ArchivedAt = now()
+		case "unarchive":
+			if task.ArchivedAt == "" {
+				return Receipt{}, failure("conflict", "Task was not archived with task archive")
+			}
+			task.ArchivedAt = ""
 		case "report":
 			if r.Report == nil {
 				return Receipt{}, failure("invalid_input", "report required")
@@ -591,7 +634,13 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 			}
 			return ref
 		}
-		_, err = tx.ExecContext(ctx, "UPDATE tasks SET title=?,ticket_ref=?,description_ref=?,report_ref=?,reason_ref=?,result_ref=?,progress=?,revision=revision+1,updated_by=?,updated_at=?,report_at=? WHERE id=?", task.Title, task.TicketRef, nullable(task.descriptionRef), nullable(task.reportRef), nullable(task.reasonRef), nullable(task.resultRef), task.Progress, p.SubjectID, now(), task.ReportAt, task.ID)
+		// updated_by names an Agent. An Operator archive keeps the last Agent; the
+		// history entry records the Operator.
+		updatedBy := p.SubjectID
+		if p.Kind == OperatorCapability {
+			updatedBy = task.UpdatedBy
+		}
+		_, err = tx.ExecContext(ctx, "UPDATE tasks SET title=?,ticket_ref=?,description_ref=?,report_ref=?,reason_ref=?,result_ref=?,progress=?,revision=revision+1,updated_by=?,updated_at=?,report_at=?,archived_at=?,ended_at=? WHERE id=?", task.Title, task.TicketRef, nullable(task.descriptionRef), nullable(task.reportRef), nullable(task.reasonRef), nullable(task.resultRef), task.Progress, updatedBy, now(), task.ReportAt, task.ArchivedAt, task.EndedAt, task.ID)
 		if err != nil {
 			return Receipt{}, err
 		}

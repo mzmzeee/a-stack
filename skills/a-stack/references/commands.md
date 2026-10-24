@@ -72,9 +72,9 @@ me mail check
 
 - `@name` in the body, and each `--mention NAME` (without `@`, repeatable), must be a current assignee of T. Otherwise the whole send fails. Check with `me task assignees --task T`.
 - The receipt of a send has the message ID in `resource_id` and its sequence number in `revision`.
-- `mail read` returns `data.messages[]` (`id`, `sequence`, `sender_id`, `received_at`, `body`, `mention_ids`), `data.cursor` and `data.more`. Give the cursor back with `--cursor "$cursor"` to read only newer messages.
+- `mail read` returns `data.messages[]` (`id`, `sequence`, `sender_id`, `sender_name`, `received_at`, `body`, `mention_ids`), `data.cursor` and `data.more`. Give the cursor back with `--cursor "$cursor"` to read only newer messages.
 - `mail check` reads all your Tasks at once: `data.tasks[]`, each with `task_id`, `messages`, `cursor` and `more`. Without a cursor file, it starts at the first message of every Task each time.
-- `sender_id` is an Agent ID. Map it to a name with `me task assignees --task T`. Mail reads include your own messages; find your own ID in `me agent list`.
+- `sender_name` is the sender's Agent name. Mail reads include your own messages; find your own ID in `me agent list`.
 
 ### Read only new mail with a cursor file
 
@@ -123,6 +123,10 @@ me task assign --task T --agent AGENT_ID --expected-revision "$(rev T)" --operat
 me task unassign --task T --agent AGENT_ID --expected-revision "$(rev T)" --operation-id orch-unassign-api-02
 me dependency add --from A --to B --expected-revision "$(grev)" --operation-id orch-dep-a-b-1
 me dependency remove --from A --to B --expected-revision "$(grev)" --operation-id orch-undep-a-b-1
+me task archive --task T --expected-revision "$(rev T)" --operation-id orch-archive-api-1
+me task unarchive --task T --expected-revision "$(rev T)" --operation-id orch-unarchive-api-1
 ```
+
+`task archive` takes only a Finished or Cancelled Task. It hides the Task in the Operator's graph and keeps everything. Task data shows `archived` and `archived_reason`: `command`, `chain` (every dependent is done) or `age` (it ended a day ago).
 
 `grev` prints the Session's `graph_revision`. [orchestrator.md](orchestrator.md) shows the script. `--from A --to B` means that B depends on A.

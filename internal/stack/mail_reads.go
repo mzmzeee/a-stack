@@ -123,7 +123,15 @@ func (s *Store) ReadMail(ctx context.Context, token string, r MailReadRequest) (
 		return empty, err
 	}
 	defer tx.Rollback()
-	if _, err = ReadAssignedTask(ctx, tx, p, r.Context, r.TaskID); err != nil {
+	// A browser view credential reads the mail of any Task in its own Session
+	// (ADR 0003 amendment); everyone else must be a current assignee. The read
+	// writes nothing: no read position, receipt or notice.
+	if p.Kind == BrowserCapability {
+		_, err = taskInSession(ctx, tx, r.TaskID, r.SessionID)
+	} else {
+		_, err = ReadAssignedTask(ctx, tx, p, r.Context, r.TaskID)
+	}
+	if err != nil {
 		return empty, err
 	}
 	page, fit, err := readMailPageTx(ctx, tx, r.TaskID, r.Cursor, limit, mailResponseBudget)

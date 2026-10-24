@@ -202,6 +202,9 @@ button:disabled { cursor: default; opacity: .6; }
 
 /* Archived cards, graph focus and implied lines. Later rules win: a filtered-out card stays the faintest. */
 .graph-world > .task-unit.archived { opacity: .55; }
+.now-card.archived { opacity: .7; }
+.detail-archive { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 19px; }
+.detail-archive[hidden] { display: none; }
 .graph-world > .task-unit.unfocused { opacity: .3; }
 .graph-world > .task-unit.dimmed { opacity: .18; }
 .connection.unfocused { opacity: .3; }
@@ -210,6 +213,24 @@ button:disabled { cursor: default; opacity: .6; }
 .archive-toggle svg { width: 15px; height: 15px; }
 .archive-toggle:hover { color: var(--ink); border-color: var(--strong-line); }
 .archive-toggle[aria-pressed="true"] { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+
+/* Task mail in the details: closed until the Operator opens it; bodies are plain text. */
+.mail-toggle { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 0; border: 0; background: none; font-size: 13px; font-weight: 650; text-align: left; }
+.mail-toggle svg { width: 15px; height: 15px; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .mail-toggle svg { transition: transform 120ms; } }
+.mail-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.mail-toggle:hover span { text-decoration: underline; }
+.mail-list { margin: 10px 0 0; padding: 0; list-style: none; }
+.mail-message { padding: 12px 0; }
+.mail-message + .mail-message { border-top: 1px solid var(--line); }
+.mail-meta { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+.mail-sender { font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
+.mail-meta .now-age { cursor: help; }
+.mail-body { font-size: 14px; line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mention { padding: 0 2px; margin: 0 -2px; border-radius: 4px; background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+.mail-status:empty { display: none; }
+.mail-status { margin-top: 8px; }
+.mail-more { margin-top: 8px; font-size: 13px; }
 
 /* The Now board: four columns and the feed fill the panel; long lists scroll inside their column. */
 #now-panel { padding: 0 28px 20px; }

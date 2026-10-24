@@ -65,7 +65,14 @@ func TestMailSpecAuthorityRetentionAndSuppression(t *testing.T) {
 	browser := issueTest(t, s, BrowserCapability, opaqueID(), f.ref.SessionID)
 	for _, c := range []Credential{f.op, browser, f.creds[0]} {
 		_, err := s.ReadMail(ctx, c.Token, MailReadRequest{Context: f.ref, TaskID: task.ResourceID})
-		reviewCode(t, err, "forbidden")
+		if c.Kind == BrowserCapability {
+			// ADR 0003 amendment: the Session's browser view reads Task mail, read-only.
+			if err != nil {
+				t.Fatal("browser view mail read", err)
+			}
+		} else {
+			reviewCode(t, err, "forbidden")
+		}
 		_, err = s.SendMail(ctx, c.Token, MailSendRequest{Context: f.ref, OperationID: opaqueID(), TaskID: task.ResourceID, Body: "not an assignee"})
 		reviewCode(t, err, "forbidden")
 	}
@@ -84,11 +91,18 @@ func TestMailSpecAuthorityRetentionAndSuppression(t *testing.T) {
 			path string
 			body any
 		}{
-			{"/v1/mail/read", MailReadRequest{Context: f.ref, TaskID: task.ResourceID}},
 			{"/v1/mail/send", MailSendRequest{Context: f.ref, OperationID: opaqueID(), TaskID: task.ResourceID, Body: "unauthorized HTTP mail"}},
 			{"/v1/mail/check", MailCheckRequest{Context: f.ref}},
 		} {
 			_, err := client.Do(ctx, "POST", route.path, route.body)
+			reviewCode(t, err, "forbidden")
+		}
+		_, err = client.Do(ctx, "POST", "/v1/mail/read", MailReadRequest{Context: f.ref, TaskID: task.ResourceID})
+		if c.Kind == BrowserCapability {
+			if err != nil {
+				t.Fatal("browser view HTTP mail read", err)
+			}
+		} else {
 			reviewCode(t, err, "forbidden")
 		}
 	}

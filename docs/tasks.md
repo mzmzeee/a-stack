@@ -17,6 +17,7 @@ The Orchestrator must assign itself to a Task before it can do assignee actions 
 | `task assign`, `task unassign` | Orchestrator | Add or remove an assignee. |
 | `dependency add`, `dependency remove` | Orchestrator | Add or remove a dependency. |
 | `task status`, `task reopen` | Assignee | Change the progress. |
+| `task archive`, `task unarchive` | Orchestrator or Operator | Archive a Finished or Cancelled Task, or undo it. |
 | `task report` | Assignee | Replace the shared report. |
 | `task attention set`, `task attention resolve` | Assignee | Ask or resolve an Operator question. |
 | `task reference add`, `task reference remove` | Assignee | Add or remove a file reference. |
@@ -59,11 +60,32 @@ A Task has one of four progress values: `waiting`, `working`, `finished` and `ca
 
 The last completion summary stays in the Task's `result` field, also after a later cancellation or reopen. The history keeps all earlier results, reasons and reports. The progress value is what counts: a retained result does not mean that the Task is finished now.
 
+## Archived Tasks
+
+An archived Task is a Finished or Cancelled Task that the browser view hides by default. Archiving changes no progress and deletes nothing. A Task counts as archived when one of three rules applies, and the first one that applies is its `archived_reason`:
+
+1. `command`: the Orchestrator or the Operator ran `task archive`.
+2. `chain`: the Task has at least one dependent, and every dependent is Finished or Cancelled. So the last Task of a chain stays visible, and so does finished work that a live Task depends on.
+3. `age`: the Task became Finished or Cancelled 24 hours ago or more.
+
+```sh
+./a-stack task archive --as agent --credential-file "$orchestrator_credential" \
+  --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
+  --expected-revision 6 --operation-id archive-side-work --json
+# The Operator runs the same command without --as and --credential-file.
+./a-stack task unarchive --workspace "$workspace_id" --session "$session_id" \
+  --task "$task_id" --expected-revision 7 --operation-id unarchive-side-work --json
+```
+
+`task archive` works only on a Finished or Cancelled Task that the command has not archived yet. `task unarchive` undoes only the command. It cannot keep a Task visible against the chain or age rule. Both need an operation ID and the Task revision. They raise the revision and write a history entry, `task.archive` or `task.unarchive`. Assignees that are not the Orchestrator get `forbidden`, and so does the browser view. `task reopen` clears the archive and the end time, so a reopened Task is visible again.
+
+a-stack stores only the command, as `archived_at`, and the time the Task last became Finished or Cancelled, as `ended_at`. It computes the chain and age rules in Go each time it reads a Task, so `task show`, `task list` and the browser view agree. Passing the age limit does not change the Session read revision. A polling view shows the change with the next change in the Session, or after a reload.
+
 ## Reports, edits and history
 
 `task report --report TEXT` replaces the shared report. `task edit` accepts `--title`, `--description` and `--ticket`, in any combination. An explicitly empty description or Ticket reference clears it. If a large text does not change, a-stack reuses the stored copy.
 
-`task history` pages through the retained changes and the changed text versions. It does not store a full copy of the Task for each change.
+`task history` pages through the retained changes and the changed text versions. It does not store a full copy of the Task for each change. Each entry has `actor_kind`: `agent` with the Agent's `actor_id`, or `operator` with no `actor_id`. Only `task archive` and `task unarchive` write Operator entries. An Operator change keeps the Task's `updated_by`, which always names an Agent.
 
 ## Text input and limits
 
@@ -116,7 +138,7 @@ A closed Session keeps all statuses and history. It rejects Task, graph and ques
 
 ## Read API
 
-All read endpoints below use authenticated `POST` JSON requests and return a `data` object. They use the same `Host`, `Origin` and `X-A-Stack-Instance` checks as the rest of the [HTTP API](foundation.md#http-rules), and they reject unknown fields. The Operator, the registered Agents of the Session and the Session's browser credentials can use them. Browser credentials cannot change anything, and cannot use the lifecycle, private or storage endpoints. These reads never return mail, credential hashes, tokens, runtime IDs, raw bindings or Herdr aliases.
+All read endpoints below use authenticated `POST` JSON requests and return a `data` object. They use the same `Host`, `Origin` and `X-A-Stack-Instance` checks as the rest of the [HTTP API](foundation.md#http-rules), and they reject unknown fields. The Operator, the registered Agents of the Session and the Session's browser credentials can use them. Browser credentials cannot change anything, and cannot use the lifecycle, private or storage endpoints. These reads never return mail bodies, credential hashes, tokens, runtime IDs, raw bindings or Herdr aliases.
 
 1. `POST /v1/session/snapshot` with `{workspace_id, session_id, known_revision}` returns a `SessionSnapshot`. `known_revision` is optional. The snapshot has `source: "local-service"`, `captured_at`, the Session with its lifecycle, read and graph revisions, `workspace_name` (the last part of the Workspace path, such as `my-project`; the full path is not included), `unchanged`, and the counts of Tasks, Agents, dependencies and assignments. If `known_revision` matches, the response has `unchanged: true` and no counts. Keep your saved data in that case. Missing counts do not mean an empty graph.
 2. `POST /v1/session/page` with the context and `{kind, read_revision, after, limit, task_id}` returns `{read_revision, items, next}`. All fields after `kind` are optional, and `next` is present only when more items follow. The kinds are `tasks`, `agents`, `assignments`, `dependencies`, `references`, `history` and `graph_history`. `references` and `history` need a Task. `assignments` and `dependencies` can filter by Task. For dependencies, the filter returns the Task's prerequisites. The other kinds reject a Task filter.
@@ -138,6 +160,8 @@ A Task item has:
 - The actor IDs, and the creation, update and report times.
 - `report_preview`, the first 160 Unicode code points of the report.
 - `last_action`, the action of the latest history entry, such as `task.status`. It happened at `updated_at`.
+- `archived`, `archived_reason` (`command`, `chain` or `age`), `archived_at` and `ended_at`, as described in [Archived Tasks](#archived-tasks).
+- `mail_count`, the number of messages in the Task's mail. It is the last mail sequence, read from the `(task_id, sequence)` index.
 
 It has no full report, question or description body.
 
@@ -153,12 +177,14 @@ Load the details, history and references of a selected Task only when you need t
 
 The client accepts 1 MiB at most for each response. The tests use the worst case of an escaped 64 KiB description and report plus notes and a question: an 831,851-byte detail response. Retained history in the tests needs four pages, and the largest page is 432,112 bytes.
 
-Fixtures with 10, 100 and 1,000 Tasks list every Task in 1, 1 and 10 pages. For 1,000 Tasks, the Task collection is about 509 KiB in total, with pages of about 51 KiB. These are measurements of backend fixtures. They make no promise about the browser view or about production throughput. a-stack sets no limit on the total number of retained Tasks or history entries, and it never deletes them.
+Fixtures with 10, 100 and 1,000 Tasks list every Task in 1, 1 and 10 pages. For 1,000 Tasks, the Task collection is about 556 KiB in total, with pages of about 56 KiB. With the service's statement cache, the long Task query is prepared once. In one local run, the 1,000 Tasks took about 22 ms. A chain of 1,000 Finished Tasks, where the chain rule archives 999, took about 27 ms. These are measurements of backend fixtures. They make no promise about the browser view or about production throughput. a-stack sets no limit on the total number of retained Tasks or history entries, and it never deletes them.
 
 ## Internals
 
+Schema v6 adds `tasks.archived_at` and `tasks.ended_at`, and fills `ended_at` of done Tasks from their last status entry in the history. It also rebuilds `task_history` with `actor_kind`, so that an Operator entry has no `actor_id`, while Agent entries keep their foreign key to `agents`.
+
 Schema v3 adds `tasks`, immutable `task_content`, current `task_assignees`, retained `task_questions` and `task_references`, delta `task_history`, active `dependencies` and retained `graph_history`. It also adds `sessions.graph_revision`. Actor and content IDs stay stable after a rebind, a role change or a lost runtime. Foreign keys on the assignee table make sure that the Task and the Agent are in the same Session. An existing v1 or v2 database is upgraded in one transaction. Unsupported future schemas are still rejected.
 
-Mail code uses `ReadAssignedTask(ctx, tx, principal, Context, taskID)` to check the current registration and membership, also for authorized reads in a closed Session. A send also calls `OpenSession` in the same `Store.Mutate` apply transaction. Mail is append-only, so a send does not need a Task revision. A replay also checks current membership. The index `task_assignees_agent(agent_id, task_id)` lets a caller find its Tasks. It is not a record of unread mail. The Task and Session read endpoints never return mail bodies.
+Mail code uses `ReadAssignedTask(ctx, tx, principal, Context, taskID)` to check the current registration and membership, also for authorized reads in a closed Session. A browser credential's mail read checks only that the Task belongs to its Session. A send also calls `OpenSession` in the same `Store.Mutate` apply transaction. Mail is append-only, so a send does not need a Task revision. A replay also checks current membership. The index `task_assignees_agent(agent_id, task_id)` lets a caller find its Tasks. It is not a record of unread mail. The Task and Session read endpoints never return mail bodies.
 
 The read data gives no authority for automatic notices. Runtime bindings stay private and unverified in these reads. Herdr notices are a separate part, described in [Mention notices](notifications.md).

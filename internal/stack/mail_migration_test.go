@@ -41,6 +41,11 @@ func TestPopulatedV3MailUpgradeAndFailureRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 			ref := Context{workspace, session}
+			// Today's Task code counts mail and writes the v6 archive columns. Stand-ins
+			// let this v3 store write its Task and receipts; they are undone before the upgrade.
+			if _, err = db.Exec("CREATE TABLE mail_messages(task_id TEXT,sequence INTEGER);" + migration6); err != nil {
+				t.Fatal(err)
+			}
 			request := TaskCreateRequest{Context: ref, OperationID: "v3-retained-task", Title: "Retained v3 Task", Description: "Keep this report-independent body"}
 			task, err := old.CreateTask(ctx, credential.Token, request)
 			if err != nil {
@@ -48,6 +53,9 @@ func TestPopulatedV3MailUpgradeAndFailureRecovery(t *testing.T) {
 			}
 			_, err = old.ChangeTask(ctx, credential.Token, "assign", TaskChangeRequest{Context: ref, TaskID: task.ResourceID, OperationID: "v3-retained-assignment", ExpectedRevision: 1, AgentID: agent})
 			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = db.Exec(undoMigration6 + "DROP TABLE mail_messages"); err != nil {
 				t.Fatal(err)
 			}
 			if fail {

@@ -140,7 +140,7 @@ type Page[T any] struct {
 	Next  string `json:"next,omitempty"`
 }
 
-func now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
+func now() string { return clockNow().UTC().Format(time.RFC3339Nano) }
 func operator(p Principal) error {
 	if p.Kind != OperatorCapability {
 		return failure("forbidden", "Operator credential required")

@@ -262,9 +262,9 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, failure("invalid_input", "GET requests must not contain a body"))
 		return
 	}
-	// Session-scoped browser tokens have no foundation data endpoints. The browser
-	// slice will opt in only scoped snapshots; default dispatch remains deny.
-	if p.Kind == BrowserCapability && !taskReadEndpoint(r.URL.Path) {
+	// Session-scoped browser tokens have no foundation data endpoints. They may use
+	// the Session read endpoints and read Task mail; default dispatch remains deny.
+	if p.Kind == BrowserCapability && !taskReadEndpoint(r.URL.Path) && r.URL.Path != "/v1/mail/read" {
 		writeError(w, failure("forbidden", "browser credential requires a Session read endpoint"))
 		return
 	}

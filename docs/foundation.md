@@ -71,7 +71,7 @@ The CLI never retries a request automatically. Client commands stop normally on 
 
 The service listens only on `127.0.0.1`. Every data request needs the instance ID and a bearer token. The `Host` header must match the bound address. If a request has an `Origin` header, it must match the service URL. The service has no cross-origin access, and it rejects query parameters, so a token can never be in a query string. Clients do not follow redirects and do not use proxy settings from the environment.
 
-A browser credential can use only the Session read endpoints. It cannot use the `health` or `storage` endpoints. An Agent credential can use `health`, but it cannot read storage status or make backups.
+A browser credential can use only the Session read endpoints and `POST /v1/mail/read` for the Tasks of its Session. It cannot use the `health` or `storage` endpoints. An Agent credential can use `health`, but it cannot read storage status or make backups.
 
 Request rules:
 
@@ -93,6 +93,7 @@ Each schema version added one area:
 3. [Tasks, the Task graph and bounded snapshots](tasks.md).
 4. [Task mail and mention references](mail.md).
 5. [Notice batches and bounded retry diagnostics](notifications.md).
+6. [Archived Tasks and Operator entries in the Task history](tasks.md#archived-tasks).
 
 A storage error returns `storage_unavailable`. A failed commit never returns a successful receipt. If the connection drops during a commit, the outcome is unknown, so the caller must retry with the same operation ID.
 
