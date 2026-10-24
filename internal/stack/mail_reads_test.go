@@ -178,3 +178,84 @@ func TestMailRawHTTPValidationAndCrossSessionDenial(t *testing.T) {
 		t.Fatal("invalid HTTP request wrote mail")
 	}
 }
+
+// mail check trusts its assignment query instead of a second per-Task check, so
+// a removal between rounds, or between the pages of one round, must still end
+// that Task's mail at once. Only the scanned Tasks' cursors are decoded.
+func TestMailCheckRemovalBetweenRoundsEndsAccess(t *testing.T) {
+	f := mailFixture(t)
+	s := f.service.Store
+	other := f.create(t, "Second mail Task")
+	f.change(t, f.orch.Token, "assign", TaskChangeRequest{TaskID: other.ResourceID, ExpectedRevision: 1, AgentID: f.bID})
+	f.send(t, f.a.Token, "Before removal")
+	if _, err := s.SendMail(ctx, f.b.Token, MailSendRequest{Context: f.ref(0), TaskID: other.ResourceID, OperationID: opaqueID(), Body: "Other Task"}); err != nil {
+		t.Fatal(err)
+	}
+	round := func(cursors map[string]string, taskLimit int, between func()) map[string][]MailMessage {
+		t.Helper()
+		got := map[string][]MailMessage{}
+		after := ""
+		for calls := 0; calls < 10; calls++ {
+			page, err := s.CheckMail(ctx, f.b.Token, MailCheckRequest{Context: f.ref(0), Cursors: cursors, AfterTask: after, TaskLimit: taskLimit})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, task := range page.Tasks {
+				got[task.TaskID] = append(got[task.TaskID], task.Messages...)
+				cursors[task.TaskID] = task.Cursor
+			}
+			if after = page.NextTask; after == "" {
+				return got
+			}
+			if between != nil {
+				between()
+				between = nil
+			}
+		}
+		t.Fatal("mail check continuation loop")
+		return nil
+	}
+	cursors := map[string]string{}
+	if got := round(cursors, 0, nil); len(got[f.taskID]) != 1 || len(got[other.ResourceID]) != 1 {
+		t.Fatal("first round missed assigned mail", got)
+	}
+	revision := func(task string) int64 {
+		detail, err := s.ShowTask(ctx, f.orch.Token, TaskReadRequest{Context: f.ref(0), TaskID: task})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return detail.Revision
+	}
+	// Removal between rounds: the saved cursor stays in the caller's map.
+	f.change(t, f.orch.Token, "unassign", TaskChangeRequest{TaskID: f.taskID, ExpectedRevision: revision(f.taskID), AgentID: f.bID})
+	f.send(t, f.a.Token, "After removal")
+	if got := round(cursors, 0, nil); len(got) != 1 || len(got[other.ResourceID]) != 0 {
+		t.Fatal("mail check returned a removed Task or replayed mail", got)
+	}
+	_, err := s.ReadMail(ctx, f.b.Token, MailReadRequest{Context: f.ref(0), TaskID: f.taskID, Cursor: cursors[f.taskID]})
+	requireCode(t, err, "forbidden")
+	// The removed Task's cursor is no longer scanned, so it is not decoded.
+	stale := map[string]string{f.taskID: "not-a-cursor", other.ResourceID: cursors[other.ResourceID]}
+	if got := round(stale, 0, nil); len(got) != 1 {
+		t.Fatal("a cursor of an unscanned Task broke mail check", got)
+	}
+	// A scanned Task's cursor is still checked.
+	_, err = s.CheckMail(ctx, f.b.Token, MailCheckRequest{Context: f.ref(0), Cursors: map[string]string{other.ResourceID: encodeMailCursor(f.taskID, 0)}})
+	requireCode(t, err, "invalid_input")
+	// Rejoin restores the whole retained history.
+	f.change(t, f.orch.Token, "assign", TaskChangeRequest{TaskID: f.taskID, ExpectedRevision: revision(f.taskID), AgentID: f.bID})
+	if got := round(map[string]string{}, 0, nil); len(got[f.taskID]) != 2 {
+		t.Fatal("rejoin did not restore the history", got)
+	}
+	// Removal between the pages of one round: the continuation skips the Task.
+	ids := []string{f.taskID, other.ResourceID}
+	if ids[0] > ids[1] {
+		ids[0], ids[1] = ids[1], ids[0]
+	}
+	got := round(map[string]string{}, 1, func() {
+		f.change(t, f.orch.Token, "unassign", TaskChangeRequest{TaskID: ids[1], ExpectedRevision: revision(ids[1]), AgentID: f.bID})
+	})
+	if _, ok := got[ids[0]]; len(got) != 1 || !ok {
+		t.Fatal("removal between pages leaked the removed Task", got)
+	}
+}

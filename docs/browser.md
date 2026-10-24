@@ -126,7 +126,7 @@ When the snapshot has changed, the page loads all pages of Tasks, Agents, assign
 - The backoff starts at four seconds and grows to thirty seconds.
 - When the page is hidden, polling stops and the current collection is cancelled. When the page is visible again, polling continues.
 
-The footer shows the version of the local service and the time of the last successful check with it. If the page has been stale for more than thirty seconds, the footer says that the service is unreachable and that you can run `a-stack` again. That is needed only when the service came back on another port. The About panel shows when the snapshot was captured, and its revision. A poll with no changes does not change the report or runtime times.
+The footer shows the version of the local service and the time of the last successful check with it. If the page has been stale for more than thirty seconds, the footer says why. If the service still answered the last request, it says that the service is busy: Task changes keep restarting the collection, and the page shows the last complete view. If the service did not answer, the footer says that the service is unreachable and that you can run `a-stack` again. That is needed only when the service came back on another port. The About panel shows when the snapshot was captured, and its revision. A poll with no changes does not change the report or runtime times.
 
 The full description, report, reason, result, question and file references load only for the selected Task. Text from the service is shown as text, also when it contains markup. References can be seen and copied. The page never follows or fetches them.
 

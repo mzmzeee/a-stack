@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -116,6 +117,20 @@ func listenDefault(dir string) (listener net.Listener, notice string, err error)
 
 // Start acquires ownership before SQLite opens; clients never call this. An
 // empty address reuses the last default port when it is free.
+// ServiceGCPercent is the garbage collector target of a long-running service.
+// Its live heap is about 2 MB, so the default of 100 collected about 280 times a
+// second under heavy load. In the heavy-use harness (scripts/bench.py), 400 cut
+// service CPU per call by 17-38% for about 10 MB more memory.
+const ServiceGCPercent = 400
+
+// TuneServiceGC sets ServiceGCPercent unless GOGC is set in the environment.
+// Only the service process calls it; short CLI commands keep the default.
+func TuneServiceGC() {
+	if _, set := os.LookupEnv("GOGC"); !set {
+		debug.SetGCPercent(ServiceGCPercent)
+	}
+}
+
 func Start(ctx context.Context, dir, address string) (*Service, error) {
 	if address != "" {
 		host, _, err := net.SplitHostPort(address)

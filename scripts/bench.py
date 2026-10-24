@@ -465,6 +465,10 @@ class Bench:
         first_task, last_task = self.tasks[0]['id'], self.tasks[-1]['id']
         task_columns = (REPO / 'internal/stack/tasks.go').read_text()
         cols = from_internal.search(r'const taskColumns = `(.*?)`', task_columns, from_internal.S).group(1)
+        old_cycle_sql = ('WITH RECURSIVE reachable(id) AS (SELECT ? UNION SELECT d.dependent_id FROM dependencies d JOIN reachable p '
+                         'ON d.prerequisite_id=p.id WHERE d.session_id=?) SELECT count(*) FROM reachable WHERE id=?')
+        found = from_internal.search(r'const cycleCheckSQL = `(.*?)`', task_columns, from_internal.S)
+        cycle_sql = found.group(1) if found else old_cycle_sql
         queries = {
             'authenticate': ('SELECT kind,subject_id,session_id FROM capabilities WHERE token_hash=?', (tok,)),
             'load_session': ('SELECT id,workspace_id,name,closed,orchestrator_id,revision,read_revision,graph_revision,created_at,updated_at FROM sessions WHERE id=?', (sess,)),
@@ -487,10 +491,9 @@ class Bench:
             'resolve_mention': ('SELECT a.id FROM task_assignees m JOIN agents a ON a.id=m.agent_id WHERE m.task_id=? AND a.name=?', (task['id'], agent['name'])),
             'mail_replay_lookup': ('SELECT task_id FROM mail_messages WHERE id=?', (msg,)),
             'receipt_lookup': ('SELECT digest,operation_id,resource_id,revision,outcome,body_ref,received_at FROM operation_receipts WHERE actor=? AND operation_id=?', ('agent:' + agent['id'], 'x')),
-            'dependency_cycle_check': ('WITH RECURSIVE reachable(id) AS (SELECT ? UNION SELECT d.dependent_id FROM dependencies d JOIN reachable p ON d.prerequisite_id=p.id WHERE d.session_id=?) SELECT count(*) FROM reachable WHERE id=?', (first_task, sess, last_task)),
-            # Harness-only rewrite: CROSS JOIN fixes the join order so each step is an index search.
-            'dependency_cycle_check_cross_join': ('WITH RECURSIVE reachable(id) AS (SELECT ? UNION SELECT d.dependent_id FROM reachable p CROSS JOIN dependencies d WHERE d.session_id=? AND d.prerequisite_id=p.id) SELECT count(*) FROM reachable WHERE id=?', (first_task, sess, last_task)),
-            'dependency_cycle_check_late_task': ('WITH RECURSIVE reachable(id) AS (SELECT ? UNION SELECT d.dependent_id FROM dependencies d JOIN reachable p ON d.prerequisite_id=p.id WHERE d.session_id=?) SELECT count(*) FROM reachable WHERE id=?', (self.tasks[-200]['id'], sess, first_task)),
+            'dependency_cycle_check': (cycle_sql, (first_task, sess, last_task)),
+            'dependency_cycle_check_v0.1.2': (old_cycle_sql, (first_task, sess, last_task)),
+            'dependency_cycle_check_late_task': (cycle_sql, (self.tasks[-200]['id'], sess, first_task)),
             'mail_check_assigned_tasks_join': ('SELECT x.task_id FROM task_assignees x WHERE x.session_id=? AND x.agent_id=? AND x.task_id>? ORDER BY x.task_id LIMIT ?', (sess, agent['id'], '', 101)),
             # Harness-only batched reads: one statement per page or per collection instead of one per item.
             'page_tasks_batched (harness-only)': ('SELECT ' + cols + ' FROM tasks t WHERE t.session_id=? AND t.id>? ORDER BY t.id LIMIT ?', (sess, '', 101)),
@@ -519,7 +522,7 @@ class Bench:
         self.plan_queries = queries
         # Timed full scans that indexes avoid or not (read-only, analysis engine).
         timed = {}
-        for name in ['task_in_session (taskColumns)', 'mail_check_tasks', 'dependency_cycle_check', 'dependency_cycle_check_cross_join', 'dependency_cycle_check_late_task', 'snapshot_counts', 'mail_next_sequence', 'notifier_next_target', 'notifier_claim']:
+        for name in ['task_in_session (taskColumns)', 'mail_check_tasks', 'dependency_cycle_check', 'dependency_cycle_check_v0.1.2', 'dependency_cycle_check_late_task', 'snapshot_counts', 'mail_next_sequence', 'notifier_next_target', 'notifier_claim']:
             sql, params = queries[name]
             samples = []
             for _ in range(30):

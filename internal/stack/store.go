@@ -47,9 +47,16 @@ type Store struct {
 	noticeWake    func()
 }
 
+// stmtCacheSize bounds the prepared statements the driver keeps. Past it, the
+// driver finalizes the least recently used one. Multi-statement scripts, such
+// as the migrations, are never cached.
+const stmtCacheSize = 128
+
 func openStore(ctx context.Context, path string) (*Store, error) {
 	u := url.URL{Scheme: "file", Path: path}
-	db, err := sql.Open("sqlite3", u.String()+"?_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate")
+	// The driver keeps up to stmtCacheSize single-statement queries prepared on
+	// the one connection, so hot queries are not compiled again on every call.
+	db, err := sql.Open("sqlite3", u.String()+"?_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate&_stmt_cache_size="+strconv.Itoa(stmtCacheSize))
 	if err != nil {
 		return nil, storageError()
 	}
@@ -71,6 +78,10 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 	if err = s.migrate(ctx, migration1); err != nil {
 		return nil, err
 	}
+	// Close the connection that ran the migrations, and with it every statement
+	// it cached against the old schema. The pool opens a fresh one on demand.
+	db.SetMaxIdleConns(0)
+	db.SetMaxIdleConns(1)
 	if err = s.recoverNotices(ctx); err != nil {
 		return nil, err
 	}
