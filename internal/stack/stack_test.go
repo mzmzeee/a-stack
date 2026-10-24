@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"syscall"
@@ -692,4 +693,47 @@ func TestReceiptSurvivesDatabaseRestart(t *testing.T) {
 	browser := issueTest(t, restarted.Store, BrowserCapability, "view", "session")
 	_, err = restarted.Store.Mutate(ctx, browser.Token, op, replayAccess, testApply("forbidden", false))
 	requireCode(t, err, "forbidden")
+}
+
+func TestTuneServiceGCRespectsGOGC(t *testing.T) {
+	previous := debug.SetGCPercent(100)
+	defer debug.SetGCPercent(previous)
+	t.Setenv("GOGC", "150")
+	TuneServiceGC()
+	if got := debug.SetGCPercent(100); got != 100 {
+		t.Fatal("TuneServiceGC overrode GOGC from the environment", got)
+	}
+	os.Unsetenv("GOGC")
+	TuneServiceGC()
+	if got := debug.SetGCPercent(100); got != ServiceGCPercent {
+		t.Fatal("TuneServiceGC did not set the service GC target", got)
+	}
+}
+
+// The driver caches prepared statements per connection. openStore closes the
+// connection that ran the migrations, so no statement prepared against the
+// old schema survives into the service; the next query opens a fresh one.
+func TestStatementCacheStartsAfterMigrations(t *testing.T) {
+	dir := privateTestDir(t)
+	path, err := ensureDatabaseFile(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := openStore(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.db.Close()
+	if stats := s.db.Stats(); stats.MaxIdleClosed != 1 {
+		t.Fatalf("migration connection kept open: %+v", stats)
+	}
+	var version int
+	for i := 0; i < 3; i++ {
+		if err = s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil || version != schemaVersion {
+			t.Fatal("fresh connection after migrations", version, err)
+		}
+	}
+	if stats := s.db.Stats(); stats.OpenConnections != 1 || stats.MaxIdleClosed != 1 {
+		t.Fatalf("service did not reuse its one connection: %+v", stats)
+	}
 }

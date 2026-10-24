@@ -594,3 +594,40 @@ func TestRoleReplacementLinearizesWithTaskDefinitionWrite(t *testing.T) {
 	requireCode(t, err, "forbidden")
 	f.change(t, f.b.Token, "edit", TaskChangeRequest{TaskID: task.ResourceID, ExpectedRevision: latest.Revision, Title: pointer("New role without a runtime")})
 }
+
+// The cycle check runs inside every dependency add on the one connection. Its
+// plan must search the edges out of each reached Task, with or without table
+// statistics; a scan of all Session edges per step made it quadratic.
+func TestDependencyCycleCheckPlanSearchesOutgoingEdges(t *testing.T) {
+	f := tasksFixture(t)
+	db := f.service.Store.db
+	plan := func() string {
+		t.Helper()
+		rows, err := db.QueryContext(ctx, "EXPLAIN QUERY PLAN "+cycleCheckSQL, "a", "s", "b")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var lines []string
+		for rows.Next() {
+			var id, parent, unused int
+			var detail string
+			if err = rows.Scan(&id, &parent, &unused, &detail); err != nil {
+				t.Fatal(err)
+			}
+			lines = append(lines, detail)
+		}
+		return strings.Join(lines, "\n")
+	}
+	for _, step := range []string{"", "ANALYZE"} {
+		if step != "" {
+			if _, err := db.ExecContext(ctx, step); err != nil {
+				t.Fatal(err)
+			}
+		}
+		got := plan()
+		if !strings.Contains(got, "SEARCH d USING COVERING INDEX dependencies_from (session_id=? AND prerequisite_id=?)") || strings.Contains(got, "dependencies_to") {
+			t.Fatalf("cycle check plan (%q) scans edges:\n%s", step, got)
+		}
+	}
+}

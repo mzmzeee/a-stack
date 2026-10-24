@@ -157,6 +157,12 @@ type DependencyRequest struct {
 	DependentID           string `json:"dependent_id"`
 }
 
+// cycleCheckSQL counts the new prerequisite among the Tasks reachable from the
+// new dependent. CROSS JOIN fixes the join order without relying on table
+// statistics: each recursive step searches dependencies_from for the edges
+// out of one reached Task, instead of scanning every edge of the Session.
+const cycleCheckSQL = `WITH RECURSIVE reachable(id) AS (SELECT ? UNION SELECT d.dependent_id FROM reachable p CROSS JOIN dependencies d WHERE d.session_id=? AND d.prerequisite_id=p.id) SELECT count(*) FROM reachable WHERE id=?`
+
 const taskColumns = `t.id,t.session_id,t.title,t.ticket_ref,t.progress,t.revision,t.created_by,t.updated_by,t.created_at,t.updated_at,t.report_at,COALESCE(t.description_ref,''),COALESCE(t.report_ref,''),COALESCE(t.reason_ref,''),COALESCE(t.result_ref,''),
  (SELECT count(*) FROM task_assignees a WHERE a.task_id=t.id),EXISTS(SELECT 1 FROM task_questions q WHERE q.task_id=t.id AND q.resolved_at IS NULL),
  (SELECT count(*) FROM task_references r WHERE r.task_id=t.id AND r.removed_at IS NULL),
@@ -646,7 +652,7 @@ func (s *Store) ChangeDependency(ctx context.Context, token, action string, r De
 				return Receipt{}, failure("conflict", "dependency already exists")
 			}
 			var cycle int
-			err = tx.QueryRowContext(ctx, `WITH RECURSIVE reachable(id) AS (SELECT ? UNION SELECT d.dependent_id FROM dependencies d JOIN reachable p ON d.prerequisite_id=p.id WHERE d.session_id=?) SELECT count(*) FROM reachable WHERE id=?`, r.DependentID, r.SessionID, r.PrerequisiteID).Scan(&cycle)
+			err = tx.QueryRowContext(ctx, cycleCheckSQL, r.DependentID, r.SessionID, r.PrerequisiteID).Scan(&cycle)
 			if err != nil {
 				return Receipt{}, err
 			}

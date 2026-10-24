@@ -46,6 +46,7 @@ func TestBenchServe(t *testing.T) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	TuneServiceGC() // as serve does
 	service, err := Start(ctx, dir, "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)

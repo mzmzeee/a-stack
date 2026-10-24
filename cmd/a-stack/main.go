@@ -232,6 +232,7 @@ func serveForeground(ctx context.Context, state, listen, herdrExecutable string,
 	// SIGHUP too: a service in a closed terminal removes its discovery file.
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
+	stack.TuneServiceGC()
 	service, err := stack.Start(ctx, state, listen)
 	if err != nil {
 		return err
