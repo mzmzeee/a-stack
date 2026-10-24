@@ -1,3 +1,3 @@
-# scripts/check.sh pins the Ruff version. Bug-finding rules only; no style rules.
+# scripts/check.sh pins the Ruff version. Ruff's default E4/E7/E9/F set plus bugbear (B) and Pylint errors (PLE).
 [lint]
 select = ["E4", "E7", "E9", "F", "B", "PLE"]

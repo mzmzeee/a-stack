@@ -46,7 +46,7 @@ To change a tool version, edit the variable at the top of `scripts/check.sh` and
 - **Staticcheck** runs its default checks. One finding is suppressed in place: the empty critical section in `Service.Close` (`internal/stack/http.go`) waits for an HTTP-started notice drain to finish before the database closes.
 - **oxlint** uses the `correctness` category plus `no-undef` and `no-unused-vars`, with browser globals. The `suspicious` category was left out: on `app.js` it only reported style preferences, such as `toSorted()` instead of sorting a freshly built array.
 - **golangci-lint** was tried (v2.15.0) and left out. Beyond `go vet` and Staticcheck, it reported unchecked deferred `Close` and `Rollback` calls, error type assertions on errors the code never wraps, and style quick fixes. None was a defect.
-- **Ruff** selects syntax errors, Pyflakes (`F`), flake8-bugbear (`B`) and Pylint errors (`PLE`). It selects no style rules. Six lines in `scripts/validate-v1.py` suppress `B023`, because those closures run at once inside the loop iteration that defines them.
+- **Ruff** selects its default set (`E4`, `E7`, `E9`, `F`) plus flake8-bugbear (`B`) and Pylint errors (`PLE`). It adds no formatting or line-length rules. Six lines in `scripts/validate-v1.py` suppress `B023`, because those closures run at once inside the loop iteration that defines them; a comment above the first one says so.
 
 ## Known limits
 
@@ -54,4 +54,5 @@ To change a tool version, edit the variable at the top of `scripts/check.sh` and
 - Coverage shows where tests run, not whether they check the right behavior. There is no coverage threshold.
 - No tool checks `app.css` or `index.html`. They are small, and the browser checks in [validation](validation.md) cover their rendering.
 - `validate-v1.py --quick` skips the timing and storage measurements. Run the full runner, as described in [validation](validation.md), after a change that can affect performance or storage.
+- zizmor runs with `--offline`, so it does not check that each pinned action SHA matches its version comment. The SHAs in `.github/workflows/check.yml` were checked against the GitHub tags on 2026-10-24; Dependabot keeps them and their comments in step after that.
 - The runner and the tests use a fake Herdr. They do not prove delivery to a real agent; see [notifications](notifications.md).

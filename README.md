@@ -81,7 +81,7 @@ The decision records explain why a-stack works the way it does:
 - [0004: Herdr mention notices](docs/adr/0004-herdr-notifications.md)
 - [0005: Read-only browser](docs/adr/0005-read-only-browser.md)
 
-The [v1 specification](https://github.com/mzmzeee/a-stack/issues/1) and its tickets are GitHub issues. The [approved visual prototype](prototypes/h-stack-visual/README.md) is the design reference for the browser view, kept separate from the production code.
+The [v1 specification](https://github.com/mzmzeee/a-stack/issues/1) and its tickets are GitHub issues. GitHub Issues are the source of truth for specs and tickets. The [approved visual prototype](prototypes/h-stack-visual/README.md) is the design reference for the browser view, kept separate from the production code.
 
 The research notes on [agent coordination](docs/research/agent-coordination.md), [agent mail systems](docs/research/agent-mail-systems.md) and [Herdr integration](docs/research/herdr-integration.md) record the evidence and its limits. Their earlier proposals do not override the specification or the decision records.
 

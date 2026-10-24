@@ -50,7 +50,13 @@ func TestSnapshotPageRejectsMalformedAndForeignCursors(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			r := request
 			tc.change(&r)
-			_, err := s.SnapshotPage(ctx, browser.Token, r)
+			// The browser credential cannot read Session 1; the Operator can, so
+			// the foreign-Session case fails only on the cursor.
+			token := browser.Token
+			if tc.name == "foreign Session" {
+				token = f.operator.Token
+			}
+			_, err := s.SnapshotPage(ctx, token, r)
 			requireCode(t, err, "invalid_input")
 		})
 	}

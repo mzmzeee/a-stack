@@ -581,6 +581,7 @@ def measurements(binary):
                 first_calls = run.api_calls
                 complete_poll(run, count)
                 poll_requests = run.api_calls - first_calls
+                # B023: timed() and run.wait() call these closures at once, inside this iteration.
                 poll_timing = timed(lambda: complete_poll(run, count))  # noqa: B023
                 cli_timing = timed(lambda: run.cli('task', 'list', *run.context, '--limit', 100, actor=run.a))  # noqa: B023
                 _, manifest, headers, _ = run.api('/v1/session/snapshot', {'known_revision': 0}, run.a)
