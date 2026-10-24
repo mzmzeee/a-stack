@@ -169,7 +169,8 @@ func TestCLIBareStartsServiceAndKeepsItRunning(t *testing.T) {
 	if json.Unmarshal(created, &a) != nil || json.Unmarshal(opened, &b) != nil || b.Data.SessionID != a.Data.SessionID || b.Data.SessionName != "Started" {
 		t.Fatalf("second shortcut did not use the started service: %s %s", created, opened)
 	}
-	commandResult(t, []string{"serve", "--state-dir", dir, "--json"}, 1)
+	// A second serve on the owned state directory exits 3 (systemd RestartPreventExitStatus).
+	commandResult(t, []string{"serve", "--state-dir", dir, "--json"}, 3)
 	if command.Process.Signal(syscall.SIGTERM) != nil {
 		t.Fatal("terminate")
 	}
