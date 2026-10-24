@@ -50,7 +50,7 @@ To change a tool version, edit the variable at the top of `scripts/check.sh` and
 
 ## Known limits
 
-- govulncheck checks Go code only. It does not check the SQLite C source bundled in `github.com/mattn/go-sqlite3`. For SQLite, compare the bundled version (see [foundation](foundation.md)) with the [SQLite CVE list](https://www.sqlite.org/cves.html) when you upgrade.
+- govulncheck checks Go code only. It does not check the SQLite C source bundled in `github.com/mattn/go-sqlite3`. For SQLite, compare the bundled version (see the [README requirements](../README.md#requirements)) with the [SQLite CVE list](https://www.sqlite.org/cves.html) when you upgrade.
 - Coverage shows where tests run, not whether they check the right behavior. There is no coverage threshold.
 - No tool checks `app.css` or `index.html`. They are small, and the browser checks in [validation](validation.md) cover their rendering.
 - `validate-v1.py --quick` skips the timing and storage measurements. Run the full runner, as described in [validation](validation.md), after a change that can affect performance or storage.

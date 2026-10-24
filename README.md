@@ -71,6 +71,7 @@ To list all commands and flags, run `./a-stack --help`.
 - [Browser view](docs/browser.md): the read-only Session view and its measured limits.
 - [Mention notices](docs/notifications.md): optional Herdr notices, setup, diagnostics and recovery.
 - [Validation](docs/validation.md): the v1 validation runner and its measured results.
+- [Quality checks](docs/quality.md): the linters, scanners and tests that `scripts/check.sh` runs, and their limits.
 
 The decision records explain why a-stack works the way it does:
 
@@ -95,4 +96,10 @@ go test -race ./...
 
 The tests use temporary state, real SQLite and HTTP, and CLI subprocesses. They do not install anything, and they do not send anything to existing agent terminals.
 
-To run the v1 validation runner, see [Validation](docs/validation.md).
+To run every check that CI runs (formatting, linters, vulnerability and secret scans, tests with coverage, race tests, build and the quick validation), use:
+
+```sh
+scripts/check.sh
+```
+
+[Quality checks](docs/quality.md) lists the tool versions and prerequisites. To run the full v1 validation runner with measurements, see [Validation](docs/validation.md).
