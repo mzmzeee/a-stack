@@ -581,16 +581,16 @@ def measurements(binary):
                 first_calls = run.api_calls
                 complete_poll(run, count)
                 poll_requests = run.api_calls - first_calls
-                poll_timing = timed(lambda: complete_poll(run, count))
-                cli_timing = timed(lambda: run.cli('task', 'list', *run.context, '--limit', 100, actor=run.a))
+                poll_timing = timed(lambda: complete_poll(run, count))  # noqa: B023
+                cli_timing = timed(lambda: run.cli('task', 'list', *run.context, '--limit', 100, actor=run.a))  # noqa: B023
                 _, manifest, headers, _ = run.api('/v1/session/snapshot', {'known_revision': 0}, run.a)
                 revision = manifest['data']['session']['read_revision']
                 tag = next(value for key, value in headers.items() if key.lower() == 'etag')
                 idle_bytes = []
                 def idle():
-                    status, _, _, size = run.api('/v1/session/snapshot', {'known_revision': revision}, run.a, headers={'If-None-Match': tag})
+                    status, _, _, size = run.api('/v1/session/snapshot', {'known_revision': revision}, run.a, headers={'If-None-Match': tag})  # noqa: B023
                     check(status == 304 and size == 0, 'idle poll not an authenticated empty 304')
-                    idle_bytes.append(size)
+                    idle_bytes.append(size)  # noqa: B023
                 idle_timing = timed(idle)
                 before = run.cli('storage', 'status')
                 baseline = inspect_backup(run.backup('tasks'))
@@ -614,7 +614,7 @@ def measurements(binary):
                     run.stop()
                     run.start(notices=True)
                     def submitted():
-                        return sum(t['counts'].get('submitted', 0) for t in run.status()['targets'])
+                        return sum(t['counts'].get('submitted', 0) for t in run.status()['targets'])  # noqa: B023
                     run.wait(lambda: submitted() == 30000, '10k burst did not drain', timeout=90)
                     check(len(run.prompts()) == 60, 'already-waiting burst did not use 500-ref batches')
                     burst_storage = run.cli('storage', 'status')
@@ -626,7 +626,7 @@ def measurements(binary):
                         start = time.monotonic_ns()
                         receipt = run.mail(tasks[0], f'Timed {index:02d} @03-worker')
                         received = time.monotonic_ns()
-                        run.wait(lambda: submitted() == expected, 'isolated notice not durably submitted')
+                        run.wait(lambda: submitted() == expected, 'isolated notice not durably submitted')  # noqa: B023
                         end = time.monotonic_ns()
                         if index >= WARMUP:
                             send_samples.append(received - start)

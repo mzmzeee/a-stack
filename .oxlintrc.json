@@ -1,0 +1,5 @@
+{
+  "env": { "browser": true, "es2024": true },
+  "categories": { "correctness": "error" },
+  "rules": { "no-undef": "error", "no-unused-vars": "error" }
+}
