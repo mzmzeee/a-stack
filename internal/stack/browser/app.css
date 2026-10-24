@@ -111,6 +111,7 @@
   #zoom-reset { min-width: 52px; font-variant-numeric: tabular-nums; }
   #zoom-fit { gap: 5px; margin-left: 2px; padding-left: 10px; border-left: 1px solid var(--line); border-radius: 0 4px 4px 0; }
   .footer-hint, #result-count { font-size: 12px; color: var(--muted); }
+  .footer-hint.lost { display: inline; color: var(--attention); }
   .preview-button { display: flex; align-items: center; gap: 7px; min-height: 32px; border: none; padding: 0 2px; margin-left: auto; background: transparent; font-size: 12px; color: var(--muted); white-space: nowrap; }
   .preview-short { display: none; }
   .preview-button:hover { color: var(--ink); text-decoration: underline; }

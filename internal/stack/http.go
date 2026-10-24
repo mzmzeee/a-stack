@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -67,10 +68,12 @@ type Health struct {
 	DatabaseID    string `json:"database_id"`
 	SQLiteVersion string `json:"sqlite_version"`
 	SchemaVersion int    `json:"schema_version"`
+	Version       string `json:"version"`
 }
 type Service struct {
 	Store     *Store
 	Discovery Discovery
+	Version   string // running build, for health and the browser view; set before Serve
 	server    *http.Server
 	listener  net.Listener
 	lock      *stateLock
@@ -79,14 +82,38 @@ type Service struct {
 	notifier  *notifier
 }
 
-// Start acquires ownership before SQLite opens; clients never call this.
-func Start(ctx context.Context, dir, address string) (*Service, error) {
-	if address == "" {
-		address = "127.0.0.1:0"
+// lastPortFile remembers the port of the last start without --listen, so that
+// an open browser tab finds the service again after a restart.
+const lastPortFile = "last-port.json"
+
+type lastPort struct {
+	Port int `json:"port"`
+}
+
+// listenDefault tries the remembered port first and falls back to a free one.
+func listenDefault(dir string) (net.Listener, error) {
+	var last lastPort
+	if data, err := privateRead(filepath.Join(dir, lastPortFile)); err == nil && decodeJSON(data, &last) == nil && last.Port > 0 && last.Port < 65536 {
+		if listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(last.Port))); err == nil {
+			return listener, nil
+		}
 	}
-	host, _, err := net.SplitHostPort(address)
-	if err != nil || host != "127.0.0.1" {
-		return nil, failure("invalid_input", "listen address must be 127.0.0.1:PORT")
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err == nil {
+		// Best effort: a missing record only means a new port next time.
+		_ = writePrivate(filepath.Join(dir, lastPortFile), lastPort{listener.Addr().(*net.TCPAddr).Port}, true)
+	}
+	return listener, err
+}
+
+// Start acquires ownership before SQLite opens; clients never call this. An
+// empty address reuses the last default port when it is free.
+func Start(ctx context.Context, dir, address string) (*Service, error) {
+	if address != "" {
+		host, _, err := net.SplitHostPort(address)
+		if err != nil || host != "127.0.0.1" {
+			return nil, failure("invalid_input", "listen address must be 127.0.0.1:PORT")
+		}
 	}
 	lock, err := lockState(dir)
 	if err != nil {
@@ -114,7 +141,12 @@ func Start(ctx context.Context, dir, address string) (*Service, error) {
 	if err = store.ensureOperator(ctx, lock.dir); err != nil {
 		return nil, err
 	}
-	listener, err := net.Listen("tcp4", address)
+	var listener net.Listener
+	if address == "" {
+		listener, err = listenDefault(lock.dir)
+	} else {
+		listener, err = net.Listen("tcp4", address)
+	}
 	if err != nil {
 		return nil, failure("conflict", "cannot bind requested local service address")
 	}
@@ -218,7 +250,7 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 			writeError(w, failure("invalid_input", "GET required"))
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": Health{s.Store.id, s.Store.sqliteVersion, schemaVersion}})
+		writeJSON(w, http.StatusOK, map[string]any{"data": Health{s.Store.id, s.Store.sqliteVersion, schemaVersion, s.Version}})
 	case "/v1/storage":
 		if r.Method != http.MethodGet {
 			writeError(w, failure("invalid_input", "GET required"))
@@ -326,7 +358,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 	}
 	response, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, failure("storage_unavailable", "local service unavailable; check serve and retry explicitly")
+		return nil, failure("storage_unavailable", serviceUnreachable)
 	}
 	defer response.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(response.Body, MaxRequestBytes+1))

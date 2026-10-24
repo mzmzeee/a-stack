@@ -24,7 +24,7 @@ const $ = id => document.getElementById(id);
 const graph = $('graph-world'), panel = $('graph-panel'), agentsPanel = $('agents-panel');
 const svgNS = 'http://www.w3.org/2000/svg';
 const state = {view:'graph',theme:'light',query:'',filter:'all',zoom:1,selected:null};
-let model = null, etag = '', instance = document.querySelector('meta[name="a-stack-instance"]').content;
+let model = null, etag = '', instance = document.querySelector('meta[name="a-stack-instance"]').content, version = document.querySelector('meta[name="a-stack-version"]').content;
 let timer, controller, failures = 0, busy = false, lastSuccess = 0, stale = false, detailKey = '', detailEpoch = 0, returnFocus;
 let geometryKey = '', width = 1400, height = 670, laneKey = p => p;
 const cards = new Map(), rows = new Map(), positions = new Map();
@@ -231,7 +231,7 @@ function render() {
   panel.hidden=state.view!=='graph';agentsPanel.hidden=state.view!=='agents';$('zoom-controls').hidden=state.view!=='graph';
   if(!model)return;
   setText(document.querySelector('.workspace-title h1'),model.snapshot.session.name);
-  setText(document.querySelector('.workspace-subtitle'),`${model.agents.length} agents · ${model.tasks.length} tasks${model.snapshot.session.closed?' · Closed Session':''}`);
+  setText(document.querySelector('.workspace-subtitle'),`${plural(model.agents.length,'agent')} · ${plural(model.tasks.length,'task')}${model.snapshot.session.closed?' · Closed Session':''}`);
   const count=model.tasks.filter(matches).length, attention=model.tasks.filter(t=>t.needs_you);
   $('attention').replaceChildren(iconNode('attention'),document.createTextNode(`${attention.length} needs you`));$('attention').disabled=!attention.length;
   $('empty').hidden=count>0 || (state.view==='agents'&&!model.tasks.length&&model.agents.length>0);
@@ -240,7 +240,7 @@ function render() {
   setText($('result-count'),state.query||state.filter!=='all'?`${count} of ${model.tasks.length} tasks`:'');
   patchGraph();patchAgents();
   graph.parentElement.style.visibility=count?'visible':'hidden';
-  setText($('footer-hint'),state.view==='graph'?'Arrows show what comes next. Drag empty space to pan.':'Select a task for its report and dependencies.');
+  updateHint();
   if(state.selected){if(model.tasks.some(t=>t.id===state.selected))loadDetail();else $('task-dialog').close();}
   if($('attention-dialog').open)renderAttention();
   updateSource();
@@ -248,8 +248,17 @@ function render() {
 function age(timestamp) {const seconds=Math.max(0,Math.floor((Date.now()-new Date(timestamp).getTime())/1000));return seconds<60?`${seconds}s ago`:`${Math.floor(seconds/60)}m ago`;}
 function runtimeText(a) { return `Runtime: ${a.runtime_attached?(a.runtime_state || 'unknown'):'unbound'} · unverified${a.observed_at?' · '+age(a.observed_at):''}`; }
 function updateRuntimeAges() { if(model)for(const a of model.agents){const r=rows.get(a.id);if(r)setText(r.runtime,runtimeText(a));} }
+function plural(n,word) { return `${n} ${word}${n===1?'':'s'}`; }
+// After a restart on a new port, polling cannot recover; say what to do.
+function lost() { return stale&&lastSuccess>0&&Date.now()-lastSuccess>30000; }
+function updateHint() {
+  const hint=$('footer-hint');hint.classList.toggle('lost',lost());
+  setText(hint,lost()?'Service unreachable. If you restarted it, run a-stack open again.':state.view==='graph'?'Arrows show what comes next. Drag empty space to pan.':'Select a task for its report and dependencies.');
+}
 function updateSource(message) {
-  const text=message || (lastSuccess?`${stale?'Saved · stale':'Local service'} · checked ${age(new Date(lastSuccess).toISOString())}`:'Local service · connecting');
+  const service=version?'Local service '+version:'Local service';
+  const text=message || (lastSuccess?`${stale?'Saved · stale':service} · checked ${age(new Date(lastSuccess).toISOString())}`:service+' · connecting');
+  updateHint();
   setText(document.querySelector('.preview-label'),text);setText(document.querySelector('.preview-short'),stale?'Saved · stale':'Read-only');
   setText($('source-info'),`${text}${model?'. Snapshot captured '+model.snapshot.captured_at+' · revision '+model.snapshot.session.read_revision+'. Runtime observations have their own age and are unverified.':''}`);
   $('about-button').setAttribute('aria-label',text+'. About this read-only view');
@@ -349,7 +358,7 @@ async function refresh() {
         }
         lastSuccess=Date.now();stale=false;failures=0;updateSource();if(state.selected)loadDetail();break;
       }catch(error){
-        if(error.status===409&&attempt<2){const shell=await fetch(location.pathname,{cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});if(shell.ok)instance=shell.headers.get('X-A-Stack-Instance') || instance;continue;}throw error;
+        if(error.status===409&&attempt<2){const shell=await fetch(location.pathname,{cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});if(shell.ok){instance=shell.headers.get('X-A-Stack-Instance') || instance;version=shell.headers.get('X-A-Stack-Version') || version;}continue;}throw error;
       }
     }
   }catch(error){if(error.name!=='AbortError'){stale=true;failures++;updateSource(model?undefined:error.status===401||error.status===403?'Read credential unavailable · run a-stack open again':'Local service unavailable · retrying');}}

@@ -38,6 +38,9 @@ func writeError(stderr io.Writer, err error) int {
 		e = &stack.Error{Code: "storage_unavailable", Message: "command failed", Retryable: true}
 	}
 	_ = json.NewEncoder(stderr).Encode(map[string]any{"error": e})
+	if e == stack.ErrStateOwned {
+		return 3 // systemd: RestartPreventExitStatus=3
+	}
 	if e.Code == "invalid_input" {
 		return 2
 	}
@@ -61,7 +64,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.StringVar(&state, "state-dir", "", "State directory (default ~/.local/state/a-stack)")
 	fs.StringVar(&credential, "credential-file", "", "Credential file (default: operator.json)")
 	fs.StringVar(&kind, "as", "", "Credential kind: operator, agent or browser")
-	fs.StringVar(&listen, "listen", "127.0.0.1:0", "Loopback address; port 0 picks a free port")
+	fs.StringVar(&listen, "listen", "", "Loopback address (default: the last port, else a free one)")
 	fs.StringVar(&destination, "destination", "", "New absolute file name for the backup")
 	fs.BoolVar(&machine, "json", false, "Machine-readable output")
 	fs.BoolVar(&help, "help", false, "Show help")
@@ -220,7 +223,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 // readyLine prints no credentials. Discovery is private on disk; this ready
 // outcome is one JSON document and all diagnostics go to stderr.
 func readyLine(service *stack.Service) map[string]any {
-	return map[string]any{"data": map[string]any{"status": "ready", "url": service.Discovery.URL, "database_id": service.Discovery.DatabaseID}}
+	return map[string]any{"data": map[string]any{"status": "ready", "url": service.Discovery.URL, "database_id": service.Discovery.DatabaseID, "version": service.Version}}
 }
 
 // serveForeground runs the service until SIGINT or SIGTERM. ready runs once the
@@ -232,6 +235,7 @@ func serveForeground(ctx context.Context, state, listen, herdrExecutable string,
 	if err != nil {
 		return err
 	}
+	service.Version = buildVersion()
 	if herdrExecutable != "" {
 		if err = service.EnableNotifications(herdrExecutable); err != nil {
 			_ = service.Close(ctx)
