@@ -1,19 +1,26 @@
 #!/usr/bin/env bash
-# Record the README demo: docs/images/demo.gif, graph-light.png, graph-dark.png,
-# agents.png and picker.png.
+# Record the README demo and the browser view images in docs/images:
+#   demo.gif           the main tour: a new Session, the Now board, Task mail,
+#                      Needs you and the answer, and a-stack -r
+#   demo-graph.gif     the graph and its focus highlight
+#   demo-archive.gif   finished Tasks shrink and fold into the archive
+#   demo-agents.gif    the Agents tab
+#   graph-light.png, graph-dark.png, now-light.png, now-dark.png,
+#   mail-light.png, mail-dark.png, agents.png and picker.png
 #
 # The script builds a-stack from this checkout and runs a real Session on a
 # disposable service. A temporary HOME holds the state, the credentials and the
 # project folders; everything is deleted on exit.
 #
-# The GIF has three bands. At the top, a caption names the scene. In the
-# middle, a real terminal: scripts/demo-terminal.py types into a Bash in a
-# pseudo-terminal and records it, and agg renders the recording. It is your
-# terminal in the first and last scene and the Agent 02-backend's terminal in
-# between. At the bottom, the browser view, recorded by agent-browser at the
-# same time. The commands and the service are real. Only the annotations are
-# added: scripts/demo-overlay.js draws an outline and a callout on what just
-# changed and zooms the page, in the recording browser only.
+# One story is recorded, and each GIF is cut from its scenes. A GIF has a
+# caption that names the scene. Below it, the main GIF has a real terminal:
+# scripts/demo-terminal.py types into a Bash in a pseudo-terminal and records
+# it, and agg renders the recording. It is your terminal or the Agent
+# 02-backend's terminal. At the bottom, the browser view, recorded by
+# agent-browser at the same time. The commands and the service are real. Only
+# the annotations are added: scripts/demo-overlay.js draws an outline and a
+# callout on what just changed and zooms the page, in the recording browser
+# only.
 #
 # The view URL fragment is a credential. The script never prints it or writes
 # it to a file, and the terminal recording shows it as dots.
@@ -27,16 +34,27 @@ repo="$PWD"
 # DEMO_OUT writes the images to another folder, for a trial run.
 out="${DEMO_OUT:-$repo/docs/images}"
 
-# The scenes, in order: the view tab, whose terminal shows, and the caption.
-# A tab the view does not have falls back to Graph.
+# The scenes, in story order: the GIF it goes to, the view tab, whose terminal
+# shows (main GIF only) and the caption. A tab the view does not have falls
+# back to Graph.
 scenes=(
-  "now|Your terminal|Create a Session for your project"
-  "graph|Agent 02-backend's terminal|Agents pick up Tasks"
-  "now|Agent 02-backend's terminal|An Agent asks you a question"
-  "now|Agent 02-backend's terminal|You answer, work continues"
-  "now|Your terminal|Pick another Session"
+  "demo|now|Your terminal|Create a Session for your project"
+  "demo|now|Your terminal|The Orchestrator plans Tasks"
+  "demo|now|Agent 02-backend's terminal|Agents pick up Tasks"
+  "demo-graph|graph||The graph shows which Task waits for which"
+  "demo|now|Agent 02-backend's terminal|Agents talk in Task mail"
+  "demo|now|Agent 02-backend's terminal|An Agent asks you a question"
+  "demo|now|Agent 02-backend's terminal|You answer, work continues"
+  "demo-archive|graph||Finished work folds away"
+  "demo-agents|agents||The Agents tab shows who does what"
+  "demo|now|Your terminal|Pick another Session"
 )
+# The step badge of the caption in the feature GIFs.
+declare -A badge=([demo-graph]=Graph [demo-archive]=Archive [demo-agents]=Agents)
 
+# Pacing: a callout stays up HOLD seconds after its change settles, and BEAT
+# seconds pass before the next command or change.
+HOLD=4.5 BEAT=1.5
 AGG_VERSION=v1.9.0
 FPS=10
 # The GIF is 960 pixels wide, about the width of a README on GitHub.
@@ -198,6 +216,9 @@ finish() {
   change "$1" "$2" finish task status --progress finished --summary "$3"
 }
 ask() { change "$1" "$2" ask task attention set --question "$3"; }
+mail() {
+  as_agent "$1" mail send --task "${task_id[$2]}" --body "$3" --operation-id "demo-mail-$4" >/dev/null
+}
 
 # --- browser helpers --------------------------------------------------------
 
@@ -213,9 +234,17 @@ element() { printf '{"css":%s}' "$(json "$1")"; }
 # it, from SIDE (below, above, left or right) or from the side with most room.
 callout() { js "demo.mark($1, $(json "$2"), $(json "${3:-}"))"; }
 zoom() { js "demo.zoom($1, ${2:-$ZOOM})"; }
+click() { js "demo.click($1)"; }
+# poll: let the view check for changes now instead of at its next poll.
+poll() { js "demo.poll()"; }
+# hold: keep the current callout up, then wait a beat.
+hold() { sleep "$HOLD"; }
+beat() { sleep "$BEAT"; }
+# wait_for JS: wait until the expression is true in the recording browser.
+wait_for() { rec wait --fn "$1" >/dev/null; }
 # wait_card KEY TEXT [WITHOUT]: wait until the card shows TEXT and not WITHOUT.
 wait_card() {
-  rec wait --fn "demo.ready($(card "$1"), $(json "$2"))${3:+ && !demo.ready($(card "$1"), $(json "$3"))}" >/dev/null
+  wait_for "demo.ready($(card "$1"), $(json "$2"))${3:+ && !demo.ready($(card "$1"), $(json "$3"))}"
 }
 # wait_view BROWSER NAME: wait until the browser shows the Session NAME, live.
 wait_view() {
@@ -229,7 +258,7 @@ overlay() {
 }
 show_tab() {
   if [ "$(rec eval "demo.tab($(json "$1"))")" = '"graph"' ]; then
-    rec wait --fn "!document.getElementById('graph-panel').hidden" >/dev/null
+    wait_for "!document.getElementById('graph-panel').hidden"
     js "document.getElementById('zoom-fit').click()"
   fi
 }
@@ -252,17 +281,32 @@ wait_graph() {
 screenshot() {
   shot screenshot "$work_dir/$1" >/dev/null
   # The view uses flat colors, so 192 colors keep the PNGs small and sharp.
-  magick "$work_dir/$1" -strip -colors 192 "PNG8:$out/$1"
+  # Without dithering, the blurred backdrop behind the Task details stays smooth.
+  magick "$work_dir/$1" -strip -dither None -colors 192 "PNG8:$out/$1"
 }
+# The stills: the Graph and Now tabs and the Task details with Task mail open,
+# in both themes, and the Agents tab.
 take_screenshots() {
-  shot click '#graph-tab' >/dev/null
-  wait_graph shot 4 3
-  shot click '#zoom-fit' >/dev/null
-  sleep 0.5
-  screenshot graph-light.png
-  shot click '.theme-button[data-theme=dark]' >/dev/null
-  sleep 0.5
-  screenshot graph-dark.png
+  local theme
+  for theme in light dark; do
+    shot click ".theme-button[data-theme=$theme]" >/dev/null
+    shot click '#graph-tab' >/dev/null
+    wait_graph shot 4 3
+    shot click '#zoom-fit' >/dev/null
+    sleep 0.5
+    screenshot "graph-$theme.png"
+    shot click '#now-tab' >/dev/null
+    sleep 0.5
+    screenshot "now-$theme.png"
+    printf '[...document.querySelectorAll("#now-panel .task-card")].find(c => c.querySelector(".task-title").textContent === %s).click()' \
+      "$(json "${title[ui]}")" | shot eval --stdin >/dev/null
+    shot wait --fn "document.getElementById('task-dialog').open" >/dev/null
+    shot click '#task-dialog .mail-toggle' >/dev/null
+    shot wait --fn "document.querySelectorAll('#task-dialog .mail-message').length === 2" >/dev/null
+    sleep 0.5
+    screenshot "mail-$theme.png"
+    shot eval "document.getElementById('task-dialog').close()" >/dev/null
+  done
   shot click '.theme-button[data-theme=light]' >/dev/null
   shot click '#agents-tab' >/dev/null
   sleep 0.5
@@ -272,21 +316,30 @@ take_screenshots() {
 # --- scenes -----------------------------------------------------------------
 
 now() { date +%s.%N; }
-scene_start=()
+scene_switch=() scene_start=()
+# scene_field N FIELD: a field of scene N; 1 is the GIF, 2 the tab, 3 the
+# terminal and 4 the caption.
+scene_field() {
+  local -a fields
+  IFS='|' read -r -a fields <<<"${scenes[$1 - 1]:-}"
+  printf '%s' "${fields[$2 - 1]:-}"
+}
 # scene N: start scene N. A scene on another tab starts zoomed out, so the
-# viewer sees the whole tab first.
+# viewer sees the whole tab first. The GIFs cut between scene_switch and
+# scene_start, so a cut never shows the tab change.
 scene() {
-  scene_start[$1]="$(now)"
+  scene_switch[$1]="$(now)"
   if [ "$1" -gt 1 ]; then
     js "demo.clear()"
-    if [ "$(scene_tab "$1")" != "$(scene_tab $(($1 - 1)))" ]; then
+    if [ "$(scene_field "$1" 2)" != "$(scene_field $(($1 - 1)) 2)" ]; then
       js "demo.zoom(null)"
-      show_tab "$(scene_tab "$1")"
+      show_tab "$(scene_field "$1" 2)"
+      sleep 1
     fi
   fi
+  scene_start[$1]="$(now)"
+  beat
 }
-# scene_tab N: the view tab of scene N.
-scene_tab() { printf '%s' "${scenes[$1 - 1]%%|*}"; }
 
 # --- the terminals ----------------------------------------------------------
 
@@ -335,7 +388,7 @@ agent_terminal() {
 PS1='\[\e]0;demo\a\e[1;35m\]$1\[\e[0m\] \\$ '
 HISTFILE=/dev/null
 bind 'set enable-bracketed-paste off'
-APP=${task_id[app]} TOKEN=${task_id[token]}
+APP=${task_id[app]} UI=${task_id[ui]} TOKEN=${task_id[token]}
 me() {
   a-stack --as agent --credential-file ~/.agents/$1.json --workspace $workspace --session $session "\$@" |
     python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];print(json.dumps({"outcome":d["outcome"],"revision":d["revision"]}))'
@@ -387,15 +440,13 @@ shot set viewport 1440 900 >/dev/null
 shot open about:blank >/dev/null
 
 step "record"
-# H.264 at 20 fps keeps up with the 1.6x frames; the GIF has 10 fps.
+# H.264 at 20 fps keeps up with the 1.6x frames; the GIFs have 10 fps.
 rec record start "$work_dir/browser.mp4" --fps 20 >/dev/null
 browser_start="$(now)"
 start_terminal you you.cast "$TERM_COLS" "$TERM_ROWS" "$demo_home/.bashrc" "$demo_home/code/oauth-app"
 story_start="${terminal_start[you]}"
 
-# 1. Create a Session for your project.
-scene 1
-sleep 0.8
+scene 1 # Create a Session for your project.
 say you line "a-stack new 'Add OAuth login'"
 workspace="$(operator workspace list | python3 -c 'import json,sys
 print(next(w["id"] for w in json.load(sys.stdin)["data"]["items"] if w["path"].endswith("/oauth-app")))')"
@@ -404,45 +455,87 @@ wait_view rec 'Add OAuth login'
 no_fragment rec
 open_view shot &
 shot_pid=$!
-overlay "$(scene_tab 1)"
-callout "$(element h1)" 'Your Session, live in the browser'
+overlay "$(scene_field 1 2)"
 appoint 01-orchestrator
 for name in 02-backend 03-frontend 04-reviewer; do register "$name"; done
-sleep 1.8
+poll
+callout "$(element h1)" 'Your Session, live in the browser'
+hold
 
-# 2. Agents pick up Tasks.
+scene 2 # The Orchestrator plans Tasks.
 new_task app 'Register the OAuth app' AUTH-1 'Create the provider app; load its client ID and secret from config.'
 new_task ui 'Login button and callback page' AUTH-2 'Add "Sign in with" to the header and handle /auth/callback.'
 new_task token 'Token exchange endpoint' AUTH-3 'Exchange the code for tokens; check state and PKCE.'
 new_task review 'Security review' AUTH-4 'Review state, PKCE, cookie flags and secret handling.'
-agent_terminal 02-backend
-scene 2
 depends app token
-depends token review
 depends ui token
+depends token review
 assign app 02-backend
 assign token 02-backend
 assign ui 03-frontend
+assign ui 02-backend
 assign review 04-reviewer
-if [ "$(scene_tab 2)" = graph ]; then wait_graph rec 4 3; fi
-show_tab "$(scene_tab 2)"
-zoom "$(card token)" 1.2
-callout "$(card token)" 'Arrows show which Task waits for which' below
-sleep 2.4
+poll
+wait_card review Waiting
+zoom "$(element '.now-column[data-column=waiting]')" 1.25
+callout "$(element '.now-column[data-column=waiting]')" 'New Tasks wait here until an Agent starts' right
+hold
+agent_terminal 02-backend
+
+scene 3 # Agents pick up Tasks.
 say agent line "me task status --task \$APP --progress working$next--expected-revision $(revision 02-backend app) --operation-id be-start-1"
+poll
 wait_card app Working
 zoom "$(card app)"
-callout "$(card app)" '02-backend starts: Working'
-sleep 2.2
+callout "$(card app)" '02-backend starts work'
+hold
 start 03-frontend ui
+poll
 wait_card ui Working
+zoom "$(card ui)"
 callout "$(card ui)" '03-frontend starts too'
-sleep 1.8
+hold
 
-# 3. An Agent asks you a question.
-scene 3
+scene 4 # The graph shows which Task waits for which.
+wait_graph rec 4 3
+zoom "$(card token)" 1.25
+callout "$(card token)" 'Curved lines show which Task waits for which' below
+hold
+click "$(card ui)"
+wait_for "document.getElementById('task-dialog').open"
+beat
+js "demo.escape()"
+callout "$(card ui)" 'A click lights up its lines and fades the rest'
+hold
+js "demo.escape()"
+beat
+
+scene 5 # Agents talk in Task mail.
+say agent clear
+say agent line "me mail send --task \$UI --body '@03-frontend the callback is /auth/callback'$next--operation-id be-mail-1"
+beat
+mail 03-frontend ui 'Thanks @02-backend, wiring the button to it now.' fe-1
+poll
+click "$(card ui)"
+wait_for "document.getElementById('task-dialog').open"
+beat
+click "$(element '#task-dialog .mail-toggle')"
+wait_for "document.querySelectorAll('#task-dialog .mail-message').length === 2"
+js "demo.scroll($(element '#task-dialog .mail-section'))"
+zoom "$(element '#task-dialog .mail-section')" 1.4
+callout "$(element '#task-dialog .mail-toggle')" 'Task mail between the Agents' left
+hold
+callout "$(element '#task-dialog .mention')" '@03-frontend: this one is for 03-frontend' left
+hold
+js "demo.clear()"
+zoom null
+sleep 0.6
+js "demo.escape()"
+
+scene 6 # An Agent asks you a question.
 say agent clear
 say agent line "me task attention set --task \$APP --question 'GitHub or Google first?'$next--expected-revision $(revision 02-backend app) --operation-id be-ask-1"
+poll
 wait_card app 'Needs you'
 zoom "$(card app)"
 callout "$(card app)" 'Needs you: GitHub or Google first?'
@@ -451,48 +544,71 @@ shot_pid=""
 no_fragment shot
 take_screenshots &
 shot_pid=$!
-sleep 2.4
-rec wait --fn "document.getElementById('attention').textContent.includes('1 needs you')" >/dev/null
+hold
+wait_for "document.getElementById('attention').textContent.includes('1 needs you')"
 zoom "$(element '#attention')"
 callout "$(element '#attention')" 'Questions for you wait here'
-sleep 2.2
+hold
 
-# 4. You answer, work continues.
-scene 4
-say you clear
+scene 7 # You answer, work continues.
 say agent clear
 say agent line "me task attention resolve --task \$APP --note 'GitHub first'$next--expected-revision $(revision 02-backend app) --operation-id be-answer-1"
+poll
 wait_card app Working 'Needs you'
 zoom "$(card app)"
 callout "$(card app)" 'You answered "GitHub first". Back to work.'
-sleep 2.2
-finish 02-backend app 'GitHub OAuth app registered; client ID and secret load from AUTH_GITHUB_*.'
-start 02-backend token
-wait_card token Working
-zoom "$(card token)"
-callout "$(card token)" 'Done, so the next Task starts'
-sleep 2.4
+hold
 wait "$shot_pid"
 shot_pid=""
 
-# 5. Pick another Session.
-scene 5
+scene 8 # Finished work folds away.
+finish 02-backend app 'GitHub OAuth app registered; client ID and secret load from AUTH_GITHUB_*.'
+poll
+wait_for "document.querySelectorAll('#graph-panel .task-unit.compact').length === 1"
+zoom "$(card app)" 1.3
+callout "$(card app)" 'A finished Task shrinks to one line'
+hold
+finish 03-frontend ui 'Header shows "Sign in with GitHub"; the callback page handles errors.'
+start 02-backend token
+finish 02-backend token 'Code exchange with PKCE and state check; 14 new tests pass.'
+poll
+wait_for "document.getElementById('archived-label').textContent === 'Archived (2)'"
+zoom "$(element '#archived')" 1.3
+callout "$(element '#archived')" 'Its whole chain is done, so it folds into the archive' above
+hold
+click "$(element '#archived')"
+wait_for "document.getElementById('archived').getAttribute('aria-pressed') === 'true'"
+zoom null
+callout "$(element '#archived')" 'The toggle shows archived Tasks again' above
+hold
+click "$(element '#archived')"
+js "demo.clear()"
+beat
+
+scene 9 # The Agents tab shows who does what.
+say you clear
+zoom "$(element '#agents-panel .agent-row:nth-child(2) .agent-heading')" 1.25
+callout "$(element '#agents-panel .agent-row:nth-child(2)')" 'Each Agent, with its Tasks'
+hold
+
+scene 10 # Pick another Session.
 say you keys 'a-stack -r\r'
 say you expect 'Tab to switch'
-sleep 1.2
+beat
 say you keys '\t'
 say you expect '(All)'
-sleep 1
+beat
 say you keys 'docs'
-sleep 1.2
+beat
 say you line ''
 wait_view rec 'Docs refresh'
 no_fragment rec
-overlay "$(scene_tab 5)"
-rec wait --fn "demo.ready($(card d1))" >/dev/null
+overlay "$(scene_field 10 2)"
+wait_for "demo.ready($(card d1))"
 zoom "$(card d1)"
 callout "$(card d1)" 'Another Session, another question for you'
-sleep 3
+hold
+beat
 story_end="$(now)"
 stop_terminal agent
 stop_terminal you
@@ -514,7 +630,7 @@ stop_terminal you
 
 # --- compose ----------------------------------------------------------------
 
-step "render the terminals and the captions"
+step "render the terminals"
 for name in you agent; do
   "$agg" --quiet --theme github-dark --font-size 16 --line-height 1.3 --idle-time-limit 600 --fps-cap 12 \
     --last-frame-duration 0 "$work_dir/$name.cast" "$work_dir/$name.gif"
@@ -523,7 +639,27 @@ done
   --select "$picker_at" "$work_dir/picker.cast" "$work_dir/picker.gif"
 magick "$work_dir/picker.gif[0]" -strip -colors 64 "PNG8:$out/picker.png"
 
-# The captions are rendered by the screenshot browser, one image per scene.
+step "stack the terminal over the browser"
+# Times on the story clock, which starts at the first prompt of your terminal.
+since() { python3 -c 'import sys;print(max(0.0,float(sys.argv[1])-float(sys.argv[2])))' "$1" "$story_start"; }
+offset="$(python3 -c 'import sys;print(max(0.0,float(sys.argv[1])-float(sys.argv[2])))' "$story_start" "$browser_start")"
+agent_from="$(since "${terminal_start[agent]}")"
+agent_to="$(since "${scene_switch[10]}")"
+length="$(since "$story_end")"
+term_height="$(magick "$work_dir/you.gif[0]" -format "%[fx:2*round(h*$GIF_WIDTH/w/2)]" info:)"
+ffmpeg -v error -y -ss "$offset" -i "$work_dir/browser.mp4" -i "$work_dir/you.gif" -i "$work_dir/agent.gif" \
+  -filter_complex "
+  [0:v]fps=$FPS,scale=$GIF_WIDTH:$VIEW_HEIGHT:flags=lanczos,setsar=1[view];
+  [1:v]fps=$FPS,scale=$GIF_WIDTH:$term_height:flags=lanczos,setsar=1,
+    tpad=stop_duration=$length:stop_mode=clone[you];
+  [2:v]fps=$FPS,scale=$GIF_WIDTH:$term_height:flags=lanczos,setsar=1,
+    tpad=start_duration=$agent_from:start_mode=clone:stop_duration=$length:stop_mode=clone[agent];
+  [you][agent]overlay=enable='between(t,$agent_from,$agent_to)'[term];
+  [term][view]vstack=inputs=2,trim=duration=$length" \
+  -c:v ffv1 "$work_dir/story.mkv"
+
+step "make the GIFs"
+# The captions are rendered by the screenshot browser.
 cat >"$work_dir/caption.html" <<'EOF'
 <!doctype html><meta charset="utf-8">
 <body style="margin:0;height:44px;display:flex;align-items:center;gap:14px;padding:0 18px;
@@ -535,43 +671,47 @@ cat >"$work_dir/caption.html" <<'EOF'
 EOF
 shot set viewport "$GIF_WIDTH" "$CAPTION_HEIGHT" >/dev/null
 shot open "file://$work_dir/caption.html" >/dev/null
-caption_inputs=() caption_filters="" caption_labels=""
 scene_start[1]="$story_start"
+scene_switch[${#scenes[@]} + 1]="$story_end"
 scene_start[${#scenes[@]} + 1]="$story_end"
-for n in $(seq "${#scenes[@]}"); do
-  IFS='|' read -r _ who text <<<"${scenes[n - 1]}"
-  printf 'document.getElementById("step").textContent=%s;document.getElementById("text").textContent=%s;document.getElementById("who").textContent=%s' \
-    "$(json "$n/${#scenes[@]}")" "$(json "$text")" "$(json "$who")" | shot eval --stdin >/dev/null
-  shot screenshot "$work_dir/caption-$n.png" >/dev/null
-  duration="$(python3 -c 'import sys;print(float(sys.argv[2])-float(sys.argv[1]))' "${scene_start[n]}" "${scene_start[n + 1]}")"
-  caption_inputs+=(-loop 1 -framerate "$FPS" -t "$duration" -i "$work_dir/caption-$n.png")
-  caption_filters+="[$((n + 2)):v]setsar=1[c$n];"
-  caption_labels+="[c$n]"
-done
+# make_gif NAME: cut the scenes of GIF NAME from the story, each under its
+# caption, and join them. The feature GIFs leave out the terminal.
+make_gif() {
+  local name="$1" n count=0 total=0 step_text who text from to end inputs=() filters="" labels=""
+  for n in $(seq "${#scenes[@]}"); do
+    if [ "$(scene_field "$n" 1)" = "$name" ]; then total=$((total + 1)); fi
+  done
+  for n in $(seq "${#scenes[@]}"); do
+    [ "$(scene_field "$n" 1)" = "$name" ] || continue
+    count=$((count + 1))
+    step_text="${badge[$name]:-$count/$total}"
+    who="$(scene_field "$n" 3)" text="$(scene_field "$n" 4)"
+    printf 'document.getElementById("step").textContent=%s;document.getElementById("text").textContent=%s;document.getElementById("who").textContent=%s' \
+      "$(json "$step_text")" "$(json "$text")" "$(json "$who")" | shot eval --stdin >/dev/null
+    shot screenshot "$work_dir/caption-$n.png" >/dev/null
+    # A scene runs to the next scene of the same GIF, or to the next tab change.
+    end="${scene_switch[n + 1]}"
+    if [ "$(scene_field $((n + 1)) 1)" = "$name" ]; then end="${scene_start[n + 1]}"; fi
+    from="$(since "${scene_start[n]}")" to="$(since "$end")"
+    inputs+=(-loop 1 -framerate "$FPS" -t "$(python3 -c 'import sys;print(float(sys.argv[2])-float(sys.argv[1]))' "$from" "$to")" \
+      -i "$work_dir/caption-$n.png")
+    filters+="[0:v]trim=start=$from:end=$to,setpts=PTS-STARTPTS"
+    if [ "$name" != demo ]; then filters+=",crop=$GIF_WIDTH:$VIEW_HEIGHT:0:$term_height"; fi
+    filters+="[v$count];[$count:v]setsar=1[c$count];[c$count][v$count]vstack=inputs=2:shortest=1[s$count];"
+    labels+="[s$count]"
+  done
+  ffmpeg -v error -y -i "$work_dir/story.mkv" "${inputs[@]}" -filter_complex "
+    $filters
+    ${labels}concat=n=$count:v=1,split[a][b];
+    [a]palettegen=max_colors=128:stats_mode=diff[p];
+    [b][p]paletteuse=dither=none:diff_mode=rectangle" \
+    "$out/$name.gif"
+}
+for name in demo demo-graph demo-archive demo-agents; do make_gif "$name"; done
 
-step "make the GIF"
-# Times on the story clock, which starts at the first prompt of your terminal.
-since() { python3 -c 'import sys;print(max(0.0,float(sys.argv[1])-float(sys.argv[2])))' "$1" "$story_start"; }
-offset="$(python3 -c 'import sys;print(max(0.0,float(sys.argv[1])-float(sys.argv[2])))' "$story_start" "$browser_start")"
-agent_from="$(since "${terminal_start[agent]}")"
-agent_to="$(since "${scene_start[5]}")"
-length="$(since "$story_end")"
-term_height="$(magick "$work_dir/you.gif[0]" -format "%[fx:2*round(h*$GIF_WIDTH/w/2)]" info:)"
-ffmpeg -v error -y -ss "$offset" -i "$work_dir/browser.mp4" -i "$work_dir/you.gif" -i "$work_dir/agent.gif" \
-  "${caption_inputs[@]}" -filter_complex "
-  $caption_filters
-  ${caption_labels}concat=n=${#scenes[@]}:v=1,fps=${FPS}[caption];
-  [0:v]fps=$FPS,scale=$GIF_WIDTH:$VIEW_HEIGHT:flags=lanczos,setsar=1[view];
-  [1:v]fps=$FPS,scale=$GIF_WIDTH:$term_height:flags=lanczos,setsar=1,
-    tpad=stop_duration=$length:stop_mode=clone[you];
-  [2:v]fps=$FPS,scale=$GIF_WIDTH:$term_height:flags=lanczos,setsar=1,
-    tpad=start_duration=$agent_from:start_mode=clone:stop_duration=$length:stop_mode=clone[agent];
-  [you][agent]overlay=enable='between(t,$agent_from,$agent_to)'[term];
-  [caption][term][view]vstack=inputs=3,trim=duration=$length,split[a][b];
-  [a]palettegen=max_colors=128:stats_mode=diff[p];
-  [b][p]paletteuse=dither=none:diff_mode=rectangle" \
-  "$out/demo.gif"
-
-chmod 644 "$out"/demo.gif "$out"/graph-light.png "$out"/graph-dark.png "$out"/agents.png "$out"/picker.png
+chmod 644 "$out"/*.gif "$out"/*.png
 step "done"
-ls -l "$out"
+for name in demo demo-graph demo-archive demo-agents; do
+  printf '%s.gif: %s s, %s bytes\n' "$name" \
+    "$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$out/$name.gif")" "$(stat -c %s "$out/$name.gif")"
+done

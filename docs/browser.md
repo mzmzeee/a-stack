@@ -105,6 +105,16 @@ A poll moves cards between columns in place. The selection, the focused card and
 - Select a Task, with a click or with Enter, to focus it. Its lines turn the accent color, get thicker and move on top of the others. Its direct prerequisites and dependents stay bright. Other cards fade to 42% and other lines to 22%. Lines that the graph hides because another path connects the Tasks appear dashed while one of their Tasks has the focus. The focus and the accent outline of the Task stay after the details close. Escape, or a click on empty space, clears it.
 - The layout runs again when Tasks or dependencies change, when the Archived toggle changes, or when a card changes size: a new title, a new status, other assigned Agents, Needs you, file references, cancelled prerequisites or hidden archived prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes.
 
+![A short clip of the Graph tab. Curved lines lead from two Working Tasks to a Token exchange Task and on to a Security review. A click on one Task lights up its lines and fades the Tasks it does not connect to.](images/demo-graph.gif)
+
+![A short clip of finished work in the Graph tab. A finished Task shrinks to one line. When the Task after it finishes too, the finished Tasks fold into Archived (2), and the toggle shows them again, dimmed.](images/demo-archive.gif)
+
+### Agents
+
+The Agents tab shows each Agent with its Tasks in one row. A shared Task shows in the row of each of its Agents.
+
+![A short clip of the Agents tab: 01-orchestrator with no Tasks, then 02-backend with its three finished Tasks, then 03-frontend and 04-reviewer.](images/demo-agents.gif)
+
 ### Task mail
 
 The details of a Task have a Task mail section, closed by default, with the number of messages, such as "Task mail (12)". The page loads no mail until you open the section. Then it reads the Task's mail with `POST /v1/mail/read`, 50 messages at a time, oldest first. "Load more" reads the next page from the cursor.

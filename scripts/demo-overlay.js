@@ -2,23 +2,32 @@
 // into its recording browser with agent-browser eval; it is not part of the
 // a-stack view. It adds window.demo:
 //
-//   demo.mark(target, text)  outline target, point a callout at it
-//   demo.clear()             remove the outline and the callout
-//   demo.zoom(target, scale) zoom the page so target is in view; null zooms out
-//   demo.tab(name)           click a tab with a ripple; answers the tab it chose
-//   demo.ready(target, text) true when target is on screen and shows text
+//   demo.mark(target, text, side) outline target, point a callout at it
+//   demo.clear()                   remove the outline and the callout
+//   demo.zoom(target, scale)       zoom so target is in view; null zooms out
+//   demo.tab(name)                 open a tab; answers the tab it chose
+//   demo.click(target)             show a ripple on target and click it
+//   demo.scroll(target)            scroll target to the middle of its panel
+//   demo.escape()                  press Escape
+//   demo.poll()                    ask the view to check for changes now
+//   demo.ready(target, text)       true when target is on screen and shows text
 //
 // A target is {task: 'Task title'} for a Task card on the open tab, or
 // {css: 'selector'} for any other element. The outline and the callout follow
 // the element on every frame, so they stay on a card that moves.
+//
+// The view polls every two seconds. demo.poll asks it to poll at once, as if
+// the poll came just then, so the recording does not wait for the timer.
 (() => {
   if (window.demo) return 'ok';
   const accent = '#f25f1c';
   const style = document.createElement('style');
   style.textContent = `
     html, body { overflow: hidden !important; }
-    .app { transform-origin: 0 0; transition: transform .5s cubic-bezier(.45, 0, .2, 1); }
-    #demo-layer { position: fixed; inset: 0; z-index: 2147483647; pointer-events: none; }
+    .app, dialog { transition: transform .5s cubic-bezier(.45, 0, .2, 1); }
+    .app { transform-origin: 0 0; }
+    #demo-layer { position: fixed; inset: 0; width: 100vw; height: 100vh; margin: 0; padding: 0;
+      border: 0; background: transparent; overflow: visible; pointer-events: none; }
     #demo-layer svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
     .demo-ring { position: absolute; border: 4px solid ${accent}; border-radius: 14px;
       animation: demo-pulse 1s ease-out 2; }
@@ -36,8 +45,11 @@
     @keyframes demo-ripple { from { transform: scale(.3); opacity: 1; } to { transform: scale(1.4); opacity: 0; } }
   `;
   document.head.append(style);
+  // The layer is a popover, so it can sit above the modal Task details: both
+  // are in the top layer, and the one shown last is on top.
   const layer = document.createElement('div');
   layer.id = 'demo-layer';
+  layer.popover = 'manual';
   const svgNS = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(svgNS, 'svg');
   svg.innerHTML = `<defs><marker id="demo-head" viewBox="0 0 10 10" refX="7" refY="5"
@@ -52,10 +64,12 @@
   svg.append(arrow);
   layer.append(svg);
   document.body.append(layer);
+  layer.showPopover();
 
   const app = document.querySelector('.app');
   let mark = null;
   let view = { scale: 1, x: 0, y: 0 };
+  let openDialogs = new Set();
 
   function find(target) {
     if (!target) return null;
@@ -76,9 +90,32 @@
     arrow.setAttribute('d', '');
   }
 
+  // Zoom the page and every open dialog by the same transform, so a dialog
+  // stays where it is on the zoomed page.
+  function transform() {
+    const t = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+    app.style.transform = t;
+    for (const d of document.querySelectorAll('dialog[open]')) {
+      d.style.transformOrigin = `${-d.offsetLeft}px ${-d.offsetTop}px`;
+      d.style.transform = t;
+    }
+  }
+
+  // Keep the layer above a dialog that just opened.
+  function raise() {
+    const now = new Set(document.querySelectorAll('dialog[open]'));
+    if ([...now].some(d => !openDialogs.has(d))) {
+      layer.hidePopover();
+      layer.showPopover();
+      transform();
+    }
+    openDialogs = now;
+  }
+
   // Place the callout on the side of the element with the most room, a gap
   // away, and draw a curved arrow from the callout to the element.
   function place() {
+    raise();
     if (mark) {
       const el = find(mark.target);
       const show = el ? '' : 'none';
@@ -123,6 +160,16 @@
   }
   requestAnimationFrame(place);
 
+  function ripple(el) {
+    const r = el.getBoundingClientRect();
+    const dot = document.createElement('div');
+    dot.className = 'demo-ripple';
+    dot.style.left = `${r.left + r.width / 2}px`;
+    dot.style.top = `${r.top + r.height / 2}px`;
+    layer.append(dot);
+    setTimeout(() => dot.remove(), 800);
+  }
+
   window.demo = {
     mark(target, text, side) {
       clear();
@@ -153,22 +200,38 @@
           y: clamp(h / 2 - cy * scale, h - h * scale),
         };
       }
-      app.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
+      transform();
       return 'ok';
     },
     tab(name) {
       const tab = document.getElementById(`${name}-tab`) || document.getElementById('graph-tab');
       if (tab.getAttribute('aria-selected') !== 'true') {
-        const r = tab.getBoundingClientRect();
-        const ripple = document.createElement('div');
-        ripple.className = 'demo-ripple';
-        ripple.style.left = `${r.left + r.width / 2}px`;
-        ripple.style.top = `${r.top + r.height / 2}px`;
-        layer.append(ripple);
-        setTimeout(() => ripple.remove(), 800);
+        ripple(tab);
         tab.click();
       }
       return tab.dataset.view;
+    },
+    click(target) {
+      const el = find(target);
+      if (!el) return 'missing';
+      ripple(el);
+      el.click();
+      return 'ok';
+    },
+    scroll(target) {
+      const el = find(target);
+      if (el) el.scrollIntoView({ block: 'center', behavior: 'instant' });
+      return 'ok';
+    },
+    escape() {
+      const open = document.querySelector('dialog[open]');
+      if (open) open.close();
+      else document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      return 'ok';
+    },
+    poll() {
+      document.dispatchEvent(new Event('visibilitychange'));
+      return 'ok';
     },
     ready(target, text) {
       const el = find(target);
