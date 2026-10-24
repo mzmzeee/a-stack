@@ -254,7 +254,7 @@ func TestTaskDependencyCountsAndReadQueryPlans(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	searches := 0
+	searches, mailSearches := 0, 0
 	for rows.Next() {
 		var id, parent, unused int
 		var detail string
@@ -264,8 +264,14 @@ func TestTaskDependencyCountsAndReadQueryPlans(t *testing.T) {
 		if strings.HasPrefix(detail, "SCAN d") {
 			t.Fatal("dependency counts scan retained edges")
 		}
+		if strings.HasPrefix(detail, "SCAN m") {
+			t.Fatal("mail_count scans retained mail")
+		}
 		if strings.HasPrefix(detail, "SEARCH d USING COVERING INDEX dependencies_to") {
 			searches++
+		}
+		if strings.HasPrefix(detail, "SEARCH m USING COVERING INDEX") {
+			mailSearches++
 		}
 	}
 	if rows.Err() != nil {
@@ -274,6 +280,9 @@ func TestTaskDependencyCountsAndReadQueryPlans(t *testing.T) {
 	rows.Close()
 	if searches != 2 {
 		t.Fatal("both dependency counts must use Session/endpoint index")
+	}
+	if mailSearches != 1 {
+		t.Fatal("mail_count must use the Task/sequence index")
 	}
 	plans := []struct {
 		name, query string

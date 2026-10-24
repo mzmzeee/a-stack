@@ -1,6 +1,6 @@
 # Task mail
 
-Each Task has one ordered Task mail history, and a-stack keeps all of it. Only the current assignees of the Task can send mail, read mail or get back the receipt of a send. The Orchestrator must be assigned to the Task too. Operator and browser credentials give no mail access.
+Each Task has one ordered Task mail history, and a-stack keeps all of it. Only the current assignees of the Task can send mail, read mail or get back the receipt of a send. The Orchestrator must be assigned to the Task too. The Operator credential gives no mail access. A browser view credential can only read the Task mail of its own Session, as described in [Browser reads](#browser-reads).
 
 Every mail command needs `--workspace ID --session ID` and an Agent credential. If you use a different state directory, add the same `--state-dir` to every command.
 
@@ -40,9 +40,13 @@ All three endpoints take authenticated `POST` JSON under `/v1/mail/`. They use t
 | `read` | `task_id`, optional `cursor` and `limit` | `task_id`, `messages`, `cursor`, `more` |
 | `check` | optional `cursors` map, `after_task`, `task_limit` and `limit` | A `tasks` array of read pages, and `next_task` when more Tasks follow |
 
-Each message has `id`, `task_id`, `sequence`, `sender_id`, `received_at`, `body` and `mention_ids`. `mention_ids` is the sorted list of the resolved Agent IDs. The sequence increases inside one Task. The service sets the sender and the UTC receipt time.
+Each message has `id`, `task_id`, `sequence`, `sender_id`, `sender_name`, `received_at`, `body` and `mention_ids`. `sender_name` is the sender's current Agent name. `mention_ids` is the sorted list of the resolved Agent IDs. The sequence increases inside one Task. The service sets the sender and the UTC receipt time.
 
-Mail does not change the Task's progress, the Task revision or the Session snapshot revision. Mail bodies never appear in Task details, Task history or browser snapshots.
+Mail does not change the Task's progress or the Task revision. A send raises the Session read revision, because the Task data has `mail_count`, the number of messages. Mail bodies never appear in Task details, Task history or browser snapshots.
+
+### Browser reads
+
+The [browser view](browser.md#task-mail) credential can use `read` for any Task of its own Session, also a Task with no assignee. It gets the same messages, cursor and limits as an assignee. It cannot use `send` or `check`, and it gets `forbidden` for another Session. A browser read stores no read position, writes no receipt and makes no notice. [ADR 0003](adr/0003-retained-task-mail.md) records this change. The Operator CLI credential still has no mail access.
 
 ## Read positions
 

@@ -84,7 +84,7 @@ func TestMailIndependentReadersReplayAndClosedHistory(t *testing.T) {
 	f.change(t, f.a.Token, "status", TaskChangeRequest{TaskID: f.taskID, ExpectedRevision: 4, Progress: "finished", Summary: "Task finished"})
 	f.send(t, f.a.Token, "Mail after whole-Task completion")
 	current, _ := s.Snapshot(ctx, f.a.Token, SnapshotRequest{Context: f.ref(0)})
-	if current.Session.ReadRevision != snapshot.Session.ReadRevision+2 {
+	if current.Session.ReadRevision != snapshot.Session.ReadRevision+2+6 { // assign, status and six sends; reads add nothing
 		t.Fatal("mail/read created browser revisions or read state")
 	}
 	_, err = s.ChangeSession(ctx, f.operator.Token, "close", SessionChangeRequest{Context: f.ref(0), OperationID: opaqueID(), ExpectedRevision: 2})
@@ -327,7 +327,7 @@ func TestMailHTTPPrivacyCurrentCredentialsAndReadLedgerAbsence(t *testing.T) {
 	}
 	browser := issueTest(t, s, BrowserCapability, "view", f.sessions[0])
 	view := clientForCredential(t, f.taskTeam, browser)
-	for _, path := range []string{"/v1/mail/read", "/v1/mail/check", "/v1/mail/send"} {
+	for _, path := range []string{"/v1/mail/check", "/v1/mail/send"} {
 		_, err = view.Do(ctx, "POST", path, map[string]any{})
 		requireCode(t, err, "forbidden")
 	}
@@ -395,4 +395,84 @@ func TestMailQuotedEmailClosuresDoNotMention(t *testing.T) {
 	if countTest(t, s, "SELECT count(*) FROM mail_mentions WHERE notice_state='pending'") != 4 {
 		t.Fatal("opening quote mention controls stopped working")
 	}
+}
+
+// The browser view reads the mail of any Task in its own Session, read-only,
+// with the same pages and cursor as mail read (ADR 0003 amendment).
+func TestBrowserMailReadScopePagingAndMailCount(t *testing.T) {
+	f := mailFixture(t)
+	s := f.service.Store
+	other := f.create(t, "No mail")
+	for i := 1; i <= 5; i++ {
+		f.send(t, f.a.Token, fmt.Sprintf("Line %d\n<script>alert(1)</script> @03-worker", i))
+	}
+	browser := issueTest(t, s, BrowserCapability, "mail-view", f.sessions[0])
+	foreign := issueTest(t, s, BrowserCapability, "foreign-view", f.sessions[1])
+	view := clientForCredential(t, f.taskTeam, browser)
+	page, err := s.SnapshotPage(ctx, browser.Token, SnapshotPageRequest{Context: f.ref(0), Kind: "tasks"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	counts := map[string]int64{}
+	for _, item := range page.Items {
+		counts[item.(Task).ID] = item.(Task).MailCount
+	}
+	if counts[f.taskID] != 5 || counts[other.ResourceID] != 0 {
+		t.Fatal("mail_count", counts)
+	}
+	state := func() string {
+		return fmt.Sprint(countTest(t, s, "SELECT read_revision FROM sessions WHERE id='"+f.sessions[0]+"'"),
+			countTest(t, s, "SELECT count(*) FROM operation_receipts"),
+			countTest(t, s, "SELECT count(*) FROM mail_mentions WHERE notice_state='pending'"))
+	}
+	before := state()
+	var got []MailMessage
+	cursor := ""
+	for pages := 1; ; pages++ {
+		data, err := view.Do(ctx, "POST", "/v1/mail/read", MailReadRequest{Context: f.ref(0), TaskID: f.taskID, Cursor: cursor, Limit: 2})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var response struct {
+			Data MailPage `json:"data"`
+		}
+		if err = decodeJSON(data, &response); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, response.Data.Messages...)
+		cursor = response.Data.Cursor
+		if !response.Data.More {
+			if pages != 3 {
+				t.Fatal("pages", pages)
+			}
+			break
+		}
+	}
+	if len(got) != 5 || got[0].Sequence != 1 || got[4].Sequence != 5 || got[0].SenderName != "02-worker" || !strings.Contains(got[0].Body, "<script>") || len(got[0].MentionIDs) != 1 {
+		t.Fatal("browser mail pages", got)
+	}
+	if state() != before {
+		t.Fatal("browser mail read changed state")
+	}
+	empty, err := s.ReadMail(ctx, browser.Token, MailReadRequest{Context: f.ref(0), TaskID: other.ResourceID})
+	if err != nil || len(empty.Messages) != 0 {
+		t.Fatal("empty Task mail", err)
+	}
+	_, err = s.ReadMail(ctx, foreign.Token, MailReadRequest{Context: f.ref(0), TaskID: f.taskID})
+	requireCode(t, err, "forbidden")
+	_, err = s.ReadMail(ctx, foreign.Token, MailReadRequest{Context: f.ref(1), TaskID: f.taskID})
+	requireCode(t, err, "not_found")
+	_, err = s.ReadMail(ctx, browser.Token, MailReadRequest{Context: f.ref(0), TaskID: f.taskID, Cursor: encodeMailCursor(other.ResourceID, 1)})
+	requireCode(t, err, "invalid_input")
+	for path, body := range map[string]any{
+		"/v1/mail/send":   MailSendRequest{Context: f.ref(0), OperationID: opaqueID(), TaskID: f.taskID, Body: "view write"},
+		"/v1/mail/check":  MailCheckRequest{Context: f.ref(0)},
+		"/v1/task/report": TaskChangeRequest{Context: f.ref(0), OperationID: opaqueID(), TaskID: f.taskID, ExpectedRevision: 3},
+		"/v1/task/create": TaskCreateRequest{Context: f.ref(0), OperationID: opaqueID(), Title: "view write"},
+	} {
+		_, err = view.Do(ctx, "POST", path, body)
+		requireCode(t, err, "forbidden")
+	}
+	_, err = s.ReadMail(ctx, f.operator.Token, MailReadRequest{Context: f.ref(0), TaskID: f.taskID})
+	requireCode(t, err, "forbidden")
 }

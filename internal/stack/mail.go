@@ -46,6 +46,7 @@ type MailMessage struct {
 	TaskID     string   `json:"task_id"`
 	Sequence   int64    `json:"sequence"`
 	SenderID   string   `json:"sender_id"`
+	SenderName string   `json:"sender_name"`
 	ReceivedAt string   `json:"received_at"`
 	Body       string   `json:"body"`
 	MentionIDs []string `json:"mention_ids"`
@@ -211,6 +212,11 @@ func (s *Store) SendMail(ctx context.Context, token string, r MailSendRequest) (
 				return Receipt{}, err
 			}
 		}
+		// The Task item's mail_count changes, so the Session read revision moves on
+		// and a polling view sees the new message.
+		if err = bumpSessionRead(ctx, tx, r.SessionID); err != nil {
+			return Receipt{}, err
+		}
 		// Revision is the append-only Task sequence; body_ref names the one stored
 		// message, never a second body or a response snapshot.
 		return Receipt{ResourceID: id, BodyRef: id, Revision: sequence, Outcome: "sent"}, nil
@@ -225,7 +231,7 @@ func suppressTaskMentions(ctx context.Context, tx *sql.Tx, task, recipient strin
 }
 func readMailMessage(ctx context.Context, tx *sql.Tx, task string, sequence int64) (MailMessage, error) {
 	message := MailMessage{MentionIDs: []string{}}
-	err := tx.QueryRowContext(ctx, "SELECT id,task_id,sequence,sender_id,received_at,body FROM mail_messages WHERE task_id=? AND sequence=?", task, sequence).Scan(&message.ID, &message.TaskID, &message.Sequence, &message.SenderID, &message.ReceivedAt, &message.Body)
+	err := tx.QueryRowContext(ctx, "SELECT m.id,m.task_id,m.sequence,m.sender_id,COALESCE(a.name,''),m.received_at,m.body FROM mail_messages m LEFT JOIN agents a ON a.id=m.sender_id WHERE m.task_id=? AND m.sequence=?", task, sequence).Scan(&message.ID, &message.TaskID, &message.Sequence, &message.SenderID, &message.SenderName, &message.ReceivedAt, &message.Body)
 	if err != nil {
 		return message, err
 	}

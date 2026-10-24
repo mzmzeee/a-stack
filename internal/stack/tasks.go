@@ -50,6 +50,7 @@ type Task struct {
 	ReportPreview                                   string `json:"report_preview,omitempty"`
 	QuestionPreview                                 string `json:"question_preview,omitempty"`
 	LastAction                                      string `json:"last_action,omitempty"`
+	MailCount                                       int64  `json:"mail_count"`
 	ID                                              string `json:"id"`
 	SessionID                                       string `json:"session_id"`
 	Title                                           string `json:"title"`
@@ -164,11 +165,12 @@ const taskColumns = `t.id,t.session_id,t.title,t.ticket_ref,t.progress,t.revisio
  (SELECT count(*) FROM dependencies d JOIN tasks p ON p.id=d.prerequisite_id WHERE d.session_id=t.session_id AND d.dependent_id=t.id AND p.progress='cancelled'),
  COALESCE((SELECT substr(c.body,1,160) FROM task_content c WHERE c.id=t.report_ref),''),
  COALESCE((SELECT substr(q.question,1,160) FROM task_questions q WHERE q.task_id=t.id AND q.resolved_at IS NULL),''),
- COALESCE((SELECT h.action FROM task_history h WHERE h.task_id=t.id ORDER BY h.sequence DESC LIMIT 1),'')`
+ COALESCE((SELECT h.action FROM task_history h WHERE h.task_id=t.id ORDER BY h.sequence DESC LIMIT 1),''),
+ COALESCE((SELECT max(m.sequence) FROM mail_messages m WHERE m.task_id=t.id),0)` // mail is append-only with sequences 1..n, so the last sequence is the count
 
 func scanTask(row interface{ Scan(...any) error }) (Task, error) {
 	var t Task
-	err := row.Scan(&t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction)
+	err := row.Scan(&t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction, &t.MailCount)
 	t.Unassigned = t.AssigneeCount == 0
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, failure("not_found", "Task not found in Session")

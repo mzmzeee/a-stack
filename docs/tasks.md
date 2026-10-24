@@ -116,7 +116,7 @@ A closed Session keeps all statuses and history. It rejects Task, graph and ques
 
 ## Read API
 
-All read endpoints below use authenticated `POST` JSON requests and return a `data` object. They use the same `Host`, `Origin` and `X-A-Stack-Instance` checks as the rest of the [HTTP API](foundation.md#http-rules), and they reject unknown fields. The Operator, the registered Agents of the Session and the Session's browser credentials can use them. Browser credentials cannot change anything, and cannot use the lifecycle, private or storage endpoints. These reads never return mail, credential hashes, tokens, runtime IDs, raw bindings or Herdr aliases.
+All read endpoints below use authenticated `POST` JSON requests and return a `data` object. They use the same `Host`, `Origin` and `X-A-Stack-Instance` checks as the rest of the [HTTP API](foundation.md#http-rules), and they reject unknown fields. The Operator, the registered Agents of the Session and the Session's browser credentials can use them. Browser credentials cannot change anything, and cannot use the lifecycle, private or storage endpoints. These reads never return mail bodies, credential hashes, tokens, runtime IDs, raw bindings or Herdr aliases.
 
 1. `POST /v1/session/snapshot` with `{workspace_id, session_id, known_revision}` returns a `SessionSnapshot`. `known_revision` is optional. The snapshot has `source: "local-service"`, `captured_at`, the Session with its lifecycle, read and graph revisions, `workspace_name` (the last part of the Workspace path, such as `my-project`; the full path is not included), `unchanged`, and the counts of Tasks, Agents, dependencies and assignments. If `known_revision` matches, the response has `unchanged: true` and no counts. Keep your saved data in that case. Missing counts do not mean an empty graph.
 2. `POST /v1/session/page` with the context and `{kind, read_revision, after, limit, task_id}` returns `{read_revision, items, next}`. All fields after `kind` are optional, and `next` is present only when more items follow. The kinds are `tasks`, `agents`, `assignments`, `dependencies`, `references`, `history` and `graph_history`. `references` and `history` need a Task. `assignments` and `dependencies` can filter by Task. For dependencies, the filter returns the Task's prerequisites. The other kinds reject a Task filter.
@@ -138,6 +138,7 @@ A Task item has:
 - The actor IDs, and the creation, update and report times.
 - `report_preview`, the first 160 Unicode code points of the report.
 - `last_action`, the action of the latest history entry, such as `task.status`. It happened at `updated_at`.
+- `mail_count`, the number of messages in the Task's mail. It is the last mail sequence, read from the `(task_id, sequence)` index.
 
 It has no full report, question or description body.
 
@@ -159,6 +160,6 @@ Fixtures with 10, 100 and 1,000 Tasks list every Task in 1, 1 and 10 pages. For 
 
 Schema v3 adds `tasks`, immutable `task_content`, current `task_assignees`, retained `task_questions` and `task_references`, delta `task_history`, active `dependencies` and retained `graph_history`. It also adds `sessions.graph_revision`. Actor and content IDs stay stable after a rebind, a role change or a lost runtime. Foreign keys on the assignee table make sure that the Task and the Agent are in the same Session. An existing v1 or v2 database is upgraded in one transaction. Unsupported future schemas are still rejected.
 
-Mail code uses `ReadAssignedTask(ctx, tx, principal, Context, taskID)` to check the current registration and membership, also for authorized reads in a closed Session. A send also calls `OpenSession` in the same `Store.Mutate` apply transaction. Mail is append-only, so a send does not need a Task revision. A replay also checks current membership. The index `task_assignees_agent(agent_id, task_id)` lets a caller find its Tasks. It is not a record of unread mail. The Task and Session read endpoints never return mail bodies.
+Mail code uses `ReadAssignedTask(ctx, tx, principal, Context, taskID)` to check the current registration and membership, also for authorized reads in a closed Session. A browser credential's mail read checks only that the Task belongs to its Session. A send also calls `OpenSession` in the same `Store.Mutate` apply transaction. Mail is append-only, so a send does not need a Task revision. A replay also checks current membership. The index `task_assignees_agent(agent_id, task_id)` lets a caller find its Tasks. It is not a record of unread mail. The Task and Session read endpoints never return mail bodies.
 
 The read data gives no authority for automatic notices. Runtime bindings stay private and unverified in these reads. Herdr notices are a separate part, described in [Mention notices](notifications.md).

@@ -17,6 +17,7 @@ const icons = {
   minus: '<path d="M5 12h14"/>', plus: '<path d="M5 12h14M12 5v14"/>',
   fit: '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
+  chevron: '<path d="m9 6 6 6-6 6"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.2"/>'
 };
 const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.info}</svg>`;
@@ -334,7 +335,7 @@ function patchFeed(byID) {
   }));
   $('feed-empty').hidden=shown.length>0;
 }
-function updateNowAges() { for(const n of nowPanel.querySelectorAll('time[data-at]'))setText(n,age(n.dataset.at)); }
+function updateNowAges() { for(const n of document.querySelectorAll('time[data-at]'))setText(n,age(n.dataset.at)); } // the Now board and the open Task mail
 function render() {
   document.documentElement.dataset.theme=state.theme;
   document.querySelectorAll('.theme-button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===state.theme)));
@@ -424,15 +425,52 @@ const body=el('div','detail-body'),detailTitle=el('h2'),detailStatus=el('div','s
 for(const [key,label]of Object.entries({ticket:'Ticket reference',description:'Description',report:'Latest report',reason:'Reason',result:'Result',question:'Needs you',owners:'Assigned agents',dependencies:'Dependencies',references:'File references',source:'Source'})){
   const section=el('section','detail-section'),h=el('h3','',label),content=el('div','detail-text');section.append(h,content);body.append(section);detailFields[key]=content;
 }
+// Task mail loads only when the Operator opens the section, oldest first, in pages that follow the mail read cursor.
+const mailToggle=el('button','mail-toggle'),mailThread=el('div','mail-thread'),mailList=el('ol','mail-list'),mailStatus=el('p','detail-footnote mail-status'),mailMore=el('button','plain-button mail-more','Load more');
+{const section=el('section','detail-section mail-section'),h=el('h3');mailThread.id='mail-thread';mailToggle.setAttribute('aria-controls',mailThread.id);mailToggle.append(iconNode('chevron'),el('span'));h.append(mailToggle);mailThread.append(mailList,mailStatus,mailMore);section.append(h,mailThread);body.insertBefore(section,detailFields.reason.parentElement);}
+const mail={task:null,open:false,cursor:'',more:false,loaded:0,busy:false,epoch:0,ids:new Set()};
+function resetMail(id) {Object.assign(mail,{task:id,open:false,cursor:'',more:false,loaded:0,busy:false,ids:new Set()});mail.epoch++;mailList.replaceChildren();setText(mailStatus,'');mailMore.hidden=true;mailThread.hidden=true;mailToggle.setAttribute('aria-expanded','false');}
+resetMail(null);
+// Mentions of Agents in the Session are styled; everything stays text, never HTML.
+function mailBody(text) {
+  const names=new Set(model.agents.map(a=>a.name)), frag=document.createDocumentFragment();let last=0;
+  for(const m of text.matchAll(/(^|[^A-Za-z0-9_-])@([A-Za-z0-9][A-Za-z0-9_-]{0,63})/g)){if(!names.has(m[2]))continue;const start=m.index+m[1].length;frag.append(text.slice(last,start),el('span','mention','@'+m[2]));last=start+1+m[2].length;}
+  frag.append(text.slice(last));return frag;
+}
+function mailMessage(m) {
+  const li=el('li','mail-message'),meta=el('div','mail-meta'),who=el('strong','mail-sender',m.sender_name || m.sender_id),when=el('time','now-age'),text=el('div','mail-body');
+  stamp(when,m.received_at);when.title=new Date(m.received_at).toLocaleString();meta.append(who,when);text.append(mailBody(m.body));li.append(meta,text);return li;
+}
+async function fetchMail() {
+  if(mail.busy||!mail.task)return;mail.busy=true;const epoch=mail.epoch,task=mail.task;mailMore.disabled=true;if(!mail.loaded)setText(mailStatus,'Loading Task mail…');
+  try{
+    const r=await request('/v1/mail/read',{task_id:task,cursor:mail.cursor,limit:50});
+    if(epoch!==mail.epoch)return;
+    for(const m of r.data.messages)if(!mail.ids.has(m.id)){mail.ids.add(m.id);mailList.append(mailMessage(m));}
+    mail.cursor=r.data.cursor;mail.more=r.data.more;mail.loaded=mail.ids.size;setText(mailStatus,mail.loaded?'':'No Task mail yet.');
+  }catch{if(epoch===mail.epoch)setText(mailStatus,'Task mail unavailable · retrying with the next refresh.');}
+  finally{if(epoch===mail.epoch){mail.busy=false;mailMore.disabled=false;mailMore.hidden=!mail.more;}}
+}
+// On a poll, an open thread fetches the messages after its cursor, so the scroll position stays.
+function patchMail(t) {
+  setText(mailToggle.lastChild,`Task mail (${t.mail_count || 0})`);
+  if(mail.open&&!mail.more&&!mail.busy&&(t.mail_count || 0)>mail.loaded)fetchMail();
+}
+mailToggle.onclick=()=>{
+  mail.open=!mail.open;mailThread.hidden=!mail.open;mailToggle.setAttribute('aria-expanded',String(mail.open));
+  const t=model?.tasks.find(t=>t.id===mail.task);
+  if(mail.open&&!mail.loaded){if(t&&!t.mail_count)setText(mailStatus,'No Task mail yet.');else fetchMail();}
+};
+mailMore.onclick=()=>fetchMail();
 dialog.append(top,body);
 dialog.addEventListener('close',()=>{detailEpoch++;state.selected=null;detailKey='';render();if(returnFocus?.isConnected&&!returnFocus.closest('[inert]')&&!returnFocus.closest('[hidden]'))returnFocus.focus();else $(state.view+'-tab').focus();});
 function setFocus(id) {state.focus=id;render();}
 // Escape clears the focus once no dialog is open; an open dialog takes the first Escape.
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.focus&&state.view==='graph'&&!document.querySelector('dialog[open]')){e.preventDefault();setFocus(null);}});
 $('archived').addEventListener('click',()=>{state.archived=!state.archived;save('a-stack-archived',state.archived?'1':'0');render();});
-function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){for(const name of ['description','report','reason','result','question','references','source'])detailFields[name].replaceChildren();delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
+function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){resetMail(id);for(const name of ['description','report','reason','result','question','references','source'])detailFields[name].replaceChildren();delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
 function patchDetailMetadata(t) {
-  setText(detailTitle,t.title);status(detailStatus,t);setText(detailFields.ticket,t.ticket_ref || 'None.');setText(detailFields.owners,owners(t).join(', ') || 'Unassigned');
+  setText(detailTitle,t.title);status(detailStatus,t);setText(detailFields.ticket,t.ticket_ref || 'None.');setText(detailFields.owners,owners(t).join(', ') || 'Unassigned');patchMail(t);
   const dep=detailFields.dependencies;
   const signature=JSON.stringify(model.dependencies.filter(e=>e.dependent_id===t.id||e.prerequisite_id===t.id).map(e=>{const other=model.tasks.find(x=>x.id===(e.dependent_id===t.id?e.prerequisite_id:e.dependent_id));return [e.id,other?.title,other?.progress];}));
   if(dep.dataset.key===t.id+signature)return;dep.dataset.key=t.id+signature;dep.replaceChildren();

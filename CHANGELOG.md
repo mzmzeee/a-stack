@@ -12,11 +12,15 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - The Task read data has `question_preview`, the start of the open Needs you question, and `last_action`, the action of the Task's latest change. The schema does not change.
 - In the Graph tab, selecting a Task highlights it, its direct prerequisites and dependents, and dims the rest. Escape or a click on empty space clears it.
 - The Working status icon spins, unless the system asks for reduced motion.
+- The Task details in the browser view have a Task mail section. It loads nothing until you open it, then shows the messages oldest first as plain text, with the sender, the age and styled mentions, and "Load more" for long threads. New messages appear on the next poll.
+- The Task read data has `mail_count`, and each mail message has `sender_name`.
 
 ### Changed
 
 - The graph is back to the v0.1.0 look: one column per rank and bracket lines between columns. Tasks without lines sit in rows below. The graph draws a dependency line only when no other path connects the two Tasks; the details still list every dependency.
 - Finished and cancelled Tasks are archived in the graph: hidden by default and shown dimmed with the Archived (N) toggle. This is a view setting only.
+- The browser view credential can read the Task mail of its own Session with `POST /v1/mail/read`. It still cannot send or check mail. The Operator credential still has no mail access.
+- A mail send raises the Session read revision, so a polling view sees the new `mail_count`.
 
 ## [0.1.2] - 2026-10-24
 

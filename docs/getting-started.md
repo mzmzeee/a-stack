@@ -152,7 +152,7 @@ operator open --workspace "$workspace_id" --session "$session_id" --no-browser
 
 Open the `url` from the output in your browser. The view shows the Task graph and the Agents, and it updates while you do the next steps. Without `--no-browser`, `open` starts your browser for you.
 
-Keep the URL private, because it works like a credential. The view is read-only and cannot read Task mail. For more, see [Browser view](browser.md).
+Keep the URL private, because it works like a credential. The view is read-only. It can show Task mail, but it cannot send mail or change anything. For more, see [Browser view](browser.md).
 
 ## 7. Share Task mail (assignees)
 

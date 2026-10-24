@@ -1,6 +1,6 @@
 # Browser view
 
-The browser view shows one Session: its Task graph, its Agents and the details of each Task. It is read-only. It cannot read Task mail or change anything.
+The browser view shows one Session: its Task graph, its Agents and the details of each Task. It is read-only. It shows the Task mail of a Task, but it cannot send mail or change anything.
 
 ## Open the view
 
@@ -12,7 +12,7 @@ Run `serve` in one terminal. Then open one Workspace and Session by its IDs, or 
 ./a-stack open --workspace WORKSPACE_ID --session SESSION_ID --no-browser --json
 ```
 
-`open` accepts the usual `--state-dir`, `--credential-file` and `--as` flags. The Operator or a currently registered Agent of the Session can open the view, also for a closed Session. The view gets only the caller's read access to Session metadata. A browser credential cannot open another view or use the write, mail, storage or runtime endpoints.
+`open` accepts the usual `--state-dir`, `--credential-file` and `--as` flags. The Operator or a currently registered Agent of the Session can open the view, also for a closed Session. The view gets only the caller's read access to Session metadata. A browser credential can read the Task mail of its Session. It cannot open another view, send or check mail, or use the write, storage or runtime endpoints.
 
 `open` prints the URL before it runs `xdg-open`. If `xdg-open` fails, the command still succeeds, the URL is on stdout, and stderr shows a fixed message. With `--json`, the output is `{"data":{"url":"..."}}`.
 
@@ -103,6 +103,17 @@ A poll moves cards between columns in place. The selection, the focused card and
 - Select a Task, with a click or with Enter, to focus it. The Task, its direct prerequisites, its direct dependents and their lines stay bright, and everything else is dimmed to 30%. Lines that the graph hides because another path connects the Tasks appear dashed while one of their Tasks has the focus. The focus stays after the details close. Escape, or a click on empty space, clears it.
 - The layout runs again when Tasks or dependencies change, when the Archived toggle changes, or when a card changes size: a new title, other assigned Agents, Needs you, file references or cancelled prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes.
 
+### Task mail
+
+The details of a Task have a Task mail section, closed by default, with the number of messages, such as "Task mail (12)". The page loads no mail until you open the section. Then it reads the Task's mail with `POST /v1/mail/read`, 50 messages at a time, oldest first. "Load more" reads the next page from the cursor.
+
+- Each message shows the sender's name, the age, with the exact time on hover, and the body as plain text with its line breaks.
+- An `@name` of an Agent in the Session is styled as a mention. The body never becomes HTML, so markup and scripts show as text.
+- While the section is open, a poll that brings a higher `mail_count` reads the new messages and adds them at the end. The scroll position stays.
+- Opening another Task closes the section and clears the loaded messages.
+
+Reading mail in the view changes nothing. It stores no read position, writes no receipt and makes no notice, and the Agents cannot tell that you read it.
+
 ## Keyboard and controls
 
 - The arrow keys, Home and End switch between the tabs.
@@ -136,9 +147,11 @@ The Task data has an optional `report_preview`: the first 160 Unicode code point
 
 The Now tab uses two more optional fields of the Task data. `question_preview` is the first 160 Unicode code points of the open Needs you question, computed the same way, and is empty when no request is open. `last_action` is the action of the Task's latest history entry, such as `task.status`, `task.report` or `task.attention.resolve`. It happened at `updated_at`. Both are read-only, need no schema change, and are available to every reader of the Session, also to the browser credential. The full question is still in `task/show`.
 
+The Task data also has `mail_count`, the number of messages in the Task's mail. Mail is append-only, so this is the last mail sequence, which SQLite reads from the `(task_id, sequence)` index. A mail send raises the Session read revision, so the next poll sees the new count. On the 1,000-Task fixture, `mail_count` added about 15 KB to the whole Task collection, and the collection took about 79 ms instead of about 73 ms in one local run.
+
 `POST /v1/session/snapshot` returns an ETag made of the Session ID and the read revision. The service checks `If-None-Match` after the normal authenticated read. CLI clients can still use the JSON `known_revision`. The collection limits and the page budget of 768 KiB still apply. During polling, the page does not load details for every Task. It refreshes only the selected Task's details, when that Task's revision changes.
 
-The public part of the service has exactly three resources: `/view/WORKSPACE_ID/SESSION_ID`, `/assets/app.css` and `/assets/app.js`. The service reads no files to serve them. It checks `Host` and `Origin` before it serves an asset or data, and it refuses queries and `GET` requests with a body. The Content Security Policy allows scripts and connections only to the same origin, and it blocks framing, forms and changes of the base URL. Inline styles are allowed for the numeric positions in the graph, but data never becomes CSS or HTML. The service has no CORS grants, no general file endpoint and no arbitrary navigation. It never exposes mail bodies, transcripts or private runtime bindings.
+The public part of the service has exactly three resources: `/view/WORKSPACE_ID/SESSION_ID`, `/assets/app.css` and `/assets/app.js`. The service reads no files to serve them. It checks `Host` and `Origin` before it serves an asset or data, and it refuses queries and `GET` requests with a body. The Content Security Policy allows scripts and connections only to the same origin, and it blocks framing, forms and changes of the base URL. Inline styles are allowed for the numeric positions in the graph, but data never becomes CSS or HTML. The service has no CORS grants, no general file endpoint and no arbitrary navigation. Task mail bodies come only from `/v1/mail/read`, for one Task of the Session at a time. The service never exposes transcripts or private runtime bindings.
 
 ## Measurements and practical limits
 
