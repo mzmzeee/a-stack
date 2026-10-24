@@ -45,6 +45,16 @@ git push origin v0.1.0
 
 To build the release archive for your own machine, run `scripts/build-release.sh v0.1.0`. It needs Docker and writes `dist/a-stack_linux_ARCH.tar.gz`.
 
+## Update the demo
+
+After a change to the browser view, record the README demo again:
+
+```sh
+scripts/record-demo.sh
+```
+
+The script builds a-stack, plays a short scripted Session on a temporary service and records it with agent-browser. It writes `docs/images/demo.gif`, `graph-light.png`, `graph-dark.png` and `agents.png`, and deletes the temporary state when it ends. It needs Go, ffmpeg, agent-browser and ImageMagick (`magick`). It does not need Docker.
+
 ## Design records
 
 Read these before you change how a-stack behaves:

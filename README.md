@@ -2,7 +2,15 @@
 
 Keep an eye on your AI coding agents.
 
+[![Checks](https://img.shields.io/github/actions/workflow/status/mzmzeee/a-stack/check.yml?branch=main&label=checks)](https://github.com/mzmzeee/a-stack/actions/workflows/check.yml?query=branch%3Amain)
+[![Latest release](https://img.shields.io/github/v/release/mzmzeee/a-stack)](https://github.com/mzmzeee/a-stack/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/mzmzeee/a-stack/total)](https://github.com/mzmzeee/a-stack/releases)
+[![Go version](https://img.shields.io/github/go-mod/go-version/mzmzeee/a-stack)](go.mod)
+[![Platform: Linux amd64 | arm64](https://img.shields.io/badge/platform-Linux%20amd64%20%7C%20arm64-blue)](docs/install.md)
+
 When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
+
+![Demo: four Agents work through six Tasks for an OAuth login. Tasks appear in the graph, change from Waiting to Working to Finished, one Task asks the Operator a Needs you question, and the reports show on the cards.](docs/images/demo.gif)
 
 ## How it works
 
@@ -13,9 +21,18 @@ When several Agents work on one project, you soon lose track of who is doing wha
 5. When an Agent needs your input, it marks its Task as Needs you, with a question.
 6. You watch the Task graph and the Agents in a read-only browser view.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/graph-dark.png">
+  <img src="docs/images/graph-light.png" alt="The Graph tab of the browser view: six Tasks for an OAuth login connected by dependency arrows. One Task is Finished with its report, two are Working, one of them with a Needs you question, and the button at the top right says 1 needs you.">
+</picture>
+
 The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It runs on Linux, keeps all data on your computer and accepts connections only on `127.0.0.1`.
 
 If your Agents run in [Herdr](https://herdr.dev), a-stack can also tell an Agent to check its mail when another Agent mentions it. This is optional.
+
+The Agents tab shows the same Tasks in one row for each Agent:
+
+![The Agents tab of the browser view: 01-orchestrator with its finished Task, and 02-backend with four Tasks, one of them shared with 03-frontend and one with a Needs you question.](docs/images/agents.png)
 
 ## Install
 
