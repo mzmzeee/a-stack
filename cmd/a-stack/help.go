@@ -31,6 +31,7 @@ var helpGroups = []helpGroup{
 		{"serve", "", "Run the service in the foreground"},
 		{"health", "", "Check the running service"},
 		{"version", "", "Print the version"},
+		{"update", "", "Install the latest release in place of this binary"},
 		{"storage status", "", "Show database and WAL sizes"},
 		{"storage backup", "", "Write a checked backup of the database"},
 	}},
@@ -155,7 +156,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string
@@ -252,6 +253,8 @@ func flagLabel(fs *flag.FlagSet, name string) string {
 		return "-h, --help"
 	case "resume":
 		return "-r, --resume"
+	case "version":
+		return "--version VERSION"
 	}
 	label := "--" + name
 	if b, ok := fs.Lookup(name).Value.(interface{ IsBoolFlag() bool }); ok && b.IsBoolFlag() {

@@ -53,7 +53,7 @@ curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.s
 
 The script installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download or a build from source, see [Install](docs/install.md).
 
-To update, run the same command again and restart the service. See [Update](docs/install.md#update).
+To update, run `a-stack update` and restart the service. See [Update](docs/install.md#update).
 
 To start a-stack at boot and restart it after a crash, see [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
 

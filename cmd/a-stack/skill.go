@@ -45,8 +45,9 @@ func skillFolders(project bool) ([]string, error) {
 }
 
 // skillCommand runs skill install or skill uninstall. It needs no service
-// and no credential.
-func skillCommand(command string, project, machine bool, stdout io.Writer) error {
+// and no credential. With refresh, install replaces only the copies that
+// exist, as update does after it installs a new binary.
+func skillCommand(command string, project, refresh, machine bool, stdout io.Writer) error {
 	folders, err := skillFolders(project)
 	if err != nil {
 		return err
@@ -55,6 +56,9 @@ func skillCommand(command string, project, machine bool, stdout io.Writer) error
 	for _, folder := range folders {
 		found := true
 		if command == "skill install" {
+			if _, err = os.Lstat(folder); refresh && err != nil {
+				continue
+			}
 			err = installSkill(folder)
 		} else {
 			found, err = removeSkill(folder)
@@ -69,9 +73,9 @@ func skillCommand(command string, project, machine bool, stdout io.Writer) error
 	key, text := "installed", "Installed the a-stack skill "+buildVersion()+" in:\n"
 	if command == "skill uninstall" {
 		key, text = "removed", "Removed the a-stack skill from:\n"
-		if len(done) == 0 {
-			text = "The a-stack skill is not installed in " + strings.Join(folders, " or ") + ".\n"
-		}
+	}
+	if len(done) == 0 {
+		text = "The a-stack skill is not installed in " + strings.Join(folders, " or ") + ".\n"
 	}
 	if machine {
 		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"skill": skillName, "version": buildVersion(), key: done}})

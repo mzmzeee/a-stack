@@ -169,6 +169,24 @@ func TestSkillInstallProjectAndJSON(t *testing.T) {
 	}
 }
 
+func TestSkillInstallRefreshWritesOnlyExistingCopies(t *testing.T) {
+	home := skillHome(t)
+	claude := filepath.Join(home, ".claude", "skills", "a-stack")
+	if out := runSkill(t, "skill", "install", "--refresh"); !strings.HasPrefix(out, "The a-stack skill is not installed in ") {
+		t.Fatalf("output %q", out)
+	}
+	if err := os.MkdirAll(filepath.Join(claude, "old"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if out := runSkill(t, "skill", "install", "--refresh", "--json"); !strings.Contains(out, `"installed":["`+claude+`"]`) {
+		t.Fatalf("output %q", out)
+	}
+	checkInstalled(t, claude)
+	if _, err := os.Stat(filepath.Join(home, ".agents")); !os.IsNotExist(err) {
+		t.Fatalf("--refresh wrote a new copy: %v", err)
+	}
+}
+
 func TestSkillInstallClaudeConfigDirAndFlags(t *testing.T) {
 	home := skillHome(t)
 	config := filepath.Join(t.TempDir(), "claude")

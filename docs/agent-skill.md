@@ -14,7 +14,9 @@ a-stack skill install
 
 This is the recommended way. The `a-stack` binary carries the skill of its own version, so the skill always matches your binary, and it needs no Node.js and no network. The command writes the skill to `~/.claude/skills/a-stack` for Claude Code and to `~/.agents/skills/a-stack` for Codex, pi and other harnesses that read `.agents/skills`. If `CLAUDE_CONFIG_DIR` is set, the Claude Code copy goes to `$CLAUDE_CONFIG_DIR/skills/a-stack`. To install the skill for one project only, run the command in the project folder with `--project`. It then writes `.claude/skills/a-stack` and `.agents/skills/a-stack` there.
 
-The command replaces an older copy of the a-stack skill whole, so no removed files stay behind. It does not touch other skills. Run it again after you update a-stack. Releases up to v0.1.3 do not have this command; update a-stack first or use one of the ways below. `a-stack skill uninstall` removes the copies again, and takes `--project` too.
+Releases up to v0.1.3 do not have `skill install`; update a-stack first or use one of the ways below.
+
+The command replaces an older copy of the a-stack skill whole, so no removed files stay behind. It does not touch other skills. `a-stack update` updates the copies that exist. `skill install --refresh` does the same and writes no new copies. `a-stack skill uninstall` removes the copies, and takes `--project` too.
 
 You can also use the [`skills`](https://github.com/vercel-labs/skills) CLI, which knows where many agents look for skills. It needs Node.js:
 
