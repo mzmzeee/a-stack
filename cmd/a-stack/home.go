@@ -18,7 +18,8 @@ import (
 // home runs the Operator shortcuts: bare `a-stack`, `a-stack -r` and
 // `a-stack new [NAME]`. They use the state's operator.json. When no service
 // answers for the state directory, they run it in the foreground like serve and
-// act once it is ready; the service then keeps running until SIGINT or SIGTERM.
+// act once it is ready; the service then keeps running until SIGINT, SIGTERM
+// or SIGHUP.
 type home struct {
 	state, mode, name          string
 	resume, machine, noBrowser bool
@@ -31,13 +32,18 @@ type home struct {
 
 func (h *home) run(ctx context.Context) error {
 	h.setup()
-	client, clientErr := stack.NewClient(h.state, "", stack.OperatorCapability)
-	if clientErr == nil {
-		if _, clientErr = client.Do(ctx, "GET", "/v1/health", nil); clientErr == nil {
+	// answer is an error that a running service sent back, if any.
+	var answer error
+	client, err := stack.NewClient(h.state, "", stack.OperatorCapability)
+	if err == nil {
+		if _, err = client.Do(ctx, "GET", "/v1/health", nil); err == nil {
 			return h.act(ctx, client)
 		}
+		if e, ok := err.(*stack.Error); ok && e.Code != "storage_unavailable" {
+			answer = err
+		}
 	}
-	err := serveForeground(ctx, h.state, "", "", func(ctx context.Context, service *stack.Service) error {
+	err = serveForeground(ctx, h.state, "", "", func(ctx context.Context, service *stack.Service) error {
 		var err error
 		if h.machine {
 			err = json.NewEncoder(h.stdout).Encode(readyLine(service))
@@ -57,12 +63,19 @@ func (h *home) run(ctx context.Context) error {
 		}
 		return nil
 	})
-	if e, ok := err.(*stack.Error); ok && e.Code == "conflict" {
-		// A service owns the state but did not answer the client: report why.
-		return clientErr
+	if err == stack.ErrStateOwned {
+		// Another serve holds the lock. If it answered with an error, that
+		// error says more; otherwise it is starting or hung.
+		if answer != nil {
+			return answer
+		}
+		return errStateBusy
 	}
 	return err
 }
+
+// errStateBusy exits with 3, like stack.ErrStateOwned.
+var errStateBusy = &stack.Error{Code: "conflict", Message: "another a-stack serve owns this state directory but does not answer yet; wait a moment or stop it (Ctrl-C in its terminal, or systemctl --user stop a-stack)"}
 
 func (h *home) setup() {
 	if wd, err := os.Getwd(); err == nil {

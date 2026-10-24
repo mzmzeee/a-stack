@@ -45,7 +45,8 @@ var errPickerCancelled = errors.New("picker cancelled")
 // runPicker draws p on out and reads keys from in until the Operator chooses a
 // Session or cancels. It restores the terminal on every return and on panics.
 // On SIGINT, SIGTERM or SIGHUP it restores the terminal and raises the signal
-// again, so the process ends as it would without the picker.
+// again, so the process ends as it would without the picker. On SIGQUIT it
+// restores the terminal and exits with 131.
 func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (sessionRow, error) {
 	saved, err := termios(in.Fd())
 	if err != nil {
@@ -56,11 +57,16 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 	raw.Lflag &^= syscall.ECHO | syscall.ECHONL | syscall.ICANON | syscall.ISIG | syscall.IEXTEN
 	raw.Cc[syscall.VMIN], raw.Cc[syscall.VTIME] = 1, 0
 	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	signal.Notify(signals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT)
 	defer signal.Stop(signals)
 	resized := make(chan os.Signal, 1)
 	signal.Notify(resized, syscall.SIGWINCH)
 	defer signal.Stop(resized)
+	keys, stopKeys, err := readKeys(int(in.Fd()))
+	if err != nil {
+		return sessionRow{}, err
+	}
+	defer stopKeys()
 	setTermios(in.Fd(), &raw)
 	drawn := 0
 	clear := func() {
@@ -75,18 +81,6 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 		setTermios(in.Fd(), &saved)
 	}()
 	_, _ = io.WriteString(out, "\x1b[?25l")
-	keys := make(chan []byte)
-	go func() {
-		defer close(keys)
-		buf := make([]byte, 64)
-		for {
-			n, err := in.Read(buf)
-			if err != nil {
-				return
-			}
-			keys <- append([]byte(nil), buf[:n]...)
-		}
-	}()
 	for {
 		width, height := terminalSize(out)
 		clear()
@@ -98,7 +92,7 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 			if !ok {
 				return sessionRow{}, errPickerCancelled
 			}
-			switch p.key(k) {
+			switch p.input(k) {
 			case pickChoose:
 				return p.chosen(), nil
 			case pickCancel:
@@ -112,6 +106,11 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 			_, _ = io.WriteString(out, "\x1b[?25h")
 			setTermios(in.Fd(), &saved)
 			signal.Stop(signals)
+			if s == syscall.SIGQUIT {
+				// Go's own SIGQUIT handler prints a stack dump and exits
+				// with 2; exit as a shell reports a quit instead.
+				os.Exit(128 + int(syscall.SIGQUIT))
+			}
 			_ = syscall.Kill(os.Getpid(), s.(syscall.Signal))
 			return sessionRow{}, errPickerCancelled
 		case <-ctx.Done():
@@ -119,3 +118,61 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 		}
 	}
 }
+
+// readKeys reads chunks of input from fd until stop returns. It waits in
+// select on fd and on a pipe, so stop wakes it, and nothing reads fd after
+// stop.
+func readKeys(fd int) (<-chan []byte, func(), error) {
+	var pipe [2]int
+	if err := syscall.Pipe2(pipe[:], syscall.O_CLOEXEC); err != nil {
+		return nil, nil, err
+	}
+	if fd >= 1024 || pipe[0] >= 1024 {
+		_ = syscall.Close(pipe[0])
+		_ = syscall.Close(pipe[1])
+		return nil, nil, errors.New("file descriptor too large for select")
+	}
+	keys := make(chan []byte)
+	quit, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		defer close(keys)
+		buf := make([]byte, 256)
+		for {
+			var set syscall.FdSet
+			addFD(&set, fd)
+			addFD(&set, pipe[0])
+			if _, err := syscall.Select(max(fd, pipe[0])+1, &set, nil, nil, nil); err == syscall.EINTR {
+				continue
+			} else if err != nil || hasFD(&set, pipe[0]) {
+				return
+			}
+			n, err := syscall.Read(fd, buf)
+			if err == syscall.EINTR || err == syscall.EAGAIN {
+				continue
+			}
+			if err != nil || n <= 0 {
+				return
+			}
+			select {
+			case keys <- append([]byte(nil), buf[:n]...):
+			case <-quit:
+				return
+			}
+		}
+	}()
+	stop := func() {
+		close(quit)
+		_, _ = syscall.Write(pipe[1], []byte{0})
+		<-done
+		_ = syscall.Close(pipe[0])
+		_ = syscall.Close(pipe[1])
+	}
+	return keys, stop, nil
+}
+
+// fdBits is the number of descriptors in one word of syscall.FdSet.
+const fdBits = int(unsafe.Sizeof(syscall.FdSet{}.Bits[0])) * 8
+
+func addFD(set *syscall.FdSet, fd int)      { set.Bits[fd/fdBits] |= 1 << (fd % fdBits) }
+func hasFD(set *syscall.FdSet, fd int) bool { return set.Bits[fd/fdBits]&(1<<(fd%fdBits)) != 0 }

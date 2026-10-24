@@ -138,3 +138,37 @@ func TestPickerKeysScopeAndRender(t *testing.T) {
 		t.Fatalf("scrolled render %q", lines)
 	}
 }
+
+func TestPickerSplitsOneReadIntoKeys(t *testing.T) {
+	got := splitKeys([]byte("a\x1b[B\x1bOA\x1b[1;5Cé\r\x1b\x1b["))
+	want := []string{"a", "\x1b[B", "\x1bOA", "\x1b[1;5C", "é", "\r", "\x1b", "\x1b["}
+	if len(got) != len(want) {
+		t.Fatalf("keys %q", got)
+	}
+	for i := range want {
+		if string(got[i]) != want[i] {
+			t.Fatalf("key %d: %q, want %q", i, got[i], want[i])
+		}
+	}
+	now := time.Date(2026, 10, 24, 12, 0, 0, 0, time.UTC)
+	rows := rowsFixture(now)
+	sortRows(rows)
+	// An arrow key and Enter in one read: the second row opens.
+	p := newPicker(rows)
+	if p.input([]byte("\x1b[B\r")) != pickChoose || p.chosen().SessionID != p.visible()[1].SessionID || p.selected != 1 {
+		t.Fatal("arrow and Enter in one read")
+	}
+	// A paste with a backspace and an unknown escape sequence in it.
+	p = newPicker(rows)
+	if p.input([]byte("\tgaX\x7f\x1b[1;5C")) != pickContinue || !p.all || p.query != "ga" {
+		t.Fatalf("paste: all=%v query=%q", p.all, p.query)
+	}
+	// Keys after Enter or a cancel are not applied.
+	p = newPicker(rows)
+	if p.input([]byte("\x03\x1b[B")) != pickCancel || p.selected != 0 {
+		t.Fatal("cancel stops the read")
+	}
+	if p.input([]byte("\r\x1b[B")) != pickChoose || p.selected != 0 {
+		t.Fatal("Enter stops the read")
+	}
+}
