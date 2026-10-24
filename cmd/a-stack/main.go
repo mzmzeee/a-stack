@@ -60,7 +60,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var state, credential, kind, listen, destination, herdrExecutable string
-	var machine, help, noBrowser, resume, showVersion bool
+	var machine, help, noBrowser, resume, showVersion, project bool
 	fs.StringVar(&state, "state-dir", "", "State directory (default ~/.local/state/a-stack)")
 	fs.StringVar(&credential, "credential-file", "", "Credential file (default: operator.json)")
 	fs.StringVar(&kind, "as", "", "Credential kind: operator, agent or browser")
@@ -73,6 +73,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&noBrowser, "no-browser", false, "Print the URL, but do not start a browser")
 	fs.BoolVar(&resume, "resume", false, "Pick a Session to open")
 	fs.BoolVar(&resume, "r", false, "Short for --resume")
+	fs.BoolVar(&project, "project", false, "Use .claude and .agents in the current folder, not in your home folder")
 	fs.StringVar(&herdrExecutable, "herdr-executable", "", "Turn on Herdr mention notices with this herdr binary")
 	var lifecycle lifecycleFlags
 	lifecycle.register(fs)
@@ -124,7 +125,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		}
 		cmd = "new"
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) {
+	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -134,6 +135,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.Visit(func(f *flag.Flag) { seen[f.Name] = true })
 	if err := validateCommandFlags(cmd, seen); err != nil {
 		return err
+	}
+	if isSkillCommand(cmd) {
+		return skillCommand(cmd, project, machine, stdout)
 	}
 	if state == "" {
 		var err error

@@ -73,6 +73,7 @@ main() {
 		*":$install_dir:"*) ;;
 		*) echo "Add $install_dir to your PATH, for example: export PATH=\"$install_dir:\$PATH\"" ;;
 	esac
+	echo "To teach your coding agents a-stack, run: a-stack skill install"
 }
 
 # Print the version of an a-stack binary, or nothing if it fails or hangs.

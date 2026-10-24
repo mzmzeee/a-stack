@@ -56,6 +56,9 @@ func validateCommandFlags(command string, seen map[string]bool) error {
 // acceptedFlags lists the flags a command accepts, space-separated with a
 // space at both ends. Help uses the same list.
 func acceptedFlags(command string) string {
+	if isSkillCommand(command) {
+		return " project json help " // no service, no credential
+	}
 	allowed := " state-dir json help "
 	// The Operator shortcuts use operator.json and may start the service, so
 	// they take neither credential nor serve flags.

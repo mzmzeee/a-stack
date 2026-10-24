@@ -6,6 +6,12 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- `a-stack skill install` installs the agent skill in one step. The binary carries the skill of its own version, so it needs no Node.js and no network. It writes `~/.claude/skills/a-stack` (or `$CLAUDE_CONFIG_DIR/skills/a-stack`) and `~/.agents/skills/a-stack`, or with `--project` the same folders in the current folder. It replaces an older copy whole and leaves other skills alone. `a-stack skill uninstall` removes the copies.
+- The agent skill docs also describe `npx skills add mzmzeee/a-stack`.
+- The install script ends with a hint to run `a-stack skill install`.
+
 ## [0.1.3] - 2026-10-25
 
 ### Added
