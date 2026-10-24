@@ -6,40 +6,34 @@ With the skill installed, an Agent's brief can be short. It needs only the crede
 
 ## Install
 
-The skill is a plain folder with a `SKILL.md` file. Copy it to the place where your harness looks for skills.
-
-| Harness | Folder |
-| --- | --- |
-| Claude Code, for all projects | `~/.claude/skills/a-stack/` |
-| Claude Code, for one project | `.claude/skills/a-stack/` in that project |
-| Codex, pi and other harnesses that read `SKILL.md` folders | `~/.agents/skills/a-stack/` |
-
-From a checkout of this repository:
+Install the skill with one command:
 
 ```sh
-mkdir -p ~/.claude/skills
-cp -R skills/a-stack ~/.claude/skills/
+a-stack skill install
 ```
 
-Without a checkout, download the skill from the latest release. The archive holds the `a-stack` folder. Change the target folder for your harness:
+This is the recommended way. The `a-stack` binary carries the skill of its own version, so the skill always matches your binary, and it needs no Node.js and no network. The command writes the skill to `~/.claude/skills/a-stack` for Claude Code and to `~/.agents/skills/a-stack` for Codex, pi and other harnesses that read `.agents/skills`. If `CLAUDE_CONFIG_DIR` is set, the Claude Code copy goes to `$CLAUDE_CONFIG_DIR/skills/a-stack`. To install the skill for one project only, run the command in the project folder with `--project`. It then writes `.claude/skills/a-stack` and `.agents/skills/a-stack` there.
+
+Releases up to v0.1.3 do not have `skill install`; update a-stack first or use one of the ways below.
+
+The command replaces an older copy of the a-stack skill whole, so no removed files stay behind. It does not touch other skills. `a-stack update` updates the copies that exist. `skill install --refresh` does the same and writes no new copies. `a-stack skill uninstall` removes the copies, and takes `--project` too.
+
+You can also use the [`skills`](https://github.com/vercel-labs/skills) CLI, which knows where many agents look for skills. It needs Node.js:
+
+```sh
+npx skills add mzmzeee/a-stack       # in this project
+npx skills add mzmzeee/a-stack -g    # for all your projects
+```
+
+It asks which agents to install the skill for. It installs the skill from the default branch, which can be newer than your binary.
+
+Without either command, download the skill from a release and unpack it where your harness looks for skills, such as `~/.claude/skills` or `~/.agents/skills`. Releases up to v0.1.1 do not include the skill. Remove an old `a-stack` folder first, so that no removed files stay behind:
 
 ```sh
 mkdir -p ~/.claude/skills
+rm -rf ~/.claude/skills/a-stack
 curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/a-stack-skill.tar.gz \
   | tar -xz -C ~/.claude/skills
-```
-
-To get the skill of a specific version, put the version in the URL. Releases up to v0.1.1 do not include the skill.
-
-```sh
-curl -fsSL https://github.com/mzmzeee/a-stack/releases/download/v0.1.2/a-stack-skill.tar.gz \
-  | tar -xz -C ~/.claude/skills
-```
-
-To update the skill, remove the old folder first, so that no removed files stay behind, and then run the download again:
-
-```sh
-rm -rf ~/.claude/skills/a-stack
 ```
 
 ## Use

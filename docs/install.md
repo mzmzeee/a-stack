@@ -74,13 +74,29 @@ Your data stays in the state directory when you update. The service needs a rest
    a-stack storage backup --destination ~/a-stack-backups/before-update-$(date +%F-%H%M%S).db
    ```
 
-2. Run the install script again:
+2. Update the binary:
+
+   ```sh
+   a-stack update
+   ```
+
+   It downloads the latest release and the release's `SHA256SUMS` file over HTTPS and compares the checksum. If the checksum is not correct, it stops and changes nothing. It then checks that the new binary runs and replaces the `a-stack` binary that you ran, in one step, with the same file mode. It prints the old and the new version, for example `Updated a-stack v0.1.3 -> v0.1.4 in /home/you/.local/bin/a-stack`, or `a-stack v0.1.4 is already the latest version`. It needs no service and no credential, and it never uses `sudo`.
+
+   If you installed the agent skill with `a-stack skill install`, the update also updates those copies, in your home folder and in the current folder. It does not create new ones.
+
+   - `a-stack update --check` only compares the versions. When a newer release exists, it prints `a-stack v0.1.4 is available; you have v0.1.3. Run a-stack update to install it.` Otherwise it says that your version is the latest. It exits with 0 in both cases. With `--json`, `update_available` is `true` or `false`.
+   - `a-stack update --version v0.1.2` installs that release, also an older one.
+   - A build from source has no release version. It updates only with `--version`.
+   - If you cannot write to the binary's folder, the command stops and names the folder. Install a-stack in a folder that you own with the install script and `A_STACK_INSTALL_DIR`.
+   - `A_STACK_BASE_URL` names a release mirror, as for the install script.
+
+   Releases up to v0.1.3 do not have `a-stack update`. To update them, or as the other way, run the install script again:
 
    ```sh
    curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | sh
    ```
 
-   It replaces the binary and prints the old and the new version, for example `Updated a-stack v0.1.0 -> v0.1.1`. To pick a version, set `A_STACK_VERSION` as in [Install script](#install-script).
+   To pick a version with the script, set `A_STACK_VERSION` as in [Install script](#install-script).
 
 3. Restart the service. Until then, the running service keeps the old version.
 

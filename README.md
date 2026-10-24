@@ -65,7 +65,7 @@ curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.s
 
 The script installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download or a build from source, see [Install](docs/install.md).
 
-To update, run the same command again and restart the service. See [Update](docs/install.md#update).
+To update, run `a-stack update` and restart the service. See [Update](docs/install.md#update).
 
 To start a-stack at boot and restart it after a crash, see [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
 
@@ -93,7 +93,7 @@ The Task graph is empty at first. To register Agents and give them Tasks, follow
 - [Browser view](docs/browser.md): open the view and read what it shows.
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
-- [Agent skill](docs/agent-skill.md): install the skill that teaches a coding agent to work in an a-stack Session.
+- [Agent skill](docs/agent-skill.md): run `a-stack skill install` to teach your coding agents to work in an a-stack Session.
 - [Performance](docs/performance.md): stress test results with many Agents, and how to run the test.
 
 To see all commands, run `a-stack --help`. To see the flags of one command, run `a-stack help COMMAND`, for example `a-stack help task create`.

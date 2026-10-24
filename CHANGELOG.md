@@ -6,6 +6,14 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- `a-stack skill install` installs the agent skill in one step. The binary carries the skill of its own version, so it needs no Node.js and no network. It writes `~/.claude/skills/a-stack` (or `$CLAUDE_CONFIG_DIR/skills/a-stack`) and `~/.agents/skills/a-stack`, or with `--project` the same folders in the current folder. It replaces an older copy whole and leaves other skills alone. `a-stack skill uninstall` removes the copies.
+- The agent skill docs also describe `npx skills add mzmzeee/a-stack`.
+- The install script ends with a hint to run `a-stack skill install`, and says that `a-stack update` updates a-stack next time.
+- `a-stack update` installs the latest release in place of the running binary. It finds the latest version from the `/releases/latest` redirect, without the GitHub API, so it skips prereleases. It downloads over HTTPS only, checks the SHA-256 checksum, takes only the `a-stack` file from the archive, checks that the new binary runs and then renames it into place with the same mode. On any failure it changes nothing. `--check` only compares the versions, and `--version vX.Y.Z` installs one release, also an older one. It updates skill copies that `a-stack skill install` wrote, prints how to restart the service, and needs no service and no credential. A build from source updates only with `--version`. `A_STACK_BASE_URL` names a mirror, as for the install script.
+- `a-stack skill install --refresh` replaces only the skill copies that exist.
+
 ## [0.1.3] - 2026-10-25
 
 ### Added
