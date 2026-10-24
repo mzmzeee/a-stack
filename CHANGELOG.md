@@ -11,12 +11,18 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - Each release includes the systemd user unit `a-stack.service`, and `SHA256SUMS` lists it.
 - The release notes come from this file.
 - docs/install.md has an Update section.
+- `a-stack` without a command opens your last Session in the browser. If no service runs, it starts one in the foreground first.
+- `a-stack -r` (or `--resume`) picks a Session in the terminal. Without a terminal, or with `--json`, it prints the Session list.
+- `a-stack new [NAME]` creates the Workspace for the current folder if needed, creates a Session and opens it.
+- `a-stack help COMMAND` and `a-stack COMMAND --help` list the flags of one command. `-h`, `help` and `--version` work.
 
 ### Changed
 
 - The install script says whether it installed, updated or reinstalled a-stack, with the old and the new version. After an update, it tells you how to restart the service.
 - The install script stops with an error if the installed binary does not run.
 - docs/install.md downloads the systemd unit from the release instead of the `main` branch.
+- `a-stack --help` lists the commands in groups and fits in 80 columns. `--help --json` keeps its fields and appends `new`.
+- The README Quick start uses `a-stack new`, `a-stack` and `a-stack -r`.
 
 ### Fixed
 
