@@ -32,6 +32,9 @@ The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It keeps the 
 
 - Graph arrows point from a prerequisite to its dependent Task. The details also name both directions.
 - Full names wrap above the cards.
+- Groups of Tasks that are not connected sit side by side, largest first, and wrap into rows that follow the shape of the panel. A Task with no dependencies is its own group. Inside a group, each Task is placed near the Tasks it connects to.
+- A column that is much taller than the panel wraps into several sub-columns. Lines then run in the gaps between the rows. Each dependent Task has its own line lane, and a line that skips a column runs above or below its group, so fewer lines pass next to cards they do not connect.
+- The layout uses the panel size at the moment the Tasks or dependencies change. Resizing the window alone does not move cards, and neither does a poll without changes.
 - A shared Task shows the same data in every Agent row. The Unassigned row shows Tasks with no assignee.
 - Progress and Needs you requests are shown separately. When several Tasks need input, the attention button opens a chooser. Viewing a Task never resolves its request.
 - The chooser buttons keep their identity across unrelated refreshes. If the focused request is resolved somewhere else, the focus moves to a remaining choice, or to the view tab when the chooser is empty.
@@ -45,6 +48,7 @@ The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It keeps the 
 - Search looks at Agent names, titles, Ticket references and the short report preview.
 - The status filter includes Cancelled and Needs you.
 - Drag an empty part of the graph to move it. Zoom and Fit are separate controls.
+- Fit scales the graph to the Task cards, never above 100%, and centers them in the panel.
 - In the Graph tab, filters dim the cards that do not match, so the connections stay visible. In the Agents tab, filters hide them.
 
 ## Refresh
@@ -82,7 +86,7 @@ Measured on 2026-10-24 with an Intel Core i5-13420H (12 logical CPUs), Linux x86
 
 The layout time includes the rank calculation, card measurement, positions and SVG connections. The navigation time includes the subprocess, browser, API and render work, and is only a local observation.
 
-With 1,000 Tasks, one wide rank made a canvas of 192,929 px. The view shows every Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
+With 1,000 Tasks, one wide rank made a canvas of 192,929 px. That measurement was taken before columns wrapped; such a rank now wraps into sub-columns. The view shows every Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
 
 ## Checks
 
