@@ -217,6 +217,24 @@ func TestCLIShortcutParsingAndHelp(t *testing.T) {
 			t.Fatalf("bad machine error for %s", strings.Join(args, " "))
 		}
 	}
+	same := func(args, want []string) {
+		t.Helper()
+		var a, b, errout bytes.Buffer
+		if run(args, &a, &errout) != 0 || run(want, &b, &errout) != 0 || a.String() != b.String() || a.Len() == 0 || errout.Len() != 0 {
+			t.Fatalf("%v does not match %v", args, want)
+		}
+	}
+	same([]string{"-h"}, []string{"--help"})
+	same([]string{"help"}, []string{"--help"})
+	same([]string{"help", "--json"}, []string{"--help", "--json"})
+	same([]string{"-h", "--json"}, []string{"--help", "--json"})
+	same([]string{"--version"}, []string{"version"})
+	for _, args := range [][]string{{"serve", "--version"}, {"help", "serve"}} {
+		var out, errout bytes.Buffer
+		if run(args, &out, &errout) != 2 || out.Len() != 0 || !json.Valid(errout.Bytes()) {
+			t.Fatalf("bad machine error for %s", strings.Join(args, " "))
+		}
+	}
 	var out, errout bytes.Buffer
 	if run([]string{"--help"}, &out, &errout) != 0 || !strings.Contains(out.String(), "a-stack new [NAME]") || !strings.Contains(out.String(), "a-stack -r|--resume") || !strings.HasPrefix(out.String(), "Usage: a-stack serve|open|health|version") {
 		t.Fatal("help text")

@@ -57,7 +57,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var state, credential, kind, listen, destination, herdrExecutable string
-	var machine, help, noBrowser, resume bool
+	var machine, help, noBrowser, resume, showVersion bool
 	fs.StringVar(&state, "state-dir", "", "private absolute application-state directory")
 	fs.StringVar(&credential, "credential-file", "", "private credential file")
 	fs.StringVar(&kind, "as", "", "operator, agent or browser")
@@ -65,6 +65,8 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.StringVar(&destination, "destination", "", "new absolute backup filename")
 	fs.BoolVar(&machine, "json", false, "machine-readable JSON")
 	fs.BoolVar(&help, "help", false, "show usage")
+	fs.BoolVar(&help, "h", false, "short for --help")
+	fs.BoolVar(&showVersion, "version", false, "same as the version command")
 	fs.BoolVar(&noBrowser, "no-browser", false, "print browser URL without launching")
 	fs.BoolVar(&resume, "resume", false, "bare command: pick a Session to open")
 	fs.BoolVar(&resume, "r", false, "short for --resume")
@@ -101,6 +103,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if fs.Parse(flags) != nil {
 		return invalid("invalid flags; use --help")
 	}
+	command, help = aliasCommands(command, help, showVersion)
 	if help {
 		if machine {
 			flags := []string{}
@@ -263,4 +266,16 @@ func serveForeground(ctx context.Context, state, listen, herdrExecutable string,
 		return err
 	}
 	return closeErr
+}
+
+// aliasCommands makes `help` and -h work like --help, and --version without a
+// command work like `version`.
+func aliasCommands(command []string, help, showVersion bool) ([]string, bool) {
+	if len(command) == 1 && command[0] == "help" {
+		return nil, true
+	}
+	if showVersion && len(command) == 0 {
+		return []string{"version"}, help
+	}
+	return command, help
 }
