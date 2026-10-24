@@ -96,22 +96,46 @@ graph.append(edgesSVG);
 function layout() {
   const wasHidden=panel.hidden; if(wasHidden){panel.hidden=false;panel.style.visibility='hidden';}
   const tasks=model.tasks, byID=new Map(tasks.map(t=>[t.id,t])), rank=new Map(tasks.map(t=>[t.id,0]));
-  const degree=new Map(tasks.map(t=>[t.id,0])), next=new Map(tasks.map(t=>[t.id,[]]));
-  for(const e of model.dependencies) if(byID.has(e.prerequisite_id)&&byID.has(e.dependent_id)) {degree.set(e.dependent_id,degree.get(e.dependent_id)+1);next.get(e.prerequisite_id).push(e.dependent_id);}
+  const degree=new Map(tasks.map(t=>[t.id,0])), next=new Map(tasks.map(t=>[t.id,[]])), prev=new Map(tasks.map(t=>[t.id,[]]));
+  for(const e of model.dependencies) if(byID.has(e.prerequisite_id)&&byID.has(e.dependent_id)) {degree.set(e.dependent_id,degree.get(e.dependent_id)+1);next.get(e.prerequisite_id).push(e.dependent_id);prev.get(e.dependent_id).push(e.prerequisite_id);}
   const queue=tasks.filter(t=>!degree.get(t.id)).map(t=>t.id).sort();
   for(let i=0;i<queue.length;i++) for(const id of next.get(queue[i])) {
     rank.set(id,Math.max(rank.get(id),rank.get(queue[i])+1));degree.set(id,degree.get(id)-1);if(!degree.get(id))queue.push(id);
   }
-  const layers=new Map();
-  for(const t of tasks) {const r=rank.get(t.id);if(!layers.has(r))layers.set(r,[]);layers.get(r).push(t.id);}
+  // Unconnected groups of Tasks are laid out side by side, largest first; ties keep the stable Task order.
+  const root=new Map(tasks.map(t=>[t.id,t.id])), find=id=>{const r=root.get(id);if(r===id)return id;const f=find(r);root.set(id,f);return f;};
+  for(const [id,ns] of next) for(const n of ns) root.set(find(n),find(id));
+  const groups=new Map();for(const t of tasks){const r=find(t.id);if(!groups.has(r))groups.set(r,[]);groups.get(r).push(t.id);}
   const sizes=new Map(tasks.map(t=>[t.id,cards.get(t.id).article.offsetHeight]));
-  const totals=[...layers.values()].map(ids=>ids.reduce((h,id)=>h+sizes.get(id)+32,0)-32);
-  height=Math.max(670,...totals.map(h=>h+48));width=Math.max(1400,(Math.max(0,...rank.values())+1)*342+28);
+  // Columns wrap above the panel height, or above the height that gives all cards the panel's aspect ratio.
+  const aspect=(panel.clientWidth||1400)/(panel.clientHeight||670), limit=Math.max((panel.clientHeight||670)-88,Math.sqrt(tasks.reduce((s,t)=>s+342*(sizes.get(t.id)+32),0)/aspect));
+  const blocks=[...groups.values()].sort((a,b)=>b.length-a.length).map(ids=>{
+    const layers=[], order=new Map(), place=l=>l.forEach((id,i)=>order.set(id,(i+.5)/l.length));
+    for(const id of ids)(layers[rank.get(id)]??=[]).push(id);
+    const cols=layers.filter(Boolean);cols.forEach(place);
+    // Barycenter sweeps keep each Task near the Tasks it connects to, so lines pass fewer unrelated cards.
+    const sweep=(l,near)=>{const c=new Map(l.map(id=>{const n=near.get(id);return [id,n.length?n.reduce((s,x)=>s+order.get(x),0)/n.length:order.get(id)];}));l.sort((a,b)=>c.get(a)-c.get(b));place(l);};
+    for(let i=1;i<cols.length;i++)sweep(cols[i],prev);for(let i=cols.length-2;i>=0;i--)sweep(cols[i],next);for(let i=1;i<cols.length;i++)sweep(cols[i],prev);
+    let x=0,h=0;
+    const block={cols:cols.map((ids,i)=>{
+      // A column much taller than the limit wraps into sub-columns with shared row heights, so lines can run in the gaps between rows.
+      const total=ids.reduce((s,id)=>s+sizes.get(id)+32,0)-32, n=Math.ceil(ids.length/Math.min(ids.length,total>limit*1.5?Math.ceil(total/limit):1)), heights=[];
+      ids.forEach((id,j)=>heights[j%n]=Math.max(heights[j%n]||0,sizes.get(id)));
+      const col={i,ids,x,k:Math.ceil(ids.length/n),heights,h:heights.reduce((s,r)=>s+r+32,0)-32};x+=col.k*342;h=Math.max(h,col.h);return col;
+    })};
+    block.w=x-68;block.h=h;return block;
+  });
+  const maxWidth=Math.max(limit*aspect,(panel.clientWidth||1400)-88,...blocks.map(b=>b.w));let bx=28,by=24,shelf=0;width=56;
   positions.clear();
-  for(const [r,ids] of layers) {
-    const total=ids.reduce((h,id)=>h+sizes.get(id)+32,0)-32;let y=24+(height-48-total)/2;
-    for(const id of ids) {const p={x:28+r*342,y};positions.set(id,p);const n=cards.get(id).article;n.style.left=p.x+'px';n.style.top=p.y+'px';y+=sizes.get(id)+32;}
+  for(const b of blocks) {
+    if(bx>28&&bx+b.w>28+maxWidth){bx=28;by+=shelf+56;shelf=0;}
+    b.x=bx;b.y=by;bx+=b.w+110;shelf=Math.max(shelf,b.h);width=Math.max(width,b.x+b.w+28);
+    for(const col of b.cols) {
+      col.x+=b.x;col.block=b;col.prev=b.cols[col.i-1];let y=b.y+(b.h-col.h)/2;const tops=col.heights.map(r=>{const t=y;y+=r+32;return t;}), n=tops.length;
+      col.ids.forEach((id,j)=>{const r=j%n,p={x:col.x+Math.floor(j/n)*342,y:tops[r],c:Math.floor(j/n),top:tops[r],bottom:tops[r]+col.heights[r],col};positions.set(id,p);const a=cards.get(id).article;a.style.left=p.x+'px';a.style.top=p.y+'px';});
+    }
   }
+  height=by+shelf+24; // tight around the Task units, so Fit fits the cards
   graph.style.width=width+'px';graph.style.height=height+'px';applyZoom();drawEdges();
   if(wasHidden){panel.hidden=true;panel.style.visibility='';}
 }
@@ -130,12 +154,26 @@ function roundedPath(points, radius = 11) {
 }
 
 function drawEdges() {
-  const group=edgesSVG.querySelector('g'), frag=document.createDocumentFragment();
+  const group=edgesSVG.querySelector('g'), frag=document.createDocumentFragment(), edges=[], lanes=new Map();
+  // Each gutter gives every dependent Task its own vertical lane; lines into the same Task share it.
+  const use=(col,id)=>{const l=lanes.get(col) || [];lanes.set(col,l);if(!l.includes(id))l.push(id);};
+  const lane=(col,id)=>{const l=lanes.get(col);return col.x+col.k*342-68+68*(l.indexOf(id)+1)/(l.length+1);};
   for(const e of model.dependencies) {
-    const a=cards.get(e.prerequisite_id),b=cards.get(e.dependent_id);if(!a||!b)continue;
-    const ap=positions.get(e.prerequisite_id),bp=positions.get(e.dependent_id);if(!ap||!bp)continue;
-    const x1=ap.x+274,y1=ap.y+a.button.offsetTop+a.button.offsetHeight/2,x2=bp.x,y2=bp.y+b.button.offsetTop+b.button.offsetHeight/2,m=(x1+x2)/2;
-    const p=document.createElementNS(svgNS,'path');p.setAttribute('d',roundedPath([[x1,y1],[m,y1],[m,y2],[x2-3,y2]]));p.setAttribute('marker-end','url(#arrow)');p.classList.add('connection');
+    const ap=positions.get(e.prerequisite_id),bp=positions.get(e.dependent_id);
+    if(!ap||!bp||!cards.has(e.prerequisite_id)||!cards.has(e.dependent_id)||ap.col.block!==bp.col.block||bp.col.i<=ap.col.i)continue;
+    edges.push([e,ap,bp]);use(ap.col,e.dependent_id);use(bp.col.prev,e.dependent_id);
+  }
+  for(const [e,ap,bp] of edges) {
+    const a=cards.get(e.prerequisite_id),b=cards.get(e.dependent_id),g=ap.col.block;
+    const x1=ap.x+274,y1=ap.y+a.button.offsetTop+a.button.offsetHeight/2,x2=bp.x,y2=bp.y+b.button.offsetTop+b.button.offsetHeight/2,from=lane(ap.col,e.dependent_id),to=lane(bp.col.prev,e.dependent_id),points=[[x1,y1]];
+    let y=y1;
+    // Lines leave a wrapped column through the gap below the row and enter one through the gap above it.
+    if(ap.c<ap.col.k-1){y=ap.bottom+16;points.push([x1+34,y1],[x1+34,y]);}
+    points.push([from,y]);
+    if(bp.col.i!==ap.col.i+1){const c=(y1+y2)/2<g.y+g.h/2?g.y-14:g.y+g.h+14;points.push([from,c],[to,c]);} // over or under the group, not through other columns
+    if(bp.c>0)points.push([to,bp.top-16],[x2-34,bp.top-16],[x2-34,y2]);else points.push([to,y2]);
+    points.push([x2-3,y2]);
+    const p=document.createElementNS(svgNS,'path');p.setAttribute('d',roundedPath(points));p.setAttribute('marker-end','url(#arrow)');p.classList.add('connection');
     if(e.prerequisite_id===state.selected||e.dependent_id===state.selected)p.classList.add('active');
     if(!matches(model.tasks.find(t=>t.id===e.prerequisite_id))&&!matches(model.tasks.find(t=>t.id===e.dependent_id)))p.classList.add('faded');
     frag.append(p);
@@ -212,7 +250,7 @@ $('search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(
 $('status-filter').addEventListener('change',e=>{state.filter=e.target.value;render();});
 $('clear-filters').addEventListener('click',()=>{state.query='';state.filter='all';$('search').value='';$('status-filter').value='all';render();$('search').focus();});
 $('zoom-out').onclick=()=>setZoom(state.zoom/1.2);$('zoom-in').onclick=()=>setZoom(state.zoom*1.2);$('zoom-reset').onclick=()=>setZoom(1);
-$('zoom-fit').onclick=()=>{setZoom(Math.min((panel.clientWidth-40)/width,(panel.clientHeight-40)/height,1));panel.scrollTo(0,0);};
+$('zoom-fit').onclick=()=>{setZoom(Math.min((panel.clientWidth-40)/width,(panel.clientHeight-40)/height,1));panel.scrollTo((panel.scrollWidth-panel.clientWidth)/2,(panel.scrollHeight-panel.clientHeight)/2);};
 let drag;
 panel.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('button'))return;drag={x:e.clientX,y:e.clientY,left:panel.scrollLeft,top:panel.scrollTop};panel.setPointerCapture(e.pointerId);panel.classList.add('panning');});
 panel.addEventListener('pointermove',e=>{if(drag){panel.scrollLeft=drag.left+drag.x-e.clientX;panel.scrollTop=drag.top+drag.y-e.clientY;}});
