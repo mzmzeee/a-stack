@@ -2,11 +2,11 @@
 
 This page describes how the Operator sets up a team and how Agents get their credentials. It also covers runtime bindings, and Session close and reopen.
 
-The service gives each Workspace, Session and Agent a stable opaque ID. The CLI always sends these IDs explicitly. The current directory never selects a Workspace or a Session, and lifecycle commands never look up an Agent by its name.
+The service gives each Workspace, Session and Agent a stable opaque ID. The CLI always sends these IDs explicitly. The current directory never selects a Workspace or a Session, and lifecycle commands never look up an Agent by its name. There is one exception: the three Operator commands `a-stack`, `a-stack -r` and `a-stack new` use the current folder as a default or a filter, and their output shows the folder they used. No other command and no Agent command uses the current directory. See [Open the last Session](browser.md#open-the-last-session).
 
 ## Workspaces, Sessions and Agents
 
-A Workspace is an existing project directory. `workspace create --path ABSOLUTE_DIR` resolves symlinks to get the canonical path, and rejects a path that is already registered. It never uses the current directory.
+A Workspace is an existing project directory. `workspace create --path ABSOLUTE_DIR` resolves symlinks to get the canonical path, and rejects a path that is already registered. It never uses the current directory. `a-stack new` sends the current folder as this path when no Workspace has exactly that folder, and otherwise reuses that Workspace.
 
 A Session belongs to one Workspace. An Agent registration belongs to one Session for its whole lifetime. To link a separate working directory to the Workspace, use `agent register --worktree ABSOLUTE_DIR`. This does not make a new Workspace.
 

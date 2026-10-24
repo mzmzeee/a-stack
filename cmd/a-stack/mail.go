@@ -30,12 +30,12 @@ type mailFlags struct {
 }
 
 func (f *mailFlags) register(fs *flag.FlagSet) {
-	fs.StringVar(&f.body, "body", "", "shared Task-mail body")
-	fs.Func("mention", "explicit current-assignee name; repeat for multiple recipients", func(name string) error { f.mentions = append(f.mentions, name); return nil })
-	fs.StringVar(&f.cursor, "cursor", "", "caller-held Task-bound mail cursor")
-	fs.StringVar(&f.cursorFile, "cursor-file", "", "mail-check JSON Task/cursor map, or - for stdin")
-	fs.StringVar(&f.afterTask, "after-task", "", "mail-check Task-scan continuation")
-	fs.IntVar(&f.taskLimit, "task-limit", 0, "mail-check Task page size (1–100)")
+	fs.StringVar(&f.body, "body", "", "Mail text")
+	fs.Func("mention", "Assignee name to mention; repeat for more", func(name string) error { f.mentions = append(f.mentions, name); return nil })
+	fs.StringVar(&f.cursor, "cursor", "", "Read after this mail cursor")
+	fs.StringVar(&f.cursorFile, "cursor-file", "", "JSON map of Task IDs to cursors, or - for stdin")
+	fs.StringVar(&f.afterTask, "after-task", "", "Continue the Task scan after this token")
+	fs.IntVar(&f.taskLimit, "task-limit", 0, "Tasks per page: 1 to 100")
 }
 func mailAllowedFlags(command string) string {
 	switch command {

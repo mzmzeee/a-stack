@@ -11,14 +11,34 @@ import (
 var launchBrowser = func(url string) error { return exec.Command("xdg-open", url).Run() }
 
 func openBrowser(ctx context.Context, client *stack.Client, ref stack.Context, machine, noBrowser bool, stdout, stderr io.Writer) error {
+	return openView(ctx, client, ref, viewNotes{}, machine, noBrowser, stdout, stderr)
+}
+
+// viewNotes describe an opened view without credentials: fields join the JSON
+// data, and the lines frame the URL in plain output.
+type viewNotes struct {
+	fields        map[string]any
+	before, after []string
+}
+
+func openView(ctx context.Context, client *stack.Client, ref stack.Context, notes viewNotes, machine, noBrowser bool, stdout, stderr io.Writer) error {
 	url, err := client.BrowserURL(ctx, ref)
 	if err != nil {
 		return err
 	}
 	if machine {
-		err = json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]string{"url": url}})
+		data := map[string]any{"url": url}
+		for k, v := range notes.fields {
+			data[k] = v
+		}
+		err = json.NewEncoder(stdout).Encode(map[string]any{"data": data})
 	} else {
-		_, err = io.WriteString(stdout, url+"\n")
+		lines := append(append(append([]string{}, notes.before...), url), notes.after...)
+		for _, line := range lines {
+			if _, err = io.WriteString(stdout, line+"\n"); err != nil {
+				break
+			}
+		}
 	}
 	if err != nil {
 		return err
