@@ -1,18 +1,36 @@
-# Shared Tasks and graph
+# Tasks and the Task graph
 
-Tasks belong to one explicitly selected Workspace/Session. All commands take `--workspace ID --session ID`; Agent commands also select `--as agent --credential-file PRIVATE_FILE`. Use the lifecycle guide to enroll an Operator, Orchestrator and workers first. Changing cwd never changes context.
+A Task belongs to one Session. Every Task command needs `--workspace ID --session ID`. Agent commands also need `--as agent --credential-file PRIVATE_FILE`. The current directory never changes the context. Before you use these commands, enroll the Operator, the Orchestrator and the other Agents as described in [Workspaces, Sessions and Agents](lifecycle.md).
 
-The current Orchestrator creates Tasks, edits title/description/ticket metadata, changes assignment and adds/removes dependencies. Current assignees own status, reports, file references and Operator attention. The Orchestrator must assign itself for those ordinary assignee actions; the Operator role never acts as a worker. Replacing the role removes graph authority immediately, while existing assignee authority remains. Runtime unknown/idle/done does not change either authority or Task progress.
+## Who can do what
 
-## CLI workflow
+The current Orchestrator defines the work. It creates Tasks, edits their title, description and Ticket reference, assigns and unassigns Agents, and adds and removes dependencies.
 
-Examples assume the IDs and private credentials from `docs/lifecycle.md`; add the same `--state-dir` everywhere when using temporary/custom state.
+The current assignees do the work. An assignee is an Agent that is assigned to the Task. Assignees update the progress, the report, the file references and the Operator questions.
+
+The Orchestrator must assign itself to a Task before it can do assignee actions on it. The Operator never acts as an assignee. When the Operator replaces the Orchestrator, the old Agent loses its graph authority immediately, but it keeps its assignee authority. A runtime state of unknown, idle or done changes no authority and no Task progress.
+
+| Command | Who | Purpose |
+| --- | --- | --- |
+| `task create` | Orchestrator | Create a Task. |
+| `task edit` | Orchestrator | Change the title, description or Ticket reference. |
+| `task assign`, `task unassign` | Orchestrator | Add or remove an assignee. |
+| `dependency add`, `dependency remove` | Orchestrator | Add or remove a dependency. |
+| `task status`, `task reopen` | Assignee | Change the progress. |
+| `task report` | Assignee | Replace the shared report. |
+| `task attention set`, `task attention resolve` | Assignee | Ask or resolve an Operator question. |
+| `task reference add`, `task reference remove` | Assignee | Add or remove a file reference. |
+| `task list`, `task show`, `task history`, `task assignees`, `task references`, `task dependencies`, `dependency history`, `session snapshot`, `session page` | Operator or Session Agent | Read Tasks and the Task graph. |
+
+## Create and assign a Task
+
+These examples use the IDs and private credentials from [Workspaces, Sessions and Agents](lifecycle.md). If you use a different state directory, add the same `--state-dir` to every command.
 
 ```sh
 ./a-stack task create --as agent --credential-file "$orchestrator_credential" \
   --workspace "$workspace_id" --session "$session_id" --title "Build feature" \
   --body-file work-description.txt --ticket '#42' --operation-id task-create-42 --json
-# Set task_id to data.resource_id; a new Task has revision 1.
+# Set task_id to data.resource_id. A new Task has revision 1.
 ./a-stack task assign --as agent --credential-file "$orchestrator_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --agent "$worker_a_id" --expected-revision 1 --operation-id assign-worker-a --json
@@ -24,56 +42,121 @@ Examples assume the IDs and private credentials from `docs/lifecycle.md`; add th
   --progress working --expected-revision 3 --operation-id task-start-work --json
 ```
 
-Both assignees see one ID, revision and status. `task show` reads current detail; `task list` includes Unassigned Tasks. Use the returned revision for the next change. Concurrent writes with one expected revision yield one success and one conflict carrying `current_revision` and `current_progress`. Reconsider a stale write before retrying. Mutations require retained operation IDs; an unchanged committed retry returns its original receipt without repeating effects/history. Changed name/scope/payload conflicts without saved resource data. Removed assignees cannot mutate or recover assignee-operation receipts, but retain their ordinary Session metadata reads.
+Both assignees see the same Task ID, revision and status. `task show` reads the current details of one Task. `task list` shows all Tasks, also the Unassigned ones. Use the revision from the last response for the next change.
 
-Progress values are `waiting`, `working`, `finished`, `cancelled`. New Tasks are Waiting with `Not started`. Waiting requires a reason; Working may have a reason. Whole-Task completion uses `--progress finished --summary TEXT`, needs no peer/Orchestrator approval and does not inspect prerequisite completion. Cancellation requires `--progress cancelled --reason TEXT`. Finished/Cancelled Tasks require `task reopen --reason TEXT` before another status transition; reopen returns Waiting. The last successful completion summary stays in detail's `result` through later cancellation/reopen, with all earlier results/reasons/reports retained in history. Progress is authoritative; a retained result does not imply current completion.
+If two writes use the same expected revision, one succeeds and the other gets a conflict with `current_revision` and `current_progress`. Think again about an out-of-date write before you send it again.
 
-`task report --report TEXT` updates the shared report. `task edit` accepts any of `--title`, `--description`, `--ticket`; an explicitly empty description/ticket clears it. Unchanged large text is reused. `task history` paginates retained changes and changed text versions; it stores no repeated full Task snapshot.
+Every change needs an operation ID that you keep. A retry of a committed change with the same, unchanged request returns the original receipt. It does not repeat the effect or the history. A retry with a different name, scope or payload causes a conflict and returns no saved data. An Agent that was removed from a Task cannot change it or get receipts of its assignee operations. It can still read the ordinary Session metadata.
 
-| Command | Text alternative to flags |
+## Progress
+
+A Task has one of four progress values: `waiting`, `working`, `finished` and `cancelled`. A new Task is Waiting, with the reason `Not started`.
+
+- Waiting needs a reason. Working can have a reason.
+- `--progress finished --summary TEXT` marks the whole Task as finished. It needs no approval from other assignees or the Orchestrator, and it does not check whether the prerequisites are finished.
+- `--progress cancelled --reason TEXT` cancels the Task.
+- A Finished or Cancelled Task needs `task reopen --reason TEXT` before its progress can change again. Reopening sets the Task to Waiting.
+
+The last completion summary stays in the Task's `result` field, also after a later cancellation or reopen. The history keeps all earlier results, reasons and reports. The progress value is what counts: a retained result does not mean that the Task is finished now.
+
+## Reports, edits and history
+
+`task report --report TEXT` replaces the shared report. `task edit` accepts `--title`, `--description` and `--ticket`, in any combination. An explicitly empty description or Ticket reference clears it. If a large text does not change, a-stack reuses the stored copy.
+
+`task history` pages through the retained changes and the changed text versions. It does not store a full copy of the Task for each change.
+
+## Text input and limits
+
+Instead of a text flag, you can give `--body-file FILE`. The file supplies this field:
+
+| Command | Field from `--body-file` |
 | --- | --- |
-| `task create`, `task edit` | `--body-file FILE` supplies description |
-| `task report` | supplies report |
-| `task status --progress finished` | supplies result summary |
-| other `task status`, `task reopen` | supplies reason |
-| `task attention set`, `task attention resolve` | supplies question or note |
+| `task create`, `task edit` | Description |
+| `task report` | Report |
+| `task status --progress finished` | Result summary |
+| Other `task status`, `task reopen` | Reason |
+| `task attention set`, `task attention resolve` | Question or note |
 
-`--body-file -` reads stdin. Explicit text and a body file for the same field conflict. Description/report limits are 64 KiB UTF-8, reasons/results/questions/resolution notes 2,048 bytes, titles 256 bytes, ticket references 1,024 bytes. Input is rejected rather than truncated. Exact nonempty ticket references are unique within one Session; references are manual metadata, with no tracker lookup or synchronization.
+`--body-file -` reads stdin. You cannot give the text flag and a body file for the same field.
 
-## Attention and file references
+| Text | Limit |
+| --- | --- |
+| Description, report | 64 KiB of UTF-8 |
+| Reason, result, question, resolution note | 2,048 bytes |
+| Title | 256 bytes |
+| Ticket reference | 1,024 bytes |
 
-`task attention set --question TEXT` opens one explicit Operator question, independently of progress. A second request returns a conflict with `current_question` and revision. `task attention resolve --note TEXT` requires the current Task revision and a nonempty resolution note. Viewing, finishing/cancelling, runtime observations and closure never clear the question. Dependency waits alone never create Needs you.
+a-stack rejects text that is too long. It never cuts it. A nonempty Ticket reference must be unique in the Session. Ticket references are only metadata that you write. a-stack does not look them up in a tracker or sync them.
 
-`task reference add --location PATH_OR_URL [--reference-revision REV]` records display/copy metadata only; it never reads or serves the referenced file. `task references` lists current references, and `task reference remove --reference ID` removes the current reference while preserving its row/history. Locations are at most 2,048 UTF-8 bytes, optional revisions 128; executable URL prefixes are rejected. Consumers must render all supplied text as text and keep references as copy metadata, not executable markup/navigation.
+## Needs you questions
 
-## Dependencies and lifecycle
+`task attention set --question TEXT` asks the Operator one explicit question. The Task then shows Needs you. A question is separate from the progress. A Task can have one open question at a time. A second request gets a conflict with `current_question` and the revision.
 
-`dependency add --from A --to B` means **B depends on A**. `dependency remove` takes the same endpoints. Both require the Orchestrator, an operation ID and `--expected-revision` containing the **Session graph revision** from `session inspect`, rather than the lifecycle or Task revision. Reject duplicate/self/cross-Session/cyclic links inside the same transaction. Two individually plausible opposing edge writes cannot both commit. `dependency history` retains compact edge events; `task dependencies --task ID` lists incoming prerequisites and their current progress. Detail also reports `cancelled_prerequisite_count`.
+`task attention resolve --note TEXT` closes the question. It needs the current Task revision and a nonempty note. Viewing the Task, finishing or cancelling it, runtime observations and Session closure never clear the question. Waiting for a dependency never creates a Needs you question.
 
-Task creation and edge edits advance `graph_revision`. Other Task changes advance the Task revision and Session `read_revision`, leaving topology revision unchanged. Completing/cancelling a prerequisite never changes its dependents or vetoes their completion. Closure preserves all statuses and history, rejecting Task/graph/attention writes until explicit Operator reopen. Authorized reads and original receipts remain available after closure. No command starts/stops agent processes or calls Herdr.
+## File references
 
-## Bounded Session read contract
+`task reference add --location PATH_OR_URL [--reference-revision REV]` records a path or URL that people can see and copy. a-stack never reads or serves the file. `task references` lists the current references. `task reference remove --reference ID` removes a current reference. The row and its history stay.
 
-All endpoints below use authenticated **POST JSON**, the foundation's exact Host/Origin and `X-A-Stack-Instance` checks, and a `data` envelope. Unknown fields fail. Operator, registered Session agents and Session-scoped browser capabilities may read this model. Browser capabilities cannot mutate or use lifecycle/private/storage endpoints; these reads expose no mail, credential hashes/tokens, runtime IDs, raw bindings or Herdr aliases.
+A location can be 2,048 UTF-8 bytes at most, and a reference revision 128 bytes. a-stack rejects locations that start with an executable URL scheme (`javascript:`, `data:` or `vbscript:`). Programs that show references must show all text as plain text, and must treat a reference as text to copy. They must not turn it into markup or a link.
 
-1. `POST /v1/session/snapshot` with `{workspace_id, session_id, known_revision?}` returns `SessionSnapshot`: `source: "local-service"`, `captured_at`, the Session including lifecycle/read/graph revisions, `unchanged`, and counts for Tasks/agents/dependencies/assignments. A matching known revision returns `unchanged: true` and omits counts. Retain saved data; omitted counts do not mean an empty graph.
-2. `POST /v1/session/page` with context plus `{kind, read_revision?, after?, limit?, task_id?}` returns `{read_revision, items, next?}`. Collections are `tasks`, `agents`, `assignments`, `dependencies`, `references`, `history`, `graph_history`. `references`/`history` require a Task; assignment/dependency pages may filter by Task (dependencies filter incoming edges). Other collections reject a Task filter.
-3. `POST /v1/task/show` with context and `{task_id, read_revision?}` returns `TaskDetail`: current Task summary, description/report/reason/result, current open question and read revision. Assignees/references/dependencies are separate pages, so one Task cannot produce unbounded nested arrays.
+## Dependencies
 
-Read aliases are `/v1/task/{list,history,assignees,references,dependencies}`; they select the corresponding collection. Task detail aliases require a Task ID. CLI equivalents include `session snapshot`, `session page --page-kind KIND`, and the Task read commands above. Lists default to 50, maximum 100 records, and also enforce a **768 KiB encoded-item budget** with continuation. No retained Task is silently dropped to fit one response.
+`dependency add --from A --to B` means that B depends on A. `dependency remove` takes the same two Tasks. Both commands need the Orchestrator and an operation ID. Their `--expected-revision` is the Session's `graph_revision` from `session inspect`. It is not the lifecycle revision or a Task revision.
 
-Task overview items include ID/title/ticket, progress/revision, Unassigned/assignee count, Needs you, reference/prerequisite/cancelled-prerequisite counts, actor IDs and creation/update/report times. They omit report/description bodies. Assignment items pair Task and Agent IDs with names and assignment receipt time; agent pages provide the sanitized team metadata. Agent runtime observations have their own `observed_at`, `runtime_source` (`not-observed` or `caller-observation`) and `runtime_verified: false` until a later verified integration. Task age uses `updated_at`/`report_at`; runtime age uses `observed_at`, relative to snapshot `captured_at` plus elapsed display time. No runtime observation is inferred from Task progress.
+In the same transaction, a-stack rejects a duplicate dependency, a dependency from a Task to itself, a dependency between two Sessions and a dependency that makes a cycle. Two opposite dependencies that are each valid alone cannot both be committed.
 
-For one coherent graph, capture the manifest, then load all Task/agent/assignment/dependency pages pinned to its `session.read_revision`. Cursors are bound to Session, collection, optional Task, revision and keyset position. Any intervening visible mutation returns `conflict` with the new read revision; restart collection and retain the last complete view. Never merge inconsistent pages or replace saved data with an empty graph on a connection error. Each read holds only its own short transaction; no transaction spans polling/network waits.
+`dependency history` lists the compact history of dependency changes. `task dependencies --task ID` lists the prerequisites of a Task and their current progress. Task details also show `cancelled_prerequisite_count`.
 
-Fetch selected Task detail/history/references on demand with that revision. History responses hydrate changed text/question/reference records; large old reports paginate instead of copying into every event or a single response. Use `graph_revision` to distinguish topology changes from report/attention/status updates and preserve positions/selection/viewport on ordinary updates. Stable ID ordering is available; browser layout/ranks remain the browser ticket's work.
+Creating a Task or changing a dependency increases `graph_revision`. Other Task changes increase the Task revision and the Session `read_revision`, but not `graph_revision`. When a prerequisite is finished or cancelled, its dependent Tasks do not change, and they can still be finished.
 
-The foundation client accepts at most **1 MiB per response**. Tests exercise worst escaped 64 KiB description/report plus notes/question (831,851-byte detail) and retained history split across four pages (largest 432,112 bytes). Actual 10/100/1,000-Task fixtures enumerate every Task in 1/1/10 pages; the 1,000-Task fixture's overview collection is about 509 KiB total, with pages about 51 KiB. These are backend fixture measurements, not a UI or production throughput promise. No total retained Task/history limit or purge is introduced.
+## Closed Sessions
 
-## Handoff to mail and browser slices
+A closed Session keeps all statuses and history. It rejects Task, graph and question changes until the Operator reopens it. Authorized reads and the original receipts stay available. No Task command starts or stops Agent processes or calls Herdr.
 
-Schema v3 adds `tasks`, immutable `task_content`, current `task_assignees`, retained `task_questions`/`task_references`, delta `task_history`, active `dependencies` and retained `graph_history`; it adds `sessions.graph_revision`. Actor/content IDs are stable across rebind/role/runtime loss. Assignee junction foreign keys enforce same-Session endpoints. Existing populated v1/v2 data upgrades transactionally; unsupported future schemas still reject.
+## Read API
 
-Mail should use `ReadAssignedTask(ctx, tx, principal, Context, taskID)` for current registration/membership, including closed authorized reads. Sends additionally call `OpenSession` in the **same** `Store.Mutate.apply` transaction; append-only mail need not require a Task revision. Replay must check current membership too. `task_assignees_agent(agent_id, task_id)` supports caller Task lookup; it is not an unread ledger. Existing Task/Session read endpoints must remain free of mail bodies.
+All read endpoints below use authenticated `POST` JSON requests and return a `data` object. They use the same `Host`, `Origin` and `X-A-Stack-Instance` checks as the rest of the [HTTP API](foundation.md#http-rules), and they reject unknown fields. The Operator, the registered Agents of the Session and the Session's browser credentials can use them. Browser credentials cannot change anything, and cannot use the lifecycle, private or storage endpoints. These reads never return mail, credential hashes, tokens, runtime IDs, raw bindings or Herdr aliases.
 
-Browser code can use the manifest/pages/detail contract without changing Task mutations or reading SQLite directly. It must add its scoped view bootstrap/conditional polling/assets, verify rendering in both themes, and preserve the approved prototype. Current read data contains no automatic-delivery authority: bindings remain private/unverified and Herdr integration belongs to its own slice.
+1. `POST /v1/session/snapshot` with `{workspace_id, session_id, known_revision}` returns a `SessionSnapshot`. `known_revision` is optional. The snapshot has `source: "local-service"`, `captured_at`, the Session with its lifecycle, read and graph revisions, `unchanged`, and the counts of Tasks, Agents, dependencies and assignments. If `known_revision` matches, the response has `unchanged: true` and no counts. Keep your saved data in that case. Missing counts do not mean an empty graph.
+2. `POST /v1/session/page` with the context and `{kind, read_revision, after, limit, task_id}` returns `{read_revision, items, next}`. All fields after `kind` are optional, and `next` is present only when more items follow. The kinds are `tasks`, `agents`, `assignments`, `dependencies`, `references`, `history` and `graph_history`. `references` and `history` need a Task. `assignments` and `dependencies` can filter by Task. For dependencies, the filter returns the Task's prerequisites. The other kinds reject a Task filter.
+3. `POST /v1/task/show` with the context and `{task_id, read_revision}` returns a `TaskDetail`: the Task summary, the description, report, reason and result, the open question and the read revision. `read_revision` is optional. Assignees, references and dependencies are separate pages, so one Task can never make a response grow without limit.
+
+The endpoints `/v1/task/{list,history,assignees,references,dependencies}` are short forms of `session page` for one kind. All of them except `list` need a Task ID. In the CLI, use `session snapshot`, `session page --page-kind KIND` and the Task read commands.
+
+A page returns 50 records by default and 100 at most. A page also stops at 768 KiB of encoded items and then gives a `next` cursor. a-stack never drops a retained Task to make a response fit.
+
+### What a page contains
+
+A Task item has:
+
+- The ID, the title and the Ticket reference.
+- The progress and the revision.
+- The Unassigned flag and the number of assignees.
+- The Needs you flag.
+- The numbers of references, prerequisites and cancelled prerequisites.
+- The actor IDs, and the creation, update and report times.
+
+It has no report or description body.
+
+An assignment item has the Task and Agent IDs, the Agent name and the time of the assignment. Agent pages give the team metadata without private data. An Agent's runtime observation has its own `observed_at`, a `runtime_source` (`not-observed` or `caller-observation`) and `runtime_verified: false`. The age of a Task comes from `updated_at` and `report_at`. The age of a runtime observation comes from `observed_at`. Both are relative to the snapshot's `captured_at` plus the time that has passed since. a-stack never derives a runtime observation from Task progress.
+
+### Read a consistent graph
+
+To read one consistent graph, get the snapshot first. Then load all pages of Tasks, Agents, assignments and dependencies with its `session.read_revision`. A cursor is bound to the Session, the kind, the optional Task, the revision and a keyset position. If a visible change happens in between, the next page returns `conflict` with the new read revision. Then start the collection again, and keep the last complete view until the new one is complete. Never mix pages from different revisions. Never replace saved data with an empty graph because of a connection error. Each read uses its own short transaction. No transaction stays open while a client waits or polls.
+
+Load the details, history and references of a selected Task only when you need them, with the same revision. A history response includes the changed texts, questions and references of each entry. Large old reports are paged, and are not copied into every event or into one response. Use `graph_revision` to tell changes to the graph apart from updates of reports, questions or status. On an ordinary update, keep the positions, the selection and the view. Items come in a stable ID order.
+
+### Measured sizes
+
+The client accepts 1 MiB at most for each response. The tests use the worst case of an escaped 64 KiB description and report plus notes and a question: an 831,851-byte detail response. Retained history in the tests needs four pages, and the largest page is 432,112 bytes.
+
+Fixtures with 10, 100 and 1,000 Tasks list every Task in 1, 1 and 10 pages. For 1,000 Tasks, the Task collection is about 509 KiB in total, with pages of about 51 KiB. These are measurements of backend fixtures. They make no promise about the browser view or about production throughput. a-stack sets no limit on the total number of retained Tasks or history entries, and it never deletes them.
+
+## Internals
+
+Schema v3 adds `tasks`, immutable `task_content`, current `task_assignees`, retained `task_questions` and `task_references`, delta `task_history`, active `dependencies` and retained `graph_history`. It also adds `sessions.graph_revision`. Actor and content IDs stay stable after a rebind, a role change or a lost runtime. Foreign keys on the assignee table make sure that the Task and the Agent are in the same Session. An existing v1 or v2 database is upgraded in one transaction. Unsupported future schemas are still rejected.
+
+Mail code uses `ReadAssignedTask(ctx, tx, principal, Context, taskID)` to check the current registration and membership, also for authorized reads in a closed Session. A send also calls `OpenSession` in the same `Store.Mutate` apply transaction. Mail is append-only, so a send does not need a Task revision. A replay also checks current membership. The index `task_assignees_agent(agent_id, task_id)` lets a caller find its Tasks. It is not a record of unread mail. The Task and Session read endpoints never return mail bodies.
+
+The read data gives no authority for automatic notices. Runtime bindings stay private and unverified in these reads. Herdr notices are a separate part, described in [Mention notices](notifications.md).

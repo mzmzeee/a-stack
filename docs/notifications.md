@@ -1,20 +1,26 @@
-# Herdr mention notices
+# Mention notices
 
-Task mail always works through ordinary CLI checks. Notifications are an optional nudge to check that mail, separate from reading, Task progress and Needs you. Successful input submission does not establish that a model read or acted on anything.
+Task mail always works through ordinary mail checks. A mention notice is an optional nudge: when an Agent is mentioned with `@name`, a-stack can tell it through Herdr to check its mail. A notice is separate from reading mail, from Task progress and from Needs you. When Herdr accepts a notice, this does not prove that the model read the mail or acted on it.
 
-## Setup and supported combinations
+## Turn on notices
 
-Start the service explicitly with an installed Herdr executable to opt in:
+To turn on notices, start the service with an installed Herdr executable:
 
 ```sh
 ./a-stack serve --state-dir "$state_dir" --herdr-executable /absolute/path/to/herdr --json
 ```
 
-Without that flag, delivery is disabled and mail remains available. Missing/unsupported integration data leaves references pending with a diagnostic and bounded backoff; it does not reject mail or Task updates. No accounts, background agent launcher or global Herdr settings are configured.
+Without this flag, notices are off and mail works as usual. If the integration data is missing or not supported, the notices stay pending with a diagnostic, and a-stack tries again with a bounded backoff. Mail and Task updates still work. a-stack configures no accounts, no background agent launcher and no global Herdr settings.
 
-The only enabled combination is **native Codex 0.164.0 with Herdr 0.9.5**, verified in a dedicated disposable Linux fixture on 2026-10-24 (Herdr client/server 0.9.5, protocol 22; actual native `/status`, gpt-6.1-sol/OpenAI/xhigh/Full Access through the existing oc/YOLO launcher). Other harnesses, unknown versions and even another Codex patch version remain mail-only. The optional test-only fixture service permits one exact disposable binding for isolated rechecks. Complete declared/current identity checks remain mandatory for production delivery.
+## Supported combination
 
-Enroll the recipient using the [lifecycle guide](lifecycle.md). Attach its fresh registration with `agent attach --runtime-file PRIVATE_FILE`; replacing an established binding requires explicit Operator `agent rebind`, including credential rotation. Preserve a private JSON binding with:
+Only one combination is turned on: native Codex 0.164.0 with Herdr 0.9.5. It was verified on 2026-10-24 in a dedicated, disposable Linux fixture. The fixture had Herdr client and server 0.9.5 with protocol 22, and the actual native `/status` (gpt-6.1-sol, OpenAI, xhigh, Full Access) through the existing oc/YOLO launcher.
+
+All other harnesses, unknown versions and even other Codex patch versions stay mail-only. A test-only fixture service allows one exact disposable binding, for isolated checks. Production delivery always needs the complete identity checks below.
+
+## Enroll a recipient
+
+Enroll the recipient as described in [Workspaces, Sessions and Agents](lifecycle.md). Attach its new registration with `agent attach --runtime-file PRIVATE_FILE`. To replace a binding that is already set, the Operator must run `agent rebind`, which also rotates the credential. Keep the binding in a private JSON file like this one:
 
 ```json
 {
@@ -29,57 +35,120 @@ Enroll the recipient using the [lifecycle guide](lifecycle.md). Attach its fresh
 }
 ```
 
-These are private captured values, not identifiers to guess or copy from another agent. Herdr aliases follow its lowercase name grammar and remain distinct from a-stack Agent names. Before delivery, the adapter requires complete binding fields, an enabled exact declared harness/version, Herdr CLI 0.9.5, and a current metadata match for alias, pane, terminal, harness and native Session ID/source. Working, Idle and Done accept normal queued input; Blocked, Unknown, stopped/missing or changed targets do not. No idle wait is imposed. Herdr's `agent get` reports no observed harness version: `harness_version` is a registration declaration, distinct from dedicated queue-test evidence. Rebinding/upgrade setup must keep that declaration accurate.
+Record these values from the real running Agent. Do not guess them, and do not copy them from another Agent. Herdr aliases follow Herdr's lowercase name rules and are separate from a-stack Agent names.
 
-The service forces the recorded `HERDR_SOCKET_PATH` and passes explicit target arguments. It removes inherited Herdr Session/pane/machine selectors and unrelated credential variables. Commands are argument arrays: version, scoped `agent get`, and `agent prompt PANE NOTICE` with a five-second process-context deadline. Herdr 0.9.5 permits its CLI `--timeout` only with `--wait`; normal submission uses neither flag. Only bounded allowlisted metadata/error codes are decoded. No terminal text/title/cwd, raw diagnostic, transcript, body, credential or private path is logged or copied into a notice. No pane injection, permission-dialog response, agent rename/start/restart or lifecycle control is used. The prompt is one fixed instruction to run the recipient's own mail check.
+Before a delivery, the adapter checks all of these:
 
-## Durable delivery and recovery
+- All binding fields are present.
+- The declared harness and version are the supported pair.
+- The Herdr CLI is version 0.9.5.
+- Herdr's current metadata matches the alias, pane, terminal, harness, and the native session ID and its source.
 
-The mail transaction stores one body and pending recipient references before signaling the dispatcher after commit. The dispatcher immediately coalesces already-pending references across the recipient's assigned Tasks; it adds no batching delay. One batch captures at most 500 exact message/recipient references plus the recipient's binding revision/hash. A partial unique index permits one submitting batch per Session/Agent. The initial service drain serializes recipients, bounded to four checks per pass; more ready work triggers another pass. New arrivals remain pending for a later batch.
+A target in the state Working, Idle or Done accepts normal queued input. A target that is Blocked, Unknown, stopped, missing or changed does not. a-stack does not wait for the target to be idle.
 
-External processes run outside SQLite transactions. After current runtime metadata is checked, the claim and final preflight recheck Session openness, assignment and binding. Removal permanently suppresses references in the same transaction as unassignment. All outcome/recovery writes target only captured references still in `submitting`, preserving terminal suppression and excluding later arrivals. Rejoining/rebinding never revives suppressed or uncertain history notifications.
+Herdr's `agent get` does not report the harness version. So `harness_version` is what you declare at registration, and it is separate from the queue-test evidence. When you rebind or upgrade an Agent, keep this declaration correct.
+
+## How a-stack calls Herdr
+
+The service sets `HERDR_SOCKET_PATH` to the recorded endpoint, and it passes the target explicitly in the arguments. It does not pass on inherited Herdr session, pane or machine selectors or unrelated credential variables. Each command is an argument array: the version check, a scoped `agent get`, and `agent prompt PANE NOTICE`. Each process has a deadline of five seconds. Herdr 0.9.5 allows its CLI `--timeout` only together with `--wait`, so a normal submission uses neither flag.
+
+The notice is always this fixed text:
+
+> New a-stack Task mail mentions you. Run your own a-stack mail check with your registered Workspace, Session and Agent credential.
+
+a-stack decodes only a bounded allowlist of metadata fields and error codes. It never logs terminal text, titles, working directories, raw diagnostics, transcripts, mail bodies, credentials or private paths, and it never puts them in a notice. It does not inject text into panes, answer permission dialogs, rename, start or restart Agents, or control their lifecycle.
+
+## Delivery and recovery
+
+The mail transaction stores the body once, with a pending reference for each mentioned recipient. After the commit, it signals the dispatcher. The dispatcher at once groups the references that are already pending for that recipient, across all of the recipient's Tasks. It adds no batching delay.
+
+- One batch holds at most 500 exact message and recipient references, plus the recipient's binding revision and hash.
+- A partial unique index allows only one submitting batch per Session and Agent.
+- The service serializes recipients and checks at most four per pass. If more work is ready, it starts another pass.
+- Mentions that arrive during a batch stay pending for a later batch.
+
+Herdr commands run outside SQLite transactions. First the dispatcher checks the current runtime metadata. Then the claim and a final preflight check again that the Session is open, that the Agent is still assigned and that the binding has not changed. An unassignment permanently suppresses the references in the same transaction. All outcome and recovery writes change only the captured references that are still `submitting`. So a suppression stays final, and later mentions are not included. A rejoin or a rebind never brings back suppressed or uncertain notices.
 
 | State | Meaning |
 | --- | --- |
-| `pending` | Waiting for an eligible target or a known pre-input retry |
-| `submitting` | Exact covered references captured before external input |
-| `submitted` | CLI acknowledged input submission; no read/action acknowledgment |
-| `uncertain` | Input may have been sent; automatic resend is prohibited |
-| `suppressed` | Membership removal invalidated this delivery reference permanently |
-| `self` | Retained mention attribution with no notification |
+| `pending` | Waiting for an eligible target, or for a retry after a failure that happened before any input |
+| `submitting` | Captured in a batch before the input is sent |
+| `submitted` | The Herdr CLI accepted the input. There is no proof that the Agent read or acted. |
+| `uncertain` | The input was possibly sent. a-stack never resends it automatically. |
+| `suppressed` | The recipient was removed from the Task. This reference will never be delivered. |
+| `self` | A mention of the sender itself, kept for attribution, with no notice |
 
-A process start failure or Herdr's explicit pre-input `agent_blocked` response can return captured references to pending. Unknown failures, malformed success, timeout or cancellation after child start become uncertain. Startup and recovery after a failed outcome commit quarantine surviving submitting references as uncertain; fresh pending references can form another batch. Storage failure never acknowledges a successful outcome that was not committed. Recovery does not submit input or infer that an old target is still current; every later eligible delivery verifies the current binding again.
+If the process cannot start, or Herdr answers `agent_blocked` before any input, the captured references go back to `pending`. An unknown failure, malformed success output, a timeout or a cancellation after the process started makes them `uncertain`. At startup, and after a failed commit of an outcome, recovery marks the remaining `submitting` references as `uncertain`. New pending references can form another batch.
 
-Retry diagnostics use 5, 10, 20, then 30 seconds of backoff, with a five-second bounded wake tick and immediate postcommit wakeups. Closed Sessions pause new claims. Explicit reopen/resumption can make still-pending work eligible; nothing resets terminal references. A notice already past final preflight can finish during a concurrent close/rebind/removal. Herdr 0.9.5 provides no atomic expected-occupant guard between lookup and input, so that residual race remains. Notices stay generic and subsequent mail fetches independently enforce current assignment. See [the tagged prompt contract](https://github.com/herdrdev/herdr/blob/v0.9.5/docs/next/website/src/content/docs/agent-automation.mdx) and ADR4.
+A storage failure never records a successful outcome that was not committed. Recovery sends no input and does not assume that an old target is still current. Every later delivery checks the current binding again.
 
-## Diagnostics and bounded maintenance
+After a failure, a-stack waits 5, 10, 20 and then 30 seconds before it tries the target again. A timer wakes the dispatcher every five seconds, and each commit wakes it at once. A closed Session pauses new claims. When the Session is reopened, its pending notices can be sent again. Nothing resets a final state.
+
+A notice that has passed the final preflight can still finish during a concurrent close, rebind or removal. Herdr 0.9.5 has no atomic check that the expected Agent is still in the pane between the lookup and the input, so this race remains. That is why notices stay generic, and why each later mail read checks the current assignment again. See the [tagged Herdr prompt contract](https://github.com/herdrdev/herdr/blob/v0.9.5/docs/next/website/src/content/docs/agent-automation.mdx) and [ADR 0004](adr/0004-herdr-notifications.md).
+
+## Diagnostics and maintenance
 
 ```sh
 ./a-stack notifications status --state-dir "$state_dir" \
   --workspace "$workspace_id" --session "$session_id" --json
-# An Agent selects its private credential and sees only its own delivery state.
-# Operator-only maintenance pass, with default 4 / maximum 16 recipient checks:
+# An Agent gives its own private credential and sees only its own delivery state.
+# Operator-only maintenance pass, with 4 recipient checks by default and 16 at most:
 ./a-stack notifications drain --state-dir "$state_dir" \
   --workspace "$workspace_id" --session "$session_id" --limit 4 --json
 ```
 
-Status defaults to 50 Agents, caps at 100 and accepts `--after` from `data.next`; Operator may select `--agent`. It reports enabled/configured state, safe reason, next-attempt time and per-delivery-state reference counts. An Agent sees only itself; browser credentials cannot use either endpoint. No private binding, message body or unread/read position is returned. The HTTP endpoints are authenticated POST `/v1/notifications/status` and `/v1/notifications/drain` with explicit Workspace/Session and the same fields. Drain is bounded maintenance over durable batches, not a new mail mutation or resend operation; repeating it never resends submitted/uncertain references.
+`notifications status` lists 50 Agents by default and 100 at most. To get the next page, give the `data.next` value with `--after`. The Operator can select one Agent with `--agent`. An Agent sees only itself. The status shows whether notices are enabled, a safe reason, the time of the next attempt, and the number of references in each state. It never shows private bindings, mail bodies or read positions.
+
+`notifications drain` runs one bounded maintenance pass over the durable batches. It does not change mail, and it does not resend anything. If you run it again, it never resends `submitted` or `uncertain` references.
+
+The HTTP endpoints are authenticated `POST /v1/notifications/status` and `POST /v1/notifications/drain`, with explicit Workspace and Session and the same fields. Browser credentials cannot use either endpoint.
 
 ## Measurements and limits
 
-The deterministic fake-executable fixture retained exactly 1,120 messages, 54,300 body bytes, 3,320 mention/batch-reference rows and 29 submitted batches. Twenty isolated sends to one recipient used twenty submissions. A waiting 100-message burst with three recipients used three submissions; a 1,000-message burst with three recipients used six due to the 500-reference batch cap. Later arrivals and multiple Tasks are tested separately. Bodies remain single-copy.
+### Fake Herdr fixture
 
-One local run on 2026-10-24 (Intel Core i5-13420H, Linux x86_64, Go 1.27.3, SQLite 3.53.4) after the prompt-argv correction measured isolated send-through-fake-submission p50 10,386 µs / p95 11,474 µs. The 100-message burst drained in 40,682 µs and the 1,000-message burst in 124,654 µs. These include fake process launch/metadata/SQLite work and exclude real harness queuing/model action. They are observations, not a production performance promise.
+A deterministic fixture with a fake Herdr executable retained exactly 1,120 messages, 54,300 body bytes, 3,320 mention and batch reference rows, and 29 submitted batches.
 
-Physical DB grew from 4,096 to 3,338,240 bytes and WAL from 770,472 to 4,614,432 bytes. Integrity-checked SQLite compact backups grew from 237,568 to 3,059,712 bytes. Read-only Python SQLite 3.54.0 `dbstat` analysis measured growth of 8,192 bytes in batch rows and 471,040 bytes in exact batch-reference rows; the inflight index and three diagnostic rows each remained one 4,096-byte page. Mail message/mention tables grew 258,048/610,304 bytes, their pending/membership indexes 344,064/507,904 bytes and operation receipts 413,696 bytes. No live main-only database copy was used. Exact references and retained attempt metadata have storage cost; no fixed total-retention bound is promised.
+- Twenty separate sends to one recipient used twenty submissions.
+- A burst of 100 waiting messages with three recipients used three submissions.
+- A burst of 1,000 messages with three recipients used six submissions, because of the cap of 500 references per batch.
 
-The separate root-controlled native fixture verified two completed notice-triggered mail checks using the corrected no-wait argv. While a 45-second foreground work step was active, the working notice steered the native context before that step and the initial turn ended; its own authorized check returned four retained message IDs including the fresh mention. After the prior turn ended, a new idle notice triggered one own check returning all five retained IDs. Neither the initial work nor timer completion triggered a proactive check. This establishes observed working steering and idle delivery for this pair, not universal end-of-turn queueing.
+Later arrivals and multiple Tasks are tested separately. Bodies are still stored once.
+
+One local run on 2026-10-24 (Intel Core i5-13420H, Linux x86_64, Go 1.27.3, SQLite 3.53.4), after the correction of the prompt arguments, measured these times:
+
+- A single send through the fake submission: 10,386 µs at p50 and 11,474 µs at p95.
+- The burst of 100 messages: 40,682 µs to drain.
+- The burst of 1,000 messages: 124,654 µs to drain.
+
+These times include the fake process start, the metadata checks and the SQLite work. They do not include real harness queues or model actions. They are observations, not a promise of production performance.
+
+The physical database grew from 4,096 to 3,338,240 bytes, and the WAL from 770,472 to 4,614,432 bytes. Integrity-checked compact SQLite backups grew from 237,568 to 3,059,712 bytes. A read-only `dbstat` analysis with Python's SQLite 3.54.0 measured these increases:
+
+- Batch rows: 8,192 bytes. Exact batch reference rows: 471,040 bytes.
+- The inflight index and the three diagnostic rows each stayed at one 4,096-byte page.
+- Mail message and mention tables: 258,048 and 610,304 bytes. Their pending and membership indexes: 344,064 and 507,904 bytes. Operation receipts: 413,696 bytes.
+
+No copy of only the live main database was used. Exact references and retained attempt data use storage, and a-stack promises no fixed limit on total retention.
+
+### Native Codex fixture
+
+A separate fixture with a real native Codex, under root control, verified two completed mail checks that a notice started. Both used the corrected arguments without `--wait`.
+
+- Working: while a 45-second foreground work step was active, the notice steered the native context before that step and the first turn ended. The Agent's own authorized check returned four retained message IDs, including the new mention.
+- Idle: after the earlier turn ended, a new notice started one check by the Agent itself, which returned all five retained IDs.
+
+Neither the first work step nor the end of the timer started a check without a notice. This shows that steering while working and delivery while idle were observed for this pair. It does not show that all harnesses queue input until the end of a turn.
 
 | Completed phase | Receipt stamp → submission record | Claim stamp → submission record | Receipt stamp → notice helper | Own mail CLI |
 | --- | ---: | ---: | ---: | ---: |
 | Working | 305.790 ms | 302.890 ms | 7,505.239 ms | 4.762 ms |
 | Idle | 305.020 ms | 302.462 ms | 3,751.567 ms | 3.413 ms |
 
-These are two individual same-machine UTC wall-clock observations, without a percentile or SLA. Message `received_at` is set inside the send transaction, before commit; claim time is also an in-transaction stamp. Submission record time follows Herdr's response, and the helper timestamp is invocation after the model sees/handles the notice, not exact input arrival. Scheduling and model handling are included; mail CLI duration includes subprocess/HTTP work. None is pure postcommit notification latency. Two earlier corrected submissions had incomplete fixture metadata capture and are excluded from this timing evidence. The initial invalid-argv attempt stayed uncertain across restarts without another submission association. Durable totals were five bodies/mention/batch references and five batches: four submitted, one uncertain. The fixture was verified and closed, with private credentials cleaned.
+These are two single wall-clock observations in UTC on the same machine, with no percentile and no service level. The message `received_at` is set inside the send transaction, before the commit. The claim time is also set inside its transaction. The submission record time comes after Herdr's response. The helper time is when the model ran the notice helper after it saw the notice, not the exact time that the input arrived. The times include scheduling and model handling, and the mail CLI time includes the subprocess and HTTP work. None of them is a pure notification latency after the commit.
 
-Normal/race tests use real SQLite/HTTP/CLI and a fake executable for endpoint/argv/environment, batching, concurrent arrival, recipient serialization, target changes, closure/removal, bounded errors, migration rollback and a process killed after simulated input. Exact production predicate tests reject unverified versions/kinds; live fixture proof does not widen the support list automatically.
+Two earlier corrected submissions had incomplete fixture metadata and are not part of this timing evidence. The first attempt, with invalid arguments, stayed `uncertain` across restarts and was never submitted again. In total, the fixture stored five bodies, five mention and batch references, and five batches: four submitted and one uncertain. The fixture was verified and closed, and its private credentials were removed.
+
+### Tests
+
+The normal and race tests use real SQLite, HTTP and the CLI, with a fake executable. They cover the endpoint, arguments and environment, batching, concurrent arrivals, the serialization of recipients, target changes, closure and removal, bounded errors, migration rollback, and a process that is killed after simulated input. Tests of the production checks reject unverified versions and kinds. A successful live fixture does not add a combination to the supported list automatically.

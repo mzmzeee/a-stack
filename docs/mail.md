@@ -1,10 +1,12 @@
-# Retained Task mail
+# Task mail
 
-Each Task has one retained, ordered mail history. Only current assignees can send, read or recover a send receipt. The Orchestrator must be assigned to the Task; Operator and browser credentials grant no mail access. Every command requires explicit `--workspace ID --session ID`, plus an Agent credential. Add the same `--state-dir` to all commands when using custom state.
+Each Task has one ordered Task mail history, and a-stack keeps all of it. Only the current assignees of the Task can send mail, read mail or get back the receipt of a send. The Orchestrator must be assigned to the Task too. Operator and browser credentials give no mail access.
 
-## Commands and API
+Every mail command needs `--workspace ID --session ID` and an Agent credential. If you use a different state directory, add the same `--state-dir` to every command.
 
-These examples use enrolled identities and an assigned Task from the [lifecycle](lifecycle.md) and [Task](tasks.md) guides.
+## Commands
+
+These examples use the Agents and the assigned Task from [Workspaces, Sessions and Agents](lifecycle.md) and [Tasks and the Task graph](tasks.md).
 
 ```sh
 ./a-stack mail send --as agent --credential-file "$worker_a_credential" \
@@ -17,7 +19,7 @@ These examples use enrolled identities and an assigned Task from the [lifecycle]
 ./a-stack mail read --as agent --credential-file "$worker_a_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --limit 100 --json
-# Save data.cursor, then supply it to continue this Task's history.
+# Save data.cursor. Give it in the next read to continue this Task's history.
 ./a-stack mail read --as agent --credential-file "$worker_a_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --cursor "$mail_cursor" --json
@@ -26,47 +28,89 @@ These examples use enrolled identities and an assigned Task from the [lifecycle]
   --cursor-file cursors.json --task-limit 50 --limit 100 --json
 ```
 
-`--body-file -` reads stdin; it conflicts with `--body`. Bodies must be nonblank, valid UTF-8 and at most 65,536 bytes. Larger documents/results use Task file references. Input is rejected, never truncated. `--mention NAME` accepts a name without `@` and may be repeated.
+`--body-file -` reads the body from stdin. You cannot use it together with `--body`. A body must not be blank, must be valid UTF-8 and can be 65,536 bytes at most. For larger documents or results, use Task file references. a-stack rejects a body that is too long. It never cuts it. `--mention NAME` takes a name without `@`. You can repeat it.
 
-All three endpoints are authenticated `POST` JSON under `/v1/mail/`, using the foundation's instance, Host/Origin and strict JSON checks. Context fields are `workspace_id` and `session_id`.
+## HTTP API
 
-| Endpoint | Additional request fields | `data` response |
+All three endpoints take authenticated `POST` JSON under `/v1/mail/`. They use the same instance, `Host`, `Origin` and strict JSON checks as the rest of the [HTTP API](foundation.md#http-rules). The context fields are `workspace_id` and `session_id`.
+
+| Endpoint | Other request fields | `data` in the response |
 | --- | --- | --- |
-| `send` | `task_id`, `operation_id`, `body`, optional `mentions` name array | Compact receipt: message `resource_id`/`body_ref`, sequence in `revision`, `outcome: "sent"` |
-| `read` | `task_id`, optional `cursor`, `limit` | `task_id`, `messages`, `cursor`, `more` |
-| `check` | optional `cursors` map, `after_task`, `task_limit`, `limit` | `tasks` array of read pages, optional `next_task` |
+| `send` | `task_id`, `operation_id`, `body`, optional `mentions` array of names | A compact receipt: the message `resource_id` and `body_ref`, the sequence number in `revision`, and `outcome: "sent"` |
+| `read` | `task_id`, optional `cursor` and `limit` | `task_id`, `messages`, `cursor`, `more` |
+| `check` | optional `cursors` map, `after_task`, `task_limit` and `limit` | A `tasks` array of read pages, and `next_task` when more Tasks follow |
 
-Each message has `id`, `task_id`, `sequence`, `sender_id`, `received_at`, `body` and sorted resolved `mention_ids`. Sequence increases within one Task. The service derives sender identity and UTC receipt time. Mail does not change Task progress, Task revision or the Session snapshot revision, and its bodies are absent from Task detail/history and browser snapshots.
+Each message has `id`, `task_id`, `sequence`, `sender_id`, `received_at`, `body` and `mention_ids`. `mention_ids` is the sorted list of the resolved Agent IDs. The sequence increases inside one Task. The service sets the sender and the UTC receipt time.
 
-## Independent continuation
+Mail does not change the Task's progress, the Task revision or the Session snapshot revision. Mail bodies never appear in Task details, Task history or browser snapshots.
 
-Reads consume nothing. A missing/empty Task cursor starts from the beginning, including for a new or rejoining assignee. Returned cursors identify the last message actually returned; an empty page preserves its position. `more` means more retained messages follow that position. Cursors are opaque, Task-bound keyset positions; malformed, wrong-Task and nonexistent sequence positions fail. Losing a cursor replays history.
+## Read positions
 
-Both reads and checks default to 100 messages and accept 1–500. Responses use an encoded data budget of 768 KiB, leaving space below the 1 MiB full response limit; a byte-limited page may contain fewer messages. A maximum-size, JSON-escaped body plus 500 resolved recipients fits in one response. No cursor advances past an omitted message.
+A read does not remove or mark anything. If a Task has no cursor or an empty one, the read starts at the first message. This is also true for a new assignee or an assignee that rejoins.
 
-`mail check` scans the caller's current assigned Tasks in Task-ID order. It defaults to 50 Tasks and accepts 1–100 through `--task-limit`. Its message limit and byte budget apply to the whole response. `cursors.json` is a JSON object mapping Task IDs to their most recently saved read cursors, for example `{"TASK_ID":"CURSOR"}`. It may be supplied through `--cursor-file -`; the input file is capped at 1 MiB. The CLI never writes it back.
+A returned cursor points to the last message that the response actually contains. An empty page keeps the same position. `more: true` means that more retained messages follow that position. Cursors are opaque keyset positions for one Task. a-stack rejects a malformed cursor, a cursor of a different Task and a position that does not exist. If you lose a cursor, the next read starts again from the first message.
 
-For each response, merge only the returned `tasks[].cursor` entries into your saved map, retaining all other positions. If `next_task` exists, call again with the merged map and `--after-task` set to that token. Continue until `next_task` is absent, then start the next round without `--after-task`. A Task whose page has `more: true` is revisited in that next round, or directly with `mail read`. This keeps aggregate checks bounded while preserving every Task's independent position. Scan continuations are bound to the Session and caller. Tasks removed before a later request are omitted; newly assigned Tasks earlier in the scan appear on the next round. There is no server read ledger, acknowledgment or unread counter.
+`mail read` and `mail check` return 100 messages by default. Use `--limit` with a value from 1 to 500. A response can hold 768 KiB of encoded data, which leaves space below the response limit of 1 MiB. So a page can contain fewer messages when they are large. A body of maximum size with JSON escapes and 500 resolved recipients fits in one response. A cursor never moves past a message that the response does not contain.
 
-## Mentions, access changes and retries
+### Check all your Tasks
 
-Names follow the Agent name grammar: 1–64 ASCII letters/digits/underscores/hyphens, starting with a letter or digit. A body mention starts at the beginning of text, after whitespace, or after opening punctuation (including an opening quote or `<`). It consumes the full name token, so `@worker-b-extra` never targets `worker-b`. Ordinary and quoted-local-part email addresses such as `person@worker-b.example` and `"person"@worker-b.example` do not mention `worker-b`; `Ask "@worker-b"` does. Parsing does not depend on Task membership; every parsed or explicit name must then resolve to a current assignee in the send transaction. Unknown or nonmember names reject the entire send.
+`mail check` reads the caller's current Tasks in Task ID order. It reads 50 Tasks by default. Use `--task-limit` with a value from 1 to 100. The message limit and the size limit apply to the whole response.
 
-Body and explicit mentions are deduplicated. The implementation caps the union at **500 distinct recipients** to bound attribution in a single message response; repeated duplicates do not use additional slots. Resolved Agent IDs are retained, preventing later name reuse from retargeting messages. Self mentions retain attribution with state `self`, without a pending notification.
+`cursors.json` is a JSON object that maps each Task ID to the last cursor that you saved for it, for example `{"TASK_ID":"CURSOR"}`. You can also give it with `--cursor-file -`. The file can be 1 MiB at most. The CLI never writes the file.
 
-Assignment removal revokes read/send and matching receipt replay immediately, and suppresses that recipient's existing pending/submitting references in the same transaction. Rejoining restores the full retained history, including the interval away, but never restores those suppressed notices. Sent messages survive removal. Task completion/cancellation does not end mail. Closed Sessions retain authorized reads and matching receipt recovery, and reject new sends.
+After each response, follow these steps:
 
-Generate and retain an operation ID before sending. A same-ID, unchanged request returns the original receipt after a lost response or restart, provided the sender still has current read access. A changed payload conflicts. Retrying after closure can recover a committed send; an uncommitted send remains rejected. The body, sequence, resolved mention references and compact receipt commit together. Failed writes or a process crash before commit leave none of them visible. Reads, membership changes and closure serialize with sends using the existing SQLite transaction boundary.
+1. Merge only the returned `tasks[].cursor` values into your saved map. Keep all other positions.
+2. If the response has `next_task`, run the check again with the merged map and `--after-task` set to that value.
+3. Repeat until the response has no `next_task`.
+4. Start the next round without `--after-task`.
 
-## Notification handoff for #7
+If a Task's page has `more: true`, the next round reads more of it. You can also read it directly with `mail read`. This keeps each check bounded, and each Task keeps its own position.
 
-Schema version 4 introduces `mail_messages`, keyed by stable message ID with unique `(task_id, sequence)`, and `mail_mentions`, keyed by `(message_id, recipient_id)` with a composite message/Task foreign key. Each mention row is also a compact durable outbox reference; it contains no body. `NoticeState` values are `pending`, `submitting`, `submitted`, `uncertain`, `suppressed`, plus non-notifying `self`. `state_at` records the last state change. The pending index leads with state/recipient/message; the membership index leads with Task/recipient/state/message.
+A scan continuation belongs to one Session and one caller. Tasks that you were removed from in between do not appear. If you are assigned a new Task that comes earlier in the scan order, it appears in the next round. The server keeps no read records, acknowledgments or unread counts.
 
-Mail creates `pending`/`self` references and suppresses pending/submitting references on removal. The optional [notification dispatcher](notifications.md) owns exact durable batch coverage, runtime/binding validation, submission and uncertainty recovery outside mail transactions. `suppressed` remains terminal through an in-flight outcome update or rejoin. Surviving `submitting` references become uncertain on recovery and are never automatically resent. Closed Sessions pause unsent notices; they do not delete references. Generic notices contain no mail body, credential or private path. Fetching mail remains independently authorized even after a prompt is submitted.
+## Mentions
 
-## Measured storage and validation
+A mention name follows the Agent name rules: 1 to 64 ASCII letters, digits, underscores or hyphens, and it starts with a letter or digit.
 
-`go test ./internal/stack -run TestMailGrowth10000SingleCopyBodies -count=1 -v` sends 10,000 synthetic 56-byte messages, each mentioning three other assignees. One local run with bundled SQLite 3.53.4 retained exactly **10,000 message/body rows, 560,000 body bytes, 30,000 mention/pending rows and 10,000 send receipts**, with zero submissions. Bodies are stored once regardless of recipient count.
+In a body, a mention starts with `@`. The `@` must be at the start of the text, after white space, or after opening punctuation such as an opening quote or `<`. The mention takes the full name, so `@worker-b-extra` never mentions `worker-b`. Email addresses do not mention anyone, also with a quoted local part. For example, `person@worker-b.example` and `"person"@worker-b.example` do not mention `worker-b`, but `Ask "@worker-b"` does.
+
+The parser does not use Task membership. After parsing, each name from the body and from `--mention` must be a current assignee of the Task. Otherwise a-stack rejects the whole send.
+
+Names from the body and from `--mention` are counted once each. One message can mention 500 different recipients at most, so that the attribution in a response stays bounded. Repeated names do not use more places. a-stack stores the resolved Agent IDs. So if a name is used again later, old messages still point to the original Agent. A mention of yourself is stored with the state `self` and makes no notice.
+
+## Access changes
+
+When an Agent is unassigned from a Task, it loses read access, send access and receipt replay for that Task immediately. In the same transaction, a-stack suppresses that Agent's `pending` and `submitting` notices for the Task. If the Agent rejoins, it can read the full history again, including the messages from while it was away. Its suppressed notices stay suppressed. Messages that it sent stay in the history.
+
+Finishing or cancelling a Task does not end its mail. A closed Session still allows authorized reads and the recovery of matching receipts, but it rejects new mail.
+
+## Retries
+
+Choose an operation ID before you send, and keep it. If a response is lost, or the service restarts, send the same unchanged request with the same ID. It returns the original receipt, if the sender still has read access. A changed payload causes a conflict. After the Session is closed, a retry can still recover a committed send, but a send that was never committed stays rejected.
+
+The body, the sequence number, the resolved mentions and the compact receipt commit together. If a write fails, or the process crashes before the commit, none of them becomes visible. Reads, membership changes and closure run in order with sends, inside the SQLite transaction.
+
+## Storage for notices
+
+Schema version 4 adds two tables:
+
+- `mail_messages` has one row per message, with a unique `(task_id, sequence)`.
+- `mail_mentions` has one row per message and recipient, with a foreign key to the message and its Task. Each row is also a compact durable outbox entry for a notice. It contains no body.
+
+A mention row has a notice state: `pending`, `submitting`, `submitted`, `uncertain` or `suppressed`, or `self`, which makes no notice. `state_at` records the time of the last state change. The pending index starts with the state, the recipient and the message. The membership index starts with the Task, the recipient, the state and the message.
+
+Mail makes `pending` and `self` rows. An unassignment suppresses `pending` and `submitting` rows. The optional [notice dispatcher](notifications.md) does everything else outside the mail transactions: exact batches, runtime and binding checks, submission and recovery from uncertain outcomes.
+
+- `suppressed` is final, also when a submission is in progress or the Agent rejoins.
+- After a crash, rows that are still `submitting` become `uncertain`. a-stack never resends them automatically.
+- A closed Session pauses notices that were not sent. It does not delete the rows.
+- A notice is generic. It contains no mail body, credential or private path.
+- Even after a notice is submitted, the Agent's mail read is authorized separately.
+
+## Measured storage
+
+`go test ./internal/stack -run TestMailGrowth10000SingleCopyBodies -count=1 -v` sends 10,000 synthetic 56-byte messages. Each message mentions three other assignees. One local run with the bundled SQLite 3.53.4 retained exactly 10,000 message rows with their bodies, 560,000 body bytes, 30,000 pending mention rows and 10,000 send receipts. Nothing was submitted. Each body is stored once, however many recipients it has.
 
 | Storage | Before (bytes) | After (bytes) |
 | --- | ---: | ---: |
@@ -82,6 +126,18 @@ Mail creates `pending`/`self` references and suppresses pending/submitting refer
 | Message ID/Task index | 4,096 | 942,080 |
 | Operation receipts | 4,096 | 3,428,352 |
 
-Physical sizes include checkpoint/freelist effects; object sizes above come from `dbstat` on integrity-checked SQLite-produced compact backups, read using Python's SQLite 3.54.0. No live database was copied. The sends took 2,521.846 ms overall; core-send p50 was 221 µs and p95 436 µs. These fixture measurements exclude HTTP/CLI and establish no production throughput or latency promise. Indexes and receipt/notice metadata account for substantially more bytes than these short bodies. History and operation IDs have no total-retention cap in v1.
+The physical sizes include checkpoint and freelist effects. The object sizes come from `dbstat` on integrity-checked compact backups that SQLite made, read with Python's SQLite 3.54.0. No live database was copied.
 
-The mail tests use real SQLite/HTTP, CLI subprocesses and temporary state. They cover independent paging, encoded-byte limits with maximum bodies/recipients, late join/rejoin, credential replacement, membership/closure races, concurrent sequences, migration rollback, failed mention/receipt writes, and abrupt process exit after a mention insert followed by recovery. The standard normal/race suites, `go vet ./...` and build apply. Herdr delivery and physical power-loss behavior remain outside this slice.
+The sends took 2,521.846 ms in total. The core send took 221 µs at p50 and 436 µs at p95. These fixture measurements do not include HTTP or the CLI, and they make no promise about production throughput or latency. For short bodies like these, the indexes, receipts and notice data use much more space than the bodies. History and operation IDs have no total retention limit in v1.
+
+## Tests
+
+The mail tests use real SQLite and HTTP, CLI subprocesses and temporary state. They cover:
+
+- Independent paging, and size limits with maximum bodies and recipients.
+- Late join and rejoin, and credential replacement.
+- Races with membership changes and closure, and concurrent sequence numbers.
+- Migration rollback, and failed mention and receipt writes.
+- An abrupt process exit after a mention insert, and the recovery after it.
+
+The normal and race test suites, `go vet ./...` and the build all apply. Herdr delivery and physical power loss are not part of these tests.

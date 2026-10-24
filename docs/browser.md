@@ -1,40 +1,78 @@
-# Read-only Session browser
+# Browser view
 
-Run `serve` in one terminal, then open an explicit Workspace/Session:
+The browser view shows one Session: its Task graph, its Agents and the details of each Task. It is read-only. It cannot read Task mail or change anything.
+
+## Open the view
+
+Run `serve` in one terminal. Then open one Workspace and Session:
 
 ```sh
-a-stack open --workspace WORKSPACE_ID --session SESSION_ID
-# Print the URL without starting xdg-open:
-a-stack open --workspace WORKSPACE_ID --session SESSION_ID --no-browser --json
+./a-stack open --workspace WORKSPACE_ID --session SESSION_ID
+# Print the URL, but do not start xdg-open:
+./a-stack open --workspace WORKSPACE_ID --session SESSION_ID --no-browser --json
 ```
 
-The command supports the ordinary `--state-dir`, `--credential-file` and `--as` selection. An Operator or currently registered Session Agent can delegate its metadata read scope, including for a closed Session. A browser credential cannot delegate or call write, mail, storage or runtime endpoints. The URL is printed before `xdg-open` runs; opener failure leaves success and the usable URL on stdout, with a fixed diagnostic on stderr. JSON output is `{"data":{"url":"..."}}`.
+`open` accepts the usual `--state-dir`, `--credential-file` and `--as` flags. The Operator or a currently registered Agent of the Session can open the view, also for a closed Session. The view gets only the caller's read access to Session metadata. A browser credential cannot open another view or use the write, mail, storage or runtime endpoints.
 
-Treat the printed URL as a credential. The client generates a fresh random read secret and operation ID, submits only its SHA-256 hash to `POST /v1/browser/open`, and constructs `/view/WORKSPACE_ID/SESSION_ID#SECRET`. The service stores a scoped capability hash and scalar retry receipt, never the secret. Each invocation creates a fresh capability; a lost response can leave an unused hash. There is no automatic retry or expiry. Direct API callers retain the same operation ID and hash for a matching retry.
+`open` prints the URL before it runs `xdg-open`. If `xdg-open` fails, the command still succeeds, the URL is on stdout, and stderr shows a fixed message. With `--json`, the output is `{"data":{"url":"..."}}`.
 
-The page consumes the fragment immediately, removes it with `history.replaceState`, and retains the read secret in that tab's session storage. Reopening a fragment URL in the same document consumes the new fragment too. Reloading the clean URL works in the same tab; another tab without the fragment asks for a new `open` URL. The read secret is sent only in Authorization headers on same-origin data requests. It is absent from request paths, query strings, assets and logs. No Operator credential reaches the page.
+## Keep the URL private
 
-## Views and refresh
+The URL works like a credential. The client makes a new random read secret and operation ID. It sends only the secret's SHA-256 hash to `POST /v1/browser/open`, and it builds the URL `/view/WORKSPACE_ID/SESSION_ID#SECRET`. The service stores a hash of the scoped capability and a scalar retry receipt. It never stores the secret.
 
-The embedded HTML/CSS/JavaScript/SVG preserves the approved Graph/Agents controls and both themes. Graph arrows point from prerequisites to dependents; details also name both directions. Names wrap in full above cards. Shared Tasks use the same metadata in every Agent row, while the Unassigned row preserves work with no assignee. Progress and explicit Needs you requests are separate; the attention button opens a chooser when several Tasks need input. Viewing never resolves a request. Chooser buttons keep their identity across unrelated refreshes; if the focused request is resolved externally, focus moves to a remaining choice, or to the view tab when the chooser empties. Runtime state is separately labelled unverified with the age of its last observation; this age advances independently of successful polls.
+Each `open` makes a new capability. A lost response can leave a hash that nobody uses. There is no automatic retry, and the capability does not expire. A direct API caller keeps the same operation ID and hash for a matching retry.
 
-Tab arrows/Home/End switch views. Search Enter focuses the first matching card; card Enter opens details, and Escape closes details and restores focus. Search covers names, titles, ticket references and the bounded report preview. Status filtering includes Cancelled and Needs you. Drag empty graph space to pan; zoom and Fit are explicit controls. Graph filters dim unmatched nodes to preserve connection context; Agents filters hide unmatched cards.
+The page reads the secret from the URL fragment at once, removes the fragment with `history.replaceState`, and keeps the secret in the tab's session storage. If you open a URL with a new fragment in the same tab, the page uses the new fragment. You can reload the clean URL in the same tab. A different tab without the fragment asks you for a new `open` URL.
 
-While visible, the page polls the snapshot manifest every two seconds, sending `If-None-Match` and its known read revision. Authentication and Session authorization precede a matching ETag's empty 304 response. Changed manifests trigger all pages of Tasks, Agents, assignments and dependencies pinned to that one read revision. The page publishes a model only after all collections match the manifest counts; a conflict restarts collection, up to three attempts before backing off. Service instance changes refresh the public shell header and retry. Errors keep the last complete model and mark it saved/stale. Backoff increases from four to thirty seconds; hiding the page stops polling and aborts an active collection, and returning resumes it.
+The page sends the secret only in the `Authorization` header of data requests to the same origin. The secret is never in request paths, query strings, assets or logs. The Operator credential never reaches the page.
 
-The footer distinguishes the last successful local-service check from the snapshot's captured time/revision shown in About. A successful unchanged poll does not change report or runtime receipt times. Full description/report/reason/result/question and file references load only for the selected Task. Backend text is inserted as text, including literal markup. References are displayed/copied metadata, never navigated or fetched.
+## What the view shows
 
-## Read interface and bounds
+The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It keeps the approved Graph and Agents tabs and both themes.
 
-The existing Task projection adds optional `report_preview`: a prefix of up to **160 Unicode code points**, at most **640 UTF-8 bytes**, computed by SQLite `substr` from the retained `task_content` report. Empty reports omit the field. SQLite ends this preview at an embedded NUL; the full report is retained. No schema, copied body storage, history, authorization or revision rules change. The full report remains available through `task/show`. Cards reserve two lines for the preview so report-only changes do not change their geometry.
+- Graph arrows point from a prerequisite to its dependent Task. The details also name both directions.
+- Full names wrap above the cards.
+- A shared Task shows the same data in every Agent row. The Unassigned row shows Tasks with no assignee.
+- Progress and Needs you requests are shown separately. When several Tasks need input, the attention button opens a chooser. Viewing a Task never resolves its request.
+- The chooser buttons keep their identity across unrelated refreshes. If the focused request is resolved somewhere else, the focus moves to a remaining choice, or to the view tab when the chooser is empty.
+- The runtime state has an "unverified" label and the age of its last observation. The age increases also when polls succeed.
 
-`POST /v1/session/snapshot` now returns an ETag of the Session ID/read revision. `If-None-Match` is evaluated after the ordinary authenticated read. Existing JSON/known-revision behavior remains available to CLI clients. Collection limits and the 768 KiB page budget remain in force. The UI performs no per-Task detail collection during polling; only selected details are refreshed when their Task revision changes.
+## Keyboard and controls
 
-The public surface consists of exact `/view/WORKSPACE_ID/SESSION_ID`, `/assets/app.css` and `/assets/app.js` resources, with no filesystem lookup. Host and Origin checks apply before assets or data; queries and body-bearing GETs are refused. CSP restricts scripts/connections to the same origin and forbids framing, forms and base URL changes. Inline styles support numeric graph positioning; data never becomes CSS/HTML. The service exposes no CORS grants, generic file endpoint, arbitrary navigation, mail bodies, transcripts or private runtime bindings.
+- The arrow keys, Home and End switch between the tabs.
+- In search, Enter moves the focus to the first matching card.
+- On a card, Enter opens the details. Escape closes them and returns the focus.
+- Search looks at Agent names, titles, Ticket references and the short report preview.
+- The status filter includes Cancelled and Needs you.
+- Drag an empty part of the graph to move it. Zoom and Fit are separate controls.
+- In the Graph tab, filters dim the cards that do not match, so the connections stay visible. In the Agents tab, filters hide them.
+
+## Refresh
+
+While the page is visible, it polls the snapshot every two seconds. It sends `If-None-Match` and its known read revision. The service checks authentication and Session access before it returns an empty 304 response for a matching ETag.
+
+When the snapshot has changed, the page loads all pages of Tasks, Agents, assignments and dependencies for that one read revision. It shows the new model only when all collections match the counts in the snapshot. If there is a conflict, it starts the collection again, up to three times, and then backs off.
+
+- If the service instance changes, the page fetches the public page again to read the new instance ID, and tries again.
+- If an error occurs, the page keeps the last complete model and marks it as saved and stale.
+- The backoff starts at four seconds and grows to thirty seconds.
+- When the page is hidden, polling stops and the current collection is cancelled. When the page is visible again, polling continues.
+
+The footer shows the time of the last successful check with the local service. The About panel shows when the snapshot was captured, and its revision. A poll with no changes does not change the report or runtime times.
+
+The full description, report, reason, result, question and file references load only for the selected Task. Text from the service is shown as text, also when it contains markup. References can be seen and copied. The page never follows or fetches them.
+
+## Read interface and limits
+
+The Task data has an optional `report_preview`: the first 160 Unicode code points of the report, 640 UTF-8 bytes at most. SQLite `substr` computes it from the stored report. An empty report has no preview. The preview ends at an embedded NUL character, but the full report is kept. This adds no schema, no copy of the body, and no change to history, authorization or revisions. The full report is still available through `task/show`. Cards reserve two lines for the preview, so a change to the report alone does not change their size.
+
+`POST /v1/session/snapshot` returns an ETag made of the Session ID and the read revision. The service checks `If-None-Match` after the normal authenticated read. CLI clients can still use the JSON `known_revision`. The collection limits and the page budget of 768 KiB still apply. During polling, the page does not load details for every Task. It refreshes only the selected Task's details, when that Task's revision changes.
+
+The public part of the service has exactly three resources: `/view/WORKSPACE_ID/SESSION_ID`, `/assets/app.css` and `/assets/app.js`. The service reads no files to serve them. It checks `Host` and `Origin` before it serves an asset or data, and it refuses queries and `GET` requests with a body. The Content Security Policy allows scripts and connections only to the same origin, and it blocks framing, forms and changes of the base URL. Inline styles are allowed for the numeric positions in the graph, but data never becomes CSS or HTML. The service has no CORS grants, no general file endpoint and no arbitrary navigation. It never exposes mail bodies, transcripts or private runtime bindings.
 
 ## Measurements and practical limits
 
-Measured on 2026-10-24 with an Intel Core i5-13420H (12 logical CPUs), Linux x86_64, Go 1.27.3, SQLite 3.53.4, agent-browser 0.39.2 and isolated headless Chromium at 1440×900. Five fresh navigations per size used retained live API fixtures with reports, assignments, a 64-character name, questions and dependencies. Positions were identical across all five loads for each size. The p95 below is the maximum of five samples, not a service objective.
+Measured on 2026-10-24 with an Intel Core i5-13420H (12 logical CPUs), Linux x86_64, Go 1.27.3, SQLite 3.53.4, agent-browser 0.39.2 and an isolated headless Chromium at 1440×900. For each size, five fresh page loads used retained live API fixtures with reports, assignments, a 64-character name, questions and dependencies. The positions were the same in all five loads for each size. The p95 value is the maximum of five samples, not a service objective.
 
 | Tasks | Layout p50 / p95 | Navigation to complete model p50 / p95 | Initial read requests | Detail requests |
 | --- | --- | --- | --- | --- |
@@ -42,6 +80,14 @@ Measured on 2026-10-24 with an Intel Core i5-13420H (12 logical CPUs), Linux x86
 | 100 | 11.3 / 12.9 ms | 64.3 / 70.8 ms | 6 | 0 |
 | 1,000 | 108.8 / 138.7 ms | 503.8 / 549.7 ms | 33 | 0 |
 
-Layout timing covers rank calculation, card measurement, positioning and SVG connections. Navigation timing includes subprocess/browser/API/render work and is useful only as a local observation. The 1,000-Task fixture's broad rank produced a 192,929 px canvas. Every Task is retained; there is no virtualization, minimap or automatic Fit. Fit at this scale is an overview with unreadable labels; scroll, search/filter and Agents provide access to individual work. Layout/ownership scans are intentionally simple and can become expensive above these measured sizes; introduce indexed client maps or virtualization only if larger measured workloads require them.
+The layout time includes the rank calculation, card measurement, positions and SVG connections. The navigation time includes the subprocess, browser, API and render work, and is only a local observation.
 
-The immutable prototype hash remains `7fc0310c177fcb41f8a5a2de6a66af0338620b166288cb1ca15796e8f0436a1c`. Browser QA uses disposable state and an isolated named session. It covers both themes, full names, literal injection strings, keyboard/chooser behavior, report-only focus/position/viewport preservation, saved-data failure/recovery, service restart and advancing observation age during unchanged polls. Focused browser regressions also cover repeated populated/empty reference opens and retained chooser/Copy focus during polling. Go tests cover issued capability scope/permissions, guarded assets, authenticated conditional reads, credential-safe opener failure, replay and UTF-8 preview boundaries.
+With 1,000 Tasks, one wide rank made a canvas of 192,929 px. The view shows every Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
+
+## Checks
+
+The prototype file `prototypes/h-stack-visual/index.html` keeps the SHA-256 hash `7fc0310c177fcb41f8a5a2de6a66af0338620b166288cb1ca15796e8f0436a1c`, which shows that it has not changed.
+
+Browser QA used disposable state and an isolated named browser session. It covered both themes, full names, literal injection strings, keyboard and chooser behavior, and preserved focus, positions and view after report-only changes. It also covered failure and recovery with saved data, a service restart, and the growing observation age during polls with no changes. Focused browser regression checks also covered repeated opens of populated and empty references, and the focus of the chooser and Copy buttons during polling.
+
+Go tests cover the scope and permissions of issued capabilities, guarded assets, authenticated conditional reads, opener failure without credential leaks, replay, and UTF-8 boundaries of the preview.

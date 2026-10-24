@@ -1,31 +1,47 @@
-# Workspace, Session and Agent lifecycle
+# Workspaces, Sessions and Agents
 
-The service owns stable opaque IDs; the CLI always sends explicit context. A Workspace identifies an existing canonical project directory. `workspace create --path ABSOLUTE_DIR` resolves symlinks and rejects a duplicate canonical path. It never imports the current directory. A Session belongs to one Workspace; an Agent registration belongs to one Session for its lifetime. `agent register --worktree ABSOLUTE_DIR` explicitly associates a separate working directory with that Workspace without creating another Workspace.
+This page describes how the Operator sets up a team and how Agents get their credentials. It also covers runtime bindings, and Session close and reopen.
 
-Agent names are case-sensitive, unique within the Workspace and match `[A-Za-z0-9][A-Za-z0-9_-]{0,63}`. Canonical directory paths are limited to 1,024 UTF-8 bytes; Session names to 128. IDs and private runtime bindings are distinct from display names and Herdr aliases.
+The service gives each Workspace, Session and Agent a stable opaque ID. The CLI always sends these IDs explicitly. The current directory never selects a Workspace or a Session, and lifecycle commands never look up an Agent by its name.
+
+## Workspaces, Sessions and Agents
+
+A Workspace is an existing project directory. `workspace create --path ABSOLUTE_DIR` resolves symlinks to get the canonical path, and rejects a path that is already registered. It never uses the current directory.
+
+A Session belongs to one Workspace. An Agent registration belongs to one Session for its whole lifetime. To link a separate working directory to the Workspace, use `agent register --worktree ABSOLUTE_DIR`. This does not make a new Workspace.
+
+Limits:
+
+- An Agent name must match `[A-Za-z0-9][A-Za-z0-9_-]{0,63}`. Names are case-sensitive and must be unique in the Workspace.
+- A canonical directory path can be 1,024 UTF-8 bytes at most.
+- A Session name can be 128 bytes at most.
+
+IDs and private runtime bindings are separate from display names and from Herdr aliases.
 
 ## Enroll a team
 
-Start the service as described in the README. These examples use the default state directory; for temporary/custom state, pass the same `--state-dir ABSOLUTE_DIR` on every command.
+Start the service as the [README](../README.md) shows. These examples use the default state directory. If you use a different one, give the same `--state-dir ABSOLUTE_DIR` to every command.
 
 ```sh
 ./a-stack workspace create --path /absolute/project --operation-id project-create-1 --json
-# Set workspace_id to data.resource_id from that receipt.
+# Set workspace_id to data.resource_id from this receipt.
 ./a-stack session create --workspace "$workspace_id" --name "Build" \
   --operation-id session-create-1 --json
-# Set session_id to data.resource_id from that receipt.
+# Set session_id to data.resource_id from this receipt.
 credential_dir="$(mktemp -d)"
 ./a-stack agent register --workspace "$workspace_id" --session "$session_id" \
   --name 01-orchestrator --new-credential-file "$credential_dir/orchestrator.json" \
   --operation-id orchestrator-register-1 --json
-# Set orchestrator_id to data.resource_id from that receipt.
+# Set orchestrator_id to data.resource_id from this receipt.
 ./a-stack session appoint --workspace "$workspace_id" --session "$session_id" \
   --agent "$orchestrator_id" --expected-revision 1 --operation-id appoint-initial-1 --json
 ```
 
-A newly created Session explicitly has `orchestrator_id: null`. Only the Operator appoints/replaces it. A single Session column and a same-Session foreign key enforce one designated holder. Appointment advances the Session revision; competing changes with the same expected revision return `conflict` and `current_revision`. Replacement immediately removes the old holder's Orchestrator role while retaining its ordinary Agent identity/permissions. Runtime absence/idle/done never elects a replacement or freezes other workers.
+A new Session has `orchestrator_id: null`. Only the Operator appoints or replaces the Orchestrator. The database allows one Orchestrator per Session, and it must be an Agent of the same Session. An appointment increases the Session revision. If two changes use the same expected revision, one of them gets `conflict` with `current_revision`.
 
-The Operator or current Orchestrator can register a worker in an open Session. For example, using **only** the Orchestrator credential:
+When the Operator replaces the Orchestrator, the old Agent loses the Orchestrator role immediately. It keeps its Agent identity and its ordinary permissions. If the Orchestrator's runtime is absent, idle or done, a-stack does not choose a new Orchestrator, and the other Agents can continue to work.
+
+The Operator or the current Orchestrator can register more Agents in an open Session. This example uses only the Orchestrator's credential:
 
 ```sh
 ./a-stack agent register --as agent --credential-file "$credential_dir/orchestrator.json" \
@@ -33,9 +49,11 @@ The Operator or current Orchestrator can register a worker in an open Session. F
   --new-credential-file "$credential_dir/worker.json" --operation-id worker-register-1 --json
 ```
 
-Give that worker its private `worker.json`, the explicit Workspace/Session/Agent IDs and selected state directory. Keep the Operator credential out of its instructions, reports and ordinary file references. A trusted local process can still access other files owned by the same OS user; these scopes prevent accidental API privilege escalation, not hostile same-user filesystem access.
+Give the new Agent its private `worker.json`, the Workspace, Session and Agent IDs, and the state directory. Keep the Operator credential out of its instructions, its reports and its file references.
 
-A worker selects its credential and context on every call:
+These scopes prevent accidental use of the wrong API permissions. They do not protect files from a hostile process: a trusted local process can still read other files of the same operating system account.
+
+An Agent gives its credential and its context in every call:
 
 ```sh
 ./a-stack session inspect --as agent --credential-file "$credential_dir/worker.json" \
@@ -46,19 +64,26 @@ A worker selects its credential and context on every call:
   --operation-id worker-attach-1 --json
 ```
 
-Set `worker_id` from the worker registration receipt. Agent/browser mode requires an explicit matching-kind credential file; it never falls back to the Operator file. Agents can inspect only their registered Session, even if a request supplies another ID. Browser credentials remain denied these lifecycle data routes; the Task snapshot/detail routes explicitly allow scoped reads.
+Set `worker_id` from the receipt of the Agent's registration. Agent mode and browser mode need an explicit credential file of the matching kind. They never use the Operator file instead. An Agent can read only the Session that it is registered in, also if a request gives another ID. Browser credentials cannot use these lifecycle endpoints. They can read only the Task snapshot and detail endpoints.
 
 ## Credential delivery and recovery
 
-Registration and Operator rebind require `--new-credential-file` in an existing owner-only directory (0700), outside project checkouts. New destinations under a Git checkout are rejected before token generation or file creation, including paths reached through symlink ancestors. The CLI generates a random token, writes and syncs its 0600 file **before** sending the request, and transmits only its SHA-256 hash. The database and receipt never contain that token. A private enrollment record binds the file to database identity, operation ID and exact request digest.
+`agent register` and the Operator's `agent rebind` need `--new-credential-file`. Its directory must already exist, be private (for example mode 0700) and be outside project checkouts. a-stack rejects a new file in a Git checkout before it makes a token or a file, also when a symlink in a parent directory leads there.
 
-If a response is lost, rerun the **same command**, with the same operation ID, flags, actor credential and new-credential filename. It reads the existing file and returns the original committed receipt without another registration/rotation. The file stays in place on errors, including uncertain network outcomes. Changing the payload under that operation ID conflicts; reusing the private file for a different request/database also conflicts locally. To correct a rejected request, first establish whether it committed, then choose a new operation ID and filename for the new request. Never delete a pending credential solely because the response was lost.
+The CLI makes a random token and writes it to the new file with mode 0600. It syncs the file before it sends the request, and it sends only the token's SHA-256 hash. The database and the receipt never contain the token. A private enrollment record in the file links it to the database ID, the operation ID and the exact request digest.
 
-If the Agent token itself is lost, the Operator recovers access with `agent rebind`, a new operation ID, current Agent revision and a **different** new-credential filename. That transaction rotates the hash, invalidates all old Agent tokens and changes/clears the binding while retaining Agent ID and historical attribution. Preserve all delivered private credential files separately from database backups; hashes cannot reconstruct them.
+If you lose a response, run the same command again, with the same operation ID, flags, actor credential and new credential file name. The CLI reads the existing file, and the service returns the original receipt. It does not register or rotate again. The file stays in place after errors, also when the outcome is uncertain.
+
+- A different payload under the same operation ID causes a conflict.
+- A credential file that was made for a different request or database also causes a conflict, before anything is sent.
+- To correct a rejected request, first find out whether it was committed. Then use a new operation ID and a new file name for the new request.
+- Never delete a pending credential file only because a response was lost.
+
+If an Agent loses its token, the Operator recovers access with `agent rebind`. The rebind needs a new operation ID, the current Agent revision and a different new credential file name. The rebind replaces the stored hash, makes all old tokens of that Agent invalid, and changes or clears the runtime binding. The Agent keeps its ID and its history. Keep all credential files that you gave out separately from the database backups, because the hashes cannot rebuild them.
 
 ## Runtime bindings
 
-Only the Agent's own credential can attach its fresh unbound registration. Once established, it requires explicit Operator rebind:
+A runtime binding links an Agent registration to the running process that acts as that Agent. Only the Agent's own credential can attach a binding to its new, unbound registration. After that, only the Operator can change the binding, with `agent rebind`:
 
 ```sh
 ./a-stack agent rebind --workspace "$workspace_id" --session "$session_id" \
@@ -67,24 +92,60 @@ Only the Agent's own credential can attach its fresh unbound registration. Once 
   --operation-id worker-rebind-1 --json
 ```
 
-Use `--clear-runtime` instead of a replacement runtime to release the established target and leave the Agent unattached with a rotated credential. Rebind must happen in an open Session; reopen first when credential recovery is needed for a closed Session. A conflict rolls back credentials, binding claims, history and receipt together.
+To remove the binding instead, use `--clear-runtime` in place of a new runtime. The Agent is then unattached and has a rotated credential. A rebind works only in an open Session. To recover a credential in a closed Session, reopen the Session first. If a rebind fails with a conflict, a-stack rolls back the credential, the binding claims, the history and the receipt together.
 
-`--runtime-file PRIVATE_JSON` may replace `--runtime-id`. It accepts `instance_id` and optional `endpoint`, `pane_id`, `terminal_id`, `native_session_id`, `herdr_alias`, `harness`, `harness_version`. The private file uses the same bounded regular-file reader as credentials. Instance IDs are at most 128 UTF-8 bytes; each optional metadata value at most 512. No binding is returned in list/inspect/receipt output, and no Herdr command is executed.
+Instead of `--runtime-id`, you can give `--runtime-file PRIVATE_JSON`. The file has `instance_id` and these optional fields: `endpoint`, `pane_id`, `terminal_id`, `native_session_id`, `herdr_alias`, `harness` and `harness_version`. a-stack reads it with the same bounded reader as credential files. An instance ID can be 128 UTF-8 bytes at most, and each optional value 512 bytes at most. List, inspect and receipt output never show the binding. Attaching a binding runs no Herdr command.
 
-The service reserves the explicit instance ID, every supplied endpoint/pane pair, endpoint/terminal pair, and native-session ID. Native-session identifiers are treated as globally unique opaque runtime identifiers. Changing a synthetic instance ID or alias cannot reuse an established concrete target in another registration/Session. Reservations are transactionally released/replaced only by Operator rebind. Target metadata remains a caller assertion: partial bindings and instance-only bindings are **unverified**, and none enable automatic delivery. The optional [notification adapter](notifications.md) verifies current harness identity before dispatch; aliases/panes alone never establish Agent identity.
+The service reserves each concrete target: the instance ID, each endpoint and pane pair, each endpoint and terminal pair, and the native session ID. It treats native session IDs as globally unique. So a new instance ID or alias cannot take over a target that another registration or Session already holds. Only an Operator rebind releases or replaces these reservations, in one transaction.
 
-`agent observe --agent ID --expected-revision N --runtime-id ID --runtime-state unknown|working|idle|done|stopped|blocked` records latest metadata using the Operator or that Agent's own credential. It validates current context, binding identity and binding revision inside its transaction. Observations may advance while closed and leave lifecycle/Agent revisions, roles and work unchanged. They overwrite latest observation metadata without appending a domain receipt/history event. `done` is a runtime observation, not Task completion or Agent deletion. No target is released automatically on exit/unknown state.
+The target data is only what the caller says. a-stack treats a partial binding or an instance-only binding as unverified, and neither gets automatic notices. The optional [notice adapter](notifications.md) checks the current harness identity before it sends anything. An alias or a pane alone never proves which Agent is there.
+
+### Runtime observations
+
+`agent observe --agent ID --expected-revision N --runtime-id ID --runtime-state unknown|working|idle|done|stopped|blocked` records the latest runtime state. The Operator or the Agent itself can run it. In one transaction, the service checks the context, the binding identity and the Agent revision.
+
+Observations also work when the Session is closed. They do not change the lifecycle revision, the Agent revision, roles or work. Each observation replaces the previous one, and it adds no receipt or history entry. `done` describes the runtime only. It does not finish a Task or delete the Agent. a-stack never releases a target automatically when a process exits or its state is unknown.
 
 ## Close, reopen and inspect
 
-`session close` and `session reopen` are Operator-only and require `--expected-revision` plus `--operation-id`. `session inspect` supplies the current lifecycle revision, designated holder and closed flag. Same-operation retries return their original receipt after closure; stale new operations conflict. A new operation already at the requested state succeeds at the same revision without another lifecycle event. Closure serializes with guarded mutations; it retains all registrations/history and never starts/stops terminals. Reopening changes no work status or runtime.
+Only the Operator can run `session close` and `session reopen`. Both need `--expected-revision` and `--operation-id`. `session inspect` shows the current lifecycle revision, the Orchestrator and whether the Session is closed.
 
-`workspace list`, `session list`, `agent list` return `{items, next?}`. Lists default to 50, accept `--limit 1..100`, and resume with `--after ID`. Operator Workspace enumeration is global; Operator Session enumeration requires a Workspace. Agent enumeration/inspection requires both explicit IDs and returns only its own Session. Metadata omits bearer tokens, credential hashes and private bindings. Output and errors follow the foundation JSON/exit contract; there is no implicit context or Agent-name lookup.
+- A retry of the same operation returns its original receipt, also after the Session is closed.
+- A new operation with an old revision causes a conflict.
+- A new operation for a state that already applies succeeds at the same revision, and it adds no lifecycle event.
 
-HTTP uses `POST /v1/workspace/{create,list}`, `/v1/session/{create,list,inspect,close,reopen,appoint}` and `/v1/agent/{register,list,attach,rebind,observe}` with strict typed JSON requests. The CLI constructs these payloads; no role/actor name is accepted as authority.
+A close runs in order with other guarded changes, never at the same time. It keeps all registrations and history, and it never starts or stops terminals. Reopening does not change any work status or runtime.
 
-## Guards for later slices
+## Lists
 
-Schema v2 upgrades populated v1 databases transactionally, retaining identity, capability hashes and receipts. `ReadSession(ctx, tx, principal, Context)` checks explicit context and current registration/scope, including after closure. `OpenSession` additionally rejects closed Sessions and intentionally has no runtime/Orchestrator-presence dependency. `RequireOrchestrator` derives the current holder from that Session row. Call these inside `Store.Mutate` callbacks, then apply the later resource's own role/membership/reference/revision checks and writes using the same transaction. Digest mismatches return only `operation_conflict` before invoking a command-specific replay callback. Matching retries resolve the original receipt's resource and must pass current read authorization before returning its outcome. Project/worktree canonicalization is prepared before taking the serialized connection; only a new authorized apply consumes a preparation error. A committed retry therefore still recovers its receipt after the original directory disappears.
+`workspace list`, `session list` and `agent list` return `{items, next}`. `next` is present only when more items follow. A list returns 50 items by default. Use `--limit` with a value from 1 to 100. To get the next page, give the `next` value with `--after ID`.
 
-Session `revision` protects lifecycle/appointment, Agent `revision` protects binding identity, and Session `read_revision` advances for visible membership/binding/observation changes. [Task/graph revisions and assignee permissions](tasks.md) are implemented separately; the general open guard does not grant those permissions. History stores stable actor/resource IDs and scalar event/revision/time, never credential or binding snapshots.
+- The Operator can list all Workspaces.
+- To list Sessions, the Operator must give a Workspace.
+- An Agent must give both IDs to list or inspect, and sees only its own Session.
+
+Metadata never contains bearer tokens, credential hashes or private bindings. Output and errors follow the [command line rules](foundation.md#command-line).
+
+The HTTP endpoints are `POST /v1/workspace/{create,list}`, `/v1/session/{create,list,inspect,close,reopen,appoint}` and `/v1/agent/{register,list,attach,rebind,observe}`. They take strict typed JSON requests. The CLI builds these payloads. A role or actor name in a request never gives authority.
+
+## Revisions
+
+- The Session `revision` protects lifecycle changes and appointments.
+- The Agent `revision` protects the binding identity.
+- The Session `read_revision` increases for visible changes to membership, bindings and observations.
+
+Task and graph revisions and the permissions of assignees are described in [Tasks and the Task graph](tasks.md). The general open-Session guard does not give those permissions. History stores stable actor and resource IDs and scalar event, revision and time values. It never stores credentials or binding snapshots.
+
+## Internal guards
+
+Schema v2 upgrades a populated v1 database in one transaction and keeps the database identity, capability hashes and receipts.
+
+Later endpoints use these guards inside `Store.Mutate` callbacks, and then apply their own checks of role, membership, references and revision, and their writes, in the same transaction:
+
+- `ReadSession(ctx, tx, principal, Context)` checks the explicit context and the current registration and scope, also after closure.
+- `OpenSession` also rejects closed Sessions. It intentionally does not depend on a runtime or on the presence of an Orchestrator.
+- `RequireOrchestrator` gets the current Orchestrator from the Session row.
+
+A digest mismatch returns only `operation_conflict`, before any command-specific replay callback runs. A matching retry finds the resource of the original receipt, and it must pass the current read authorization before it returns the outcome.
+
+The service canonicalizes project and worktree paths before it takes the serialized connection. Only a new, authorized apply uses a canonicalization error. So a committed retry still returns its receipt after the original directory is gone.
