@@ -43,9 +43,13 @@ a-stack trusts the local operating system account. File permissions and bearer c
 
 On a normal shutdown, the service deletes its own discovery file. After an abrupt stop, clients report that the service is unavailable until you start `serve` again.
 
+Without `--listen`, `serve` first tries the port it used the last time it ran without `--listen`. It keeps that port in the private file `last-port.json` in the state directory. If the port is taken, the service picks a free port and records that one. So after a restart, an open browser tab usually finds the service again at the same address. The new instance ID and the bearer checks still apply, and a browser credential still belongs to the database and its Session, not to the port.
+
+When `serve` is ready, it prints one JSON line on stdout with `status`, `url`, `database_id` and `version`. `health` returns `database_id`, `sqlite_version`, `schema_version` and the `version` of the running service. After an update, compare it with `a-stack version` to see if the service still runs the old binary.
+
 ## Command line
 
-Flags can come before or after the command. All commands accept `--json` and `--state-dir DIR`. `serve` also accepts `--listen 127.0.0.1:PORT` (the default port is 0, which picks a free port) and `--herdr-executable FILE` (see [Mention notices](notifications.md)). Client commands also accept `--credential-file FILE` and `--as operator|agent|browser`.
+Flags can come before or after the command. All commands accept `--json` and `--state-dir DIR`. `serve` also accepts `--listen 127.0.0.1:PORT` (port 0 picks a free port; without the flag, see [Discovery](#discovery)) and `--herdr-executable FILE` (see [Mention notices](notifications.md)). Client commands also accept `--credential-file FILE` and `--as operator|agent|browser`.
 
 `serve` makes or checks its own Operator credential, and it does not accept credential flags. A client without `--credential-file` uses `operator.json` in the state directory. `--as agent` and `--as browser` require `--credential-file`. a-stack rejects a credential file of a different kind, and it never uses the Operator credential instead.
 
@@ -57,7 +61,7 @@ Workspace, Session, Agent, Task and mail commands need explicit Workspace and Se
 | `storage status` | `GET /v1/storage` | Operator |
 | `storage backup --destination ABSOLUTE_FILE` | `POST /v1/storage/backup` with `destination` | Operator |
 
-Every command except `open` and `--help` prints a JSON `data` object on stdout, also without `--json`. If a command fails, it prints a JSON `error` object on stderr and nothing on stdout. The exit code is 0 for success, 2 when the error code is `invalid_input`, and 1 for all other errors.
+Every command except `open` and `--help` prints a JSON `data` object on stdout, also without `--json`. If a command fails, it prints a JSON `error` object on stderr and nothing on stdout. The exit code is 0 for success, 2 when the error code is `invalid_input`, and 1 for all other errors. One exception: `serve` exits with 3 when another `serve` already owns the state directory. Its error code is still `conflict`.
 
 The CLI never retries a request automatically. Client commands stop normally on SIGINT and SIGTERM, also while they wait for stdin. Only the foreground `serve` catches these signals, so that it can shut down cleanly. If an interrupted change was possibly committed, send it again with the same operation ID and payload to get the original receipt.
 

@@ -177,12 +177,17 @@ func lockState(path string) (*stateLock, error) {
 	if err = syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, failure("conflict", "a service already owns this state directory")
+			return nil, ErrStateOwned
 		}
 		return nil, storageError()
 	}
 	return &stateLock{dir: dir, file: f}, nil
 }
+
+// ErrStateOwned means another serve holds the state directory lock. The CLI
+// gives it its own exit code so that systemd does not restart in a loop.
+var ErrStateOwned = failure("conflict", "another a-stack serve is already running for this state directory; stop it (Ctrl-C in its terminal, or systemctl --user stop a-stack) or use it")
+
 func (l *stateLock) close() { _ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN); _ = l.file.Close() }
 
 type Credential struct {
@@ -207,6 +212,12 @@ func ReadCredential(path string) (Credential, error) {
 	return c, nil
 }
 
+const (
+	startHint          = "start it with a-stack serve, or systemctl --user start a-stack if you use the systemd service"
+	serviceDown        = "the a-stack service is not running; " + startHint
+	serviceUnreachable = "cannot reach the a-stack service; if it stopped, " + startHint
+)
+
 type Discovery struct {
 	URL        string `json:"url"`
 	DatabaseID string `json:"database_id"`
@@ -217,7 +228,7 @@ func ReadDiscovery(dir string) (Discovery, error) {
 	var d Discovery
 	data, err := privateRead(filepath.Join(dir, "service.json"))
 	if err != nil {
-		return d, failure("storage_unavailable", "no usable service discovery; start serve explicitly")
+		return d, failure("storage_unavailable", serviceDown)
 	}
 	if decodeJSON(data, &d) != nil || !validToken(d.DatabaseID) || !validToken(d.InstanceID) || !strings.HasPrefix(d.URL, "http://127.0.0.1:") {
 		return d, failure("invalid_input", "invalid service discovery")

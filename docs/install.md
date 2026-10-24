@@ -67,7 +67,7 @@ On Linux with systemd, a user service can run `a-stack serve` for you. systemd s
 
 The unit runs `~/.local/bin/a-stack`. If you installed the binary in another folder, change the path in the `ExecStart` line.
 
-1. Stop any `a-stack serve` that you started by hand. Only one service can use a state directory. A second one stops with `conflict`.
+1. Stop any `a-stack serve` that you started by hand. Only one service can use a state directory. A second one stops with `conflict`. The unit then shows as failed with exit code 3 and does not restart.
 
 2. Download the unit into your systemd user folder:
 

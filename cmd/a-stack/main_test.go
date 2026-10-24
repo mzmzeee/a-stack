@@ -82,7 +82,7 @@ func launch(t *testing.T, dir string) *exec.Cmd {
 		}
 	})
 	ready, err := bufio.NewReader(stdout).ReadBytes('\n')
-	if err != nil || !json.Valid(ready) || !bytes.Contains(ready, []byte(`"ready"`)) {
+	if err != nil || !json.Valid(ready) || !bytes.Contains(ready, []byte(`"ready"`)) || !bytes.Contains(ready, []byte(`"version":"dev"`)) {
 		t.Fatalf("not ready: %s %v", ready, err)
 	}
 	return command
@@ -98,12 +98,13 @@ func TestCLIRealProcessesCrashRestartBackupRestore(t *testing.T) {
 	var h struct {
 		Data stack.Health `json:"data"`
 	}
-	if json.Unmarshal(health, &h) != nil {
+	if json.Unmarshal(health, &h) != nil || h.Data.Version != "dev" {
 		t.Fatal("health")
 	}
 	commandResult(t, []string{"--json", "storage", "status", "--state-dir", dir}, 0)
-	_, stderr := commandResult(t, []string{"serve", "--state-dir", dir, "--json"}, 1)
-	if !bytes.Contains(stderr, []byte(`"conflict"`)) {
+	// Exit code 3 lets the systemd unit stop instead of restarting in a loop.
+	_, stderr := commandResult(t, []string{"serve", "--state-dir", dir, "--json"}, 3)
+	if !bytes.Contains(stderr, []byte(`"conflict"`)) || !bytes.Contains(stderr, []byte("already running")) {
 		t.Fatal("second start did not conflict")
 	}
 	commandResult(t, []string{"health", "--as", "agent", "--state-dir", dir, "--json"}, 2)

@@ -81,9 +81,10 @@ func (s *Service) browserAsset(w http.ResponseWriter, r *http.Request) bool {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 	w.Header().Set("X-A-Stack-Instance", s.Discovery.InstanceID)
+	w.Header().Set("X-A-Stack-Version", s.Version)
 	if page {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = browserTemplate.Execute(w, s.Discovery.InstanceID)
+		_ = browserTemplate.Execute(w, struct{ Instance, Version string }{s.Discovery.InstanceID, s.Version})
 	} else {
 		name, contentType := "browser/app.js", "text/javascript; charset=utf-8"
 		if path == "/assets/app.css" {

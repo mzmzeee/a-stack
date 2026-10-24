@@ -33,6 +33,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 		e = &stack.Error{Code: "storage_unavailable", Message: "command failed", Retryable: true}
 	}
 	_ = json.NewEncoder(stderr).Encode(map[string]any{"error": e})
+	if e == stack.ErrStateOwned {
+		return 3 // systemd: RestartPreventExitStatus=3
+	}
 	if e.Code == "invalid_input" {
 		return 2
 	}
@@ -56,7 +59,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.StringVar(&state, "state-dir", "", "private absolute application-state directory")
 	fs.StringVar(&credential, "credential-file", "", "private credential file")
 	fs.StringVar(&kind, "as", "", "operator, agent or browser")
-	fs.StringVar(&listen, "listen", "127.0.0.1:0", "serve loopback address")
+	fs.StringVar(&listen, "listen", "", "serve loopback address (default: last port, else a free one)")
 	fs.StringVar(&destination, "destination", "", "new absolute backup filename")
 	fs.BoolVar(&machine, "json", false, "machine-readable JSON")
 	fs.BoolVar(&help, "help", false, "show usage")
@@ -139,6 +142,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
+		service.Version = buildVersion()
 		if herdrExecutable != "" {
 			if err = service.EnableNotifications(herdrExecutable); err != nil {
 				_ = service.Close(ctx)
@@ -149,7 +153,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		go func() { result <- service.Serve() }()
 		// Print no credentials. Discovery is private on disk; this ready outcome is
 		// one JSON document and all diagnostics go to stderr.
-		ready := map[string]any{"data": map[string]any{"status": "ready", "url": service.Discovery.URL, "database_id": service.Discovery.DatabaseID}}
+		ready := map[string]any{"data": map[string]any{"status": "ready", "url": service.Discovery.URL, "database_id": service.Discovery.DatabaseID, "version": service.Version}}
 		err = json.NewEncoder(stdout).Encode(ready)
 		if err == nil {
 			select {

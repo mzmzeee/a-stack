@@ -22,6 +22,9 @@ Type=exec
 ExecStart=%h/.local/bin/a-stack serve --state-dir %h/.local/state/a-stack
 Restart=on-failure
 RestartSec=2s
+# Exit code 3: another a-stack serve owns the state directory. Restarting
+# cannot help, so the unit fails at once and says so in its status.
+RestartPreventExitStatus=3
 UMask=0077
 NoNewPrivileges=yes
 LockPersonality=yes
