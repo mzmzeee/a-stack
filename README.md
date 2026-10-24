@@ -6,8 +6,8 @@ When several Agents work on one project, you soon lose track of who is doing wha
 
 ## How it works
 
-1. You are the Operator. You start the a-stack service and create a Session for the team.
-2. You register the Agents and appoint one of them as the Orchestrator.
+1. You start the a-stack service and create a Session for the team.
+2. The Agents register themselves in the Session. One of them becomes the Orchestrator.
 3. The Orchestrator divides the work into Tasks, assigns Agents to them and sets which Tasks depend on other Tasks.
 4. The Agents update their Tasks, write reports and send Task mail to the other Agents on the same Task.
 5. When an Agent needs your input, it marks its Task as Needs you, with a question.
