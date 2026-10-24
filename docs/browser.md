@@ -68,30 +68,52 @@ The page sends the secret only in the `Authorization` header of data requests to
 
 ## What the view shows
 
-The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It keeps the approved Graph and Agents tabs and both themes. The view remembers the theme that you pick in the browser's local storage, so it stays after a browser restart. Until you pick one, it follows the light or dark setting of your system. The storage belongs to the view's address, so a service on a new port starts again from the system setting.
+The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It has three tabs: Now, Graph and Agents, and both themes. Now is the default tab. The view remembers the tab that you last used and the theme that you pick in the browser's local storage, so they stay after a browser restart. Until you pick a theme, the view follows the light or dark setting of your system. The storage belongs to the view's address, so a service on a new port starts again from the defaults.
 
 - The header shows the name of the Workspace folder next to a-stack, for example `my-project`. It comes from the snapshot's `workspace_name`, which is only the last part of the Workspace path, so the home directory never appears in the view or in screenshots. The name is hidden in narrow windows.
-- Graph arrows point from a prerequisite to its dependent Task. The details also name both directions.
-- Full names wrap above the cards.
-- Groups of Tasks that are not connected sit side by side with a wide space between them, largest first, and wrap into rows that follow the shape of the panel. A Task with no dependencies is its own group. Inside a group, each Task is placed near the Tasks it connects to.
-- A column that is much taller than the panel wraps into sub-columns that sit closer together than real columns. Lines then leave a card through the gap below its row and enter a card through the gap above its row. In a gap, lines out run in the upper part and lines in run in the lower part, and every lane (see below) has its own track, 12px from the next, so lines of different Tasks never merge. A gap grows only as much as its tracks need. When the column has lines on both sides, lines out also leave low on a card and lines in enter high on a card, in a separate lane, so a line out of one card never meets a line into its neighbour.
-- Between columns and in the gaps of wrapped rows, lines into a Task with several prerequisites share one lane and track, and the lines of any other prerequisite branch from its own lane and track. A line that skips a column takes the lane nearest its own column and runs above or below its group, on its own track for each prerequisite, so fewer lines pass next to cards they do not connect.
-- The layout runs again when Tasks or dependencies change, or when a card changes size: a new title, other assigned Agents, Needs you, file references or cancelled prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes.
 - A shared Task shows the same data in every Agent row. The Unassigned row shows Tasks with no assignee.
 - Progress and Needs you requests are shown separately. When several Tasks need input, the attention button opens a chooser. Viewing a Task never resolves its request.
 - The chooser buttons keep their identity across unrelated refreshes. If the focused request is resolved somewhere else, the focus moves to a remaining choice, or to the view tab when the chooser is empty.
 - The runtime state has an "unverified" label and the age of its last observation. The age increases also when polls succeed.
 
+### Now
+
+The Now tab answers what is happening and what needs you, without panning. It has four columns and a feed:
+
+- Needs you: Tasks with an open Needs you request, with the question.
+- Working: Tasks in progress.
+- Waiting: Tasks that have not started. When a Task waits on prerequisites that are not finished, the card says which: "Waits for: X, Y".
+- Recently finished: finished and cancelled Tasks, newest first. The column shows the last 10. "Show archive" lists them all.
+- Latest changes: the most recent changes, newest first, such as "Review cart changed to Finished · 4m ago".
+
+A Task with an open request is in Needs you, whatever its progress. Each card shows the status, the title, the assigned Agents, the first line of the latest report and the age of the last change, such as `2m ago` or `3h ago`. Inside a column, the newest change comes first. An empty column says so in one line. A long column scrolls inside itself. Click a card, or press Enter on it, to open the details. Search and the status filter work on the board and on the feed.
+
+The feed uses the Task's last action (`last_action`) at its `updated_at`, the report time `report_at`, and the differences that the page sees between two polls: progress changes and Needs you requests set or resolved. A change that is not the latest one of its Task shows only if the page was open when it happened. When two changes of one Task come between two polls, the feed shows the time of the later one for both. The page keeps up to 300 changes in memory and shows the latest 12.
+
+A poll moves cards between columns in place. The selection, the focused card and the scroll positions stay.
+
+### Graph
+
+- Graph arrows point from a prerequisite to its dependent Task. The details also name both directions.
+- Full names wrap above the cards.
+- Each dependency rank is one column. The cards of a column are stacked and centered, and each Task sits near the Tasks it connects to. Lines run from the right side of a card through the gap between the columns to the left side of the next card.
+- Tasks without a line sit in rows below the connected graph, so no line runs past them.
+- The graph hides a dependency line when another path already connects the two Tasks; the details panel lists every dependency.
+- Finished and cancelled Tasks are archived. The graph hides them by default, so it shows the open work: Working, Waiting and Needs you. Lines to or from a hidden archived Task are not drawn, so a Waiting Task whose prerequisites are all archived sits in the first column. The Archived (N) toggle in the graph toolbar shows them again, dimmed. The view remembers the toggle in local storage. Archiving is part of the view only. There is no archive command and no schema change.
+- Select a Task, with a click or with Enter, to focus it. The Task, its direct prerequisites, its direct dependents and their lines stay bright, and everything else is dimmed to 30%. Lines that the graph hides because another path connects the Tasks appear dashed while one of their Tasks has the focus. The focus stays after the details close. Escape, or a click on empty space, clears it.
+- The layout runs again when Tasks or dependencies change, when the Archived toggle changes, or when a card changes size: a new title, other assigned Agents, Needs you, file references or cancelled prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes.
+
 ## Keyboard and controls
 
 - The arrow keys, Home and End switch between the tabs.
-- In search, Enter moves the focus to the first matching card.
-- On a card, Enter opens the details. Escape closes them and returns the focus.
+- In search, Enter moves the focus to the first matching card of the current tab.
+- On a card, Enter opens the details. Escape closes them and returns the focus. In the Graph tab, a second Escape clears the focus highlight.
 - Search looks at Agent names, titles, Ticket references and the short report preview.
 - The status filter includes Cancelled and Needs you.
 - Drag an empty part of the graph to move it. Zoom and Fit are separate controls.
 - Fit scales the graph to the Task cards, never above 100%, and centers them in the panel.
-- In the Graph tab, filters dim the cards that do not match, so the connections stay visible. In the Agents tab, filters hide them.
+- In the Graph tab, filters dim the cards that do not match, so the connections stay visible. In the Now and Agents tabs, filters hide them. If only archived Tasks match, the Graph tab says so and points to the Archived toggle.
+- The details list every dependency of the Task, also archived ones, which are labelled "archived".
 
 ## Refresh
 
@@ -112,6 +134,8 @@ The full description, report, reason, result, question and file references load 
 
 The Task data has an optional `report_preview`: the first 160 Unicode code points of the report, 640 UTF-8 bytes at most. SQLite `substr` computes it from the stored report. An empty report has no preview. The preview ends at an embedded NUL character, but the full report is kept. This adds no schema, no copy of the body, and no change to history, authorization or revisions. The full report is still available through `task/show`. Cards reserve two lines for the preview, so a change to the report alone does not change their size.
 
+The Now tab uses two more optional fields of the Task data. `question_preview` is the first 160 Unicode code points of the open Needs you question, computed the same way, and is empty when no request is open. `last_action` is the action of the Task's latest history entry, such as `task.status`, `task.report` or `task.attention.resolve`. It happened at `updated_at`. Both are read-only, need no schema change, and are available to every reader of the Session, also to the browser credential. The full question is still in `task/show`.
+
 `POST /v1/session/snapshot` returns an ETag made of the Session ID and the read revision. The service checks `If-None-Match` after the normal authenticated read. CLI clients can still use the JSON `known_revision`. The collection limits and the page budget of 768 KiB still apply. During polling, the page does not load details for every Task. It refreshes only the selected Task's details, when that Task's revision changes.
 
 The public part of the service has exactly three resources: `/view/WORKSPACE_ID/SESSION_ID`, `/assets/app.css` and `/assets/app.js`. The service reads no files to serve them. It checks `Host` and `Origin` before it serves an asset or data, and it refuses queries and `GET` requests with a body. The Content Security Policy allows scripts and connections only to the same origin, and it blocks framing, forms and changes of the base URL. Inline styles are allowed for the numeric positions in the graph, but data never becomes CSS or HTML. The service has no CORS grants, no general file endpoint and no arbitrary navigation. It never exposes mail bodies, transcripts or private runtime bindings.
@@ -128,14 +152,16 @@ Measured on 2026-10-24 with an Intel Core i5-13420H (12 logical CPUs), Linux x86
 
 The layout time includes the rank calculation, card measurement, positions and SVG connections. The navigation time includes the subprocess, browser, API and render work, and is only a local observation.
 
-¹ The table was measured before groups, ordering and column wrapping were added to the layout. A later check on the same machine and browser, with a plain Root → 999 Tasks fixture at 1440×900 and five fresh loads each, measured layout at 93.5–105.4 ms (p50 98.8 ms) before that change and 98.3–103.2 ms (p50 100.8 ms) after it. A review of an earlier version of the change measured 158–169 ms before and 179–221 ms after, on its own fixture.
+¹ The table was measured with the first layout of v0.1.0. A later check on the same machine and browser, with a plain Root → 999 Tasks fixture at 1440×900 and five fresh loads each, measured layout at 93.5–105.4 ms (p50 98.8 ms) before that change and 98.3–103.2 ms (p50 100.8 ms) after it. A review of an earlier version of the change measured 158–169 ms before and 179–221 ms after, on its own fixture.
 
-With 1,000 Tasks, one wide rank made a canvas of 192,929 px. That measurement was taken before columns wrapped. Such a rank now wraps into sub-columns: in the Root → 999 check, the canvas is 11,348 × 5,642 px. The view shows every Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
+The layout went back to the v0.1.0 columns on 2026-10-25, with the transitive reduction, ordering and archived Tasks added. On the same machine and browser at 1913×830, a fixture of 1,000 open Tasks in 10 ranks of 100 with 2,150 dependencies (800 of them redundant) measured five fresh loads at 83.4–129.5 ms for the whole layout (p50 91.1 ms). The reduction alone took 3.7–7.2 ms (p50 5.0 ms) and drew 1,350 lines. The canvas was 3,408 × 19,448 px.
+
+With 1,000 Tasks, one wide rank makes one very tall column: in the first v0.1.0 measurement, a canvas of 192,929 px. Archived Tasks are hidden by default, so the graph of a long Session stays as large as its open work. The view shows every open Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
 
 ## Checks
 
 The prototype file `prototypes/h-stack-visual/index.html` keeps the SHA-256 hash `7fc0310c177fcb41f8a5a2de6a66af0338620b166288cb1ca15796e8f0436a1c`, which shows that it has not changed.
 
-Browser QA used disposable state and an isolated named browser session. It covered both themes, full names, literal injection strings, keyboard and chooser behavior, and preserved focus, positions and view after report-only changes. It also covered failure and recovery with saved data, a service restart, and the growing observation age during polls with no changes. Focused browser regression checks also covered repeated opens of populated and empty references, and the focus of the chooser and Copy buttons during polling.
+Browser QA used disposable state and an isolated named browser session. It covered both themes, full names, literal injection strings, keyboard and chooser behavior, and preserved focus, positions and view after report-only changes. It also covered failure and recovery with saved data, a service restart, and the growing observation age during polls with no changes. Focused browser regression checks also covered repeated opens of populated and empty references, and the focus of the chooser and Copy buttons during polling. The Now tab, the feed, the Archived toggle and the focus highlight were checked at 1913×830, 1280×720 and 390×844 in both themes, also while Tasks changed during polling.
 
-Go tests cover the scope and permissions of issued capabilities, guarded assets, authenticated conditional reads, opener failure without credential leaks, replay, and UTF-8 boundaries of the preview.
+Go tests cover the scope and permissions of issued capabilities, guarded assets, authenticated conditional reads, opener failure without credential leaks, replay, and UTF-8 boundaries of the report and question previews, and the last action after a report, a Needs you request and a progress change.
