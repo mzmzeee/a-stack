@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-10-25
+
 ### Added
 
 - The browser view has a Now tab, the new default. Its columns show the Tasks that need you (with the question), are working, are waiting (with the prerequisites they wait for) and finished recently, and a feed lists the latest changes. The view remembers the last tab.
@@ -105,7 +107,8 @@ The first release.
 - One static Linux binary for `amd64` and `arm64`, with SQLite built in. It accepts connections only on `127.0.0.1`.
 - An install script that checks the download against the release checksums.
 
-[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/mzmzeee/a-stack/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/mzmzeee/a-stack/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/mzmzeee/a-stack/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/mzmzeee/a-stack/releases/tag/v0.1.0
