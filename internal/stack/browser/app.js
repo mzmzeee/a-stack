@@ -106,7 +106,7 @@ function layout() {
   for(const t of tasks) {const r=rank.get(t.id);if(!layers.has(r))layers.set(r,[]);layers.get(r).push(t.id);}
   const sizes=new Map(tasks.map(t=>[t.id,cards.get(t.id).article.offsetHeight]));
   const totals=[...layers.values()].map(ids=>ids.reduce((h,id)=>h+sizes.get(id)+32,0)-32);
-  height=Math.max(670,...totals.map(h=>h+48));width=Math.max(1400,(Math.max(0,...rank.values())+1)*342+28);
+  height=Math.max(0,...totals)+48;width=Math.max(0,...rank.values())*342+274+56; // tight around the Task units, so Fit fits the cards
   positions.clear();
   for(const [r,ids] of layers) {
     const total=ids.reduce((h,id)=>h+sizes.get(id)+32,0)-32;let y=24+(height-48-total)/2;
@@ -212,7 +212,7 @@ $('search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault(
 $('status-filter').addEventListener('change',e=>{state.filter=e.target.value;render();});
 $('clear-filters').addEventListener('click',()=>{state.query='';state.filter='all';$('search').value='';$('status-filter').value='all';render();$('search').focus();});
 $('zoom-out').onclick=()=>setZoom(state.zoom/1.2);$('zoom-in').onclick=()=>setZoom(state.zoom*1.2);$('zoom-reset').onclick=()=>setZoom(1);
-$('zoom-fit').onclick=()=>{setZoom(Math.min((panel.clientWidth-40)/width,(panel.clientHeight-40)/height,1));panel.scrollTo(0,0);};
+$('zoom-fit').onclick=()=>{setZoom(Math.min((panel.clientWidth-40)/width,(panel.clientHeight-40)/height,1));panel.scrollTo((panel.scrollWidth-panel.clientWidth)/2,(panel.scrollHeight-panel.clientHeight)/2);};
 let drag;
 panel.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('button'))return;drag={x:e.clientX,y:e.clientY,left:panel.scrollLeft,top:panel.scrollTop};panel.setPointerCapture(e.pointerId);panel.classList.add('panning');});
 panel.addEventListener('pointermove',e=>{if(drag){panel.scrollLeft=drag.left+drag.x-e.clientX;panel.scrollTop=drag.top+drag.y-e.clientY;}});
