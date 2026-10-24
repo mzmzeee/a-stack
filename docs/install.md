@@ -119,13 +119,13 @@ mkdir -p ~/.config/systemd/user/a-stack.service.d
 cat > ~/.config/systemd/user/a-stack.service.d/state-dir.conf <<EOF
 [Service]
 ExecStart=
-ExecStart=%h/.local/bin/a-stack serve --state-dir $XDG_STATE_HOME/a-stack
+ExecStart=%h/.local/bin/a-stack serve --state-dir "$XDG_STATE_HOME/a-stack"
 EOF
 systemctl --user daemon-reload
 systemctl --user restart a-stack
 ```
 
-The empty `ExecStart=` line clears the command from the unit. You can add other `serve` flags in the same way, such as `--herdr-executable` (see [Mention notices](notifications.md)).
+The empty `ExecStart=` line clears the command from the unit. The quotes keep a path with spaces in one piece. systemd reads `%` as the start of a specifier, such as `%h` for your home folder. If your path contains `%`, open `state-dir.conf` and write each `%` in the path as `%%`. You can add other `serve` flags in the same way, such as `--herdr-executable` (see [Mention notices](notifications.md)).
 
 ### Stop the service
 
