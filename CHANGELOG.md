@@ -6,27 +6,42 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-10-24
+
+The database schema does not change (schema version 5). One change can affect scripts: `serve` now exits with 3, not 1, when another `serve` owns the state directory.
+
 ### Added
 
-- Each release includes the systemd user unit `a-stack.service`, and `SHA256SUMS` lists it.
-- The release notes come from this file.
-- docs/install.md has an Update section.
 - `a-stack` without a command opens your last Session in the browser. If no service runs, it starts one in the foreground first.
 - `a-stack -r` (or `--resume`) picks a Session in the terminal. Without a terminal, or with `--json`, it prints the Session list.
-- `a-stack new [NAME]` creates the Workspace for the current folder if needed, creates a Session and opens it.
+- `a-stack new [NAME]` creates the Workspace for the current folder if needed, creates a Session and opens it. The CLI generates the operation IDs and prints them.
 - `a-stack help COMMAND` and `a-stack COMMAND --help` list the flags of one command. `-h`, `help` and `--version` work.
+- `serve` without `--listen` tries the port of its last run first. It keeps the port in `last-port.json` in the state directory. An open browser tab finds the service again after a restart.
+- The running version is in the `serve` ready line, in `health` and in the browser view's footer. After an update, compare it with `a-stack version`.
+- The Session snapshot has `workspace_name`, the last part of the Workspace path. The view's header shows it.
+- An agent skill in `skills/a-stack` teaches a coding agent to work in an a-stack Session. See docs/agent-skill.md.
+- Each release includes the systemd user unit `a-stack.service` and the agent skill `a-stack-skill.tar.gz`, and `SHA256SUMS` lists both.
+- docs/install.md has an Update section. Release notes come from this file.
 
 ### Changed
 
+- `serve` exits with 3 when another `serve` owns the state directory. The error code is still `conflict`. Scripts that check for exit code 1 must check for 3.
+- The systemd unit sets `RestartPreventExitStatus=3`. If another `serve` holds the state directory, the unit fails at once and does not restart every 2 seconds.
+- The `conflict` error and the errors when no service runs say what to do. The error codes do not change.
+- After 30 seconds without the service, the browser view says to run `a-stack open` again if you restarted the service.
+- `a-stack --help` lists the commands in groups and fits in 80 columns. `--help --json` keeps its fields and appends `new`.
 - The install script says whether it installed, updated or reinstalled a-stack, with the old and the new version. After an update, it tells you how to restart the service.
 - The install script stops with an error if the installed binary does not run.
-- docs/install.md downloads the systemd unit from the release instead of the `main` branch.
-- `a-stack --help` lists the commands in groups and fits in 80 columns. `--help --json` keeps its fields and appends `new`.
-- The README Quick start uses `a-stack new`, `a-stack` and `a-stack -r`.
+- The release workflow leaves an existing release unchanged when it runs again for the same tag.
+- docs/install.md downloads the systemd unit from the release, and docs/agent-skill.md downloads the skill from the release, instead of from the `main` branch.
+- The README Quick start uses `a-stack new`, `a-stack` and `a-stack -r`. A new live demo shows a terminal next to the browser view, with new screenshots.
 
 ### Fixed
 
 - Browser view: each group of lines gets its own track in wrapped rows.
+- Browser view: the header showed "a-stack" twice. The second label is now the Workspace name.
+- Browser view: "1 agent · 1 task" uses the singular.
+- The `a-stack -r` picker escapes U+FFFD and U+202E in the names it shows.
 
 ## [0.1.1] - 2026-10-24
 
@@ -62,6 +77,7 @@ The first release.
 - One static Linux binary for `amd64` and `arm64`, with SQLite built in. It accepts connections only on `127.0.0.1`.
 - An install script that checks the download against the release checksums.
 
-[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/mzmzeee/a-stack/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/mzmzeee/a-stack/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/mzmzeee/a-stack/releases/tag/v0.1.0

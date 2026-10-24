@@ -66,7 +66,7 @@ main() {
 		else
 			echo "If a-stack serve is running, stop it with Ctrl-C and start it again."
 		fi
-		echo "Then run a-stack open again."
+		echo "Then run a-stack to open the view."
 	fi
 
 	case ":$PATH:" in
@@ -75,9 +75,13 @@ main() {
 	esac
 }
 
-# Print the version of an a-stack binary, or nothing if it does not run.
+# Print the version of an a-stack binary, or nothing if it fails or hangs.
 binary_version() {
-	"$1" version 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true
+	if command -v timeout >/dev/null 2>&1; then
+		timeout 5 "$1" version 2>/dev/null </dev/null
+	else
+		"$1" version 2>/dev/null </dev/null
+	fi | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true
 }
 
 fail() {
