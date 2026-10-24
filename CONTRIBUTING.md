@@ -49,13 +49,13 @@ To build the release archive for your own machine, run `scripts/build-release.sh
 
 ## Update the demo
 
-After a change to the browser view, record the README demo again:
+After a change to the browser view or the Operator commands, record the README demo again:
 
 ```sh
 scripts/record-demo.sh
 ```
 
-The script builds a-stack, plays a short scripted Session on a temporary service and records it with agent-browser. It writes `docs/images/demo.gif`, `graph-light.png`, `graph-dark.png` and `agents.png`, and deletes the temporary state when it ends. It needs Go, ffmpeg, agent-browser and ImageMagick (`magick`). It does not need Docker.
+The script builds a-stack and runs a short Session on a temporary service, with a temporary HOME. It records a real terminal (`scripts/demo-terminal.py`) and the browser view (agent-browser) at the same time and puts them side by side. It writes `docs/images/demo.gif`, `graph-light.png`, `graph-dark.png`, `agents.png` and `picker.png`, and deletes the temporary state when it ends. It needs Go, Python 3, ffmpeg, agent-browser, ImageMagick (`magick`) and curl. It downloads a pinned release of [agg](https://github.com/asciinema/agg) into `.tmp/` and checks its SHA-256. It does not need Docker.
 
 ## Design records
 
