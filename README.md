@@ -7,6 +7,7 @@ Keep an eye on your AI coding agents.
 [![Downloads](https://img.shields.io/github/downloads/mzmzeee/a-stack/total)](https://github.com/mzmzeee/a-stack/releases)
 [![Go version](https://img.shields.io/github/go-mod/go-version/mzmzeee/a-stack)](go.mod)
 [![Platform: Linux amd64 | arm64](https://img.shields.io/badge/platform-Linux%20amd64%20%7C%20arm64-blue)](docs/install.md)
+[![License: MIT](https://img.shields.io/github/license/mzmzeee/a-stack)](LICENSE)
 
 When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
 
@@ -95,3 +96,7 @@ To see all commands and flags, run `a-stack --help`.
 ## Contributing
 
 Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, the checks and the design records.
+
+## License
+
+a-stack is released under the [MIT License](LICENSE).
