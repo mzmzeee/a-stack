@@ -62,7 +62,7 @@
   .attention-button:hover { border-color: currentColor; }
   main { flex: 1; min-height: 0; position: relative; }
   .view { height: 100%; overflow: auto; overscroll-behavior: contain; scrollbar-color: var(--strong-line) transparent; }
-  #graph-panel { display: flex; cursor: grab; }
+  #graph-panel { display: flex; cursor: grab; user-select: none; }
   #graph-panel.panning { cursor: grabbing; user-select: none; }
   #graph-panel:focus-visible { outline-offset: -4px; }
   .graph-space { position: relative; flex: none; width: 1400px; height: 670px; margin: auto; }

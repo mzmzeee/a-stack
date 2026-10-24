@@ -37,6 +37,7 @@ fi
 
 step go vet
 go vet ./...
+go vet -tags bench ./internal/stack  # the performance harness, see scripts/bench.py
 
 step "staticcheck $STATICCHECK"
 go install "honnef.co/go/tools/cmd/staticcheck@$STATICCHECK"
@@ -58,11 +59,12 @@ go build -o .tmp/a-stack ./cmd/a-stack
 
 step "oxlint $OXLINT"
 node --check internal/stack/browser/app.js
-npx --yes "oxlint@$OXLINT" --deny-warnings internal/stack/browser/app.js
+node --check scripts/demo-overlay.js
+npx --yes "oxlint@$OXLINT" --deny-warnings internal/stack/browser/app.js scripts/demo-overlay.js
 
 step "ruff $RUFF"
-python3 -m py_compile scripts/validate-v1.py scripts/demo-terminal.py
-uvx "ruff@$RUFF" check --no-cache scripts/validate-v1.py scripts/demo-terminal.py
+python3 -m py_compile scripts/validate-v1.py scripts/demo-terminal.py scripts/bench.py
+uvx "ruff@$RUFF" check --no-cache scripts/validate-v1.py scripts/demo-terminal.py scripts/bench.py
 
 step "shellcheck $SHELLCHECK"
 uvx --from "shellcheck-py==$SHELLCHECK" shellcheck scripts/check.sh scripts/build-release.sh scripts/record-demo.sh install.sh

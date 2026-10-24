@@ -60,7 +60,7 @@ A returned cursor points to the last message that the response actually contains
 
 `mail check` reads the caller's current Tasks in Task ID order. It reads 50 Tasks by default. Use `--task-limit` with a value from 1 to 100. The message limit and the size limit apply to the whole response.
 
-`cursors.json` is a JSON object that maps each Task ID to the last cursor that you saved for it, for example `{"TASK_ID":"CURSOR"}`. You can also give it with `--cursor-file -`. The file can be 1 MiB at most. The CLI never writes the file.
+`cursors.json` is a JSON object that maps each Task ID to the last cursor that you saved for it, for example `{"TASK_ID":"CURSOR"}`. You can also give it with `--cursor-file -`. The file can be 1 MiB at most. The CLI never writes the file. `mail check` checks a cursor when it reads that Task, and it ignores the cursors of Tasks that you are no longer assigned to.
 
 After each response, follow these steps:
 

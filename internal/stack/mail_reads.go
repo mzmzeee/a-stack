@@ -188,14 +188,17 @@ func (s *Store) CheckMail(ctx context.Context, token string, r MailCheckRequest)
 	if err != nil {
 		return empty, err
 	}
-	for task, cursor := range r.Cursors {
+	// Only the cursors of the Tasks this page scans are decoded, by
+	// readMailPageTx below. A saved map can hold hundreds of other Tasks.
+	for task := range r.Cursors {
 		if !validToken(task) {
 			return empty, failure("invalid_input", "invalid Task key in caller cursors")
 		}
-		if _, err = decodeMailCursor(task, cursor); err != nil {
-			return empty, err
-		}
 	}
+	// This query is the assignment check: inside this read transaction, after
+	// ReadSession proved current Session membership, it returns only Tasks of
+	// this Session that the caller is assigned to now. A removal commits before
+	// or after this transaction, so a removed Agent never sees that Task again.
 	ids, err := readIDs(ctx, tx, "SELECT task_id FROM task_assignees WHERE session_id=? AND agent_id=? AND task_id>? ORDER BY task_id LIMIT ?", r.SessionID, p.SubjectID, after, r.TaskLimit+1)
 	if err != nil {
 		return empty, err
@@ -208,9 +211,6 @@ func (s *Store) CheckMail(ctx context.Context, token string, r MailCheckRequest)
 		if len(result.Tasks) == r.TaskLimit || messages == limit {
 			result.NextTask = encodeMailCheckCursor(r.SessionID, p.SubjectID, last)
 			break
-		}
-		if _, err = ReadAssignedTask(ctx, tx, p, r.Context, task); err != nil {
-			return empty, err
 		}
 		// Reserve the bounded scan-continuation envelope in addition to each exact
 		// encoded per-Task page; no unread position is written or inferred.

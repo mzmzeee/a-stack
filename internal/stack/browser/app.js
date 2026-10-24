@@ -31,7 +31,7 @@ const views = ['now','graph','agents'];
 const state = {view:'now',theme:'light',query:'',filter:'all',zoom:1,selected:null,focus:null,archived:false,allFinished:false};
 let graphTasks = [], graphEdges = [], hiddenEdges = [], focusIds = null;
 let model = null, etag = '', instance = document.querySelector('meta[name="a-stack-instance"]').content, version = document.querySelector('meta[name="a-stack-version"]').content;
-let timer, controller, failures = 0, busy = false, lastSuccess = 0, stale = false, detailKey = '', detailEpoch = 0, returnFocus;
+let timer, controller, failures = 0, busy = false, lastSuccess = 0, stale = false, answered = false, detailKey = '', detailEpoch = 0, returnFocus;
 let geometryKey = '', width = 1400, height = 670;
 const cards = new Map(), rows = new Map(), positions = new Map();
 const path = location.pathname.split('/');
@@ -369,11 +369,12 @@ function age(timestamp) {const seconds=Math.max(0,Math.floor((Date.now()-new Dat
 function runtimeText(a) { return `Runtime: ${a.runtime_attached?(a.runtime_state || 'unknown'):'unbound'} · unverified${a.observed_at?' · '+age(a.observed_at):''}`; }
 function updateRuntimeAges() { if(model)for(const a of model.agents){const r=rows.get(a.id);if(r)setText(r.runtime,runtimeText(a));} }
 function plural(n,word) { return `${n} ${word}${n===1?'':'s'}`; }
-// After a restart on a new port, polling cannot recover; say what to do.
+// Stale for 30 s: if the service still answers, it is busy (Task changes keep
+// restarting the collection); if not, a restart on a new port needs a-stack.
 function lost() { return stale&&lastSuccess>0&&Date.now()-lastSuccess>30000; }
 function updateHint() {
-  const hint=$('footer-hint');hint.classList.toggle('lost',lost());
-  setText(hint,lost()?'Service unreachable. If you restarted it, run a-stack again.':state.view==='graph'?'Drag empty space to pan. Select a task to see its neighbours.':'Select a task for its report and dependencies.');
+  const hint=$('footer-hint');hint.classList.toggle('lost',lost()&&!answered);
+  setText(hint,lost()?(answered?'Service busy. Showing the last complete view; it updates when changes pause.':'Service unreachable. If you restarted it, run a-stack again.'):state.view==='graph'?'Drag to pan. Select a task to see its neighbours.':'Select a task for its report and dependencies.');
 }
 function updateSource(message) {
   const service=version?'Local service '+version:'Local service';
@@ -399,12 +400,16 @@ $('status-filter').addEventListener('change',e=>{state.filter=e.target.value;ren
 $('clear-filters').addEventListener('click',()=>{state.query='';state.filter='all';$('search').value='';$('status-filter').value='all';render();$('search').focus();});
 $('zoom-out').onclick=()=>setZoom(state.zoom/1.2);$('zoom-in').onclick=()=>setZoom(state.zoom*1.2);$('zoom-reset').onclick=()=>setZoom(1);
 $('zoom-fit').onclick=()=>{setZoom(Math.min((panel.clientWidth-40)/width,(panel.clientHeight-40)/height,1));panel.scrollTo((panel.scrollWidth-panel.clientWidth)/2,(panel.scrollHeight-panel.clientHeight)/2);};
-let drag;
-panel.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('button'))return;drag={x:e.clientX,y:e.clientY,left:panel.scrollLeft,top:panel.scrollTop,start:Date.now()};panel.setPointerCapture(e.pointerId);panel.classList.add('panning');});
-panel.addEventListener('pointermove',e=>{if(drag){panel.scrollLeft=drag.left+drag.x-e.clientX;panel.scrollTop=drag.top+drag.y-e.clientY;}});
+// A drag pans from anywhere, also from a card. It starts after 4px, so a plain click still opens the Task.
+let drag, dragged=false;
+panel.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('button:not(.task-card)'))return;dragged=false;drag={x:e.clientX,y:e.clientY,left:panel.scrollLeft,top:panel.scrollTop,id:e.pointerId,moving:false};});
+panel.addEventListener('pointermove',e=>{if(!drag)return;
+  if(!drag.moving){if(Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<4)return;drag.moving=true;panel.setPointerCapture(drag.id);panel.classList.add('panning');}
+  panel.scrollLeft=drag.left+drag.x-e.clientX;panel.scrollTop=drag.top+drag.y-e.clientY;});
 const endDrag=()=>{drag=null;panel.classList.remove('panning');};
 // A click on empty space, without a drag, clears the focus.
-panel.addEventListener('pointerup',e=>{if(drag&&Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<4&&state.focus)setFocus(null);endDrag();});panel.addEventListener('pointercancel',endDrag);
+panel.addEventListener('pointerup',e=>{if(drag){dragged=drag.moving;if(!dragged&&!e.target.closest('.task-card')&&state.focus)setFocus(null);}endDrag();});panel.addEventListener('pointercancel',endDrag);
+panel.addEventListener('click',e=>{if(dragged){e.stopPropagation();e.preventDefault();}dragged=false;},true);
 $('about-button').onclick=()=>{$('about-dialog').showModal();};
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 const attentionChoices = new Map();
@@ -525,7 +530,7 @@ async function refresh() {
         if(error.status===409&&attempt<2){const shell=await fetch(location.pathname,{cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});if(shell.ok){instance=shell.headers.get('X-A-Stack-Instance') || instance;version=shell.headers.get('X-A-Stack-Version') || version;}continue;}throw error;
       }
     }
-  }catch(error){if(error.name!=='AbortError'){stale=true;failures++;updateSource(model?undefined:error.status===401||error.status===403?'Read credential unavailable · run a-stack open again':'Local service unavailable · retrying');}}
+  }catch(error){if(error.name!=='AbortError'){stale=true;failures++;answered=!(error instanceof TypeError)&&error.status!==401&&error.status!==403;updateSource(model?undefined:error.status===401||error.status===403?'Read credential unavailable · run a-stack open again':'Local service unavailable · retrying');}}
   finally{busy=false;controller=null;schedule();}
 }
 function schedule(){clearTimeout(timer);if(!document.hidden&&token)timer=setTimeout(refresh,Math.min(30000,2000*2**Math.min(failures,4)));}
