@@ -26,7 +26,7 @@ const svgNS = 'http://www.w3.org/2000/svg';
 const state = {view:'graph',theme:'light',query:'',filter:'all',zoom:1,selected:null};
 let model = null, etag = '', instance = document.querySelector('meta[name="a-stack-instance"]').content;
 let timer, controller, failures = 0, busy = false, lastSuccess = 0, stale = false, detailKey = '', detailEpoch = 0, returnFocus;
-let geometryKey = '', width = 1400, height = 670;
+let geometryKey = '', width = 1400, height = 670, laneKey = p => p;
 const cards = new Map(), rows = new Map(), positions = new Map();
 const path = location.pathname.split('/');
 const context = {workspace_id:path[2],session_id:path[3]};
@@ -98,6 +98,8 @@ function layout() {
   const tasks=model.tasks, byID=new Map(tasks.map(t=>[t.id,t])), rank=new Map(tasks.map(t=>[t.id,0]));
   const degree=new Map(tasks.map(t=>[t.id,0])), next=new Map(tasks.map(t=>[t.id,[]])), prev=new Map(tasks.map(t=>[t.id,[]]));
   for(const e of model.dependencies) if(byID.has(e.prerequisite_id)&&byID.has(e.dependent_id)) {degree.set(e.dependent_id,degree.get(e.dependent_id)+1);next.get(e.prerequisite_id).push(e.dependent_id);prev.get(e.dependent_id).push(e.prerequisite_id);}
+  // Lines into a Task with several prerequisites share a lane and track, so they merge; other lines share them per prerequisite, so they branch.
+  laneKey=(p,d)=>prev.get(d).length>1?d:p;
   const queue=tasks.filter(t=>!degree.get(t.id)).map(t=>t.id).sort();
   for(let i=0;i<queue.length;i++) for(const id of next.get(queue[i])) {
     rank.set(id,Math.max(rank.get(id),rank.get(queue[i])+1));degree.set(id,degree.get(id)-1);if(!degree.get(id))queue.push(id);
@@ -116,18 +118,23 @@ function layout() {
     // Barycenter sweeps keep each Task near the Tasks it connects to, so lines pass fewer unrelated cards.
     const sweep=(l,near)=>{const c=new Map(l.map(id=>{const n=near.get(id);return [id,n.length?n.reduce((s,x)=>s+order.get(x),0)/n.length:order.get(id)];}));l.sort((a,b)=>c.get(a)-c.get(b));place(l);};
     for(let i=1;i<cols.length;i++)sweep(cols[i],prev);for(let i=cols.length-2;i>=0;i--)sweep(cols[i],next);for(let i=1;i<cols.length;i++)sweep(cols[i],prev);
-    let x=0,h=0;
+    let x=0,h=0,extra=0;
     const block={cols:cols.map((ids,i)=>{
       // A column much taller than the limit wraps into closer sub-columns with shared row heights, so lines can run in the gaps between rows.
-      // When its cards have lines on both sides ("two"), the rows sit further apart: lines out run in the upper half of a gap, lines in run in the lower half.
+      // Lines out of a row run in the upper part of the gap below it and lines into a row in the lower part of the gap above it,
+      // each lane key on its own track 12px apart; a gap grows only as far as its tracks need.
       const total=ids.reduce((s,id)=>s+sizes.get(id)+32,0)-32, n=Math.ceil(ids.length/Math.min(ids.length,total>limit*1.5?Math.ceil(total/limit):1)), heights=[];
       ids.forEach((id,j)=>heights[j%n]=Math.max(heights[j%n]||0,sizes.get(id)));
-      const k=Math.ceil(ids.length/n), two=k>1&&ids.some(id=>prev.get(id).length)&&ids.some(id=>next.get(id).length), gap=two?48:32;
-      const col={i,ids,x,k,two,gap,w:k*314-40,heights,h:heights.reduce((s,r)=>s+r+gap,0)-gap};x+=col.w+68;h=Math.max(h,col.h);return col;
+      const k=Math.ceil(ids.length/n), two=k>1&&ids.some(id=>prev.get(id).length)&&ids.some(id=>next.get(id).length);
+      const outs=heights.map(()=>[]), ins=heights.map(()=>[]), add=(l,v)=>{if(!l.includes(v))l.push(v);};
+      ids.forEach((id,j)=>{if(j<n*(k-1))for(const d of next.get(id))add(outs[j%n],laneKey(id,d));if(j>=n)for(const p of prev.get(id))add(ins[j%n],laneKey(p,id));});
+      const gaps=heights.slice(1).map((_,r)=>{const o=outs[r].length,q=ins[r+1].length;return Math.max(32,(o&&q?16:8)+12*(o+q));});
+      extra=Math.max(extra,12*(ins[0].length-1),12*(outs[n-1].length-1));
+      const col={i,ids,x,k,two,outs,ins,gaps,w:k*314-40,heights,h:heights.reduce((s,r)=>s+r,0)+gaps.reduce((s,g)=>s+g,0)};x+=col.w+68;h=Math.max(h,col.h);return col;
     })};
-    // Lines that skip a column run over or under the group, each source on its own track, clear of the row gaps.
+    // Lines that skip a column run over or under the group, each source on its own track, clear of the row tracks.
     const skips=ids.filter(id=>next.get(id).some(n=>rank.get(n)>rank.get(id)+1)).length;
-    block.pad=skips?54+8*skips:0;block.w=x-68;block.h=h+2*block.pad;return block;
+    block.extra=extra;block.pad=(skips?46+8*skips:0)+extra;block.w=x-68;block.h=h+2*block.pad;return block;
   });
   const maxWidth=Math.max(limit*aspect,(panel.clientWidth||1400)-88,...blocks.map(b=>b.w));let bx=28,by=24,shelf=0;width=56;
   positions.clear();
@@ -135,8 +142,8 @@ function layout() {
     if(bx>28&&bx+b.w>28+maxWidth){bx=28;by+=shelf+56;shelf=0;}
     b.x=bx;b.y=by;bx+=b.w+180;shelf=Math.max(shelf,b.h);width=Math.max(width,b.x+b.w+28); // groups sit well apart from columns, so they do not read as next steps
     for(const col of b.cols) {
-      col.x+=b.x;col.block=b;col.prev=b.cols[col.i-1];let y=b.y+(b.h-col.h)/2;const tops=col.heights.map(r=>{const t=y;y+=r+col.gap;return t;}), n=tops.length;
-      col.ids.forEach((id,j)=>{const r=j%n,p={x:col.x+Math.floor(j/n)*314,y:tops[r],c:Math.floor(j/n),top:tops[r],bottom:tops[r]+col.heights[r],col};positions.set(id,p);const a=cards.get(id).article;a.style.left=p.x+'px';a.style.top=p.y+'px';});
+      col.x+=b.x;col.block=b;col.prev=b.cols[col.i-1];let y=b.y+(b.h-col.h)/2;const tops=col.heights.map((r,i)=>{const t=y;y+=r+(col.gaps[i]||0);return t;}), n=tops.length;
+      col.ids.forEach((id,j)=>{const r=j%n,p={x:col.x+Math.floor(j/n)*314,y:tops[r],r,c:Math.floor(j/n),top:tops[r],bottom:tops[r]+col.heights[r],col};positions.set(id,p);const a=cards.get(id).article;a.style.left=p.x+'px';a.style.top=p.y+'px';});
     }
   }
   height=by+shelf+24; // tight around the Task units, so Fit fits the cards
@@ -159,31 +166,31 @@ function roundedPath(points, radius = 11) {
 
 function drawEdges() {
   const group=edgesSVG.querySelector('g'), frag=document.createDocumentFragment(), edges=[], lanes=new Map();
-  // Each gutter gives a vertical lane to every Task with several prerequisites, so lines into it merge,
-  // and otherwise to every prerequisite, so its lines branch from one trunk.
+  // Each gutter gives every lane key its own vertical lane.
   const use=(col,id)=>{const l=lanes.get(col) || [];lanes.set(col,l);if(!l.includes(id))l.push(id);};
-  const lane=(col,id)=>{const l=lanes.get(col);return col.x+col.w+68*(l.indexOf(id)+1)/(l.length+1);}, tracks=new Map(), into=new Map();
+  const lane=(col,id)=>{const l=lanes.get(col);return col.x+col.w+68*(l.indexOf(id)+1)/(l.length+1);}, tracks=new Map();
   for(const e of model.dependencies) {
     const ap=positions.get(e.prerequisite_id),bp=positions.get(e.dependent_id);
     if(!ap||!bp||!cards.has(e.prerequisite_id)||!cards.has(e.dependent_id)||ap.col.block!==bp.col.block||bp.col.i<=ap.col.i)continue;
-    edges.push([e,ap,bp]);into.set(e.dependent_id,(into.get(e.dependent_id)||0)+1);
+    edges.push([e,ap,bp,laneKey(e.prerequisite_id,e.dependent_id)]);
   }
-  const key=e=>into.get(e.dependent_id)>1?e.dependent_id:e.prerequisite_id;
-  for(const [e,ap,bp] of edges){use(ap.col,key(e));use(bp.col.prev,key(e));}
-  for(const [e,ap,bp] of edges) {
+  // Lines that skip a column take the lanes nearest their source column, so they turn away before passing other arrows.
+  for(const [,ap,bp,k] of edges)if(bp.col.i!==ap.col.i+1)use(ap.col,k);
+  for(const [,ap,bp,k] of edges){use(ap.col,k);use(bp.col.prev,k);}
+  for(const [e,ap,bp,k] of edges) {
     const a=cards.get(e.prerequisite_id),b=cards.get(e.dependent_id),g=ap.col.block;
-    // Lines leave a wrapped column through the gap below the row and enter one through the gap above it. Where a column has
-    // lines on both sides, they leave low on a card and enter high on its neighbour, in separate lanes, so they never meet.
-    const out=ap.c<ap.col.k-1, inn=bp.c>0, x1=ap.x+274, x2=bp.x, from=lane(ap.col,key(e)), to=lane(bp.col.prev,key(e));
+    // Lines leave a wrapped column on their key's track below the row and enter one on their key's track above it. Where a column
+    // has lines on both sides, they leave low on a card and enter high on its neighbour, in separate lanes, so they never meet.
+    const out=ap.c<ap.col.k-1, inn=bp.c>0, x1=ap.x+274, x2=bp.x, from=lane(ap.col,k), to=lane(bp.col.prev,k);
     const y1=ap.y+a.button.offsetTop+(out&&ap.col.two?a.button.offsetHeight-14:a.button.offsetHeight/2), y2=bp.y+b.button.offsetTop+(inn&&bp.col.two?14:b.button.offsetHeight/2), points=[[x1,y1]];
     let y=y1;
-    if(out){y=ap.bottom+(ap.col.two?14:16);points.push([x1+12,y1],[x1+12,y]);}
+    if(out){y=ap.bottom+10+12*ap.col.outs[ap.r].indexOf(k);points.push([x1+12,y1],[x1+12,y]);}
     points.push([from,y]);
     if(bp.col.i!==ap.col.i+1){ // over or under the group, not through other columns
       if(!tracks.has(e.prerequisite_id))tracks.set(e.prerequisite_id,[...tracks.keys()].filter(id=>positions.get(id).col.block===g).length);
-      const t=46+8*tracks.get(e.prerequisite_id), c=(y1+y2)/2<g.y+g.h/2?g.y+g.pad-t:g.y+g.h-g.pad+t;points.push([from,c],[to,c]);
+      const t=46+g.extra+8*tracks.get(e.prerequisite_id), c=(y1+y2)/2<g.y+g.h/2?g.y+g.pad-t:g.y+g.h-g.pad+t;points.push([from,c],[to,c]);
     }
-    if(inn){const t=bp.top-(bp.col.two?14:16);points.push([to,t],[x2-12,t],[x2-12,y2]);}else points.push([to,y2]);
+    if(inn){const t=bp.top-10-12*bp.col.ins[bp.r].indexOf(k);points.push([to,t],[x2-12,t],[x2-12,y2]);}else points.push([to,y2]);
     points.push([x2-3,y2]);
     const p=document.createElementNS(svgNS,'path');p.setAttribute('d',roundedPath(points));p.setAttribute('marker-end','url(#arrow)');p.classList.add('connection');
     if(e.prerequisite_id===state.selected||e.dependent_id===state.selected)p.classList.add('active');
