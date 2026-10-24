@@ -58,19 +58,19 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.SetOutput(io.Discard)
 	var state, credential, kind, listen, destination, herdrExecutable string
 	var machine, help, noBrowser, resume, showVersion bool
-	fs.StringVar(&state, "state-dir", "", "private absolute application-state directory")
-	fs.StringVar(&credential, "credential-file", "", "private credential file")
-	fs.StringVar(&kind, "as", "", "operator, agent or browser")
-	fs.StringVar(&listen, "listen", "127.0.0.1:0", "serve loopback address")
-	fs.StringVar(&destination, "destination", "", "new absolute backup filename")
-	fs.BoolVar(&machine, "json", false, "machine-readable JSON")
-	fs.BoolVar(&help, "help", false, "show usage")
-	fs.BoolVar(&help, "h", false, "short for --help")
-	fs.BoolVar(&showVersion, "version", false, "same as the version command")
-	fs.BoolVar(&noBrowser, "no-browser", false, "print browser URL without launching")
-	fs.BoolVar(&resume, "resume", false, "bare command: pick a Session to open")
-	fs.BoolVar(&resume, "r", false, "short for --resume")
-	fs.StringVar(&herdrExecutable, "herdr-executable", "", "serve: opt in to verified Herdr notices using this executable")
+	fs.StringVar(&state, "state-dir", "", "State directory (default ~/.local/state/a-stack)")
+	fs.StringVar(&credential, "credential-file", "", "Credential file (default: operator.json)")
+	fs.StringVar(&kind, "as", "", "Credential kind: operator, agent or browser")
+	fs.StringVar(&listen, "listen", "127.0.0.1:0", "Loopback address; port 0 picks a free port")
+	fs.StringVar(&destination, "destination", "", "New absolute file name for the backup")
+	fs.BoolVar(&machine, "json", false, "Machine-readable output")
+	fs.BoolVar(&help, "help", false, "Show help")
+	fs.BoolVar(&help, "h", false, "Short for --help")
+	fs.BoolVar(&showVersion, "version", false, "Print the version")
+	fs.BoolVar(&noBrowser, "no-browser", false, "Print the URL, but do not start a browser")
+	fs.BoolVar(&resume, "resume", false, "Pick a Session to open")
+	fs.BoolVar(&resume, "r", false, "Short for --resume")
+	fs.StringVar(&herdrExecutable, "herdr-executable", "", "Turn on Herdr mention notices with this herdr binary")
 	var lifecycle lifecycleFlags
 	lifecycle.register(fs)
 	var tasks taskFlags
@@ -105,19 +105,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 	command, help = aliasCommands(command, help, showVersion)
 	if help {
-		if machine {
-			flags := []string{}
-			fs.VisitAll(func(f *flag.Flag) {
-				if len(f.Name) == 1 {
-					flags = append(flags, "-"+f.Name)
-				} else {
-					flags = append(flags, "--"+f.Name)
-				}
-			})
-			return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "new", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(lifecycleCommands, taskCommands...), mailCommands...)...), "flags": flags}})
-		}
-		_, err := io.WriteString(stdout, "Usage: a-stack serve|open|health|version|storage status|storage backup [flags]\nOperator: a-stack (start the service if needed and open the last Session); a-stack -r|--resume (pick a Session); a-stack new [NAME] (Workspace for this folder, new Session, open it)\nNotifications: notifications status/drain --workspace ID --session ID; serve --herdr-executable FILE (opt in)\nLifecycle: workspace create/list; session create/list/inspect/close/reopen/appoint; agent register/list/attach/rebind/observe\nTasks: task create/list/show/edit/assign/unassign/status/reopen/report/history/assignees/references/dependencies; task attention set/resolve; task reference add/remove; dependency add/remove/history; session snapshot/page\nMail: mail send/read/check; --body TEXT | --body-file FILE|-; --mention NAME (repeat); --cursor TOKEN; --cursor-file FILE|-; --after-task TOKEN; --task-limit 1..100; --limit 1..500 (mail)\n  --state-dir ABSOLUTE_DIR --credential-file FILE --as operator|agent|browser --json\n  --workspace ID --session ID --operation-id ID --expected-revision N\n  open --workspace ID --session ID [--no-browser] [--json]\n  --path DIR --name NAME --agent ID --worktree DIR --new-credential-file FILE\n  --runtime-id ID | --runtime-file FILE | --clear-runtime --runtime-state STATE\n  --task ID --title TEXT --description TEXT --report TEXT --body-file FILE|- --ticket REF\n  --progress waiting|working|finished|cancelled --reason TEXT --summary TEXT --question TEXT --note TEXT\n  --from PREREQUISITE --to DEPENDENT --location PATH_OR_URL --reference ID --reference-revision REV\n  --read-revision N --known-revision N --page-kind KIND --limit 1..100 --after CURSOR --listen 127.0.0.1:PORT (serve) --destination FILE (backup)\n")
-		return err
+		return writeHelp(fs, command, machine, stdout)
 	}
 	cmd := strings.Join(command, " ")
 	if cmd == "version" {
@@ -268,11 +256,11 @@ func serveForeground(ctx context.Context, state, listen, herdrExecutable string,
 	return closeErr
 }
 
-// aliasCommands makes `help` and -h work like --help, and --version without a
-// command work like `version`.
+// aliasCommands makes `help [COMMAND]` and -h work like --help, and
+// --version without a command work like `version`.
 func aliasCommands(command []string, help, showVersion bool) ([]string, bool) {
-	if len(command) == 1 && command[0] == "help" {
-		return nil, true
+	if len(command) > 0 && command[0] == "help" {
+		return command[1:], true
 	}
 	if showVersion && len(command) == 0 {
 		return []string{"version"}, help

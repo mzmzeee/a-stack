@@ -68,7 +68,7 @@ The Task graph is empty at first. To register Agents and give them Tasks, follow
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
 
-To see all commands and flags, run `a-stack --help`.
+To see all commands, run `a-stack --help`. To see the flags of one command, run `a-stack help COMMAND`, for example `a-stack help task create`.
 
 ## Contributing
 

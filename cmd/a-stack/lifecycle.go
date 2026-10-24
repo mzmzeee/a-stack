@@ -27,23 +27,35 @@ type lifecycleFlags struct {
 }
 
 func (f *lifecycleFlags) register(fs *flag.FlagSet) {
-	fs.StringVar(&f.workspace, "workspace", "", "explicit Workspace ID")
-	fs.StringVar(&f.session, "session", "", "explicit Session ID")
-	fs.StringVar(&f.operationID, "operation-id", "", "retained operation ID for a mutation/retry")
-	fs.StringVar(&f.path, "path", "", "explicit canonical project directory")
-	fs.StringVar(&f.name, "name", "", "Session or Agent display name")
+	fs.StringVar(&f.workspace, "workspace", "", "Workspace ID")
+	fs.StringVar(&f.session, "session", "", "Session ID")
+	fs.StringVar(&f.operationID, "operation-id", "", "Your ID for this change; reuse it to retry")
+	fs.StringVar(&f.path, "path", "", "Absolute project folder")
+	fs.StringVar(&f.name, "name", "", "Session or Agent name")
 	fs.StringVar(&f.agent, "agent", "", "Agent ID")
-	fs.StringVar(&f.worktree, "worktree", "", "explicit worktree directory in this Workspace")
-	fs.StringVar(&f.newCredential, "new-credential-file", "", "new/resumable private Agent credential file")
-	fs.StringVar(&f.runtimeID, "runtime-id", "", "explicit running instance ID")
-	fs.StringVar(&f.runtimeFile, "runtime-file", "", "private JSON runtime binding file")
-	fs.BoolVar(&f.clearRuntime, "clear-runtime", false, "explicitly clear binding during Operator rebind")
-	fs.StringVar(&f.state, "runtime-state", "", "latest runtime observation")
-	fs.Int64Var(&f.revision, "expected-revision", 0, "required current revision for existing resources")
-	fs.IntVar(&f.limit, "limit", 0, "page size (1–100; mail 1–500)")
-	fs.StringVar(&f.after, "after", "", "list continuation ID")
+	fs.StringVar(&f.worktree, "worktree", "", "Absolute working folder of the Agent")
+	fs.StringVar(&f.newCredential, "new-credential-file", "", "New private credential file for the Agent")
+	fs.StringVar(&f.runtimeID, "runtime-id", "", "ID of the running instance")
+	fs.StringVar(&f.runtimeFile, "runtime-file", "", "Private JSON file with the runtime binding")
+	fs.BoolVar(&f.clearRuntime, "clear-runtime", false, "Clear the runtime binding (Operator)")
+	fs.StringVar(&f.state, "runtime-state", "", "unknown, working, idle, done, stopped or blocked")
+	fs.Int64Var(&f.revision, "expected-revision", 0, "Current revision of the resource")
+	fs.IntVar(&f.limit, "limit", 0, "Page size: 1 to 100, mail 1 to 500")
+	fs.StringVar(&f.after, "after", "", "Continue after this ID or cursor")
 }
 func validateCommandFlags(command string, seen map[string]bool) error {
+	allowed := acceptedFlags(command)
+	for name := range seen {
+		if !strings.Contains(allowed, " "+name+" ") {
+			return invalid("flag does not apply to this command; use --help")
+		}
+	}
+	return nil
+}
+
+// acceptedFlags lists the flags a command accepts, space-separated with a
+// space at both ends. Help uses the same list.
+func acceptedFlags(command string) string {
 	allowed := " state-dir json help "
 	// The Operator shortcuts use operator.json and may start the service, so
 	// they take neither credential nor serve flags.
@@ -94,12 +106,7 @@ func validateCommandFlags(command string, seen map[string]bool) error {
 	if isMailCommand(command) {
 		allowed += "workspace session " + mailAllowedFlags(command) + " "
 	}
-	for name := range seen {
-		if !strings.Contains(allowed, " "+name+" ") {
-			return invalid("flag does not apply to this command; use --help")
-		}
-	}
-	return nil
+	return allowed
 }
 func lifecycleRequest(ctx context.Context, client *stack.Client, command string, f lifecycleFlags) ([]byte, error) {
 	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}

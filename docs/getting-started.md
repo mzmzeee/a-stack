@@ -300,4 +300,4 @@ If a `conflict` shows that the revision changed, your change is out of date. Rea
 ## Next steps
 
 - To let a-stack tell an Agent in Herdr to check its mail, see [Mention notices](notifications.md). Mail works without it.
-- To see all commands and flags, run `a-stack --help`.
+- To see all commands, run `a-stack --help`. To see the flags of one command, run `a-stack help COMMAND`.
