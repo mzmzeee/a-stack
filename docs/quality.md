@@ -31,14 +31,21 @@ The script does not change `go.mod` and installs nothing globally. Go tools go t
 | Browser script | `node --check`, oxlint 1.89.0 | Syntax, then the rules in `.oxlintrc.json`. |
 | Validation runner | `python3 -m py_compile`, Ruff 0.17.2 | Syntax, then the rules in `ruff.toml`. |
 | Check script | ShellCheck 0.11.0 | `scripts/check.sh` itself. |
+| CI config | actionlint 1.7.12, zizmor 1.31.1 | `.github/` workflow syntax and workflow security. |
+| Secrets | gitleaks 8.30.1 | The Git history of the checkout. |
 | Workflow | `scripts/validate-v1.py --quick` | The disposable end-to-end workflow and engine fault tests against `.tmp/a-stack`. |
 
 To change a tool version, edit the variable at the top of `scripts/check.sh` and this table.
+
+## CI
+
+`.github/workflows/check.yml` runs `scripts/check.sh` on Ubuntu 24.04 for every pull request and every push to `main`. Its actions are pinned by commit SHA. `.github/dependabot.yml` proposes weekly updates for the Go module and the pinned actions. Dependabot does not change the tool versions in `scripts/check.sh` or the Go version in `go.mod` and `.go-version`; update those by hand.
 
 ## Rule choices
 
 - **Staticcheck** runs its default checks. One finding is suppressed in place: the empty critical section in `Service.Close` (`internal/stack/http.go`) waits for an HTTP-started notice drain to finish before the database closes.
 - **oxlint** uses the `correctness` category plus `no-undef` and `no-unused-vars`, with browser globals. The `suspicious` category was left out: on `app.js` it only reported style preferences, such as `toSorted()` instead of sorting a freshly built array.
+- **golangci-lint** was tried (v2.15.0) and left out. Beyond `go vet` and Staticcheck, it reported unchecked deferred `Close` and `Rollback` calls, error type assertions on errors the code never wraps, and style quick fixes. None was a defect.
 - **Ruff** selects syntax errors, Pyflakes (`F`), flake8-bugbear (`B`) and Pylint errors (`PLE`). It selects no style rules. Six lines in `scripts/validate-v1.py` suppress `B023`, because those closures run at once inside the loop iteration that defines them.
 
 ## Known limits
