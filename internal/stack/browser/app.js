@@ -101,7 +101,7 @@ function patchCard(c,t,graphCard=false) {
   c.button.classList.toggle('selected',state.selected===t.id);
   c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.needs_you?' Needs you.':''} Assigned to ${names.join(' and ') || 'Unassigned'}. ${caption}`);
   const visible=matches(t);
-  c.article.classList.toggle('archived',graphCard&&done(t));
+  c.article.classList.toggle('archived',graphCard&&t.archived);
   c.article.classList.toggle('unfocused',graphCard&&!!focusIds&&!focusIds.has(t.id));
   c.article.classList.toggle('dimmed',graphCard&&!visible);
   c.article.inert=graphCard&&!visible;
@@ -214,8 +214,8 @@ function connection(e,d) {
 }
 function measure(name,run) {performance.clearMarks(name+'-start');performance.clearMarks(name+'-end');performance.clearMeasures(name);performance.mark(name+'-start');run();performance.mark(name+'-end');performance.measure(name,name+'-start',name+'-end');}
 function patchGraph() {
-  // Finished and cancelled Tasks are archived: hidden from the graph unless the Archived toggle is on.
-  graphTasks=state.archived?model.tasks:model.tasks.filter(t=>!done(t));
+  // The service decides which Tasks are archived (command, chain or age); the graph hides them unless the Archived toggle is on.
+  graphTasks=state.archived?model.tasks:model.tasks.filter(t=>!t.archived);
   if(state.focus&&!graphTasks.some(t=>t.id===state.focus))state.focus=null;
   focusIds=state.focus?focusSet():null;
   const ids=new Set(graphTasks.map(t=>t.id));
@@ -226,7 +226,7 @@ function patchGraph() {
     geometryKey=key;
     measure('a-stack-layout',()=>{measure('a-stack-reduce',()=>{({kept:graphEdges,hidden:hiddenEdges}=reduceEdges(graphTasks,model.dependencies));});layout();});
   }else drawEdges();
-  const archived=model.tasks.filter(done).length;setText($('archived-label'),`Archived (${archived})`);$('archived').setAttribute('aria-pressed',String(state.archived));
+  const archived=model.tasks.filter(t=>t.archived).length;setText($('archived-label'),`Archived (${archived})`);$('archived').setAttribute('aria-pressed',String(state.archived));
   $('archived').setAttribute('aria-label',`${state.archived?'Hide':'Show'} ${plural(archived,'archived Task')} in the graph`);
 }
 function patchAgents() {
@@ -277,8 +277,8 @@ function patchNowCard(c,t,byID) {
   setText(c.question,t.question_preview || '');c.question.hidden=!t.needs_you||!t.question_preview;
   setText(c.waits,blockers.length?'Waits for: '+blockers.join(', '):'');c.waits.hidden=t.progress!=='waiting'||!blockers.length;
   const report=firstLine(t.report_preview);setText(c.note,report || 'No report yet.');
-  c.button.classList.toggle('selected',state.selected===t.id);
-  c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.needs_you?' Needs you: '+(t.question_preview || '')+'.':''} Assigned to ${names.join(' and ') || 'Unassigned'}.${c.waits.hidden?'':' '+c.waits.textContent+'.'} Changed ${age(t.updated_at)}.`);
+  c.button.classList.toggle('selected',state.selected===t.id);c.button.classList.toggle('archived',!!t.archived);
+  c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.archived?' Archived.':''}${t.needs_you?' Needs you: '+(t.question_preview || '')+'.':''} Assigned to ${names.join(' and ') || 'Unassigned'}.${c.waits.hidden?'':' '+c.waits.textContent+'.'} Changed ${age(t.updated_at)}.`);
 }
 // Moving a node keeps its focus where the browser supports moveBefore.
 function place(list,node,ref) { if(node.nextSibling===ref&&node.parentNode===list)return; try{if(list.moveBefore&&node.isConnected&&node.ownerDocument===list.ownerDocument){list.moveBefore(node,ref);return;}}catch{} list.insertBefore(node,ref); }
@@ -286,13 +286,15 @@ function placeAll(list,nodes) { nodes.forEach((n,i)=>place(list,n,list.children[
 function patchNow() {
   const focused=document.activeElement, byID=new Map(model.tasks.map(t=>[t.id,t])), newest=(a,b)=>a.updated_at<b.updated_at?1:a.updated_at>b.updated_at?-1:a.id<b.id?-1:1;
   for(const [id] of nowCards)if(!byID.has(id))nowCards.delete(id);
+  const archivedAll=model.tasks.filter(t=>t.archived).sort(newest), archivedShown=archivedAll.filter(matches);
   for(const col of columns) {
-    const all=model.tasks.filter(t=>column(t)===col.key).sort(newest), shown=all.filter(matches), capped=col===doneColumn&&!state.allFinished?shown.slice(0,10):shown;
-    placeAll(col.list,capped.map(t=>{let c=nowCards.get(t.id);if(!c){c=makeNowCard(t);nowCards.set(t.id,c);}patchNowCard(c,t,byID);return c.button;}));
+    const all=model.tasks.filter(t=>column(t)===col.key&&!t.archived).sort(newest), shown=all.filter(matches);
+    const listed=col===doneColumn&&state.allFinished?shown.concat(archivedShown):shown;
+    placeAll(col.list,listed.map(t=>{let c=nowCards.get(t.id);if(!c){c=makeNowCard(t);nowCards.set(t.id,c);}patchNowCard(c,t,byID);return c.button;}));
     setText(col.count,shown.length===all.length?String(all.length):`${shown.length} of ${all.length}`);
     col.section.classList.toggle('has-items',all.length>0);
-    setText(col.emptyNode,all.length?'No matching Tasks.':col.empty);col.emptyNode.hidden=capped.length>0;
-    if(col===doneColumn){more.hidden=shown.length<=10;setText(more,state.allFinished?'Show the last 10':`Show archive (${shown.length})`);more.setAttribute('aria-expanded',String(state.allFinished));}
+    setText(col.emptyNode,all.length?'No matching Tasks.':col.empty);col.emptyNode.hidden=listed.length>0;
+    if(col===doneColumn){more.hidden=!archivedAll.length;setText(more,state.allFinished?'Hide archive':`Show archive (${archivedShown.length===archivedAll.length?archivedAll.length:archivedShown.length+' of '+archivedAll.length})`);more.setAttribute('aria-expanded',String(state.allFinished));}
   }
   patchFeed(byID);
   if(focused&&focused!==document.activeElement&&focused.isConnected)focused.focus({preventScroll:true});
@@ -300,7 +302,7 @@ function patchNow() {
 // The feed keeps the changes this page has seen: each Task's last action at its updated_at, its report time,
 // and differences between polls. A change that is not a Task's latest one shows only while the page watched it.
 const events=new Map();let feedModel=null;const feedRows=new Map();
-const actionKinds={'task.create':'create','task.status':'status','task.reopen':'status','task.report':'report','task.attention.set':'ask','task.attention.resolve':'resolve','task.assign':'assign','task.unassign':'assign','task.reference.add':'refs','task.reference.remove':'refs'};
+const actionKinds={'task.create':'create','task.status':'status','task.reopen':'status','task.report':'report','task.attention.set':'ask','task.attention.resolve':'resolve','task.assign':'assign','task.unassign':'assign','task.reference.add':'refs','task.reference.remove':'refs','task.archive':'archive','task.unarchive':'unarchive'};
 function addEvent(t,kind,at) {
   if(!at)return;const key=`${t.id}|${kind}|${at}`;if(events.has(key))return;
   events.set(key,{key,task:t.id,kind,at,progress:t.progress,text:kind==='report'?firstLine(t.report_preview):kind==='ask'?t.question_preview || '':''});
@@ -319,7 +321,7 @@ function collectEvents() {
   if(events.size>300)[...events.values()].sort((a,b)=>a.at<b.at?-1:1).slice(0,events.size-300).forEach(e=>events.delete(e.key));
 }
 function eventText(e) {
-  return {status:`changed to ${labels[e.progress] || e.progress}`,create:'was added',report:e.text?'reported: '+e.text:'reported',ask:e.text?'needs you: '+e.text:'needs you',resolve:'Needs you resolved',assign:'Agents changed',refs:'file references changed',edit:'was edited'}[e.kind];
+  return {status:`changed to ${labels[e.progress] || e.progress}`,create:'was added',report:e.text?'reported: '+e.text:'reported',ask:e.text?'needs you: '+e.text:'needs you',resolve:'Needs you resolved',assign:'Agents changed',refs:'file references changed',archive:'was archived',unarchive:'was unarchived',edit:'was edited'}[e.kind];
 }
 function patchFeed(byID) {
   if(feedModel!==model)collectEvents();
@@ -328,7 +330,7 @@ function patchFeed(byID) {
   placeAll(list,shown.map(e=>{
     let r=feedRows.get(e.key),t=byID.get(e.task);
     if(!r){const li=el('li'),b=el('button','feed-item'),mark=el('span','feed-mark'),text=el('span','feed-text'),title=el('span','feed-title'),what=el('span'),when=el('time','now-age');
-      mark.append(iconNode(e.kind==='status'?(e.progress==='cancelled'?'idle':e.progress):e.kind==='ask'?'attention':e.kind==='resolve'?'finished':'info'));mark.className='feed-mark '+(e.kind==='status'?e.progress:e.kind);
+      mark.append(iconNode(e.kind==='status'?(e.progress==='cancelled'?'idle':e.progress):e.kind==='ask'?'attention':e.kind==='resolve'?'finished':e.kind==='archive'||e.kind==='unarchive'?'archive':'info'));mark.className='feed-mark '+(e.kind==='status'?e.progress:e.kind);
       text.append(title,' ',what);b.append(mark,text,when);li.append(b);b.onclick=()=>openTask(e.task,b);r={li,b,title,what,when};feedRows.set(e.key,r);}
     setText(r.title,t.title);setText(r.what,eventText(e));stamp(r.when,e.at);r.b.setAttribute('aria-label',`${t.title} ${eventText(e)}, ${age(e.at)}`);
     return r.li;
@@ -421,7 +423,7 @@ function renderAttention() {
 $('attention').onclick=()=>{const tasks=model.tasks.filter(t=>t.needs_you);if(tasks.length===1)openTask(tasks[0].id,$('attention'));else{renderAttention();$('attention-dialog').showModal();}};
 const dialog=$('task-dialog');
 const top=el('div','detail-top'),kicker=el('span','detail-kicker','TASK DETAILS'),close=el('button','icon-button');close.setAttribute('aria-label','Close task details');close.append(iconNode('close'));close.onclick=()=>dialog.close();top.append(kicker,close);
-const body=el('div','detail-body'),detailTitle=el('h2'),detailStatus=el('div','status'),detailLoading=el('p','detail-footnote'),detailFields={};detailTitle.id='detail-title';body.append(detailTitle,detailStatus,detailLoading);
+const body=el('div','detail-body'),detailTitle=el('h2'),detailStatus=el('div','status'),detailArchive=el('p','detail-archive'),detailLoading=el('p','detail-footnote'),detailFields={};detailTitle.id='detail-title';body.append(detailTitle,detailStatus,detailArchive,detailLoading);
 for(const [key,label]of Object.entries({ticket:'Ticket reference',description:'Description',report:'Latest report',reason:'Reason',result:'Result',question:'Needs you',owners:'Assigned agents',dependencies:'Dependencies',references:'File references',source:'Source'})){
   const section=el('section','detail-section'),h=el('h3','',label),content=el('div','detail-text');section.append(h,content);body.append(section);detailFields[key]=content;
 }
@@ -469,12 +471,13 @@ function setFocus(id) {state.focus=id;render();}
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.focus&&state.view==='graph'&&!document.querySelector('dialog[open]')){e.preventDefault();setFocus(null);}});
 $('archived').addEventListener('click',()=>{state.archived=!state.archived;save('a-stack-archived',state.archived?'1':'0');render();});
 function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){resetMail(id);for(const name of ['description','report','reason','result','question','references','source'])detailFields[name].replaceChildren();delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
+const archiveReasons={command:'Archived with task archive.',chain:'Archived: every Task that depends on it is finished or cancelled.',age:'Archived: it ended more than 24 hours ago.'};
 function patchDetailMetadata(t) {
-  setText(detailTitle,t.title);status(detailStatus,t);setText(detailFields.ticket,t.ticket_ref || 'None.');setText(detailFields.owners,owners(t).join(', ') || 'Unassigned');patchMail(t);
+  setText(detailTitle,t.title);status(detailStatus,t);setText(detailArchive,t.archived?archiveReasons[t.archived_reason] || 'Archived.':'');detailArchive.hidden=!t.archived;setText(detailFields.ticket,t.ticket_ref || 'None.');setText(detailFields.owners,owners(t).join(', ') || 'Unassigned');patchMail(t);
   const dep=detailFields.dependencies;
-  const signature=JSON.stringify(model.dependencies.filter(e=>e.dependent_id===t.id||e.prerequisite_id===t.id).map(e=>{const other=model.tasks.find(x=>x.id===(e.dependent_id===t.id?e.prerequisite_id:e.dependent_id));return [e.id,other?.title,other?.progress];}));
+  const signature=JSON.stringify(model.dependencies.filter(e=>e.dependent_id===t.id||e.prerequisite_id===t.id).map(e=>{const other=model.tasks.find(x=>x.id===(e.dependent_id===t.id?e.prerequisite_id:e.dependent_id));return [e.id,other?.title,other?.progress,other?.archived];}));
   if(dep.dataset.key===t.id+signature)return;dep.dataset.key=t.id+signature;dep.replaceChildren();
-  for(const e of model.dependencies)if(e.dependent_id===t.id||e.prerequisite_id===t.id){const prior=e.dependent_id===t.id,other=model.tasks.find(x=>x.id===(prior?e.prerequisite_id:e.dependent_id));if(!other)continue;const b=el('button','dependency',`${prior?'Requires':'Required by'}: ${other.title} · ${labels[other.progress]}${done(other)?' · archived':''}`);b.onclick=()=>openTask(other.id,returnFocus);dep.append(b);}
+  for(const e of model.dependencies)if(e.dependent_id===t.id||e.prerequisite_id===t.id){const prior=e.dependent_id===t.id,other=model.tasks.find(x=>x.id===(prior?e.prerequisite_id:e.dependent_id));if(!other)continue;const b=el('button','dependency',`${prior?'Requires':'Required by'}: ${other.title} · ${labels[other.progress]}${other.archived?' · archived':''}`);b.onclick=()=>openTask(other.id,returnFocus);dep.append(b);}
   if(!dep.childNodes.length)setText(dep,'No dependencies.');
 }
 async function loadDetail() {

@@ -14,11 +14,15 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - The Working status icon spins, unless the system asks for reduced motion.
 - The Task details in the browser view have a Task mail section. It loads nothing until you open it, then shows the messages oldest first as plain text, with the sender, the age and styled mentions, and "Load more" for long threads. New messages appear on the next poll.
 - The Task read data has `mail_count`, and each mail message has `sender_name`.
+- `task archive` and `task unarchive` archive a Finished or Cancelled Task, or undo it. The Orchestrator or the Operator runs them; `task reopen` clears the archive. a-stack also counts a done Task as archived when every Task that depends on it is done, or 24 hours after it ended. The Task read data has `archived`, `archived_reason`, `archived_at` and `ended_at`, and the details in the view say why a Task is archived.
+- Each Task history entry has `actor_kind`, `agent` or `operator`.
 
 ### Changed
 
 - The graph is back to the v0.1.0 look: one column per rank and bracket lines between columns. Tasks without lines sit in rows below. The graph draws a dependency line only when no other path connects the two Tasks; the details still list every dependency.
-- Finished and cancelled Tasks are archived in the graph: hidden by default and shown dimmed with the Archived (N) toggle. This is a view setting only.
+- Finished and cancelled Tasks show in the graph again, unless they are archived. The graph hides archived Tasks by default and shows them dimmed with the Archived (N) toggle. On the Now board, archived Tasks leave Recently finished and appear under "Show archive".
+- The database schema is version 6. It adds `archived_at` and `ended_at` to Tasks and lets the Task history name the Operator. The upgrade runs once, in one transaction.
+- A Task page prepares its Task query once, so listing 1,000 Tasks takes about a third of the time.
 - The browser view credential can read the Task mail of its own Session with `POST /v1/mail/read`. It still cannot send or check mail. The Operator credential still has no mail access.
 - A mail send raises the Session read revision, so a polling view sees the new `mail_count`.
 

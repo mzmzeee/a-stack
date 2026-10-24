@@ -83,7 +83,7 @@ The Now tab answers what is happening and what needs you, without panning. It ha
 - Needs you: Tasks with an open Needs you request, with the question.
 - Working: Tasks in progress.
 - Waiting: Tasks that have not started. When a Task waits on prerequisites that are not finished, the card says which: "Waits for: X, Y".
-- Recently finished: finished and cancelled Tasks, newest first. The column shows the last 10. "Show archive" lists them all.
+- Recently finished: finished and cancelled Tasks that are not [archived](tasks.md#archived-tasks), newest first. "Show archive (N)" adds the archived Tasks below them, dimmed. "Hide archive" removes them again.
 - Latest changes: the most recent changes, newest first, such as "Review cart changed to Finished · 4m ago".
 
 A Task with an open request is in Needs you, whatever its progress. Each card shows the status, the title, the assigned Agents, the first line of the latest report and the age of the last change, such as `2m ago` or `3h ago`. Inside a column, the newest change comes first. An empty column says so in one line. A long column scrolls inside itself. Click a card, or press Enter on it, to open the details. Search and the status filter work on the board and on the feed.
@@ -99,7 +99,7 @@ A poll moves cards between columns in place. The selection, the focused card and
 - Each dependency rank is one column. The cards of a column are stacked and centered, and each Task sits near the Tasks it connects to. Lines run from the right side of a card through the gap between the columns to the left side of the next card.
 - Tasks without a line sit in rows below the connected graph, so no line runs past them.
 - The graph hides a dependency line when another path already connects the two Tasks; the details panel lists every dependency.
-- Finished and cancelled Tasks are archived. The graph hides them by default, so it shows the open work: Working, Waiting and Needs you. Lines to or from a hidden archived Task are not drawn, so a Waiting Task whose prerequisites are all archived sits in the first column. The Archived (N) toggle in the graph toolbar shows them again, dimmed. The view remembers the toggle in local storage. Archiving is part of the view only. There is no archive command and no schema change.
+- The graph hides [archived Tasks](tasks.md#archived-tasks) by default. Finished and cancelled Tasks that are not archived stay, so the finished work that a live Task depends on and the last Task of each chain are visible. Lines to or from a hidden archived Task are not drawn, so a Task whose prerequisites are all archived sits in the first column. The Archived (N) toggle in the graph toolbar shows them again, dimmed. The view remembers the toggle in local storage. The service decides which Tasks are archived; the view cannot archive anything.
 - Select a Task, with a click or with Enter, to focus it. The Task, its direct prerequisites, its direct dependents and their lines stay bright, and everything else is dimmed to 30%. Lines that the graph hides because another path connects the Tasks appear dashed while one of their Tasks has the focus. The focus stays after the details close. Escape, or a click on empty space, clears it.
 - The layout runs again when Tasks or dependencies change, when the Archived toggle changes, or when a card changes size: a new title, other assigned Agents, Needs you, file references or cancelled prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes.
 
@@ -124,7 +124,7 @@ Reading mail in the view changes nothing. It stores no read position, writes no 
 - Drag an empty part of the graph to move it. Zoom and Fit are separate controls.
 - Fit scales the graph to the Task cards, never above 100%, and centers them in the panel.
 - In the Graph tab, filters dim the cards that do not match, so the connections stay visible. In the Now and Agents tabs, filters hide them. If only archived Tasks match, the Graph tab says so and points to the Archived toggle.
-- The details list every dependency of the Task, also archived ones, which are labelled "archived".
+- The details list every dependency of the Task, also archived ones, which are labelled "archived". The details of an archived Task say why: the archive command, the chain rule or the age rule.
 
 ## Refresh
 
@@ -147,7 +147,7 @@ The Task data has an optional `report_preview`: the first 160 Unicode code point
 
 The Now tab uses two more optional fields of the Task data. `question_preview` is the first 160 Unicode code points of the open Needs you question, computed the same way, and is empty when no request is open. `last_action` is the action of the Task's latest history entry, such as `task.status`, `task.report` or `task.attention.resolve`. It happened at `updated_at`. Both are read-only, need no schema change, and are available to every reader of the Session, also to the browser credential. The full question is still in `task/show`.
 
-The Task data also has `mail_count`, the number of messages in the Task's mail. Mail is append-only, so this is the last mail sequence, which SQLite reads from the `(task_id, sequence)` index. A mail send raises the Session read revision, so the next poll sees the new count. On the 1,000-Task fixture, `mail_count` added about 15 KB to the whole Task collection, and the collection took about 79 ms instead of about 73 ms in one local run.
+The Task data also has `mail_count`, the number of messages in the Task's mail. Mail is append-only, so this is the last mail sequence, which SQLite reads from the `(task_id, sequence)` index. A mail send raises the Session read revision, so the next poll sees the new count. On the 1,000-Task fixture, `mail_count` added about 15 KB to the whole Task collection.
 
 `POST /v1/session/snapshot` returns an ETag made of the Session ID and the read revision. The service checks `If-None-Match` after the normal authenticated read. CLI clients can still use the JSON `known_revision`. The collection limits and the page budget of 768 KiB still apply. During polling, the page does not load details for every Task. It refreshes only the selected Task's details, when that Task's revision changes.
 
@@ -169,7 +169,7 @@ The layout time includes the rank calculation, card measurement, positions and S
 
 The layout went back to the v0.1.0 columns on 2026-10-25, with the transitive reduction, ordering and archived Tasks added. On the same machine and browser at 1913×830, a fixture of 1,000 open Tasks in 10 ranks of 100 with 2,150 dependencies (800 of them redundant) measured five fresh loads at 83.4–129.5 ms for the whole layout (p50 91.1 ms). The reduction alone took 3.7–7.2 ms (p50 5.0 ms) and drew 1,350 lines. The canvas was 3,408 × 19,448 px.
 
-With 1,000 Tasks, one wide rank makes one very tall column: in the first v0.1.0 measurement, a canvas of 192,929 px. Archived Tasks are hidden by default, so the graph of a long Session stays as large as its open work. The view shows every open Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
+With 1,000 Tasks, one wide rank makes one very tall column: in the first v0.1.0 measurement, a canvas of 192,929 px. Archived Tasks are hidden by default, so the graph of a long Session stays close to the size of its open work and the finished Tasks next to it. The view shows every open Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
 
 ## Checks
 

@@ -59,6 +59,8 @@ Do this for each of your Tasks. `T` is the Task ID, and `02-worker` stands for y
 5. Write the report: `me task report --task T --report 'What was done, and where' --expected-revision "$(rev T)" --operation-id 02-worker-report-1`. For long text, use `--body-file FILE` or `--body-file -` (stdin) instead of `--report`. The report is shared and each report replaces the last one, so read it first when the Task has other assignees.
 6. Tell the other assignees in Task mail what you did. Then finish when the whole shared Task is done: `me task status --task T --progress finished --summary 'What was done' --expected-revision "$(rev T)" --operation-id 02-worker-finish-1`. Finishing needs no approval, and the Orchestrator does not finish your Task for you. If only your part is done, say so in Task mail and leave the Task Working.
 
+A finished Task stays in the Operator's graph until it is archived. The Orchestrator archives side work, and a-stack archives a done Task once every Task that depends on it is done, or a day after it ended.
+
 When you wait for another Task, set `--progress waiting --reason 'Waits for the API Task'`.
 
 When only the Operator can decide, ask one clear question with `me task attention set --task T --question 'Which release gets this?' --expected-revision "$(rev T)" --operation-id 02-worker-ask-1`. Then stop, and say in your conversation that you wait for the Operator's answer. After the answer, run `task attention resolve` with a `--note` (see [references/commands.md](references/commands.md)).

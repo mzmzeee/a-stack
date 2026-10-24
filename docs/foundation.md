@@ -93,6 +93,7 @@ Each schema version added one area:
 3. [Tasks, the Task graph and bounded snapshots](tasks.md).
 4. [Task mail and mention references](mail.md).
 5. [Notice batches and bounded retry diagnostics](notifications.md).
+6. [Archived Tasks and Operator entries in the Task history](tasks.md#archived-tasks).
 
 A storage error returns `storage_unavailable`. A failed commit never returns a successful receipt. If the connection drops during a commit, the outcome is unknown, so the caller must retry with the same operation ID.
 

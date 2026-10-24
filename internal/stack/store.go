@@ -18,7 +18,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const schemaVersion = 5
+const schemaVersion = 6
 const applicationID = 0x4153544b
 const migration1 = `
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -164,6 +164,14 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 			return storageError()
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=5"); err != nil {
+			return storageError()
+		}
+	}
+	if version < 6 {
+		if _, err = tx.ExecContext(ctx, migration6); err != nil {
+			return storageError()
+		}
+		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=6"); err != nil {
 			return storageError()
 		}
 	}

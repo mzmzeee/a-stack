@@ -202,6 +202,9 @@ button:disabled { cursor: default; opacity: .6; }
 
 /* Archived cards, graph focus and implied lines. Later rules win: a filtered-out card stays the faintest. */
 .graph-world > .task-unit.archived { opacity: .55; }
+.now-card.archived { opacity: .7; }
+.detail-archive { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 19px; }
+.detail-archive[hidden] { display: none; }
 .graph-world > .task-unit.unfocused { opacity: .3; }
 .graph-world > .task-unit.dimmed { opacity: .18; }
 .connection.unfocused { opacity: .3; }

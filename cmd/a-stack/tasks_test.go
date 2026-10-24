@@ -118,6 +118,12 @@ func TestCLITasksSharedGraphAttentionAndClosedSession(t *testing.T) {
 	completed := receipt(aFile, scoped("task", "status", "--task", shared.ResourceID, "--expected-revision", strconv.FormatInt(question.Revision, 10), "--progress", "finished", "--summary", "Whole Task delivered", "--operation-id", "task-cli-finish")...)
 	reopened := receipt(bFile, scoped("task", "reopen", "--task", shared.ResourceID, "--expected-revision", strconv.FormatInt(completed.Revision, 10), "--reason", "Revisit approach", "--operation-id", "task-cli-reopen")...)
 	cancelled := receipt(aFile, scoped("task", "status", "--task", shared.ResourceID, "--expected-revision", strconv.FormatInt(reopened.Revision, 10), "--progress", "cancelled", "--reason", "Old approach abandoned", "--operation-id", "task-cli-cancel")...)
+	// Archive: the Operator or the Orchestrator may; another assignee gets forbidden.
+	if denied := invoke(aFile, 1, scoped("task", "archive", "--task", shared.ResourceID, "--expected-revision", strconv.FormatInt(cancelled.Revision, 10), "--operation-id", "task-cli-archive-denied")...); !strings.Contains(string(denied), `"forbidden"`) {
+		t.Fatal("CLI archive by an assignee", string(denied))
+	}
+	archived := receipt("", scoped("task", "archive", "--task", shared.ResourceID, "--expected-revision", strconv.FormatInt(cancelled.Revision, 10), "--operation-id", "task-cli-archive")...)
+	cancelled = receipt(orchFile, scoped("task", "unarchive", "--task", shared.ResourceID, "--expected-revision", strconv.FormatInt(archived.Revision, 10), "--operation-id", "task-cli-unarchive")...)
 	second := receipt(orchFile, scoped("task", "create", "--title", "Dependent B", "--operation-id", "task-cli-second")...)
 	third := receipt(orchFile, scoped("task", "create", "--title", "Dependent C", "--operation-id", "task-cli-third")...)
 	receipt(orchFile, scoped("dependency", "add", "--from", shared.ResourceID, "--to", second.ResourceID, "--expected-revision", "4", "--operation-id", "task-cli-edge-ab")...)

@@ -11,7 +11,7 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-var taskCommands = []string{"task create", "task list", "task show", "task edit", "task assign", "task unassign", "task status", "task reopen", "task report", "task history", "task assignees", "task references", "task dependencies", "task attention set", "task attention resolve", "task reference add", "task reference remove", "dependency add", "dependency remove", "dependency history", "session snapshot", "session page"}
+var taskCommands = []string{"task create", "task list", "task show", "task edit", "task assign", "task unassign", "task status", "task reopen", "task archive", "task unarchive", "task report", "task history", "task assignees", "task references", "task dependencies", "task attention set", "task attention resolve", "task reference add", "task reference remove", "dependency add", "dependency remove", "dependency history", "session snapshot", "session page"}
 
 func isTaskCommand(command string) bool {
 	for _, c := range taskCommands {
@@ -66,6 +66,8 @@ func taskAllowedFlags(command string) string {
 		return "task operation-id expected-revision progress reason summary body-file"
 	case "task reopen":
 		return "task operation-id expected-revision reason body-file"
+	case "task archive", "task unarchive":
+		return "task operation-id expected-revision"
 	case "task report":
 		return "task operation-id expected-revision report body-file"
 	case "task attention set":

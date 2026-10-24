@@ -91,6 +91,7 @@ When a Task shows `needs_you`, the Operator must answer. You cannot answer for t
 - Change the title, description or Ticket with `task edit`.
 - Move work with `task unassign` and `task assign`.
 - To reopen a Finished or Cancelled Task, assign yourself, then run `task reopen --reason`. Only an assignee can reopen.
+- Archive finished side work that nobody needs to see any more with `task archive`, so the Operator's graph stays on the live work. You do not need to be assigned. a-stack already hides a done Task when every Task that depends on it is done, or a day after it ended. `task unarchive` undoes your archive, and `task reopen` clears it.
 - Remove a wrong dependency with `dependency remove`.
 
 ## 7. Keep the record in Task mail

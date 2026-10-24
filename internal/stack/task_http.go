@@ -31,6 +31,10 @@ func (s *Service) taskHTTP(w http.ResponseWriter, r *http.Request, token string)
 		action = "status"
 	case "/v1/task/reopen":
 		action = "reopen"
+	case "/v1/task/archive":
+		action = "archive"
+	case "/v1/task/unarchive":
+		action = "unarchive"
 	case "/v1/task/report":
 		action = "report"
 	case "/v1/task/attention/set":

@@ -54,6 +54,8 @@ var helpGroups = []helpGroup{
 		{"task unassign", "", "Remove an Agent from a Task"},
 		{"task status", "", "Set a Task's progress"},
 		{"task reopen", "", "Reopen a finished or cancelled Task"},
+		{"task archive", "", "Archive a finished or cancelled Task"},
+		{"task unarchive", "", "Undo task archive"},
 		{"task report", "", "Write a Task's report"},
 		{"task history", "", "List a Task's changes"},
 		{"task assignees", "", "List a Task's Agents"},
