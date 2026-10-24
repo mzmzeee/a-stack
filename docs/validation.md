@@ -4,7 +4,7 @@ The [validation runner](../scripts/validate-v1.py) tests the compiled CLI and th
 
 ## Run the runner
 
-You need Linux, Python 3, `findmnt`, and the Go and C toolchain from the [README](../README.md#requirements). Run this command from the repository root:
+You need Linux, Python 3, `findmnt`, and the Go and C toolchain from the [install requirements](install.md#requirements). Run this command from the repository root:
 
 ```sh
 python3 scripts/validate-v1.py --output .tmp/validation-results.json

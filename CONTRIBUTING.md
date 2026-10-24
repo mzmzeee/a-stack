@@ -6,7 +6,7 @@ Specs and tickets live in [GitHub Issues](https://github.com/mzmzeee/a-stack/iss
 
 ## Development setup
 
-You need the Go toolchain from the [README requirements](README.md#requirements), plus:
+You need the Go toolchain from the [install requirements](docs/install.md#requirements), plus:
 
 - Python 3 and `findmnt`, for the validation runner
 - Node.js with `npx`, for oxlint

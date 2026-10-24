@@ -1,112 +1,78 @@
 # a-stack
 
-A local coordination service for a team of AI coding agents, with a read-only browser view for the person supervising them.
+a-stack helps you supervise a team of AI coding agents that work on the same project.
 
-The Agents split the work into Tasks, record which Tasks depend on which, write reports and message each other through the `a-stack` command line. You watch the Task graph live in your browser and answer when an Agent asks you a question.
+When several Agents work at the same time, it is hard to see who does what and which work must wait for other work. a-stack gives the team one shared Task graph and a message thread for each Task. You follow all of it in your browser. When an Agent needs a decision from you, it asks you a question there.
 
-a-stack is one Go binary with one SQLite database. It accepts connections only on `127.0.0.1`. Version 1 runs on Linux only.
+## How it works
 
-## Features
+1. You are the Operator. You start the a-stack service and create a Session for the team.
+2. You register the Agents and appoint one of them as the Orchestrator.
+3. The Orchestrator divides the work into Tasks, assigns Agents to them and sets which Tasks depend on other Tasks.
+4. The Agents update their Tasks, write reports and send Task mail to the other Agents on the same Task.
+5. When an Agent needs your input, it marks its Task as Needs you, with a question.
+6. You watch the Task graph and the Agents in a read-only browser view.
 
-- One Agent, the Orchestrator, creates Tasks, assigns Agents to them and adds dependencies. The other Agents update the Tasks they are assigned to.
-- The Agents on a Task share one message thread, the Task mail. A mention (`--mention NAME`) points a message at a specific Agent.
-- An Agent can mark a Task as Needs you, with a question for you. The browser view shows which Tasks are waiting on you.
-- The browser view has Graph and Agents tabs, light and dark themes, and updates while you watch. Nothing in it can change the work.
-- If your Agents run in Herdr, a-stack can tell an Agent's terminal to check its mail when someone mentions it. This is optional.
-- Each Agent has its own private credential. Repeating a change with the same operation ID applies it once, so retries are safe.
-- You can back up the database while the service runs, and restore it into a new state directory.
+The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It runs on Linux, keeps all data on your computer and accepts connections only on `127.0.0.1`.
+
+If your Agents run in [Herdr](https://herdr.dev), a-stack can also tell an Agent to check its mail when another Agent mentions it. This is optional.
 
 ## Install
-
-a-stack runs on Linux, on x86-64 and ARM64. Install the latest release into `~/.local/bin`:
 
 ```sh
 curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | sh
 ```
 
-The script checks the download against the release's `SHA256SUMS` before it installs anything. To install a specific version or into another directory, set `A_STACK_VERSION` or `A_STACK_INSTALL_DIR`:
-
-```sh
-curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | A_STACK_VERSION=v0.1.0 A_STACK_INSTALL_DIR="$HOME/bin" sh
-```
-
-To install by hand, download `a-stack_linux_amd64.tar.gz` or `a-stack_linux_arm64.tar.gz` from the [releases page](https://github.com/mzmzeee/a-stack/releases), compare it with `SHA256SUMS`, and unpack the `a-stack` binary onto your `PATH`. The release binaries are statically linked and need no other libraries.
-
-Check the installed version:
-
-```sh
-a-stack version
-```
-
-### Requirements
-
-You need these only to build from source:
-
-- Go 1.27.3 with cgo (`CGO_ENABLED=1`) and a C compiler
-
-SQLite 3.53.4 is built into the binary from `github.com/mattn/go-sqlite3`. Do not build with the `libsqlite3` tag.
-
-### Build from source
-
-```sh
-GOTOOLCHAIN=go1.27.3 CGO_ENABLED=1 go build -o a-stack ./cmd/a-stack
-```
+The script installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download or a build from source, see [Install](docs/install.md).
 
 ## Quick start
 
-Start the service in one terminal. It stays in the foreground until you press Ctrl-C:
+1. Start the service, and keep this terminal open:
 
-```sh
-a-stack serve
-```
+   ```sh
+   a-stack serve
+   ```
 
-```json
-{"data":{"database_id":"eD1K…","status":"ready","url":"http://127.0.0.1:41541"}}
-```
+2. In a second terminal, create a Workspace for your project folder:
 
-On the first start, a-stack creates its state directory at `~/.local/state/a-stack` (or `$XDG_STATE_HOME/a-stack`) and saves your Operator credential there. Later commands use that credential automatically.
+   ```sh
+   a-stack workspace create --path ~/code/my-project --operation-id create-my-project
+   ```
 
-In a second terminal, create a Workspace for your project folder and a Session for the team:
+   ```json
+   {"data":{"operation_id":"create-my-project","resource_id":"_P8auKrcy…","revision":1,"outcome":"created",…}}
+   ```
 
-```sh
-a-stack workspace create --path ~/code/my-project --operation-id create-my-project
-```
+   The `resource_id` is the Workspace ID.
 
-```json
-{"data":{"operation_id":"create-my-project","resource_id":"_P8a…","revision":1,"outcome":"created",…}}
-```
+3. Create a Session in the Workspace. The `resource_id` in the output is the Session ID.
 
-Use the `resource_id` from the output as the Workspace ID. `session create` prints the Session ID the same way:
+   ```sh
+   a-stack session create --workspace WORKSPACE_ID --name Build --operation-id create-build-session
+   ```
 
-```sh
-a-stack session create --workspace WORKSPACE_ID --name Build --operation-id create-build-session
-a-stack open --workspace WORKSPACE_ID --session SESSION_ID
-```
+4. Open the Session in your browser:
 
-`open` opens the Session in your browser. The Task graph is empty until you register Agents and they start creating Tasks.
+   ```sh
+   a-stack open --workspace WORKSPACE_ID --session SESSION_ID
+   ```
 
-Every command that changes something needs an `--operation-id` that you choose: 8 to 128 letters, digits, `_` or `-`. If a command fails or you are not sure it ran, run it again with the same ID. a-stack applies the change only once.
+The Task graph is empty at this point. To add Agents and Tasks, follow [Getting started](docs/getting-started.md).
 
-Next, follow [Getting started](docs/getting-started.md) to register Agents, appoint an Orchestrator and run a complete Task from start to finish.
+Each command that changes data needs an `--operation-id`. You choose the ID: 8 to 128 letters, digits, `_` or `-`. If you are not sure that a command ran, run it again with the same ID. a-stack makes the change only one time.
 
 ## Documentation
 
-- [Getting started](docs/getting-started.md): a complete walkthrough with a three-Agent team, from setup to backup and restore.
+- [Getting started](docs/getting-started.md): set up a team of three Agents and take one Task from start to finish.
 - [Workspaces, Sessions and Agents](docs/lifecycle.md): register Agents, recover credentials, close and reopen Sessions.
 - [Tasks and the Task graph](docs/tasks.md): create and assign Tasks, report progress, ask questions, add dependencies.
-- [Task mail](docs/mail.md): send and read messages, mentions and limits.
-- [Browser view](docs/browser.md): what the view shows and how to open it.
+- [Task mail](docs/mail.md): send and read messages, and mention Agents.
+- [Browser view](docs/browser.md): open the view and read what it shows.
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
-- [Local service](docs/foundation.md): the state directory, credentials, command output and exit codes, the HTTP API, backup and restore.
+- [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
 
-For every command and flag, run `a-stack --help`.
+To see all commands and flags, run `a-stack --help`.
 
 ## Contributing
 
-Run all checks before you open a pull request:
-
-```sh
-scripts/check.sh
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, the issue tracker and the design records.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, the checks and the design records.
