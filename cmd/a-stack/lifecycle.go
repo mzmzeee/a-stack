@@ -45,7 +45,13 @@ func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 }
 func validateCommandFlags(command string, seen map[string]bool) error {
 	allowed := " state-dir json help "
-	if command == "serve" {
+	// The Operator shortcuts use operator.json and may start the service, so
+	// they take neither credential nor serve flags.
+	if command == "" {
+		allowed += "no-browser resume r "
+	} else if command == "new" {
+		allowed += "no-browser "
+	} else if command == "serve" {
 		allowed += "listen herdr-executable "
 	} else {
 		allowed += "credential-file as "
