@@ -38,6 +38,7 @@ The database schema does not change (schema version 5). One change can affect sc
 
 ### Fixed
 
+- The browser view remembers the theme you picked after the browser restarts. Until you pick one, it follows your system's light or dark setting.
 - Browser view: each group of lines gets its own track in wrapped rows.
 - Browser view: the header showed "a-stack" twice. The second label is now the Workspace name.
 - Browser view: "1 agent · 1 task" uses the singular.

@@ -68,7 +68,7 @@ The page sends the secret only in the `Authorization` header of data requests to
 
 ## What the view shows
 
-The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It keeps the approved Graph and Agents tabs and both themes.
+The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It keeps the approved Graph and Agents tabs and both themes. The view remembers the theme that you pick in the browser's local storage, so it stays after a browser restart. Until you pick one, it follows the light or dark setting of your system. The storage belongs to the view's address, so a service on a new port starts again from the system setting.
 
 - The header shows the name of the Workspace folder next to a-stack, for example `my-project`. It comes from the snapshot's `workspace_name`, which is only the last part of the Workspace path, so the home directory never appears in the view or in screenshots. The name is hidden in narrow windows.
 - Graph arrows point from a prerequisite to its dependent Task. The details also name both directions.

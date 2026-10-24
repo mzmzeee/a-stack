@@ -38,9 +38,14 @@ function readToken() {
   if (fragment) { sessionStorage.removeItem(storageKey); if (/^[A-Za-z0-9_-]{43}$/.test(fragment)) sessionStorage.setItem(storageKey,fragment); }
   return sessionStorage.getItem(storageKey) || '';
 }
+// The theme survives browser restarts; until one is picked, follow the system.
+function savedTheme() {
+  try { const t=localStorage.getItem('a-stack-theme'); if (t==='dark'||t==='light') return t; } catch {}
+  return matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+}
+state.theme = savedTheme();
 try {
   token = readToken();
-  state.theme = sessionStorage.getItem('a-stack-theme') === 'dark' ? 'dark' : 'light';
 } catch { history.replaceState(null,'',location.pathname); }
 window.addEventListener('hashchange',()=>{
   try { token=readToken(); } catch { token=''; history.replaceState(null,'',location.pathname); }
@@ -273,7 +278,7 @@ for(const b of document.querySelectorAll('[data-view]')) {
   b.addEventListener('click',()=>{state.view=b.dataset.view;render();});
   b.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const v=e.key==='Home'?'graph':e.key==='End'?'agents':state.view==='graph'?'agents':'graph';$(v+'-tab').click();$(v+'-tab').focus();});
 }
-for(const b of document.querySelectorAll('.theme-button'))b.addEventListener('click',()=>{state.theme=b.dataset.theme;try{sessionStorage.setItem('a-stack-theme',state.theme);}catch{}render();});
+for(const b of document.querySelectorAll('.theme-button'))b.addEventListener('click',()=>{state.theme=b.dataset.theme;try{localStorage.setItem('a-stack-theme',state.theme);}catch{}render();});
 $('search').addEventListener('input',e=>{state.query=e.target.value;render();});
 $('search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const root=state.view==='graph'?graph:agentsPanel;const c=[...root.querySelectorAll('.task-card')].find(b=>!b.closest('[hidden]')&&!b.closest('[inert]'));if(c)c.focus();}});
 $('status-filter').addEventListener('change',e=>{state.filter=e.target.value;render();});
