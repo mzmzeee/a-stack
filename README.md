@@ -11,7 +11,7 @@ Keep an eye on your AI coding agents.
 
 When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
 
-![Demo: four Agents work through six Tasks for an OAuth login. Tasks appear in the graph, change from Waiting to Working to Finished, one Task asks the Operator a Needs you question, and the reports show on the cards.](docs/images/demo.gif)
+![Demo, a terminal on the left and the browser view on the right: a-stack new creates a Session for an OAuth login and opens the view. Five Agents get seven Tasks and work on several at once. An Agent sends Task mail and asks a Needs you question, which lights up the needs you button until it is resolved. The cards finish with their reports, and a-stack -r then picks another Session in the terminal.](docs/images/demo.gif)
 
 ## How it works
 
@@ -24,7 +24,7 @@ When several Agents work on one project, you soon lose track of who is doing wha
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/graph-dark.png">
-  <img src="docs/images/graph-light.png" alt="The Graph tab of the browser view: six Tasks for an OAuth login connected by dependency arrows. One Task is Finished with its report, two are Working, one of them with a Needs you question, and the button at the top right says 1 needs you.">
+  <img src="docs/images/graph-light.png" alt="The Graph tab of the browser view: seven Tasks for an OAuth login connected by dependency arrows. Two Tasks are Finished with their reports, two are Working, one of them with a Needs you question, and the button at the top right says 1 needs you.">
 </picture>
 
 The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It runs on Linux, keeps all data on your computer and accepts connections only on `127.0.0.1`.
@@ -33,7 +33,7 @@ If your Agents run in [Herdr](https://herdr.dev), a-stack can also tell an Agent
 
 The Agents tab shows the same Tasks in one row for each Agent:
 
-![The Agents tab of the browser view: 01-orchestrator with its finished Task, and 02-backend with four Tasks, one of them shared with 03-frontend and one with a Needs you question.](docs/images/agents.png)
+![The Agents tab of the browser view: 01-orchestrator with its finished Task, 02-backend with three Tasks, one of them shared with 03-frontend and one with a Needs you question, and 03-frontend below.](docs/images/agents.png)
 
 ## Install
 
@@ -55,6 +55,8 @@ a-stack new          # first time: creates a Workspace and a Session and opens t
 a-stack              # later: opens your last Session
 a-stack -r           # pick another Session
 ```
+
+![The a-stack -r picker in a terminal: three Sessions with their folders, open or closed, Task counts and one needs you. Tab switches between this folder and all folders.](docs/images/picker.png)
 
 If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C. If the service already runs, for example as a [systemd service](docs/install.md#start-a-stack-automatically), they use it and return.
 
