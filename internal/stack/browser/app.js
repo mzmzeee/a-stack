@@ -254,7 +254,7 @@ function plural(n,word) { return `${n} ${word}${n===1?'':'s'}`; }
 function lost() { return stale&&lastSuccess>0&&Date.now()-lastSuccess>30000; }
 function updateHint() {
   const hint=$('footer-hint');hint.classList.toggle('lost',lost());
-  setText(hint,lost()?'Service unreachable. If you restarted it, run a-stack open again.':state.view==='graph'?'Arrows show what comes next. Drag empty space to pan.':'Select a task for its report and dependencies.');
+  setText(hint,lost()?'Service unreachable. If you restarted it, run a-stack again.':state.view==='graph'?'Arrows show what comes next. Drag empty space to pan.':'Select a task for its report and dependencies.');
 }
 function updateSource(message) {
   const service=version?'Local service '+version:'Local service';

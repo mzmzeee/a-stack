@@ -236,6 +236,9 @@ func serveForeground(ctx context.Context, state, listen, herdrExecutable string,
 		return err
 	}
 	service.Version = buildVersion()
+	if service.Notice != "" {
+		_, _ = io.WriteString(os.Stderr, service.Notice+"\n")
+	}
 	if herdrExecutable != "" {
 		if err = service.EnableNotifications(herdrExecutable); err != nil {
 			_ = service.Close(ctx)
