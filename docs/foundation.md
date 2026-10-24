@@ -1,57 +1,125 @@
-# Local service foundation
+# Local service
 
-`cmd/a-stack` owns argument parsing and foreground signal handling. `internal/stack` contains the working state, SQLite, HTTP and client code in one package. Schema version 1 introduced database metadata, hashed capabilities and compact operation receipts. Schema version 2 adds the [Workspace/Session/Agent lifecycle](lifecycle.md); version 3 adds [shared Tasks, graph and bounded snapshots](tasks.md); version 4 adds [retained Task mail and mention references](mail.md); version 5 adds [exact notification batches and bounded retry diagnostics](notifications.md).
+The `a-stack` binary is both the command line and the local service. `serve` starts the service in the foreground. All other commands are clients: they read the service's discovery file and a credential file, and then send HTTP requests to the service. A client never starts a service and never opens the SQLite database.
 
-## State and credentials
+In the source, `cmd/a-stack` parses the arguments and handles signals for `serve`. The `internal/stack` package holds the state, SQLite, HTTP and client code.
 
-`serve` acquires a nonblocking Linux `flock` on `service.lock` before opening `state.db`. The lock file stays in place; its open descriptor holds ownership until HTTP has stopped and SQLite has closed. A conflicting start fails with `conflict`. A killed process releases the kernel lock; a new start lets SQLite recover its WAL. Do not delete the lock or SQLite sidecars.
+This page describes the state directory, credentials, the command line, the HTTP rules, SQLite, and backup and restore. To build and start the service, see the [README](../README.md).
 
-The state directory is owned by the current OS user and has no group/other access. Database, discovery and credential files are owner-only. Symlink files and unsafe existing permissions are rejected. State inside a Git checkout is rejected, including paths resolved through ancestor symlinks. Use a local filesystem; network filesystems are unsupported.
+## State directory
 
-On first use the service publishes `operator.json` privately and durably before inserting its token hash. A crash between those steps can resume using the same file. Once established, a missing, unsafe or mismatched Operator file stops startup rather than issuing a replacement. Preserve the original credential separately with the backup. Agent credential recovery/rotation uses explicit Operator `agent rebind`; Operator-file recovery still requires the original private file.
+The state directory holds these files:
 
-`service.json` is atomically replaced and contains the loopback URL, database ID and per-start instance ID. Clients send `X-A-Stack-Instance`; a stale discovery file cannot silently target another service on a reused port. Normal shutdown removes its own discovery file. After abrupt termination, clients report unavailability until an explicit `serve` restart. Tokens are never printed. The database stores SHA-256 hashes of random 256-bit bearer tokens, with capability kind, subject ID and Session scope; credential files store the bearer token.
+| File | Contents |
+| --- | --- |
+| `state.db` | The SQLite database. SQLite also makes the sidecar files `state.db-wal` and `state.db-shm`. |
+| `service.lock` | The lock that shows which process owns the state directory. |
+| `service.json` | The discovery file for clients. |
+| `operator.json` | The Operator credential. |
 
-The threat model is a trusted local OS user. Owner permissions and bearer checks do not isolate against a malicious process running as that same user.
+Before `serve` opens `state.db`, it takes a nonblocking Linux `flock` on `service.lock`. The lock file stays in place. The service holds the lock until HTTP has stopped and SQLite has closed. A second `serve` on the same directory fails with `conflict`. If the process is killed, the kernel releases the lock, and the next start lets SQLite recover its write-ahead log (WAL). Do not delete the lock file or the SQLite sidecar files.
 
-## HTTP and CLI
+The state directory must belong to the current operating system account and give no access to group or others. The database, discovery and credential files must be private to that account too. a-stack rejects symlinked files and unsafe permissions. It also rejects a state directory inside a Git checkout, also when a symlink in a parent directory leads there. Use a local filesystem. Network filesystems are not supported.
 
-Only `127.0.0.1` is accepted, with port 0 by default. Every data request requires an instance ID and bearer token. Host must match the actual bound address; an Origin, when present, must match the service URL. No cross-origin access, token query parameters, redirects or proxy environment forwarding are supported. Browser credentials are denied all foundation endpoints; the browser slice must explicitly opt in Session-scoped reads. Agent credentials can check health but cannot inspect global storage or create backups.
+## Credentials
 
-| Command | HTTP | Capability |
+A credential file holds a bearer token. The database stores only a SHA-256 hash of each token, with the capability kind, the subject ID and the Session scope. Tokens are random 256-bit values. a-stack never prints them.
+
+There are three kinds of credentials:
+
+- The Operator credential manages Workspaces, Sessions and Agents.
+- An Agent credential belongs to one registered Agent in one Session.
+- A browser credential gives read-only access to one Session. See [Browser view](browser.md).
+
+On the first start, the service writes `operator.json` privately and durably. Only then does it store the token hash. If the service crashes between these two steps, the next start uses the same file. After that, if `operator.json` is missing, unsafe or does not match, the service does not start. It never makes a replacement. Keep a copy of the original Operator credential with your backups. Only that original file can recover Operator access.
+
+To recover or rotate an Agent credential, the Operator uses `agent rebind`. See [Workspaces, Sessions and Agents](lifecycle.md#credential-delivery-and-recovery).
+
+a-stack trusts the local operating system account. File permissions and bearer checks do not protect against a malicious process that runs as the same account.
+
+## Discovery
+
+`service.json` holds the service's loopback URL, the database ID and an instance ID that changes on each start. The service replaces the file atomically. Clients send the instance ID in the `X-A-Stack-Instance` header. Because of this, an old discovery file cannot send requests to a different service that now uses the same port.
+
+On a normal shutdown, the service deletes its own discovery file. After an abrupt stop, clients report that the service is unavailable until you start `serve` again.
+
+## Command line
+
+Flags can come before or after the command. All commands accept `--json` and `--state-dir DIR`. `serve` also accepts `--listen 127.0.0.1:PORT` (the default port is 0, which picks a free port) and `--herdr-executable FILE` (see [Mention notices](notifications.md)). Client commands also accept `--credential-file FILE` and `--as operator|agent|browser`.
+
+`serve` makes or checks its own Operator credential, and it does not accept credential flags. A client without `--credential-file` uses `operator.json` in the state directory. `--as agent` and `--as browser` require `--credential-file`. a-stack rejects a credential file of a different kind, and it never uses the Operator credential instead.
+
+Workspace, Session, Agent, Task and mail commands need explicit Workspace and Session IDs. `health` and the `storage` commands apply to the whole service:
+
+| Command | HTTP | Credential |
 | --- | --- | --- |
 | `health` | `GET /v1/health` | Operator or Agent |
 | `storage status` | `GET /v1/storage` | Operator |
 | `storage backup --destination ABSOLUTE_FILE` | `POST /v1/storage/backup` with `destination` | Operator |
 
-Flags may appear before or after the command. `serve` supports `--listen 127.0.0.1:PORT`; all commands support `--json` and `--state-dir`. Client commands support `--credential-file` and `--as operator|agent|browser`. `serve` always bootstraps/verifies its own state credential. Domain commands require explicit Workspace/Session IDs; the foundation health/storage commands are service-wide.
+Every command except `open` and `--help` prints a JSON `data` object on stdout, also without `--json`. If a command fails, it prints a JSON `error` object on stderr and nothing on stdout. The exit code is 0 for success, 2 when the error code is `invalid_input`, and 1 for all other errors.
 
-JSON bodies are limited to 1 MiB, must be UTF-8, have exactly one value, and reject unknown fields. GET bodies are rejected, including chunked input. Private JSON files are capped at 4 KiB and nonregular files cannot block credential reads. Headers and read/write/idle timeouts are bounded. HTTP failures use `error: {code, message, retryable, current_revision?}`; Task conflicts include the current revision/progress, and competing attention requests include the current question. Messages do not echo input, credentials, paths or SQL. Stdlib request logging is disabled, so there is no unbounded operational log. CLI requests do not retry automatically. Client commands retain normal SIGINT/SIGTERM termination, including while waiting for stdin; only foreground `serve` handles those signals for graceful shutdown. If an interrupted mutation may already have committed, retry its unchanged operation ID/payload to recover the original receipt.
+The CLI never retries a request automatically. Client commands stop normally on SIGINT and SIGTERM, also while they wait for stdin. Only the foreground `serve` catches these signals, so that it can shut down cleanly. If an interrupted change was possibly committed, send it again with the same operation ID and payload to get the original receipt.
 
-## SQLite and transaction interfaces
+## HTTP rules
 
-A single serialized `database/sql` connection enables WAL, `synchronous=FULL`, foreign keys and a 5,000 ms busy timeout. Transactions use `BEGIN IMMEDIATE`. SQLite schema migration and `user_version`/`application_id` updates commit together; an unsupported/newer/foreign schema is rejected without resetting it. SQLite owns checkpointing and sidecar cleanup. Storage errors return `storage_unavailable`; no successful receipt is returned after a failed commit. A disconnect during commit can leave the outcome unknown, so callers must retry the same operation ID.
+The service listens only on `127.0.0.1`. Every data request needs the instance ID and a bearer token. The `Host` header must match the bound address. If a request has an `Origin` header, it must match the service URL. The service has no cross-origin access, and it rejects query parameters, so a token can never be in a query string. Clients do not follow redirects and do not use proxy settings from the environment.
 
-Later endpoints in `internal/stack` use these interfaces:
+A browser credential can use only the Session read endpoints. It cannot use the `health` or `storage` endpoints. An Agent credential can use `health`, but it cannot read storage status or make backups.
 
-- `IssueCapability(ctx, tx, kind, subjectID, sessionID)` issues a token within registration/rebind's transaction. The server derives `Principal` from the stored hash, never a request-supplied identity. Delete the old hash within the same transaction when revoking/rotating credentials. Kind and Session scope are groundwork, not a substitute for checking current domain membership/roles.
-- `Store.Mutate(ctx, token, Operation, authorizeReplay, apply)` authenticates again inside its transaction. IDs contain 8–128 ASCII letters/digits/underscores/hyphens. `Operation` includes name, resource scope and a bounded JSON payload. Handlers should serialize typed payloads deterministically with `json.Marshal`, including expected revision and all mutation parameters. The digest includes name and scope. Arbitrary reordered JSON object keys are not promised to compare equal.
-- `apply(ctx, tx, principal)` checks current Session openness, role/membership, references and expected revision, then writes the resource, compact history and any mention references using that transaction. Return a `Receipt` with resource ID, revision, scalar outcome and optional body-reference ID. No external calls, body copies or snapshots belong in a receipt or transaction.
-- `authorizeReplay(ctx, tx, principal, receipt)` is mandatory and checks current read access to the receipt's referenced resource. It must allow an authorized receipt read after closure and reject revoked membership. It is called only for a matching digest, before returning a cached outcome. A digest mismatch returns only `operation_conflict` without saved resource data and does not invoke the new command's typed replay callback. A revoked token fails authentication before receipt lookup. Browser credentials cannot call `Mutate`.
+Request rules:
 
-Receipts are indexed by stable actor kind/subject and operation ID. Same-ID/same-payload retries return the exact committed receipt; changed name/scope/payload yields only `operation_conflict` after authentication and before typed replay authorization. Matching retries still require current resource read access; a removed member cannot retrieve a prior outcome. Conflicts never return saved IDs, bodies or receipt data. Different actors cannot recover each other's receipts. Operation IDs never expire. Body persistence, history retention and domain-specific authorization/revision rules are implemented in their dependent slices.
+- A JSON body can be 1 MiB at most. It must be UTF-8 and contain exactly one value. Unknown fields are rejected.
+- A `GET` request with a body is rejected, also with chunked encoding.
+- Private JSON files, such as credentials, can be 4 KiB at most. A file that is not a regular file cannot block a credential read.
+- Header size and the read, write and idle timeouts have limits.
 
-`storage status` reports physical main DB/WAL/SHM sizes, which may change between observations. No retained data is purged. The single connection and backup operation serialize work; add read concurrency only after measurement.
+An error response is a JSON `error` object with `code`, `message` and `retryable`. It also has `current_revision` when that applies. A Task conflict has the current revision and `current_progress`. A second Operator question on the same Task also has `current_question`. Error messages never repeat the input, credentials, paths or SQL. Standard request logging is off, so the service keeps no log that can grow without limit.
+
+## SQLite
+
+The service uses one serialized `database/sql` connection with WAL, `synchronous=FULL`, foreign keys and a busy timeout of 5,000 ms. Transactions use `BEGIN IMMEDIATE`. Each schema migration commits together with its `user_version` and `application_id` updates. The service rejects a newer, unsupported or foreign schema and does not reset it. SQLite does its own checkpoints and sidecar cleanup.
+
+Each schema version added one area:
+
+1. Database metadata, hashed capabilities and compact operation receipts.
+2. [Workspaces, Sessions and Agents](lifecycle.md).
+3. [Tasks, the Task graph and bounded snapshots](tasks.md).
+4. [Task mail and mention references](mail.md).
+5. [Notice batches and bounded retry diagnostics](notifications.md).
+
+A storage error returns `storage_unavailable`. A failed commit never returns a successful receipt. If the connection drops during a commit, the outcome is unknown, so the caller must retry with the same operation ID.
+
+`storage status` reports the current sizes of the main database, WAL and SHM files. These sizes can change between two calls. a-stack never deletes retained data. The single connection and the backup operation run work one at a time. Add read concurrency only after a measurement shows the need.
+
+## Operation IDs and receipts
+
+Commands that change records take an `--operation-id` of 8 to 128 ASCII letters, digits, underscores or hyphens. (`open` makes its own operation ID. `agent observe` and `storage backup` take none.) The service stores a compact receipt for each change, under the actor's kind and subject and the operation ID.
+
+- A retry with the same ID and the same payload returns the exact receipt that was committed. It has no new effect.
+- A retry with the same ID but a different name, scope or payload returns only `operation_conflict`. A conflict never returns saved IDs, bodies or receipt data.
+- A matching retry still needs current read access to the resource. An Agent that was removed cannot get an earlier outcome.
+- One actor cannot get another actor's receipts.
+- Operation IDs never expire.
 
 ## Backup and restore
 
-Backups require a new absolute destination filename in an existing private directory outside application state. The service holds its serialized connection, reauthenticates the Operator, uses SQLite `VACUUM INTO` to create a private staging database, runs `PRAGMA integrity_check`, syncs the file, then publishes the destination without overwriting and syncs its directory. The named destination appears only after a complete checked snapshot. This maintenance operation changes no domain records and has no domain operation receipt: retry to an existing filename returns `conflict`. After an interrupted call, inspect the completed backup or use another destination; abandoned private staging files from a process crash are Operator-managed.
+A backup needs a new absolute file name in a private directory that already exists, outside the state directory. The service holds its connection and checks the Operator credential again. It then makes a private staging copy with SQLite `VACUUM INTO`, runs `PRAGMA integrity_check`, and syncs the file. It publishes the destination without overwriting anything, and syncs the directory. The destination file appears only when the snapshot is complete and checked.
 
-To restore a completed backup, stop the target service first. Use a new empty private directory, and copy only the **completed SQLite-produced backup**, plus its original Operator credential:
+A backup changes no domain records and has no operation receipt. A second backup to an existing file name returns `conflict`. If a backup is interrupted, check the completed backup or use another file name. If the process crashes during a backup, a private staging file (`.a-stack-backup-*`) can stay in the backup directory. The Operator deletes it.
+
+To make a backup while the service runs:
 
 ```sh
-# backup_dir is the private directory used by the backup command.
-# Stop the old foreground service with Ctrl-C before switching state.
+backup_dir="$(mktemp -d)"
+./a-stack storage backup --destination "$backup_dir/a-stack.sqlite" --json
+```
+
+To restore a completed backup, stop the service first. Then copy only the completed backup and the original Operator credential into a new, empty, private directory:
+
+```sh
+# backup_dir is the private directory of the backup command.
+# Stop the old foreground service with Ctrl-C before you continue.
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/a-stack"
 restore_dir="$(mktemp -d)"
 install -m 600 "$backup_dir/a-stack.sqlite" "$restore_dir/state.db"
@@ -59,10 +127,33 @@ install -m 600 "$state_dir/operator.json" "$restore_dir/operator.json"
 ./a-stack serve --state-dir "$restore_dir" --json
 ```
 
-In another terminal, use `./a-stack health --state-dir "$restore_dir" --json` and confirm the original database ID. Never copy a live main database alone, merge a backup with old sidecars, or delete sidecars to attempt recovery. Preserve the old state until the restored copy has been checked. Preserve delivered Agent credential files separately too; database hashes cannot reconstruct their tokens. See [credential delivery and recovery](lifecycle.md#credential-delivery-and-recovery). Restore tests check integrity, database identity, credentials and retained test rows/receipts using real SQLite.
+In another terminal, run `./a-stack health --state-dir "$restore_dir" --json` and make sure that the database ID is the original one. Keep the old state directory until you have checked the restored copy.
 
-## Validation limits
+Never copy only a live main database file. Never mix a backup with old sidecar files, and never delete sidecar files to try a recovery. Keep the Agent credential files that you gave out in a separate place, because the database hashes cannot rebuild their tokens. See [credential delivery and recovery](lifecycle.md#credential-delivery-and-recovery).
 
-`go test ./...` covers loopback/auth/parser restrictions, permissions/FIFO rejection, startup conflicts, transactional migrations, foreign/newer schema rejection, crash/restart, retry concurrency and current authorization, precommit/receipt rollback, real `SQLITE_FULL` via SQLite page limits, read-only write failure, and safe backup/restore. `go test -race ./...` runs the same checks with the race detector. Test-only tables exercise mutation primitives; they are absent from production schemas.
+## Internal interfaces
 
-The disk-full test exercises the actual SQLite engine's full-database path without filling the host filesystem. Tests do not simulate a physical device failure or power cut. No production latency/throughput claim, domain workload benchmark, browser view or Herdr integration is included in this slice.
+Endpoints in `internal/stack` use these interfaces:
+
+- `IssueCapability(ctx, tx, kind, subjectID, sessionID)` issues a token inside the registration or rebind transaction. The server gets the `Principal` from the stored hash, never from an identity in the request. To revoke or rotate a credential, delete the old hash in the same transaction. The kind and Session scope do not replace the checks of current membership and roles.
+- `Store.Mutate(ctx, token, Operation, authorizeReplay, apply)` authenticates again inside its transaction. An `Operation` has a name, a resource scope and a bounded JSON payload. Handlers serialize typed payloads with `json.Marshal`, including the expected revision and all parameters of the change. The digest includes the name and the scope. JSON objects with the same keys in a different order are not guaranteed to match.
+- `apply(ctx, tx, principal)` checks that the Session is open, and checks role, membership, references and the expected revision. It then writes the resource, the compact history and any mention references in the same transaction. It returns a `Receipt` with the resource ID, revision, a scalar outcome and an optional body reference ID. A receipt or transaction never contains external calls, body copies or snapshots.
+- `authorizeReplay(ctx, tx, principal, receipt)` is required. It checks current read access to the resource of the receipt. It must allow an authorized read after the Session is closed, and it must reject a revoked membership. The service calls it only when the digest matches, before it returns a saved outcome. A digest mismatch returns only `operation_conflict` and does not call the replay callback of the new command. A revoked token fails authentication before the receipt lookup. Browser credentials cannot call `Mutate`.
+
+## Tests
+
+`go test ./...` covers these areas:
+
+- Loopback, authentication and parser limits.
+- Permission and FIFO rejection.
+- Startup conflicts.
+- Migrations in transactions, and rejection of foreign and newer schemas.
+- Crash and restart.
+- Concurrent retries and current authorization.
+- Rollback of failed precommit and receipt writes.
+- A real `SQLITE_FULL` error from SQLite page limits, and write failures on read-only storage.
+- Safe backup and restore.
+
+`go test -race ./...` runs the same tests with the race detector. Test-only tables exercise the change primitives. Production schemas do not contain them.
+
+The disk-full test uses the real SQLite full-database path without filling the host filesystem. The tests do not simulate a physical device failure or a power cut. Restore tests use real SQLite to check integrity, database identity, credentials, and retained test rows and receipts. These tests make no latency or throughput claim.

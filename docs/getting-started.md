@@ -1,19 +1,33 @@
-# Getting started: Operator and Agent workflow
+# Getting started
 
-a-stack tracks a Workspace's Sessions, shared Tasks and Task mail. The Operator enrolls the team and manages Session lifecycle; the Session's Orchestrator controls its graph and assignments. Current assignees update work and exchange mail. Runtime state is an observation, separate from Task progress and an explicit **Needs you** question.
+This guide shows one complete a-stack workflow. You start a service with disposable state, enroll a small team, and let the Agents share a Task and its Task mail. Then you replace the Orchestrator, close and reopen the Session, and restore a backup.
 
-## Build and start a disposable example
+The guide uses three roles:
 
-Use Linux, Go **1.27.3**, a C compiler and Python 3 for the JSON extraction below. Run these Bash blocks in order, in the same shell, from the repository root. The example uses private `/tmp` directories; for retained work choose durable absolute directories on a local filesystem outside Git checkouts. State directories must be 0700 and credential files 0600. Keep credentials and mail bodies out of shared logs; leave shell tracing off.
+- The Operator (you) creates the Workspace and the Session, registers Agents, appoints the Orchestrator, and closes or reopens the Session.
+- The Orchestrator creates Tasks, assigns Agents to them and adds dependencies.
+- The assignees are the Agents assigned to a Task. They update the Task, write its report and send its Task mail.
+
+An Agent's runtime state (for example idle or done) is only an observation of its process. It does not change Task progress, and it does not set or clear a Needs you question.
+
+## Before you start
+
+You need Linux, Go 1.27.3, a C compiler and Python 3. Python is only for the small JSON helpers below.
+
+Run the Bash blocks in order, in one shell, from the repository root. The blocks keep state and credentials in private temporary directories under `$TMPDIR` (or `/tmp` when `TMPDIR` is not set). These directories must be outside Git checkouts. For work that you want to keep, use durable absolute directories on a local filesystem, also outside Git checkouts.
+
+a-stack accepts only private state and credential paths. They must belong to you and give no access to group or others, for example mode 0700 for directories and 0600 for files. The `umask 077` in Step 1 does this. Do not put credentials or mail bodies in shared logs. Do not turn on shell tracing (`set -x`).
+
+## Step 1: Build and start the service
 
 ```bash
 GOTOOLCHAIN=go1.27.3 CGO_ENABLED=1 go build -o a-stack ./cmd/a-stack
 bin="$PWD/a-stack"
 umask 077
-state_dir="$(mktemp -d /tmp/a-stack-state.XXXXXX)"
-credential_dir="$(mktemp -d /tmp/a-stack-credentials.XXXXXX)"
+state_dir="$(mktemp -d -t a-stack-state.XXXXXX)"
+credential_dir="$(mktemp -d -t a-stack-credentials.XXXXXX)"
 
-# serve normally runs in the foreground. This example owns one shell job.
+# serve usually runs in the foreground. Here it runs as one job of this shell.
 "$bin" serve --state-dir "$state_dir" --json \
   >"$state_dir/serve.json" 2>"$state_dir/serve-error.json" &
 service_pid=$!
@@ -25,9 +39,13 @@ done
 "$bin" health --state-dir "$state_dir" --json
 ```
 
-Continue only after health succeeds. On failure inspect the private `serve-error.json`; do not start another service against the same state directory. No command installs a daemon. For normal foreground use, run `serve` in one terminal and pass the same `--state-dir` to clients in another.
+Continue only when `health` succeeds. If it fails, read the private file `serve-error.json`. Do not start a second service on the same state directory.
 
-These small helpers select authority explicitly and extract only named JSON fields. IDs and revisions are ordinary metadata; they are not bearer credentials. Substitute your real project path for `$PWD` if needed. Later ID variables are captured automatically; do not paste sample IDs from another Session.
+No command installs a daemon. In normal use, run `serve` in one terminal. Run the other commands in a second terminal, with the same `--state-dir`.
+
+## Step 2: Define the helpers
+
+These helpers choose the credential explicitly and print only the JSON fields that you ask for:
 
 ```bash
 field() {
@@ -48,11 +66,15 @@ as_agent() {
 }
 ```
 
-Success is a `data` JSON document on stdout. Errors use stderr, a nonzero exit and an `error.code`; stop on an unexpected error. Use these helpers only with the example's selected state directory and context. Agent mode requires its own credential file and never falls back to the Operator.
+A successful command prints a `data` JSON document on stdout. A failed command prints an `error` JSON document on stderr and exits with a nonzero code. Read `error.code` to find the cause. Stop if an error is unexpected.
 
-## Operator: enroll and appoint the team
+Use these helpers only with the state directory and the IDs of this example. Agent mode needs the Agent's own credential file. It never uses the Operator credential instead.
 
-Create one Workspace for the project folder, then a Session and three registrations. `--worktree ABSOLUTE_DIR` may explicitly associate an Agent's worktree with this Workspace; changing cwd never selects context.
+The blocks save each new ID in a variable. Do not paste IDs from another Session. IDs and revisions are ordinary metadata. They do not give access to anything.
+
+## Step 3: Operator: create the team
+
+Create one Workspace for the project folder. This example uses the repository root (`$PWD`). For your own project, use its absolute path. Then create a Session, register three Agents and appoint the first Agent as the Orchestrator:
 
 ```bash
 workspace_id="$(operator workspace create --path "$PWD" \
@@ -76,11 +98,13 @@ operator session appoint --workspace "$workspace_id" --session "$session_id" \
   --agent "$orchestrator_id" --expected-revision "$session_revision" --operation-id demo-appoint-1
 ```
 
-Privately give each Agent **only its own** credential file, binary/State location, Workspace/Session/Agent IDs and assigned Task IDs. Do not put credential contents in prompts, reports, Task references or version control. The examples below simulate those separate callers using their explicit files. An Orchestrator may also register workers using its own Agent credential in its open Session. See [enrollment and credential recovery](lifecycle.md).
+The current directory never selects a Workspace or a Session. To link an Agent's separate worktree to the Workspace, add `--worktree ABSOLUTE_DIR` to `agent register`. The Orchestrator can also register Agents in its open Session, with its own Agent credential.
 
-## Orchestrator: create and assign a branching graph
+Give each Agent, in private, only what it needs: its own credential file, the binary and state directory locations, the Workspace, Session and Agent IDs, and the IDs of its Tasks. Do not put credential contents in prompts, reports, Task references or version control. In this guide, the separate Agents are simulated with their own credential files. For enrollment and credential recovery, see [Workspaces, Sessions and Agents](lifecycle.md).
 
-Create A with dependents B and C. **A → B means B depends on A.** Dependency edits use the Session's `graph_revision`; assignment and work edits use the Task's `revision`. Session close/appoint uses the separate lifecycle `revision`.
+## Step 4: Orchestrator: build the Task graph
+
+The Orchestrator creates Task A and two dependent Tasks, B and C. It assigns two Agents to Task A. In the Task graph, A → B means that B depends on A.
 
 ```bash
 task_a="$(as_agent "$orchestrator_credential" task create --title 'A: shared implementation' \
@@ -104,14 +128,26 @@ as_agent "$orchestrator_credential" dependency add --from "$task_a" --to "$task_
 as_agent "$worker_a_credential" task list
 ```
 
-Only the current Orchestrator creates/edits Task definitions, assignments and dependencies. Assignees own work updates. The Operator cannot perform assignee actions; to participate in Task mail, use a separately registered, assigned Agent's credential. An Orchestrator also needs assignment before reading/sending a Task's mail or updating its work. Unassigned B/C remain visible until assigned. Cycles and cross-Session edges are rejected; completion/cancellation of A never silently changes B/C. [Task and graph contracts](tasks.md) cover paging and all commands.
+Each change needs the current revision of the thing that it changes:
 
-## Agents: shared mail and work
+- Dependency changes use the Session's `graph_revision`.
+- Assignment changes and work updates use the Task's `revision`.
+- Session close, reopen and appoint use the Session's lifecycle `revision`.
 
-In an Agent's shell, set `bin`, `state_dir`, `workspace_id`, `session_id`, its own `agent_id`, `agent_credential` and assigned `task_id` from the private handoff. Copy just the `field` and `as_agent` helper definitions above, then define `worker` below. This wrapper needs no Operator credential:
+Only the current Orchestrator can create and edit Tasks, change assignments and change dependencies. Only the assignees can update a Task's work. The Operator cannot act as an assignee. To take part in Task mail, register a separate Agent and assign it to the Task. The Orchestrator also needs an assignment before it can read or send a Task's mail or update the Task's work.
+
+Tasks B and C have no assignee. They stay visible as Unassigned. a-stack rejects a dependency that makes a cycle or connects two Sessions. When Task A is finished or cancelled, Tasks B and C do not change.
+
+For all Task commands and paging, see [Tasks and the Task graph](tasks.md).
+
+## Step 5: Agents: share mail and do the work
+
+In a real Agent's shell, set `bin`, `state_dir`, `workspace_id`, `session_id`, `agent_id`, `agent_credential` and `task_id` from the private handoff. Copy only the `field` and `as_agent` helpers, and then define `worker` as below. The `worker` helper needs no Operator credential.
+
+In this guide, the next block acts as Agent 02-worker:
 
 ```bash
-# For this walkthrough, act as worker A. A real Agent uses its handed-off values.
+# A real Agent uses the values from its own handoff.
 agent_id="$worker_a_id"
 agent_credential="$worker_a_credential"
 task_id="$task_a"
@@ -128,9 +164,17 @@ worker mail read --task "$task_id" --limit 100
 as_agent "$worker_b_credential" mail read --task "$task_id" --limit 100
 ```
 
-Both reads return the same retained history; neither consumes the other's messages. Check mail at start/resume, between major steps and before whole-Task completion. A mention targets an exact current-assignee name (or `--mention NAME`), not a private DM or an access grant. Ordinary checks work with no Herdr. A joining/rejoining assignee gets full history; removal ends access and permanently suppresses its old pending notices.
+Both reads return the same messages. A read does not remove messages for the other Agent.
 
-Save each caller's own cursor map. This example saves a bounded response privately and merges returned positions without losing other Tasks' cursors:
+Agents check mail when they start or resume a Task, between large steps, and before they mark the whole Task finished. Mail checks work without Herdr.
+
+A mention such as `@03-worker` must use the exact name of a current assignee. You can also name a recipient with `--mention NAME`. A mention is not a private message, and it does not give access to the Task. An Agent that joins or rejoins a Task can read the full mail history. When an Agent is removed from a Task, it can no longer read that Task's mail, and a-stack permanently suppresses its pending notices for that Task.
+
+### Keep a cursor map
+
+A cursor marks how far an Agent has read in one Task's mail. Each Agent keeps its own cursor map: a JSON object that maps Task IDs to cursors. The server does not store which messages an Agent has read, and the CLI does not write the map for you.
+
+This block saves one response in a private file and merges the returned cursors into the map. The cursors of other Tasks stay in the map.
 
 ```bash
 cursor_file="$credential_dir/worker-a-cursors.json"
@@ -147,11 +191,15 @@ path.write_text(json.dumps(saved) + "\n")
 PY
 ```
 
-The CLI does not update the map itself. If `data.next_task` exists, repeat the check with the merged map and `--after-task` set to that token, merging again until absent. Then begin the next round without `--after-task`; revisit any `more: true` page in that round or with `mail read --task ID --cursor CURSOR`. Each Agent keeps a separate map. A lost map/cursor honestly replays history; no server unread/read ledger exists. Remove temporary response files when finished; they contain shared mail.
+If the response has `data.next_task`, run the check again with the merged map and `--after-task` set to that value. Merge again, and repeat until `next_task` is not in the response. Then start the next round without `--after-task`. If a Task's page has `more: true`, read the rest in the next round, or with `mail read --task ID --cursor CURSOR`.
 
-Reads default to 100 messages, cap at 500 and obey a response-byte budget; `mail check` also bounds Tasks (default 50, max 100). Bodies must be nonblank UTF-8, at most 64 KiB, and are rejected rather than truncated. Use `--body-file FILE` or `--body-file -` for mail/report text; keep large results in files and share references. See [mail limits and continuation](mail.md).
+If an Agent loses its map or a cursor, the next read starts again from the first message. Delete temporary response files when you are done, because they contain shared mail.
 
-Record reports, Operator questions and file-reference metadata with fresh current Task revisions:
+A read returns 100 messages by default and 500 at most, and it also stops at a response size limit. `mail check` also limits the number of Tasks: 50 by default and 100 at most. A mail body must be valid UTF-8, must not be blank, and can be 64 KiB at most. a-stack rejects a larger body. It does not cut it. To send text from a file, use `--body-file FILE`, or `--body-file -` for stdin. Put large results in files and share a reference to them. For more about limits and continuation, see [Task mail](mail.md).
+
+### Write the report and finish the Task
+
+The next block writes a report, asks the Operator a question and resolves it, adds a file reference, and marks the Task finished. Each change reads the current Task revision first.
 
 ```bash
 task_revision="$(worker task show --task "$task_id" | field data.revision)"
@@ -160,7 +208,7 @@ worker task report --task "$task_id" --report 'Implementation and checks recorde
 task_revision="$(worker task show --task "$task_id" | field data.revision)"
 worker task attention set --task "$task_id" --question 'Which release should include this?' \
   --expected-revision "$task_revision" --operation-id demo-question-a
-# After the Operator answers through the existing Agent conversation:
+# After the Operator answers in the existing conversation with the Agent:
 task_revision="$(worker task show --task "$task_id" | field data.revision)"
 worker task attention resolve --task "$task_id" --note 'Operator selected the next release' \
   --expected-revision "$task_revision" --operation-id demo-resolve-a
@@ -173,9 +221,15 @@ worker task status --task "$task_id" --progress finished --summary 'Whole shared
   --expected-revision "$task_revision" --operation-id demo-finish-a
 ```
 
-Only mark Finished when the **whole shared Task** is complete; no peer approval is required. Viewing/finishing never clears Needs you. References are display/copy paths or URLs, not uploads or server-read files. The example's reference need not exist. Reports/descriptions allow 64 KiB UTF-8; result/reason/question/note text allows 2,048 bytes.
+An Agent marks a Task finished only when the whole shared Task is complete. The other assignees do not need to approve it. Viewing a Task or finishing it does not clear a Needs you question. Only `task attention resolve` clears it.
 
-Any current assignee can reopen Finished or Cancelled to Waiting with a reason; cancellation also requires a reason. Both retain earlier results/history:
+A file reference is a path or URL that people can see and copy. a-stack does not upload the file or read it. The reference in this example does not need to exist.
+
+Reports and descriptions can be 64 KiB of UTF-8 at most. Results, reasons, questions and notes can be 2,048 bytes at most.
+
+### Reopen or cancel a Task
+
+Any current assignee can reopen a Finished or Cancelled Task. Reopening needs a reason and sets the Task to Waiting. Cancelling also needs a reason. Both keep the earlier results and the history.
 
 ```bash
 task_revision="$(worker task show --task "$task_id" | field data.revision)"
@@ -186,13 +240,21 @@ worker task status --task "$task_id" --progress cancelled --reason 'Approach aba
   --expected-revision "$task_revision" --operation-id demo-cancel-a
 ```
 
-## Retries, replacement and Session closure
+## Retry after a lost response
 
-Choose and retain an operation ID before each mutation. The `demo-*` IDs above identify this example's actions; use a new ID for genuinely new work. If a response is lost, repeat the **same command/payload/operation ID**, including its original expected revision. An authorized committed retry returns its original receipt without another effect. Do not change the expected revision or payload under that ID. On a confirmed stale-write conflict, inspect current work, reconsider it, then use the current revision and a new ID for the new action. Errors do not prove an ambiguous request failed to commit.
+Each change in this guide has an operation ID. Choose the ID before you send the change, and keep it. The `demo-*` IDs in this guide name the actions of this example. Use a new ID for each new action.
 
-Registration/rebind writes the new private credential file before the request. On an uncertain outcome keep that file and repeat the exact enrollment command, including actor and filename. Do not delete it or generate another credential merely because a response was lost. [Credential recovery](lifecycle.md#credential-delivery-and-recovery) explains confirmed rejection and lost-token recovery.
+If you lose a response, send the same command again: the same payload, the same operation ID and the same expected revision. If the first request was committed and you still have access, the retry returns the original receipt and changes nothing. Do not change the payload or the expected revision under the same ID.
 
-Workers continue ordinary assignee work while the Orchestrator is absent; graph/assignment changes wait. Runtime idle/done/unknown does not complete Tasks, clear questions, elect another Orchestrator or close a Session. The Operator can appoint an existing same-Session Agent explicitly:
+An error does not prove that an uncertain request was not committed. If a conflict confirms that your write is out of date, read the current state and think again about the change. Then send it with the current revision and a new operation ID.
+
+`agent register` and `agent rebind` write the new private credential file before they send the request. If the outcome is uncertain, keep that file. Repeat the exact enrollment command, with the same credential and the same file name. Do not delete the file or make a new credential only because a response was lost. For confirmed rejections and lost tokens, see [credential recovery](lifecycle.md#credential-delivery-and-recovery).
+
+## Replace the Orchestrator
+
+When the Orchestrator is absent, the other Agents continue their assignee work. Graph and assignment changes wait for an Orchestrator. A runtime state of idle, done or unknown does not finish Tasks, clear questions, choose a new Orchestrator or close the Session.
+
+The Operator can appoint another Agent of the same Session:
 
 ```bash
 session_revision="$(operator session inspect --workspace "$workspace_id" --session "$session_id" | field data.revision)"
@@ -200,9 +262,13 @@ operator session appoint --workspace "$workspace_id" --session "$session_id" \
   --agent "$worker_b_id" --expected-revision "$session_revision" --operation-id demo-replace-orchestrator
 ```
 
-The old holder immediately loses Orchestrator authority while retaining any ordinary assignee authority. A fresh Agent attaches its own runtime; replacing/clearing an established binding requires Operator `agent rebind` with its current Agent revision and a different `--new-credential-file`, rotating the credential and invalidating the old binding/token. Use `agent list` for Agent revisions. Instance-only `--runtime-id` bindings remain unverified and enable no automatic notice; see [runtime attachment and rebind examples](lifecycle.md#runtime-bindings).
+The old Orchestrator loses its Orchestrator authority immediately. It keeps the authority of an ordinary assignee.
 
-Closing unfinished work is allowed. It preserves statuses/history and authorized mail reads, pauses pending notices and rejects new work/mail writes. It never terminates Agent processes. Explicit reopen restores ordinary permissions without changing statuses or starting agents:
+A new Agent attaches its own runtime. To replace or clear a runtime binding that is already set, the Operator runs `agent rebind` with the current Agent revision and a different `--new-credential-file`. This rotates the credential and makes the old binding and token invalid. Use `agent list` to see Agent revisions. A binding with only `--runtime-id` stays unverified and never gets automatic notices. For examples, see [runtime bindings](lifecycle.md#runtime-bindings).
+
+## Close and reopen the Session
+
+You can close a Session that has unfinished Tasks. Closing keeps all statuses and history, and authorized mail reads continue to work. It pauses pending notices and rejects new work updates and new mail. It does not stop Agent processes. Reopening restores the normal permissions. It does not change Task statuses or start Agents.
 
 ```bash
 session_revision="$(operator session inspect --workspace "$workspace_id" --session "$session_id" | field data.revision)"
@@ -214,23 +280,27 @@ operator session reopen --workspace "$workspace_id" --session "$session_id" \
   --expected-revision "$session_revision" --operation-id demo-reopen-session
 ```
 
-Operator/registered Agents can inspect metadata with `task list/show`, `session inspect` and `agent list`. `open --workspace ID --session ID` supplies a scoped read-only browser URL; `--no-browser` prints it without launching. Treat that URL as a credential. Browser access grants no Task mail or mutation authority. Nothing automatically updates/closes GitHub tickets. See [the browser guide](browser.md).
+## Look at the work
 
-## Backup, restore and stop
+The Operator and the registered Agents can read metadata with `task list`, `task show`, `session inspect` and `agent list`.
 
-Keep completed backups and original credential files in separate private durable storage for retained work. A database backup contains capability hashes, not recoverable tokens. Preserve all delivered Agent credential files as well as the Operator file; a rotated-out token stays invalid. Check database identity, retained work/mail and a known retry receipt after restoration before retiring the old state directory.
+`open --workspace ID --session ID` gives a read-only browser URL for one Session. Add `--no-browser` to print the URL without opening a browser. Keep the URL private, because it works like a credential. The browser view cannot read Task mail or change anything. a-stack never updates or closes GitHub tickets. For details, see [Browser view](browser.md).
 
-For this disposable example, use a fresh backup name, stop only its owned service, and restore into a new empty directory:
+## Back up, restore and stop
+
+For work that you keep, store completed backups and the original credential files in private, durable storage, separate from each other. A database backup contains only hashes of the credentials. It cannot restore the tokens. Keep every Agent credential file that you gave out, and the Operator file. A token that was rotated out stays invalid after a restore. After a restore, check the database ID, the retained work and mail, and a known retry receipt. Only then retire the old state directory.
+
+This block makes a backup with a new name, and stops only the service of this example. It then restores the backup into a new empty directory and checks it:
 
 ```bash
 database_id="$("$bin" health --state-dir "$state_dir" --json | field data.database_id)"
-backup_dir="$(mktemp -d /tmp/a-stack-backup.XXXXXX)"
+backup_dir="$(mktemp -d -t a-stack-backup.XXXXXX)"
 operator storage backup --destination "$backup_dir/completed.sqlite"
 install -m 600 "$state_dir/operator.json" "$backup_dir/operator.json"
-# Keep credential_dir separately; it includes the three original Agent files.
+# Keep credential_dir separately. It holds the three original Agent credential files.
 kill -TERM "$service_pid"
 wait "$service_pid"
-restore_dir="$(mktemp -d /tmp/a-stack-restored.XXXXXX)"
+restore_dir="$(mktemp -d -t a-stack-restored.XXXXXX)"
 install -m 600 "$backup_dir/completed.sqlite" "$restore_dir/state.db"
 install -m 600 "$backup_dir/operator.json" "$restore_dir/operator.json"
 state_dir="$restore_dir"
@@ -253,10 +323,18 @@ wait "$service_pid"
 trap - EXIT
 ```
 
-The service creates and integrity-checks the SQLite backup before publishing it; an existing destination is refused. After an interrupted backup inspect the completed destination or use a new name. Never copy only a live `state.db`, delete SQLite sidecars, overwrite an existing backup or merge a restore with old sidecars. See [backup/restore details](foundation.md#backup-and-restore). The temporary example directories may be removed once their service is stopped and their contents are no longer needed; real retained state and credentials require deliberate preservation.
+The service makes the SQLite backup and checks its integrity before the backup file appears. It refuses a destination that already exists. If a backup is interrupted, check whether the destination file is complete, or use a new name.
 
-## Optional mention notices and validation
+Never copy only a live `state.db`. Never delete the SQLite sidecar files, overwrite an existing backup, or mix a restored database with old sidecar files. For details, see [backup and restore](foundation.md#backup-and-restore).
 
-Mail checks above work without Herdr. To opt in, start the service with `--herdr-executable /absolute/path/to/herdr` and enroll complete private bindings following [notification setup](notifications.md). Only **native Codex 0.164.0 / Herdr 0.9.5** is enabled. Declared harness version and complete current alias/pane/terminal/native-session identity must match; unsupported/unknown/blocked/stopped targets remain mail-only. Rebinding/upgrading must keep the declaration accurate.
+When the service is stopped and you no longer need the files, you can delete the temporary directories of this example. Real state and credentials need a deliberate backup plan.
 
-The normal queue sends one generic check-your-own-mail notice, with no idle wait or agent launch/restart. Herdr cannot atomically pin the occupant between lookup and input. Successful submission is not proof of reading/action; uncertain submissions are never automatically resent, while new mentions may form a fresh batch. No live notices are needed for this walkthrough. See [reproducible validation and measurement procedures](validation.md) for release evidence and its limits.
+## Optional mention notices
+
+Mail checks work without Herdr. To turn on notices, start the service with `--herdr-executable /absolute/path/to/herdr`, and enroll complete private bindings as described in [Mention notices](notifications.md).
+
+Only one combination is supported: native Codex 0.164.0 with Herdr 0.9.5. The declared harness version and the full current identity of the target (alias, pane, terminal and native session) must match. All other targets stay mail-only, for example unsupported, unknown, blocked or stopped targets. When you rebind or upgrade an Agent, keep the declared version correct.
+
+A notice is one generic message that tells the Agent to check its own mail. a-stack does not wait for the Agent to be idle, and it does not start or restart Agents. Herdr cannot guarantee that the same Agent is still in the pane between the check and the input. A submitted notice does not prove that the Agent read the mail or acted on it. a-stack never resends a notice with an uncertain outcome automatically. New mentions can start a new batch.
+
+This guide does not need live notices. For release evidence and its limits, see [Validation](validation.md).
