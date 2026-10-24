@@ -205,10 +205,22 @@ button:disabled { cursor: default; opacity: .6; }
 .now-card.archived { opacity: .7; }
 .detail-archive { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 19px; }
 .detail-archive[hidden] { display: none; }
-.graph-world > .task-unit.unfocused { opacity: .3; }
+.graph-world > .task-unit.unfocused { opacity: .42; }
 .graph-world > .task-unit.dimmed { opacity: .18; }
-.connection.unfocused { opacity: .3; }
+.connection.unfocused { opacity: .22; }
 .connection.implied { stroke-dasharray: 6 5; }
+/* Output ports sit on the right edge of a card body that has lines out. */
+.port { fill: var(--edge); stroke: var(--canvas); stroke-width: 2; }
+.port.active { fill: var(--accent); }
+.port.unfocused { opacity: .42; }
+/* Compact done Tasks: the Agent names, then one block with the status icon and a muted title of up to two lines. */
+.task-unit.compact .owners { margin-bottom: 4px; min-height: 18px; }
+.task-unit.compact .owner { font-size: 13px; }
+.task-unit.compact .task-card { flex-direction: row; align-items: flex-start; gap: 8px; padding: 8px 12px; border-radius: 8px; box-shadow: none; }
+.task-unit.compact .task-card.selected { box-shadow: 0 0 0 1px var(--accent); }
+.task-unit.compact .task-title { margin: 0; min-width: 0; font-size: 14px; font-weight: 560; line-height: 20px; letter-spacing: -.1px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.task-unit.compact .status { flex: none; margin-top: 1px; }
+.task-unit.compact .status-label, .task-unit.compact .task-note, .task-unit.compact .task-caption { display: none; }
 .archive-toggle { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .archive-toggle svg { width: 15px; height: 15px; }
 .archive-toggle:hover { color: var(--ink); border-color: var(--strong-line); }

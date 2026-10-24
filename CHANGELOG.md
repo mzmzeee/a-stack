@@ -19,7 +19,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Changed
 
-- The graph is back to the v0.1.0 look: one column per rank and bracket lines between columns. Tasks without lines sit in rows below. The graph draws a dependency line only when no other path connects the two Tasks; the details still list every dependency.
+- The graph runs left to right with one column per rank, and each Task is centered on its prerequisites, so a chain runs level. Lines are curves from an output port on the right edge of a card. Finished and cancelled Tasks are compact one-line blocks with the Agent names above. Tasks without lines sit below or to the right, whichever Fits larger. The graph draws a dependency line only when no other path connects the two Tasks; the details still list every dependency.
+- A selected Task's lines turn the accent color and move on top. Other lines fade to 22% and other cards to 42%.
 - Finished and cancelled Tasks show in the graph again, unless they are archived. The graph hides archived Tasks by default and shows them dimmed with the Archived (N) toggle. On the Now board, archived Tasks leave Recently finished and appear under "Show archive".
 - The database schema is version 6. It adds `archived_at` and `ended_at` to Tasks and lets the Task history name the Operator. The upgrade runs once, in one transaction.
 - The browser view credential can read the Task mail of its own Session with `POST /v1/mail/read`. It still cannot send or check mail. The Operator credential still has no mail access.
