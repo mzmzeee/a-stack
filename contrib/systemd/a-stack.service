@@ -1,0 +1,33 @@
+# systemd user unit for the a-stack service (a-stack serve).
+#
+# It starts a-stack when your user manager starts and restarts it after a
+# crash. Install it as your own user, without sudo:
+#
+#   mkdir -p ~/.config/systemd/user
+#   cp a-stack.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now a-stack
+#
+# To start it at boot without a login, run: loginctl enable-linger "$USER"
+# Full steps: https://github.com/mzmzeee/a-stack/blob/main/docs/install.md#start-a-stack-automatically
+
+[Unit]
+Description=a-stack local service
+Documentation=https://github.com/mzmzeee/a-stack/blob/main/docs/install.md
+
+[Service]
+Type=exec
+# The default state directory. Change it with a drop-in if your shell sets
+# XDG_STATE_HOME to another folder, so that the CLI finds this service.
+ExecStart=%h/.local/bin/a-stack serve --state-dir %h/.local/state/a-stack
+Restart=on-failure
+RestartSec=2s
+UMask=0077
+NoNewPrivileges=yes
+LockPersonality=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=default.target

@@ -61,6 +61,78 @@ a-stack version
 {"data":{"version":"v0.1.0"}}
 ```
 
+## Start a-stack automatically
+
+On Linux with systemd, a user service can run `a-stack serve` for you. systemd starts it when your user manager starts, and starts it again if it crashes. You do not need `sudo`.
+
+The unit runs `~/.local/bin/a-stack`. If you installed the binary in another folder, change the path in the `ExecStart` line.
+
+1. Stop any `a-stack serve` that you started by hand. Only one service can use a state directory. A second one stops with `conflict`.
+
+2. Download the unit into your systemd user folder:
+
+   ```sh
+   mkdir -p ~/.config/systemd/user
+   curl -fsSL -o ~/.config/systemd/user/a-stack.service https://raw.githubusercontent.com/mzmzeee/a-stack/main/contrib/systemd/a-stack.service
+   ```
+
+   If you have a checkout of the repository, you can copy the unit from it instead:
+
+   ```sh
+   cp contrib/systemd/a-stack.service ~/.config/systemd/user/
+   ```
+
+3. Load the unit, then enable and start it:
+
+   ```sh
+   systemctl --user daemon-reload
+   systemctl --user enable --now a-stack
+   ```
+
+4. Check that the service runs:
+
+   ```sh
+   systemctl --user status a-stack
+   a-stack health
+   ```
+
+   The service needs a moment to write its discovery file. If `a-stack health` fails right after the start, wait a second and run it again.
+
+5. Let the service start at boot, before you log in:
+
+   ```sh
+   loginctl enable-linger "$USER"
+   ```
+
+   Without linger, systemd starts your user services only when you log in, and stops them when you log out.
+
+To read the service's log, run `journalctl --user -u a-stack`. At each start, the service writes one ready line with its URL.
+
+### Use the same state directory as the CLI
+
+The unit uses the default state directory, `~/.local/state/a-stack`. It sets this folder with `--state-dir` and does not read `XDG_STATE_HOME`. The systemd user manager can have a different environment than your shell. At boot, it usually does not have the variables that your desktop session sets.
+
+The CLI uses `$XDG_STATE_HOME/a-stack` when `XDG_STATE_HOME` is set. Run `echo "$XDG_STATE_HOME"` in your shell. If it is empty or `~/.local/state`, you do not need to change anything. If it is another folder, add a drop-in that gives the service the same folder:
+
+```sh
+mkdir -p ~/.config/systemd/user/a-stack.service.d
+cat > ~/.config/systemd/user/a-stack.service.d/state-dir.conf <<EOF
+[Service]
+ExecStart=
+ExecStart=%h/.local/bin/a-stack serve --state-dir $XDG_STATE_HOME/a-stack
+EOF
+systemctl --user daemon-reload
+systemctl --user restart a-stack
+```
+
+The empty `ExecStart=` line clears the command from the unit. You can add other `serve` flags in the same way, such as `--herdr-executable` (see [Mention notices](notifications.md)).
+
+### Stop the service
+
+To stop the service until the next boot or login, run `systemctl --user stop a-stack`. systemd starts the service again only when it fails, so it stays stopped.
+
+To stop the service and not start it automatically again, run `systemctl --user disable --now a-stack`. To remove the unit, see [Uninstall](#uninstall).
+
 ## Requirements
 
 You need these only to build from source:
@@ -81,6 +153,17 @@ GOTOOLCHAIN=go1.27.3 CGO_ENABLED=1 go build -o a-stack ./cmd/a-stack
 This binary uses your system's C library. To build the static release binary, see [Releasing](../CONTRIBUTING.md#releasing).
 
 ## Uninstall
+
+If you set up the systemd user service, stop it and remove the unit and any drop-in:
+
+```sh
+systemctl --user disable --now a-stack
+rm -f ~/.config/systemd/user/a-stack.service
+rm -rf ~/.config/systemd/user/a-stack.service.d
+systemctl --user daemon-reload
+```
+
+If no other user service needs linger, you can also turn it off with `loginctl disable-linger "$USER"`.
 
 Remove the binary:
 
