@@ -153,6 +153,7 @@ func (s *Service) Close(ctx context.Context) error {
 		if s.notifier != nil {
 			s.notifier.stop()
 			s.notifier.mu.Lock()
+			//lint:ignore SA2001 barrier: wait for an HTTP-initiated drain to finish before the database closes.
 			s.notifier.mu.Unlock()
 		}
 		if err := s.Store.db.Close(); err != nil {

@@ -319,7 +319,7 @@ func (s *Store) ChangeSession(ctx context.Context, token, action string, r Sessi
 		if err = expectedRevision(r.ExpectedRevision, session.Revision); err != nil {
 			return Receipt{}, err
 		}
-		outcome := action
+		var outcome string
 		if action == "appoint" {
 			if session.Closed {
 				return Receipt{}, failure("session_closed", "Session is closed")

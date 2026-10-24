@@ -1,2 +1,5 @@
 /a-stack
 /.tmp/
+/.claude/worktrees/
+__pycache__/
+node_modules/

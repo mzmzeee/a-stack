@@ -153,8 +153,14 @@ func noticeTestFixture(t *testing.T) *noticeFixture {
 		t.Fatal(err)
 	}
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
+	// The adapter scrubs the child environment. Without GOCOVERDIR a coverage
+	// build appends a warning to stderr, which turns known errors uncertain.
+	coverage := ""
+	if coverDir := os.Getenv("GOCOVERDIR"); coverDir != "" {
+		coverage = "GOCOVERDIR=" + quote(coverDir) + " "
+	}
 	wrapper := filepath.Join(dir, "herdr")
-	if err = os.WriteFile(wrapper, []byte("#!/bin/sh\nGORACE=atexit_sleep_ms=0 exec "+quote(executable)+" -test.run=^TestHerdrExecutableHelper$ -- "+quote(dir)+" \"$@\"\n"), 0700); err != nil {
+	if err = os.WriteFile(wrapper, []byte("#!/bin/sh\nGORACE=atexit_sleep_ms=0 "+coverage+"exec "+quote(executable)+" -test.run=^TestHerdrExecutableHelper$ -- "+quote(dir)+" \"$@\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
 	binding := RuntimeBinding{InstanceID: "fixture-instance", HerdrAlias: "fixture-b", Endpoint: filepath.Join(dir, "recorded.sock"), PaneID: "w1:p2", TerminalID: "terminal-2", NativeSessionID: "native-2", Harness: "codex", HarnessVersion: "0.164.0"}
