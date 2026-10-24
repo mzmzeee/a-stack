@@ -57,20 +57,34 @@ demo_home="$(mktemp -d -t demo.XXXXXX)"
 cred_dir="$demo_home/.agents"
 rec_session="a-stack-demo-$$"
 shot_session="a-stack-demo-shots-$$"
-service_pid="" terminal_pid=""
+# The background processes: the screenshot job, the terminal recorder and the
+# a-stack service. terminal_pid and service_pid are the processes themselves.
+shot_pid="" terminal_pid="" service_pid=""
 
 cleanup() {
+  trap '' INT TERM
+  stop_process "$shot_pid"
   agent-browser --session "$rec_session" close >/dev/null 2>&1 || :
   agent-browser --session "$shot_session" close >/dev/null 2>&1 || :
-  for pid in "$terminal_pid" "$service_pid"; do
-    if [ -n "$pid" ]; then
-      kill "$pid" 2>/dev/null || :
-      wait "$pid" 2>/dev/null || :
-    fi
-  done
+  stop_process "$terminal_pid"
+  stop_process "$service_pid"
   rm -rf "$work_dir" "$demo_home"
 }
+# stop_process PID: stop a background job and the commands it is running.
+# shot_pid is a subshell, so its children are stopped too.
+stop_process() {
+  if [ -n "$1" ]; then
+    local children
+    children="$(pgrep -P "$1" | tr '\n' ' ')" || :
+    # shellcheck disable=SC2086 # children is a list of PIDs.
+    kill "$1" $children 2>/dev/null || :
+    wait "$1" 2>/dev/null || :
+  fi
+}
 trap cleanup EXIT
+# Ctrl-C or kill at any point still runs cleanup through the EXIT trap.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 step "build a-stack"
 mkdir -p "$work_dir/bin" "$cred_dir" "$demo_home/.local/state/a-stack" "$demo_home/code/oauth-app"
@@ -237,7 +251,9 @@ stop_terminal() {
 # --- other Sessions, for the picker -----------------------------------------
 
 step "start a disposable service"
-stack serve --json >"$work_dir/serve.json" 2>"$work_dir/serve-error.json" &
+# The binary itself runs in the background, so $! is the service process.
+HOME="$demo_home" XDG_STATE_HOME='' "$bin" serve --json \
+  >"$work_dir/serve.json" 2>"$work_dir/serve-error.json" &
 service_pid=$!
 for _ in {1..50}; do
   if stack health --json >/dev/null 2>&1; then break; fi
@@ -332,6 +348,7 @@ term line "a-stack \$AS task status --task \$APP --progress working --expected-r
 finish 04-database schema 'Migration 0042 adds linked_accounts with a unique (provider, subject) index.'
 term line "a-stack \$AS task attention set --task \$APP --question 'GitHub or Google first?' --expected-revision \$(rev \$APP) --operation-id app-ask-1"
 wait "$shot_pid"
+shot_pid=""
 no_fragment shot
 sleep 1
 take_screenshots &
@@ -353,6 +370,7 @@ sleep 2.2
 finish 05-reviewer review 'No blocking issues. Cookie is HttpOnly, Secure, SameSite=Lax.'
 sleep 1.5
 wait "$shot_pid"
+shot_pid=""
 
 term line 'clear'
 term keys 'a-stack -r\r'
