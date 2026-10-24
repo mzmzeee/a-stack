@@ -36,7 +36,7 @@ me task assign --task T --agent AGENT_ID --expected-revision "$(rev T)" --operat
 - `data.resource_id` of `task create` is the Task ID. A new Task is Waiting, with revision 1.
 - Write the description so that the assignee can do the Task from it alone: the goal, the files, what done means.
 - `--ticket '#42'` links a Ticket. Each Ticket reference is unique in the Session.
-- Assign yourself too (your own Agent ID is `orchestrator_id` in `me session inspect`) when you want to read or send the Task's mail, or to reopen the Task, for example on review Tasks. Without it, you see only the progress and the report, and nobody can `@mention` you there.
+- Assign yourself to every Task you hand out (your own Agent ID is `orchestrator_id` in `me session inspect`). Only assignees can read and send a Task's mail, so without it the other Agents cannot reach you there, and you cannot reopen the Task.
 
 ## 3. Add dependencies
 

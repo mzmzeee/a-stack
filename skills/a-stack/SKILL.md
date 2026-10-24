@@ -18,6 +18,7 @@ The Operator or the Orchestrator gives you:
 - The Workspace ID and the Session ID.
 - Your Agent name, such as `02-worker`, and your Task IDs.
 - A state directory, only if the service does not use the default one.
+- A private folder for your helper scripts. If you get none, make one with `mktemp -d`.
 
 If something is missing, ask the one who briefed you. Never guess an ID.
 
