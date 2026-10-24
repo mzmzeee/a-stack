@@ -21,6 +21,8 @@ The Operator or the Orchestrator gives you:
 
 If something is missing, ask the one who briefed you. Never guess an ID.
 
+Your Workspace and Session already exist. To set up means only to write the helpers below. Never run `a-stack` with no command, `a-stack new` or `a-stack -r` (see Rules).
+
 ## Set up your helpers
 
 Use the private folder you were given (create it with `mkdir -p -m 700` if it does not exist), or make one with `mktemp -d`. Keep every helper, cursor file and draft there. It is not the state directory, and it is never shared: Agents that share a folder overwrite each other's helpers.
@@ -62,10 +64,11 @@ When only the Operator can decide, ask one clear question with `me task attentio
 
 ## Rules
 
-- **Operation IDs.** Every change needs `--operation-id` with 8 to 128 letters, digits, `_` or `-`. A shorter ID fails with a generic `invalid_input` message. Use a new, unique ID for each change, such as `02-worker-mail-03`. Reuse an ID only to retry the same unchanged command after a lost response.
-- **Revisions.** Every Task change needs `--expected-revision` with the Task's current `revision`. On `conflict`, read the Task again, decide whether the change still applies, and send it with the new revision and a NEW operation ID.
-- **Mentions.** Each `@name` in a mail body must be a current assignee of that Task, or the whole send fails with `mention target must be a current Task assignee`. Check the names with `me task assignees --task T`, and write other names without `@`. Only assignees can read a Task's mail, so the Orchestrator reads it only when it is assigned.
-- **Secrets.** Refer to a credential file only by its path. Never print, paste, log or commit its contents, or the part of a browser URL after `#`.
-- **Context.** Give `--workspace` and `--session` to every command. The current directory never selects a Workspace or a Session.
-- **Output.** Success prints a `data` JSON object on stdout. Failure prints an `error` JSON object (`code`, `message`, `retryable`) on stderr and exits with 2 for `invalid_input` and 1 for all other errors. Check the exit code of each change.
-- **The service.** The Operator runs it; leave it running. Never stop it, and never run `a-stack serve` on its state directory. To test a-stack itself, start a disposable service with a `mktemp -d` state directory and give `--state-dir` to every command. Changing `HOME` is not enough, because the Operator's `XDG_STATE_HOME` can still lead to the real state.
+- Every change needs `--operation-id` with 8 to 128 letters, digits, `_` or `-`. A shorter ID fails with a generic `invalid_input` message. Use a new, unique ID for each change, such as `02-worker-mail-03`. Reuse an ID only to retry the same unchanged command after a lost response.
+- Every Task change needs `--expected-revision` with the Task's current `revision`. On `conflict`, read the Task again, decide whether the change still applies, and send it with the new revision and a NEW operation ID.
+- Each `@name` in a mail body must be a current assignee of that Task, or the whole send fails with `mention target must be a current Task assignee`. Check the names with `me task assignees --task T`, and write other names without `@`. Only assignees can read a Task's mail, so the Orchestrator reads it only when it is assigned.
+- Refer to a credential file only by its path. Never print, paste, log or commit its contents, or the part of a browser URL after `#`.
+- Run every command as yourself, through `me`: with `--as agent`, your own `--credential-file`, `--workspace` and `--session`. No Agent command uses the current folder to choose a Workspace or a Session.
+- Use only the commands of the work loop and the references. `a-stack` with no command, `a-stack new` and `a-stack -r` (`--resume`) are Operator commands: they use the Operator credential and the current folder, can create Workspaces and Sessions, and can start a second service in the foreground. Never run them, also when you are told to "set up your Session". Your Session already exists; check it with `me session inspect`.
+- Success prints a `data` JSON object on stdout. Failure prints an `error` JSON object (`code`, `message`, `retryable`) on stderr and exits with 2 for `invalid_input` and 1 for all other errors. Check the exit code of each change.
+- The Operator runs the service; leave it running. Never stop it, and never run `a-stack serve` on its state directory. To test a-stack itself, start a disposable service with a `mktemp -d` state directory and give `--state-dir` to every command. Changing `HOME` is not enough, because the Operator's `XDG_STATE_HOME` can still lead to the real state.
