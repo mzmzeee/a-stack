@@ -30,7 +30,7 @@ Run every check that CI runs:
 scripts/check.sh
 ```
 
-It runs formatting, linters, vulnerability and secret scans, the tests with coverage, the race tests, the build and the quick validation run. [Quality checks](docs/quality.md) lists the tool versions and rule choices. After a change that can affect speed or storage, also run the full [validation runner](docs/validation.md).
+It runs formatting, linters, vulnerability and secret scans, the tests with coverage, the race tests, the build and the quick validation run. [Quality checks](docs/quality.md) lists the tool versions and rule choices. After a change that can affect speed or storage, also run the full [validation runner](docs/validation.md) and the [stress test](docs/performance.md#run-it).
 
 ## Releasing
 
