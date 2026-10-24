@@ -1,0 +1,156 @@
+package main
+
+import (
+	"context"
+	"flag"
+	"strings"
+
+	"github.com/mzmzeee/a-stack/internal/stack"
+)
+
+var lifecycleCommands = []string{"workspace create", "workspace list", "session create", "session list", "session inspect", "session close", "session reopen", "session appoint", "agent register", "agent list", "agent attach", "agent rebind", "agent observe"}
+
+func isLifecycleCommand(command string) bool {
+	for _, c := range lifecycleCommands {
+		if c == command {
+			return true
+		}
+	}
+	return false
+}
+
+type lifecycleFlags struct {
+	workspace, session, operationID, path, name, agent, worktree, newCredential, runtimeID, runtimeFile, state, after string
+	revision                                                                                                          int64
+	limit                                                                                                             int
+	clearRuntime                                                                                                      bool
+}
+
+func (f *lifecycleFlags) register(fs *flag.FlagSet) {
+	fs.StringVar(&f.workspace, "workspace", "", "explicit Workspace ID")
+	fs.StringVar(&f.session, "session", "", "explicit Session ID")
+	fs.StringVar(&f.operationID, "operation-id", "", "retained operation ID for a mutation/retry")
+	fs.StringVar(&f.path, "path", "", "explicit canonical project directory")
+	fs.StringVar(&f.name, "name", "", "Session or Agent display name")
+	fs.StringVar(&f.agent, "agent", "", "Agent ID")
+	fs.StringVar(&f.worktree, "worktree", "", "explicit worktree directory in this Workspace")
+	fs.StringVar(&f.newCredential, "new-credential-file", "", "new/resumable private Agent credential file")
+	fs.StringVar(&f.runtimeID, "runtime-id", "", "explicit running instance ID")
+	fs.StringVar(&f.runtimeFile, "runtime-file", "", "private JSON runtime binding file")
+	fs.BoolVar(&f.clearRuntime, "clear-runtime", false, "explicitly clear binding during Operator rebind")
+	fs.StringVar(&f.state, "runtime-state", "", "latest runtime observation")
+	fs.Int64Var(&f.revision, "expected-revision", 0, "required current revision for existing resources")
+	fs.IntVar(&f.limit, "limit", 0, "page size (1–100; mail 1–500)")
+	fs.StringVar(&f.after, "after", "", "list continuation ID")
+}
+func validateCommandFlags(command string, seen map[string]bool) error {
+	allowed := " state-dir json help "
+	if command == "serve" {
+		allowed += "listen herdr-executable "
+	} else {
+		allowed += "credential-file as "
+	}
+	switch command {
+	case "notifications status":
+		allowed += "workspace session agent limit after "
+	case "notifications drain":
+		allowed += "workspace session limit "
+	case "open":
+		allowed += "workspace session no-browser "
+	case "storage backup":
+		allowed += "destination "
+	case "workspace create":
+		allowed += "operation-id path "
+	case "workspace list":
+		allowed += "workspace session limit after "
+	case "session create":
+		allowed += "workspace operation-id name "
+	case "session list", "agent list":
+		allowed += "workspace session limit after "
+	case "session inspect":
+		allowed += "workspace session "
+	case "session close", "session reopen":
+		allowed += "workspace session operation-id expected-revision "
+	case "session appoint":
+		allowed += "workspace session operation-id expected-revision agent "
+	case "agent register":
+		allowed += "workspace session operation-id name worktree new-credential-file "
+	case "agent attach":
+		allowed += "workspace session operation-id expected-revision agent runtime-id runtime-file "
+	case "agent rebind":
+		allowed += "workspace session operation-id expected-revision agent runtime-id runtime-file clear-runtime new-credential-file "
+	case "agent observe":
+		allowed += "workspace session agent expected-revision runtime-id runtime-state "
+	}
+	if isTaskCommand(command) {
+		allowed += "workspace session " + taskAllowedFlags(command) + " "
+	}
+	if isMailCommand(command) {
+		allowed += "workspace session " + mailAllowedFlags(command) + " "
+	}
+	for name := range seen {
+		if !strings.Contains(allowed, " "+name+" ") {
+			return invalid("flag does not apply to this command; use --help")
+		}
+	}
+	return nil
+}
+func lifecycleRequest(ctx context.Context, client *stack.Client, command string, f lifecycleFlags) ([]byte, error) {
+	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}
+	var body any
+	switch command {
+	case "workspace create":
+		body = stack.WorkspaceCreateRequest{OperationID: f.operationID, Path: f.path}
+	case "workspace list", "session list", "agent list":
+		body = stack.ListRequest{Context: ref, Limit: f.limit, After: f.after}
+	case "session create":
+		body = stack.SessionCreateRequest{OperationID: f.operationID, WorkspaceID: f.workspace, Name: f.name}
+	case "session inspect":
+		body = ref
+	case "session close", "session reopen", "session appoint":
+		body = stack.SessionChangeRequest{Context: ref, OperationID: f.operationID, ExpectedRevision: f.revision, AgentID: f.agent}
+	case "agent register":
+		r := stack.AgentRegisterRequest{Context: ref, OperationID: f.operationID, Name: f.name, WorktreePath: f.worktree}
+		hash, err := stack.PrepareAgentCredential(f.newCredential, client.Discovery.DatabaseID, command, f.operationID, r)
+		if err != nil {
+			return nil, err
+		}
+		r.CredentialHash = hash
+		body = r
+	case "agent attach", "agent rebind":
+		if f.runtimeFile != "" && f.runtimeID != "" {
+			return nil, invalid("choose --runtime-id or --runtime-file")
+		}
+		if f.clearRuntime && (f.runtimeID != "" || f.runtimeFile != "") {
+			return nil, invalid("--clear-runtime excludes a replacement runtime")
+		}
+		var binding *stack.RuntimeBinding
+		if f.runtimeID != "" {
+			binding = &stack.RuntimeBinding{InstanceID: f.runtimeID}
+		}
+		if f.runtimeFile != "" {
+			var err error
+			binding, err = stack.ReadRuntimeBinding(f.runtimeFile)
+			if err != nil {
+				return nil, err
+			}
+		}
+		if binding == nil && !f.clearRuntime {
+			return nil, invalid("explicit runtime binding or Operator --clear-runtime required")
+		}
+		r := stack.AgentBindingRequest{Context: ref, OperationID: f.operationID, AgentID: f.agent, ExpectedRevision: f.revision, Runtime: binding}
+		if command == "agent rebind" {
+			hash, err := stack.PrepareAgentCredential(f.newCredential, client.Discovery.DatabaseID, command, f.operationID, r)
+			if err != nil {
+				return nil, err
+			}
+			r.CredentialHash = hash
+		}
+		body = r
+	case "agent observe":
+		body = stack.AgentObserveRequest{Context: ref, AgentID: f.agent, ExpectedRevision: f.revision, RuntimeID: f.runtimeID, State: f.state}
+	default:
+		return nil, invalid("unknown lifecycle command")
+	}
+	return client.Do(ctx, "POST", "/v1/"+strings.ReplaceAll(command, " ", "/"), body)
+}

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>a-stack</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2322252b'/%3E%3Cpath d='M8 24L16 8l8 16M11 18h10' fill='none' stroke='%23f6f5f1' stroke-width='3'/%3E%3C/svg%3E">
+<meta name="a-stack-instance" content="{{.}}">
+<link rel="stylesheet" href="/assets/app.css">
+
+</head>
+<body>
+<div class="app">
+  <header class="appbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 20L12 4l7 16M8 14h8" stroke="currentColor" stroke-width="2.6"/></svg></span>a-stack</div>
+    <span class="project-name">a-stack</span>
+    <nav class="tabs" role="tablist" aria-label="Workspace views">
+      <button id="graph-tab" class="tab" role="tab" aria-selected="true" aria-controls="graph-panel" data-view="graph"><span data-icon="graph"></span>Graph</button>
+      <button id="agents-tab" class="tab" role="tab" aria-selected="false" aria-controls="agents-panel" tabindex="-1" data-view="agents"><span data-icon="agents"></span>Agents</button>
+    </nav>
+    <div class="theme-switch" role="group" aria-label="Compare appearance">
+      <button class="theme-button" data-theme="light" aria-pressed="true"><span data-icon="sun"></span>Light</button>
+      <button class="theme-button" data-theme="dark" aria-pressed="false"><span data-icon="moon"></span>Dark</button>
+    </div>
+  </header>
+  <section class="workspacebar" aria-label="Workspace and filters">
+    <div class="workspace-title"><h1>Loading Session</h1><p class="workspace-subtitle">Connecting to local service</p></div>
+    <label class="search"><span data-icon="search"></span><span class="sr-only">Find an agent or task</span><input id="search" type="search" placeholder="Find an agent or task…" autocomplete="off" spellcheck="false"></label>
+    <label class="sr-only" for="status-filter">Filter task status</label>
+    <select class="status-filter" id="status-filter"><option value="all">All statuses</option><option value="working">Working</option><option value="blocked">Needs you</option><option value="waiting">Waiting</option><option value="finished">Finished</option><option value="cancelled">Cancelled</option></select>
+    <button class="attention-button" id="attention"><span data-icon="attention"></span>Needs you</button>
+  </section>
+  <main>
+    <div class="view" id="graph-panel" role="tabpanel" aria-labelledby="graph-tab" tabindex="0" aria-description="Read-only task graph. Arrows point from prerequisites to dependent tasks. Scroll, or drag empty space, to explore. Select a task for details and named dependencies.">
+      <div class="graph-space"><div class="graph-world" id="graph-world"></div></div>
+    </div>
+    <div class="view" id="agents-panel" role="tabpanel" aria-labelledby="agents-tab" tabindex="0" hidden><div class="agent-list" id="agent-list"></div></div>
+    <div class="empty" id="empty" hidden><h2>No matching work</h2><p>Try another agent name, task, or status.</p><button class="plain-button" id="clear-filters">Clear filters</button></div>
+  </main>
+  <footer class="footer">
+    <div class="zoom-controls" id="zoom-controls" role="group" aria-label="Graph zoom">
+      <button id="zoom-out" aria-label="Zoom out"><span data-icon="minus"></span></button>
+      <button id="zoom-reset" aria-label="Reset to 100 percent">100%</button>
+      <button id="zoom-in" aria-label="Zoom in"><span data-icon="plus"></span></button>
+      <button id="zoom-fit" aria-label="Fit graph"><span data-icon="fit"></span>Fit</button>
+    </div>
+    <span class="footer-hint" id="footer-hint">Arrows show what comes next. Drag empty space to pan.</span>
+    <span id="result-count" role="status" aria-live="polite"></span>
+    <button class="preview-button" id="about-button"><span data-icon="info"></span><span class="preview-label">Local service · connecting</span><span class="preview-short" aria-hidden="true">Read-only</span><span class="sr-only">About this view</span></button>
+  </footer>
+</div>
+<dialog class="detail-panel" id="task-dialog" aria-labelledby="detail-title"></dialog>
+<dialog class="about-panel" id="about-dialog" aria-labelledby="about-title">
+  <div class="detail-top"><span class="detail-kicker">READ-ONLY SESSION</span><button class="icon-button" data-close="about-dialog" aria-label="Close information"><span data-icon="close"></span></button></div>
+  <div class="detail-body"><h2 id="about-title">A look at the work.</h2><p>Graph shows dependencies. Agents shows assignments. Task progress is reported by assignees; runtime observations are separate and unverified.</p><p>This view reads Session metadata. Selecting a question does not resolve it. File references can be displayed or copied; this view never opens them.</p><p id="source-info"></p></div>
+</dialog>
+<dialog class="about-panel" id="attention-dialog" aria-labelledby="attention-title"><div class="detail-top"><h2 id="attention-title">Needs you</h2><button class="icon-button" data-close="attention-dialog" aria-label="Close Needs you"><span data-icon="close"></span></button></div><div class="detail-body" id="attention-list"></div></dialog>
+<script src="/assets/app.js"></script>
+</body></html>

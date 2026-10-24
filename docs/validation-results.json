@@ -1,0 +1,653 @@
+{
+  "provenance": {
+    "executor": "Independent mission orchestrator (root), not runner author",
+    "measured_candidate": "3580aceb04f24c5997481aa26d363cc75771f21a",
+    "binary_selection": "current source build",
+    "binary_sha256": "3d81b27dc7fd0d6bb55bb181d16ed82d63ad77ba36dbc7244bcb4ad17e0e7feb",
+    "scope": "One complete persistent btrfs run; subsequent runner bounds/cleanup and documentation changes were checked separately, not fully remeasured",
+    "source": "Audited root-full-measured.json and root-full-summary.json from issue #8 validation",
+    "sanitization": "Omitted disposable database IDs, private paths, URLs, credentials and redundant per-fixture object listings"
+  },
+  "machine": {
+    "cpu": "13th Gen Intel(R) Core(TM) i5-13420H",
+    "os": "Linux",
+    "architecture": "x86_64",
+    "kernel": "7.2.8-9-omarchy",
+    "go": "go version go1.27.3 linux/amd64",
+    "python": "3.14.8",
+    "binary_sha256": "3d81b27dc7fd0d6bb55bb181d16ed82d63ad77ba36dbc7244bcb4ad17e0e7feb",
+    "sqlite_analysis": "3.54.0",
+    "filesystems": [
+      {
+        "location": "fixture root",
+        "type": "btrfs",
+        "tmpfs": false,
+        "synchronous_storage_claim": false
+      },
+      {
+        "location": "/tmp",
+        "type": "tmpfs",
+        "tmpfs": true,
+        "synchronous_storage_claim": false
+      }
+    ],
+    "adapter": "strict stdlib Python fake; no live Herdr",
+    "simulated_herdr": "0.9.5",
+    "declared_fake_harness": "codex/0.164.0"
+  },
+  "sqlite_service": "3.53.4",
+  "method": {
+    "warmup_per_timing": 2,
+    "samples_per_timing": 20,
+    "percentile_method": "nearest rank",
+    "clock": "external monotonic; batch stamps separately use wall clock",
+    "setup": "actual CLI enrollment, authenticated HTTP bulk fixture writes; setup is not CLI latency"
+  },
+  "workflow": {
+    "result": "PASS",
+    "actual_cli_calls": 320,
+    "actual_http_calls": 43,
+    "restored_messages": 9,
+    "restored_task_history_entries": 15,
+    "body_copies": 9,
+    "notice_states": {
+      "pending": 2,
+      "self": 1,
+      "submitted": 2,
+      "suppressed": 1,
+      "uncertain": 2
+    },
+    "real_service_SIGKILL": true,
+    "response_drop_after_commit": true,
+    "completed_backup_restore": true
+  },
+  "engine_faults": {
+    "result": "PASS",
+    "tests": [
+      "TestMutationAtomicFailureAndDiskFull",
+      "TestReadOnlyStorageFailure",
+      "TestMailProcessCrashRollbackAndOriginalReceiptRecovery",
+      "TestNotificationsCrashRecoveryNeverResendsCapturedRefs",
+      "TestSafeBackupRestoreAndMissingCredential"
+    ],
+    "scope": "actual SQLite_FULL/read-only engine errors and subprocess crash/restore; no physical disk/power fault simulation"
+  },
+  "tasks": [
+    {
+      "tasks": 10,
+      "storage": {
+        "database_bytes": 4096,
+        "wal_bytes": 2249552,
+        "shm_bytes": 32768
+      },
+      "changed_poll_all_collections": {
+        "samples": 20,
+        "p50_us": 1989.217,
+        "p95_us": 3798.444
+      },
+      "changed_poll_requests": 5,
+      "cli_task_list_first_page": {
+        "samples": 20,
+        "p50_us": 3893.167,
+        "p95_us": 4169.253
+      },
+      "idle_conditional_poll": {
+        "samples": 20,
+        "p50_us": 164.567,
+        "p95_us": 294.813
+      },
+      "idle_requests_including_warmup": 22,
+      "idle_response_body_bytes": 0,
+      "completed_backup_bytes": 274432
+    },
+    {
+      "tasks": 100,
+      "storage": {
+        "database_bytes": 847872,
+        "wal_bytes": 4185952,
+        "shm_bytes": 32768
+      },
+      "changed_poll_all_collections": {
+        "samples": 20,
+        "p50_us": 9083.846,
+        "p95_us": 12594.025
+      },
+      "changed_poll_requests": 5,
+      "cli_task_list_first_page": {
+        "samples": 20,
+        "p50_us": 8668.528,
+        "p95_us": 11794.522
+      },
+      "idle_conditional_poll": {
+        "samples": 20,
+        "p50_us": 131.563,
+        "p95_us": 393.695
+      },
+      "idle_requests_including_warmup": 22,
+      "idle_response_body_bytes": 0,
+      "completed_backup_bytes": 815104
+    },
+    {
+      "tasks": 1000,
+      "storage": {
+        "database_bytes": 6352896,
+        "wal_bytes": 4214792,
+        "shm_bytes": 32768
+      },
+      "changed_poll_all_collections": {
+        "samples": 20,
+        "p50_us": 97448.103,
+        "p95_us": 109231.655
+      },
+      "changed_poll_requests": 31,
+      "cli_task_list_first_page": {
+        "samples": 20,
+        "p50_us": 8751.264,
+        "p95_us": 11076.896
+      },
+      "idle_conditional_poll": {
+        "samples": 20,
+        "p50_us": 119.99,
+        "p95_us": 150.541
+      },
+      "idle_requests_including_warmup": 22,
+      "idle_response_body_bytes": 0,
+      "completed_backup_bytes": 5849088
+    }
+  ],
+  "mail": {
+    "messages": 10000,
+    "stored_body_bytes": 560000,
+    "nonself_recipients_each": 3,
+    "pending_references": 30000,
+    "fake_submissions": 60,
+    "cli_send": {
+      "samples": 20,
+      "p50_us": 8573.014,
+      "p95_us": 9125.741
+    },
+    "send_start_to_observed_submitted": {
+      "samples": 20,
+      "p50_us": 178964.525,
+      "p95_us": 198285.45
+    },
+    "claim_stamp_to_outcome_stamp": {
+      "samples": 20,
+      "p50_us": 60661.0,
+      "p95_us": 65027.0
+    },
+    "physical_after_burst": {
+      "database_bytes": 34422784,
+      "wal_bytes": 4391952,
+      "shm_bytes": 32768
+    },
+    "pending_backup_bytes": 26402816,
+    "submitted_backup_bytes": 31019008,
+    "body_utf8_bytes_each": 56,
+    "http_setup_ms_not_cli_latency": 17268.706,
+    "observation_poll_interval_ms": 20,
+    "batch_stamp_limit": "claim/outcome stamps are inside transactions, not pure postcommit latency",
+    "isolated_timing_messages_including_warmup": 22,
+    "pending_backup": {
+      "backup_bytes": 26402816,
+      "analysis_sqlite_version": "3.54.0",
+      "rows": {
+        "tasks": 1000,
+        "mail_messages": 10000,
+        "mail_mentions": 30000,
+        "operation_receipts": 14374,
+        "notice_batches": 0,
+        "notice_batch_refs": 0
+      },
+      "body_bytes": 560000,
+      "notice_states": {
+        "pending": 30000
+      },
+      "objects": {
+        "agents": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "agents_runtime": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "agents_session": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "capabilities": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "capabilities_subject": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "dependencies": {
+          "pages": 68,
+          "bytes": 278528
+        },
+        "dependencies_from": {
+          "pages": 47,
+          "bytes": 192512
+        },
+        "dependencies_session": {
+          "pages": 24,
+          "bytes": 98304
+        },
+        "dependencies_to": {
+          "pages": 47,
+          "bytes": 192512
+        },
+        "graph_history": {
+          "pages": 68,
+          "bytes": 278528
+        },
+        "graph_history_session": {
+          "pages": 15,
+          "bytes": 61440
+        },
+        "lifecycle_history": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "lifecycle_history_resource": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "mail_mentions": {
+          "pages": 1310,
+          "bytes": 5365760
+        },
+        "mail_mentions_membership": {
+          "pages": 1075,
+          "bytes": 4403200
+        },
+        "mail_mentions_pending": {
+          "pages": 752,
+          "bytes": 3080192
+        },
+        "mail_messages": {
+          "pages": 590,
+          "bytes": 2416640
+        },
+        "metadata": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "notice_batch_refs": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "notice_batches": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "notice_batches_inflight": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "notice_targets": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "operation_receipts": {
+          "pages": 1147,
+          "bytes": 4698112
+        },
+        "runtime_claims": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "runtime_claims_agent": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sessions": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sessions_workspace": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sqlite_autoindex_agents_2": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sqlite_autoindex_agents_3": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sqlite_autoindex_dependencies_2": {
+          "pages": 47,
+          "bytes": 192512
+        },
+        "sqlite_autoindex_mail_messages_2": {
+          "pages": 235,
+          "bytes": 962560
+        },
+        "sqlite_autoindex_mail_messages_3": {
+          "pages": 230,
+          "bytes": 942080
+        },
+        "sqlite_autoindex_sessions_2": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sqlite_autoindex_tasks_2": {
+          "pages": 24,
+          "bytes": 98304
+        },
+        "sqlite_autoindex_workspaces_2": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sqlite_schema": {
+          "pages": 4,
+          "bytes": 16384
+        },
+        "task_active_reference": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "task_assignees": {
+          "pages": 48,
+          "bytes": 196608
+        },
+        "task_assignees_agent": {
+          "pages": 21,
+          "bytes": 86016
+        },
+        "task_assignees_session": {
+          "pages": 30,
+          "bytes": 122880
+        },
+        "task_content": {
+          "pages": 173,
+          "bytes": 708608
+        },
+        "task_content_task": {
+          "pages": 81,
+          "bytes": 331776
+        },
+        "task_history": {
+          "pages": 202,
+          "bytes": 827392
+        },
+        "task_history_task": {
+          "pages": 46,
+          "bytes": 188416
+        },
+        "task_one_question": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "task_questions": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "task_questions_task": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "task_references": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "task_references_task": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "tasks": {
+          "pages": 110,
+          "bytes": 450560
+        },
+        "tasks_session": {
+          "pages": 24,
+          "bytes": 98304
+        },
+        "tasks_ticket": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "workspaces": {
+          "pages": 1,
+          "bytes": 4096
+        }
+      }
+    },
+    "submitted_backup": {
+      "backup_bytes": 31019008,
+      "analysis_sqlite_version": "3.54.0",
+      "rows": {
+        "tasks": 1000,
+        "mail_messages": 10000,
+        "mail_mentions": 30000,
+        "operation_receipts": 14374,
+        "notice_batches": 60,
+        "notice_batch_refs": 30000
+      },
+      "body_bytes": 560000,
+      "notice_states": {
+        "submitted": 30000
+      },
+      "objects": {
+        "agents": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "agents_runtime": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "agents_session": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "capabilities": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "capabilities_subject": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "dependencies": {
+          "pages": 68,
+          "bytes": 278528
+        },
+        "dependencies_from": {
+          "pages": 47,
+          "bytes": 192512
+        },
+        "dependencies_session": {
+          "pages": 24,
+          "bytes": 98304
+        },
+        "dependencies_to": {
+          "pages": 47,
+          "bytes": 192512
+        },
+        "graph_history": {
+          "pages": 68,
+          "bytes": 278528
+        },
+        "graph_history_session": {
+          "pages": 15,
+          "bytes": 61440
+        },
+        "lifecycle_history": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "lifecycle_history_resource": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "mail_mentions": {
+          "pages": 1355,
+          "bytes": 5550080
+        },
+        "mail_mentions_membership": {
+          "pages": 1114,
+          "bytes": 4562944
+        },
+        "mail_mentions_pending": {
+          "pages": 752,
+          "bytes": 3080192
+        },
+        "mail_messages": {
+          "pages": 590,
+          "bytes": 2416640
+        },
+        "metadata": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "notice_batch_refs": {
+          "pages": 1039,
+          "bytes": 4255744
+        },
+        "notice_batches": {
+          "pages": 6,
+          "bytes": 24576
+        },
+        "notice_batches_inflight": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "notice_targets": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "operation_receipts": {
+          "pages": 1147,
+          "bytes": 4698112
+        },
+        "runtime_claims": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "runtime_claims_agent": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sessions": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sessions_workspace": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sqlite_autoindex_agents_2": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sqlite_autoindex_agents_3": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sqlite_autoindex_dependencies_2": {
+          "pages": 47,
+          "bytes": 192512
+        },
+        "sqlite_autoindex_mail_messages_2": {
+          "pages": 235,
+          "bytes": 962560
+        },
+        "sqlite_autoindex_mail_messages_3": {
+          "pages": 230,
+          "bytes": 942080
+        },
+        "sqlite_autoindex_sessions_2": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sqlite_autoindex_tasks_2": {
+          "pages": 24,
+          "bytes": 98304
+        },
+        "sqlite_autoindex_workspaces_2": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "sqlite_schema": {
+          "pages": 4,
+          "bytes": 16384
+        },
+        "task_active_reference": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "task_assignees": {
+          "pages": 48,
+          "bytes": 196608
+        },
+        "task_assignees_agent": {
+          "pages": 21,
+          "bytes": 86016
+        },
+        "task_assignees_session": {
+          "pages": 30,
+          "bytes": 122880
+        },
+        "task_content": {
+          "pages": 173,
+          "bytes": 708608
+        },
+        "task_content_task": {
+          "pages": 81,
+          "bytes": 331776
+        },
+        "task_history": {
+          "pages": 202,
+          "bytes": 827392
+        },
+        "task_history_task": {
+          "pages": 46,
+          "bytes": 188416
+        },
+        "task_one_question": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "task_questions": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "task_questions_task": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "task_references": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "task_references_task": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "tasks": {
+          "pages": 110,
+          "bytes": 450560
+        },
+        "tasks_session": {
+          "pages": 24,
+          "bytes": 98304
+        },
+        "tasks_ticket": {
+          "pages": 1,
+          "bytes": 4096
+        },
+        "workspaces": {
+          "pages": 1,
+          "bytes": 4096
+        }
+      }
+    }
+  },
+  "owned_fixture_root_empty_after_run": true
+}
