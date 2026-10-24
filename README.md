@@ -1,8 +1,8 @@
 # a-stack
 
-a-stack helps you supervise a team of AI coding agents that work on the same project.
+Keep an eye on your AI coding agents.
 
-When several Agents work at the same time, it is hard to see who does what and which work must wait for other work. a-stack gives the team one shared Task graph and a message thread for each Task. You follow all of it in your browser. When an Agent needs a decision from you, it asks you a question there.
+When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
 
 ## How it works
 
