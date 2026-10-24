@@ -103,7 +103,7 @@ function layout() {
     rank.set(id,Math.max(rank.get(id),rank.get(queue[i])+1));degree.set(id,degree.get(id)-1);if(!degree.get(id))queue.push(id);
   }
   // Unconnected groups of Tasks are laid out side by side, largest first; ties keep the stable Task order.
-  const root=new Map(tasks.map(t=>[t.id,t.id])), find=id=>{const r=root.get(id);if(r===id)return id;const f=find(r);root.set(id,f);return f;};
+  const root=new Map(tasks.map(t=>[t.id,t.id])), find=id=>{let r=id;while(root.get(r)!==r)r=root.get(r);for(let n=id;n!==r;){const up=root.get(n);root.set(n,r);n=up;}return r;};
   for(const [id,ns] of next) for(const n of ns) root.set(find(n),find(id));
   const groups=new Map();for(const t of tasks){const r=find(t.id);if(!groups.has(r))groups.set(r,[]);groups.get(r).push(t.id);}
   const sizes=new Map(tasks.map(t=>[t.id,cards.get(t.id).article.offsetHeight]));
@@ -118,21 +118,25 @@ function layout() {
     for(let i=1;i<cols.length;i++)sweep(cols[i],prev);for(let i=cols.length-2;i>=0;i--)sweep(cols[i],next);for(let i=1;i<cols.length;i++)sweep(cols[i],prev);
     let x=0,h=0;
     const block={cols:cols.map((ids,i)=>{
-      // A column much taller than the limit wraps into sub-columns with shared row heights, so lines can run in the gaps between rows.
+      // A column much taller than the limit wraps into closer sub-columns with shared row heights, so lines can run in the gaps between rows.
+      // When its cards have lines on both sides ("two"), the rows sit further apart: lines out run in the upper half of a gap, lines in run in the lower half.
       const total=ids.reduce((s,id)=>s+sizes.get(id)+32,0)-32, n=Math.ceil(ids.length/Math.min(ids.length,total>limit*1.5?Math.ceil(total/limit):1)), heights=[];
       ids.forEach((id,j)=>heights[j%n]=Math.max(heights[j%n]||0,sizes.get(id)));
-      const col={i,ids,x,k:Math.ceil(ids.length/n),heights,h:heights.reduce((s,r)=>s+r+32,0)-32};x+=col.k*342;h=Math.max(h,col.h);return col;
+      const k=Math.ceil(ids.length/n), two=k>1&&ids.some(id=>prev.get(id).length)&&ids.some(id=>next.get(id).length), gap=two?48:32;
+      const col={i,ids,x,k,two,gap,w:k*314-40,heights,h:heights.reduce((s,r)=>s+r+gap,0)-gap};x+=col.w+68;h=Math.max(h,col.h);return col;
     })};
-    block.w=x-68;block.h=h;return block;
+    // Lines that skip a column run over or under the group, each source on its own track, clear of the row gaps.
+    const skips=ids.filter(id=>next.get(id).some(n=>rank.get(n)>rank.get(id)+1)).length;
+    block.pad=skips?54+8*skips:0;block.w=x-68;block.h=h+2*block.pad;return block;
   });
   const maxWidth=Math.max(limit*aspect,(panel.clientWidth||1400)-88,...blocks.map(b=>b.w));let bx=28,by=24,shelf=0;width=56;
   positions.clear();
   for(const b of blocks) {
     if(bx>28&&bx+b.w>28+maxWidth){bx=28;by+=shelf+56;shelf=0;}
-    b.x=bx;b.y=by;bx+=b.w+110;shelf=Math.max(shelf,b.h);width=Math.max(width,b.x+b.w+28);
+    b.x=bx;b.y=by;bx+=b.w+180;shelf=Math.max(shelf,b.h);width=Math.max(width,b.x+b.w+28); // groups sit well apart from columns, so they do not read as next steps
     for(const col of b.cols) {
-      col.x+=b.x;col.block=b;col.prev=b.cols[col.i-1];let y=b.y+(b.h-col.h)/2;const tops=col.heights.map(r=>{const t=y;y+=r+32;return t;}), n=tops.length;
-      col.ids.forEach((id,j)=>{const r=j%n,p={x:col.x+Math.floor(j/n)*342,y:tops[r],c:Math.floor(j/n),top:tops[r],bottom:tops[r]+col.heights[r],col};positions.set(id,p);const a=cards.get(id).article;a.style.left=p.x+'px';a.style.top=p.y+'px';});
+      col.x+=b.x;col.block=b;col.prev=b.cols[col.i-1];let y=b.y+(b.h-col.h)/2;const tops=col.heights.map(r=>{const t=y;y+=r+col.gap;return t;}), n=tops.length;
+      col.ids.forEach((id,j)=>{const r=j%n,p={x:col.x+Math.floor(j/n)*314,y:tops[r],c:Math.floor(j/n),top:tops[r],bottom:tops[r]+col.heights[r],col};positions.set(id,p);const a=cards.get(id).article;a.style.left=p.x+'px';a.style.top=p.y+'px';});
     }
   }
   height=by+shelf+24; // tight around the Task units, so Fit fits the cards
@@ -155,23 +159,31 @@ function roundedPath(points, radius = 11) {
 
 function drawEdges() {
   const group=edgesSVG.querySelector('g'), frag=document.createDocumentFragment(), edges=[], lanes=new Map();
-  // Each gutter gives every dependent Task its own vertical lane; lines into the same Task share it.
+  // Each gutter gives a vertical lane to every Task with several prerequisites, so lines into it merge,
+  // and otherwise to every prerequisite, so its lines branch from one trunk.
   const use=(col,id)=>{const l=lanes.get(col) || [];lanes.set(col,l);if(!l.includes(id))l.push(id);};
-  const lane=(col,id)=>{const l=lanes.get(col);return col.x+col.k*342-68+68*(l.indexOf(id)+1)/(l.length+1);};
+  const lane=(col,id)=>{const l=lanes.get(col);return col.x+col.w+68*(l.indexOf(id)+1)/(l.length+1);}, tracks=new Map(), into=new Map();
   for(const e of model.dependencies) {
     const ap=positions.get(e.prerequisite_id),bp=positions.get(e.dependent_id);
     if(!ap||!bp||!cards.has(e.prerequisite_id)||!cards.has(e.dependent_id)||ap.col.block!==bp.col.block||bp.col.i<=ap.col.i)continue;
-    edges.push([e,ap,bp]);use(ap.col,e.dependent_id);use(bp.col.prev,e.dependent_id);
+    edges.push([e,ap,bp]);into.set(e.dependent_id,(into.get(e.dependent_id)||0)+1);
   }
+  const key=e=>into.get(e.dependent_id)>1?e.dependent_id:e.prerequisite_id;
+  for(const [e,ap,bp] of edges){use(ap.col,key(e));use(bp.col.prev,key(e));}
   for(const [e,ap,bp] of edges) {
     const a=cards.get(e.prerequisite_id),b=cards.get(e.dependent_id),g=ap.col.block;
-    const x1=ap.x+274,y1=ap.y+a.button.offsetTop+a.button.offsetHeight/2,x2=bp.x,y2=bp.y+b.button.offsetTop+b.button.offsetHeight/2,from=lane(ap.col,e.dependent_id),to=lane(bp.col.prev,e.dependent_id),points=[[x1,y1]];
+    // Lines leave a wrapped column through the gap below the row and enter one through the gap above it. Where a column has
+    // lines on both sides, they leave low on a card and enter high on its neighbour, in separate lanes, so they never meet.
+    const out=ap.c<ap.col.k-1, inn=bp.c>0, x1=ap.x+274, x2=bp.x, from=lane(ap.col,key(e)), to=lane(bp.col.prev,key(e));
+    const y1=ap.y+a.button.offsetTop+(out&&ap.col.two?a.button.offsetHeight-14:a.button.offsetHeight/2), y2=bp.y+b.button.offsetTop+(inn&&bp.col.two?14:b.button.offsetHeight/2), points=[[x1,y1]];
     let y=y1;
-    // Lines leave a wrapped column through the gap below the row and enter one through the gap above it.
-    if(ap.c<ap.col.k-1){y=ap.bottom+16;points.push([x1+34,y1],[x1+34,y]);}
+    if(out){y=ap.bottom+(ap.col.two?14:16);points.push([x1+12,y1],[x1+12,y]);}
     points.push([from,y]);
-    if(bp.col.i!==ap.col.i+1){const c=(y1+y2)/2<g.y+g.h/2?g.y-14:g.y+g.h+14;points.push([from,c],[to,c]);} // over or under the group, not through other columns
-    if(bp.c>0)points.push([to,bp.top-16],[x2-34,bp.top-16],[x2-34,y2]);else points.push([to,y2]);
+    if(bp.col.i!==ap.col.i+1){ // over or under the group, not through other columns
+      if(!tracks.has(e.prerequisite_id))tracks.set(e.prerequisite_id,[...tracks.keys()].filter(id=>positions.get(id).col.block===g).length);
+      const t=46+8*tracks.get(e.prerequisite_id), c=(y1+y2)/2<g.y+g.h/2?g.y+g.pad-t:g.y+g.h-g.pad+t;points.push([from,c],[to,c]);
+    }
+    if(inn){const t=bp.top-(bp.col.two?14:16);points.push([to,t],[x2-12,t],[x2-12,y2]);}else points.push([to,y2]);
     points.push([x2-3,y2]);
     const p=document.createElementNS(svgNS,'path');p.setAttribute('d',roundedPath(points));p.setAttribute('marker-end','url(#arrow)');p.classList.add('connection');
     if(e.prerequisite_id===state.selected||e.dependent_id===state.selected)p.classList.add('active');

@@ -32,9 +32,10 @@ The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It keeps the 
 
 - Graph arrows point from a prerequisite to its dependent Task. The details also name both directions.
 - Full names wrap above the cards.
-- Groups of Tasks that are not connected sit side by side, largest first, and wrap into rows that follow the shape of the panel. A Task with no dependencies is its own group. Inside a group, each Task is placed near the Tasks it connects to.
-- A column that is much taller than the panel wraps into several sub-columns. Lines then run in the gaps between the rows. Each dependent Task has its own line lane, and a line that skips a column runs above or below its group, so fewer lines pass next to cards they do not connect.
-- The layout uses the panel size at the moment the Tasks or dependencies change. Resizing the window alone does not move cards, and neither does a poll without changes.
+- Groups of Tasks that are not connected sit side by side with a wide space between them, largest first, and wrap into rows that follow the shape of the panel. A Task with no dependencies is its own group. Inside a group, each Task is placed near the Tasks it connects to.
+- A column that is much taller than the panel wraps into sub-columns that sit closer together than real columns. Lines then leave a card through the gap below its row and enter a card through the gap above its row. When the column has lines on both sides, its rows sit further apart: lines out leave low on a card and run in the upper half of a gap, and lines in run in the lower half and enter high on a card, in a separate lane, so a line out of one card never meets a line into its neighbour.
+- Between columns, lines into a Task with several prerequisites share one lane, and the lines of any other prerequisite branch from its own lane. A line that skips a column runs above or below its group, on its own track for each prerequisite, so fewer lines pass next to cards they do not connect.
+- The layout runs again when Tasks or dependencies change, or when a card changes size: a new title, other assigned Agents, Needs you, file references or cancelled prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes.
 - A shared Task shows the same data in every Agent row. The Unassigned row shows Tasks with no assignee.
 - Progress and Needs you requests are shown separately. When several Tasks need input, the attention button opens a chooser. Viewing a Task never resolves its request.
 - The chooser buttons keep their identity across unrelated refreshes. If the focused request is resolved somewhere else, the focus moves to a remaining choice, or to the view tab when the chooser is empty.
@@ -82,11 +83,13 @@ Measured on 2026-10-24 with an Intel Core i5-13420H (12 logical CPUs), Linux x86
 | --- | --- | --- | --- | --- |
 | 10 | 2.2 / 2.6 ms | 30.7 / 36.7 ms | 5 | 0 |
 | 100 | 11.3 / 12.9 ms | 64.3 / 70.8 ms | 6 | 0 |
-| 1,000 | 108.8 / 138.7 ms | 503.8 / 549.7 ms | 33 | 0 |
+| 1,000 | 108.8 / 138.7 ms ¹ | 503.8 / 549.7 ms | 33 | 0 |
 
 The layout time includes the rank calculation, card measurement, positions and SVG connections. The navigation time includes the subprocess, browser, API and render work, and is only a local observation.
 
-With 1,000 Tasks, one wide rank made a canvas of 192,929 px. That measurement was taken before columns wrapped; such a rank now wraps into sub-columns. The view shows every Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
+¹ The table was measured before groups, ordering and column wrapping were added to the layout. A later check on the same machine and browser, with a plain Root → 999 Tasks fixture at 1440×900 and five fresh loads each, measured layout at 93.5–105.4 ms (p50 98.8 ms) before that change and 98.3–103.2 ms (p50 100.8 ms) after it. A review of an earlier version of the change measured 158–169 ms before and 179–221 ms after, on its own fixture.
+
+With 1,000 Tasks, one wide rank made a canvas of 192,929 px. That measurement was taken before columns wrapped. Such a rank now wraps into sub-columns: in the Root → 999 check, the canvas is 11,348 × 5,642 px. The view shows every Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
 
 ## Checks
 
