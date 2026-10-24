@@ -11,7 +11,7 @@ Keep an eye on your AI coding agents.
 
 When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
 
-![Demo in five captioned steps, with a terminal above the browser view and an arrow on each change. 1, a-stack new creates a Session for an OAuth login and opens the view. 2, the Orchestrator plans four Tasks, and the Agents 02-backend and 03-frontend start work. 3, 02-backend asks "GitHub or Google first?", and the Task moves to Needs you. 4, after the answer the Task works again, finishes, and the next Task starts. 5, a-stack -r picks another Session, which also has a question for you.](docs/images/demo.gif)
+![Demo in seven captioned steps, with a terminal above the browser view and an arrow on each change. 1, a-stack new creates a Session for an OAuth login and opens the Now tab. 2, the Orchestrator adds four Tasks, which wait in the Waiting column. 3, the Agents 02-backend and 03-frontend start work, and their Tasks move to Working. 4, 02-backend sends Task mail to @03-frontend, 03-frontend replies, and the Task details show both messages with the mention highlighted. 5, 02-backend asks "GitHub or Google first?", the Task moves to Needs you and the button says 1 needs you. 6, after the answer the Task is Working again. 7, a-stack -r picks another Session, which also has a question for you.](docs/images/demo.gif)
 
 ## How it works
 
@@ -35,13 +35,25 @@ The view has three tabs:
 - **Agents** shows each Agent's Tasks in one row.
 
 <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/now-dark.png">
+  <img src="docs/images/now-light.png" alt="The Now tab of the browser view. Needs you has one Task with the question GitHub or Google first?, Working has one Task, Waiting has two Tasks that say which Tasks they wait for, and Latest changes lists the newest changes.">
+</picture>
+
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/graph-dark.png">
   <img src="docs/images/graph-light.png" alt="The Graph tab of the browser view: four Tasks for an OAuth login. Curved lines lead from the two Working Tasks to a Token exchange Task and from there to a Security review. One Working Task has a Needs you question, and the button at the top right says 1 needs you.">
 </picture>
 
-![The Agents tab of the browser view: 01-orchestrator with no Tasks, 02-backend with two Tasks, one of them with a Needs you question, then 03-frontend and 04-reviewer with one Task each.](docs/images/agents.png)
+![The Agents tab of the browser view: 01-orchestrator with no Tasks, 02-backend with three Tasks, one of them with a Needs you question and one shared with 03-frontend, then 03-frontend and 04-reviewer with one Task each.](docs/images/agents.png)
 
 Select a Task to see its report, its dependencies and its Task mail. The view reads the mail but cannot send it or change anything.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/mail-dark.png">
+  <img src="docs/images/mail-light.png" alt="The details of the Task Login button and callback page, open beside the Now tab. Task mail (2) is open: 02-backend wrote @03-frontend the callback is /auth/callback, and 03-frontend answered Thanks @02-backend, wiring the button to it now. Both mentions are highlighted.">
+</picture>
+
+Short clips in the [browser view guide](docs/browser.md#what-the-view-shows) show the graph, the archive and the Agents tab.
 
 Old work is archived so that it does not clutter the graph. a-stack archives a finished Task when all the Tasks that depend on it are finished too, or one day after it finished. You or the Orchestrator can also archive a Task with `a-stack task archive`. The Archived button shows archived Tasks again.
 
