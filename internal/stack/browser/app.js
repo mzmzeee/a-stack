@@ -77,7 +77,7 @@ function status(n,t) {
   const key=t.progress+':'+t.needs_you;
   if (n.dataset.key===key) return;
   n.dataset.key=key;n.className='status '+t.progress;
-  n.replaceChildren(iconNode(t.progress==='cancelled'?'idle':t.progress), document.createTextNode(labels[t.progress] || t.progress));
+  n.replaceChildren(iconNode(t.progress==='cancelled'?'idle':t.progress), el('span','status-label',labels[t.progress] || t.progress));
   if (t.needs_you) { const a=el('span','status blocked','Needs you');n.append(' · ',a); }
 }
 function makeCard(t) {
@@ -96,9 +96,12 @@ function patchCard(c,t,graphCard=false) {
     }));
   }
   status(c.st,t);setText(c.title,t.title);setText(c.note,t.report_preview || 'No report yet.');
-  const caption=[t.reference_count ? `${t.reference_count} file reference${t.reference_count===1?'':'s'}`:'',t.cancelled_prerequisite_count?`${t.cancelled_prerequisite_count} cancelled prerequisite${t.cancelled_prerequisite_count===1?'':'s'}`:''].filter(Boolean).join(' · ');
+  const hidden=graphCard?hiddenPrerequisites.get(t.id) || 0:0;
+  const caption=[t.reference_count ? `${t.reference_count} file reference${t.reference_count===1?'':'s'}`:'',t.cancelled_prerequisite_count?`${t.cancelled_prerequisite_count} cancelled prerequisite${t.cancelled_prerequisite_count===1?'':'s'}`:'',hidden?`${hidden} archived prerequisite${hidden===1?'':'s'} hidden`:''].filter(Boolean).join(' · ');
+  // In the graph, done Tasks without an open question are one-line blocks; the details still show everything.
+  c.article.classList.toggle('compact',graphCard&&compactTask(t));
   setText(c.foot,caption);
-  c.button.classList.toggle('selected',state.selected===t.id);
+  c.button.classList.toggle('selected',state.selected===t.id||graphCard&&state.focus===t.id); // the focused Task keeps its outline
   c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.needs_you?' Needs you.':''} Assigned to ${names.join(' and ') || 'Unassigned'}. ${caption}`);
   const visible=matches(t);
   c.article.classList.toggle('archived',graphCard&&t.archived);
@@ -109,9 +112,11 @@ function patchCard(c,t,graphCard=false) {
   else c.article.hidden=!visible;
 }
 const edgesSVG = document.createElementNS(svgNS,'svg');edgesSVG.classList.add('connections');edgesSVG.setAttribute('aria-hidden','true');
-edgesSVG.innerHTML='<defs><marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1l5 3-5 3" fill="none" stroke="var(--edge)" stroke-width="1.5"/></marker></defs><g></g>';
+edgesSVG.innerHTML='<defs><marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1l5 3-5 3" fill="none" stroke="var(--edge)" stroke-width="1.5"/></marker><marker id="arrow-active" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M1 1l5 3-5 3" fill="none" stroke="var(--accent)" stroke-width="1.6"/></marker></defs><g></g>';
 graph.append(edgesSVG);
 const done = t => t.progress==='finished'||t.progress==='cancelled';
+const compactTask = t => done(t)&&!t.needs_you;
+let hiddenPrerequisites = new Map();
 // The focused Task and its direct prerequisites and dependents, from every dependency, also the lines the graph hides.
 function focusSet() {
   const s=new Set([state.focus]);
@@ -136,8 +141,11 @@ function reduceEdges(tasks,deps) {
   for(let u=0;u<n;u++)if(!inOrder.has(u))for(const [,e] of out[u])kept.push(e);
   return {kept,hidden};
 }
-// One column per dependency rank with the cards stacked and centered, and bracket lines through the gap between
-// columns, as in v0.1.0. Tasks without a drawn line sit in rows below the connected graph, so no line runs past them.
+// Left to right, one column per longest-path rank over the drawn lines (the transitive reduction), ordered by three
+// barycenter sweeps. Each Task is centered on the ports of its prerequisites and pushed down to keep the row gap, so a
+// straight chain runs level. Tasks without a drawn line go in rows below or columns to the right, whichever Fits larger.
+const cardWidth=274, columnGap=112, padX=28, padY=24, groupGap=96;
+let ports=new Map(); // the port height of each card, measured once per layout
 function layout() {
   const wasHidden=panel.hidden; if(wasHidden){panel.hidden=false;panel.style.visibility='hidden';}
   const tasks=graphTasks, byID=new Map(tasks.map(t=>[t.id,t])), rank=new Map(tasks.map(t=>[t.id,0]));
@@ -147,68 +155,76 @@ function layout() {
   for(let i=0;i<queue.length;i++) for(const id of next.get(queue[i])) {
     rank.set(id,Math.max(rank.get(id),rank.get(queue[i])+1));degree.set(id,degree.get(id)-1);if(!degree.get(id))queue.push(id);
   }
-  const layers=new Map();
-  for(const t of tasks) if(linked.has(t.id)) {const r=rank.get(t.id);if(!layers.has(r))layers.set(r,[]);layers.get(r).push(t.id);}
+  // A Task with no prerequisites sits one column before its earliest dependent, so its lines do not cross a column.
+  const needs=new Set();for(const ns of next.values())for(const id of ns)needs.add(id);
+  for(const t of tasks){const ns=next.get(t.id);if(ns.length&&!needs.has(t.id))rank.set(t.id,Math.min(...ns.map(id=>rank.get(id)))-1);}
+  const cols=[];
+  for(const t of tasks) if(linked.has(t.id)) (cols[rank.get(t.id)] ??= []).push(t.id);
   // Barycenter sweeps place each Task near the Tasks it connects to, so fewer lines cross; ties keep the stable Task order.
   const prev=new Map(tasks.map(t=>[t.id,[]]));for(const [id,ns] of next)for(const n of ns)prev.get(n).push(id);
-  const cols=[...layers.keys()].sort((a,b)=>a-b).map(r=>layers.get(r)), order=new Map(), place=l=>l.forEach((id,i)=>order.set(id,(i+.5)/l.length));cols.forEach(place);
+  const order=new Map(), place=l=>l.forEach((id,i)=>order.set(id,(i+.5)/l.length));cols.forEach(place);
   const sweep=(l,near)=>{const c=new Map(l.map(id=>{const n=near.get(id);return [id,n.length?n.reduce((s,x)=>s+order.get(x),0)/n.length:order.get(id)];}));l.sort((a,b)=>c.get(a)-c.get(b));place(l);};
   for(let i=1;i<cols.length;i++)sweep(cols[i],prev);for(let i=cols.length-2;i>=0;i--)sweep(cols[i],next);for(let i=1;i<cols.length;i++)sweep(cols[i],prev);
-  const sizes=new Map(tasks.map(t=>[t.id,cards.get(t.id).article.offsetHeight]));
-  const totals=[...layers.values()].map(ids=>ids.reduce((h,id)=>h+sizes.get(id)+32,0)-32), top=Math.max(0,...totals);
-  let w=layers.size?Math.max(...layers.keys())*342+274:0, y=24;
+  const sizes=new Map(), compact=new Set();ports=new Map();
+  for(const t of tasks){const c=cards.get(t.id);sizes.set(t.id,c.article.offsetHeight);ports.set(t.id,c.button.offsetTop+c.button.offsetHeight/2);if(c.article.classList.contains('compact'))compact.add(t.id);}
+  const gap=(a,b)=>compact.has(a)&&compact.has(b)?16:28, step=cardWidth+columnGap, pos=new Map();
+  let h=0;
+  cols.forEach((col,k)=>{
+    let last=null;
+    for(const id of col){
+      const ps=prev.get(id), floor=last===null?-Infinity:pos.get(last).y+sizes.get(last)+gap(last,id);
+      const want=k&&ps.length?ps.reduce((s,p)=>s+pos.get(p).y+ports.get(p),0)/ps.length-ports.get(id):last===null?0:floor;
+      pos.set(id,{x:k*step,y:Math.max(want,floor)});last=id;
+    }
+  });
+  // A column can start above 0 when its Tasks center on a taller column.
+  const top=Math.min(0,...[...pos.values()].map(p=>p.y));for(const p of pos.values()){p.y-=top;h=Math.max(h,p.y);}
+  for(const [id,p] of pos)h=Math.max(h,p.y+sizes.get(id));
+  const w=cols.length?cols.length*step-columnGap:0;
+  const loose=tasks.filter(t=>!linked.has(t.id)).map(t=>t.id), viewW=Math.max(1,(panel.clientWidth||1400)-2*padX), viewH=Math.max(1,(panel.clientHeight||670)-2*padY);
+  const below=()=>{const out=[],perRow=Math.max(1,Math.floor((Math.max(w,viewW)+columnGap)/step));let y=h?h+groupGap:0;
+    for(let i=0;i<loose.length;i+=perRow){const row=loose.slice(i,i+perRow);row.forEach((id,j)=>out.push([id,{x:j*step,y}]));y+=Math.max(...row.map(id=>sizes.get(id)))+28;}return out;};
+  const right=()=>{const out=[],limit=Math.max(h,viewH);let x=w?w+groupGap:0,y=0,last=null;
+    for(const id of loose){if(last!==null){y+=gap(last,id);if(y+sizes.get(id)>limit){x+=step;y=0;}}out.push([id,{x,y}]);y+=sizes.get(id);last=id;}return out;};
+  const box=list=>{let W=w,H=h;for(const [id,p] of list){W=Math.max(W,p.x+cardWidth);H=Math.max(H,p.y+sizes.get(id));}return [W,H];};
+  const fitScale=list=>{const [W,H]=box(list);return Math.min(viewW/W,viewH/H);};
+  const a=loose.length?below():[], b=loose.length?right():[], extra=fitScale(a)>=fitScale(b)?a:b;
+  for(const [id,p] of extra)pos.set(id,p);
+  const [W,H]=box(extra);
   positions.clear();
-  const put=(id,x,py)=>{positions.set(id,{x,y:py});const n=cards.get(id).article;n.style.left=x+'px';n.style.top=py+'px';};
-  for(const [r,ids] of layers) {
-    const total=ids.reduce((h,id)=>h+sizes.get(id)+32,0)-32;let py=24+(top-total)/2;
-    for(const id of ids){put(id,28+r*342,py);py+=sizes.get(id)+32;}
-  }
-  if(layers.size)y+=top+64;
-  const loose=tasks.filter(t=>!linked.has(t.id)).map(t=>t.id), perRow=Math.max(1,Math.floor((Math.max(w,(panel.clientWidth||1400)-88)+68)/342));
-  for(let i=0;i<loose.length;i+=perRow) {
-    const row=loose.slice(i,i+perRow);row.forEach((id,j)=>put(id,28+j*342,y));
-    y+=Math.max(...row.map(id=>sizes.get(id)))+32;w=Math.max(w,row.length*342-68);
-  }
-  width=w+56;height=y-32+24; // tight around the Task units, so Fit fits the cards
+  for(const [id,p] of pos){const x=padX+p.x,y=padY+p.y;positions.set(id,{x,y});const n=cards.get(id).article;n.style.left=x+'px';n.style.top=y+'px';}
+  width=W+2*padX;height=H+2*padY; // tight around the Task units, so Fit fits the cards
   graph.style.width=width+'px';graph.style.height=height+'px';applyZoom();drawEdges();
   if(wasHidden){panel.hidden=true;panel.style.visibility='';}
 }
-function roundedPath(points, radius = 11) {
-  let path = `M${points[0].join(',')}`;
-  for (let i = 1; i < points.length - 1; i++) {
-    const [x,y] = points[i], [px,py] = points[i-1], [nx,ny] = points[i+1];
-    const before = Math.hypot(x-px,y-py), after = Math.hypot(nx-x,ny-y);
-    if (!before || !after) continue;
-    const r = Math.min(radius,before/2,after/2);
-    const a = [x + (px-x)*r/before,y + (py-y)*r/before];
-    const b = [x + (nx-x)*r/after,y + (ny-y)*r/after];
-    path += `L${a.join(',')}Q${x},${y} ${b.join(',')}`;
-  }
-  return path + `L${points.at(-1).join(',')}`;
+// A line leaves the output port at the right edge of the card body and ends 2px before the next card, as a cubic curve
+// whose control points sit half the horizontal distance out. The focused Task's lines are drawn last, on top.
+function curve(e) {
+  const a=positions.get(e.prerequisite_id),b=positions.get(e.dependent_id);if(!a||!b)return null;
+  const x1=a.x+cardWidth,y1=a.y+(ports.get(e.prerequisite_id) ?? 0),x2=b.x-2,y2=b.y+(ports.get(e.dependent_id) ?? 0),o=Math.max(Math.abs(x2-x1)/2,24);
+  return `M${x1},${y1}C${x1+o},${y1} ${x2-o},${y2} ${x2},${y2}`;
 }
-
 function drawEdges() {
-  const group=edgesSVG.querySelector('g'), frag=document.createDocumentFragment();
-  const ends=e=>{
-    const a=cards.get(e.prerequisite_id),b=cards.get(e.dependent_id),ap=positions.get(e.prerequisite_id),bp=positions.get(e.dependent_id);if(!a||!b||!ap||!bp)return null;
-    return [ap.x+274,ap.y+a.button.offsetTop+a.button.offsetHeight/2,bp.x,bp.y+b.button.offsetTop+b.button.offsetHeight/2];
-  };
-  for(const e of graphEdges) {
-    const p=ends(e);if(!p)continue;const [x1,y1,x2,y2]=p,m=(x1+x2)/2;
-    frag.append(connection(e,roundedPath([[x1,y1],[m,y1],[m,y2],[x2-3,y2]])));
-  }
+  const group=edgesSVG.querySelector('g'), lines=document.createDocumentFragment(), front=document.createDocumentFragment(), outs=new Set();
+  for(const e of graphEdges){const d=curve(e);if(!d)continue;outs.add(e.prerequisite_id);const c=connection(e,d);(c.classList.contains('active')?front:lines).append(c);}
   // The focused Task also shows its direct lines that the reduction hides, dashed.
   if(state.focus)for(const e of hiddenEdges) {
     if(e.prerequisite_id!==state.focus&&e.dependent_id!==state.focus)continue;
-    const p=ends(e);if(!p)continue;const [x1,y1,x2,y2]=p,dx=Math.max(48,Math.abs(x2-x1)/2);
-    const c=connection(e,`M${x1},${y1}C${x1+dx},${y1} ${x2-3-dx},${y2} ${x2-3},${y2}`);c.classList.add('implied');frag.append(c);
+    const d=curve(e);if(!d)continue;const c=connection(e,d);c.classList.add('implied');front.append(c);
   }
-  group.replaceChildren(frag);
+  const portsFrag=document.createDocumentFragment();
+  for(const id of outs){
+    const p=positions.get(id),c=document.createElementNS(svgNS,'circle');c.setAttribute('cx',p.x+cardWidth);c.setAttribute('cy',p.y+(ports.get(id) ?? 0));c.setAttribute('r','4.5');c.classList.add('port');
+    if(id===state.focus||id===state.selected)c.classList.add('active');else if(focusIds&&!focusIds.has(id))c.classList.add('unfocused');
+    portsFrag.append(c);
+  }
+  group.replaceChildren(lines,front,portsFrag);
 }
 function connection(e,d) {
-  const p=document.createElementNS(svgNS,'path');p.setAttribute('d',d);p.setAttribute('marker-end','url(#arrow)');p.classList.add('connection');
+  const p=document.createElementNS(svgNS,'path');p.setAttribute('d',d);p.classList.add('connection');
   const near=e.prerequisite_id===state.focus||e.dependent_id===state.focus||e.prerequisite_id===state.selected||e.dependent_id===state.selected;
   if(near)p.classList.add('active');else if(state.focus)p.classList.add('unfocused');
+  p.setAttribute('marker-end',near?'url(#arrow-active)':'url(#arrow)');
   if(!matches(model.tasks.find(t=>t.id===e.prerequisite_id))&&!matches(model.tasks.find(t=>t.id===e.dependent_id)))p.classList.add('faded');
   return p;
 }
@@ -220,8 +236,11 @@ function patchGraph() {
   focusIds=state.focus?focusSet():null;
   const ids=new Set(graphTasks.map(t=>t.id));
   for(const [id,c] of cards)if(!ids.has(id)){c.article.remove();cards.delete(id);}
+  // Archived prerequisites that the graph hides, named in the caption of the Tasks that need them.
+  hiddenPrerequisites=new Map();
+  for(const e of model.dependencies)if(!ids.has(e.prerequisite_id)&&ids.has(e.dependent_id))hiddenPrerequisites.set(e.dependent_id,(hiddenPrerequisites.get(e.dependent_id) || 0)+1);
   for(const t of graphTasks) {let c=cards.get(t.id);if(!c){c=makeCard(t);cards.set(t.id,c);graph.append(c.article);}patchCard(c,t,true);}
-  const key=JSON.stringify([graphTasks.map(t=>[t.id,t.title,owners(t),t.needs_you,t.reference_count,t.cancelled_prerequisite_count]),model.dependencies.map(e=>[e.prerequisite_id,e.dependent_id])]);
+  const key=JSON.stringify([graphTasks.map(t=>[t.id,t.title,owners(t),t.progress,t.needs_you,t.reference_count,t.cancelled_prerequisite_count,hiddenPrerequisites.get(t.id) || 0]),model.dependencies.map(e=>[e.prerequisite_id,e.dependent_id])]);
   if(geometryKey!==key){
     geometryKey=key;
     measure('a-stack-layout',()=>{measure('a-stack-reduce',()=>{({kept:graphEdges,hidden:hiddenEdges}=reduceEdges(graphTasks,model.dependencies));});layout();});

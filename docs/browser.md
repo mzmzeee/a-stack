@@ -96,12 +96,14 @@ A poll moves cards between columns in place. The selection, the focused card and
 
 - Graph arrows point from a prerequisite to its dependent Task. The details also name both directions.
 - Full names wrap above the cards.
-- Each dependency rank is one column. The cards of a column are stacked and centered, and each Task sits near the Tasks it connects to. Lines run from the right side of a card through the gap between the columns to the left side of the next card.
-- Tasks without a line sit in rows below the connected graph, so no line runs past them.
+- The graph runs left to right with one column per dependency rank. A Task without prerequisites sits one column before its first dependent, so its lines do not cross a column. Three ordering passes put each Task near the Tasks it connects to. Each Task is centered on the lines from its prerequisites, so a chain runs level, and moves down only to keep 28px between cards.
+- A line is a curve from the output port of a card to the left side of the next card. It ends in a small arrowhead. Only a Task with lines out has an output port, a dot on the right edge of the card.
+- Finished and cancelled Tasks are compact blocks: the Agent names, then one line with the status icon and the muted title, two lines at most. They have no status label and no report preview; the details show both. Compact blocks keep 16px between them. A Task that needs you keeps its full card.
+- Tasks without a line sit in rows below or in columns to the right of the connected graph, whichever lets Fit show them larger.
 - The graph hides a dependency line when another path already connects the two Tasks; the details panel lists every dependency.
-- The graph hides [archived Tasks](tasks.md#archived-tasks) by default. Finished and cancelled Tasks that are not archived stay, so the finished work that a live Task depends on and the last Task of each chain are visible. Lines to or from a hidden archived Task are not drawn, so a Task whose prerequisites are all archived sits in the first column. The Archived (N) toggle in the graph toolbar shows them again, dimmed. The view remembers the toggle in local storage. The service decides which Tasks are archived; the view cannot archive anything.
-- Select a Task, with a click or with Enter, to focus it. The Task, its direct prerequisites, its direct dependents and their lines stay bright, and everything else is dimmed to 30%. Lines that the graph hides because another path connects the Tasks appear dashed while one of their Tasks has the focus. The focus stays after the details close. Escape, or a click on empty space, clears it.
-- The layout runs again when Tasks or dependencies change, when the Archived toggle changes, or when a card changes size: a new title, other assigned Agents, Needs you, file references or cancelled prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes.
+- The graph hides [archived Tasks](tasks.md#archived-tasks) by default. Finished and cancelled Tasks that are not archived stay, so the finished work that a live Task depends on and the last Task of each chain are visible. Lines to or from a hidden archived Task are not drawn, so a Task whose prerequisites are all archived sits in the first column. A full card says how many of its prerequisites are archived and hidden. The Archived (N) toggle in the graph toolbar shows them again, dimmed. The view remembers the toggle in local storage. The service decides which Tasks are archived; the view cannot archive anything.
+- Select a Task, with a click or with Enter, to focus it. Its lines turn the accent color, get thicker and move on top of the others. Its direct prerequisites and dependents stay bright. Other cards fade to 42% and other lines to 22%. Lines that the graph hides because another path connects the Tasks appear dashed while one of their Tasks has the focus. The focus and the accent outline of the Task stay after the details close. Escape, or a click on empty space, clears it.
+- The layout runs again when Tasks or dependencies change, when the Archived toggle changes, or when a card changes size: a new title, a new status, other assigned Agents, Needs you, file references, cancelled prerequisites or hidden archived prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes.
 
 ### Task mail
 
@@ -168,6 +170,16 @@ The layout time includes the rank calculation, card measurement, positions and S
 ¹ The table was measured with the first layout of v0.1.0. A later check on the same machine and browser, with a plain Root → 999 Tasks fixture at 1440×900 and five fresh loads each, measured layout at 93.5–105.4 ms (p50 98.8 ms) before that change and 98.3–103.2 ms (p50 100.8 ms) after it. A review of an earlier version of the change measured 158–169 ms before and 179–221 ms after, on its own fixture.
 
 The layout went back to the v0.1.0 columns on 2026-10-25, with the transitive reduction, ordering and archived Tasks added. On the same machine and browser at 1913×830, a fixture of 1,000 open Tasks in 10 ranks of 100 with 2,150 dependencies (800 of them redundant) measured five fresh loads at 83.4–129.5 ms for the whole layout (p50 91.1 ms). The reduction alone took 3.7–7.2 ms (p50 5.0 ms) and drew 1,350 lines. The canvas was 3,408 × 19,448 px.
+
+Curved lines and compact blocks came on 2026-10-25. On the same machine and browser at 1913×830, with fixtures of 10 Tasks in 5 ranks, 100 Tasks in 10 ranks and 1,000 Tasks in 10 ranks, all open and with redundant dependencies, five fresh loads each measured the whole layout at:
+
+| Tasks | Layout p50 / max | Lines drawn | Canvas |
+| --- | --- | --- | --- |
+| 10 | 2.0 / 13.7 ms ² | 12 | 1,874 × 400 px |
+| 100 | 9.0 / 9.5 ms | 135 | 3,804 × 2,775 px |
+| 1,000 | 82.7 / 87.8 ms | 1,350 | 3,804 × 20,730 px |
+
+² The first load after the browser started. The other four took 1.9–2.0 ms.
 
 With 1,000 Tasks, one wide rank makes one very tall column: in the first v0.1.0 measurement, a canvas of 192,929 px. Archived Tasks are hidden by default, so the graph of a long Session stays close to the size of its open work and the finished Tasks next to it. The view shows every open Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
 
