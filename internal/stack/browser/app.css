@@ -39,7 +39,7 @@
   .brand { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 650; letter-spacing: -.6px; white-space: nowrap; }
   .brand-mark { display: grid; place-items: center; width: 30px; height: 30px; background: var(--ink); color: var(--chrome); border-radius: 8px; }
   .brand-mark svg { width: 20px; height: 20px; }
-  .project-name { border-left: 1px solid var(--line); padding-left: 24px; color: var(--muted); font-size: 14px; }
+  .project-name { max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-left: 1px solid var(--line); padding-left: 24px; color: var(--muted); font-size: 14px; }
   .tabs { display: flex; align-self: stretch; gap: 6px; margin-left: 8px; }
   .tab { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 16px; border: 0; background: none; color: var(--muted); font-weight: 550; }
   .tab:hover { color: var(--ink); }

@@ -50,8 +50,15 @@ func TestSnapshotBrowserScopePrivacyAndRevisionPins(t *testing.T) {
 	if _, err = time.Parse(time.RFC3339Nano, manifest.Data.CapturedAt); err != nil {
 		t.Fatal("snapshot source/age timestamp")
 	}
+	var workspacePath string
+	if err = s.db.QueryRowContext(ctx, `SELECT path FROM workspaces WHERE id=?`, f.workspace).Scan(&workspacePath); err != nil {
+		t.Fatal(err)
+	}
+	if manifest.Data.WorkspaceName == "" || manifest.Data.WorkspaceName != filepath.Base(workspacePath) || bytes.Contains(data, []byte(filepath.Dir(workspacePath))) {
+		t.Fatal("snapshot must name the Workspace folder without its full path")
+	}
 	unchanged, err := s.Snapshot(ctx, browser.Token, SnapshotRequest{Context: f.ref(0), KnownRevision: manifest.Data.Session.ReadRevision})
-	if err != nil || !unchanged.Unchanged || unchanged.Counts != nil {
+	if err != nil || !unchanged.Unchanged || unchanged.Counts != nil || unchanged.WorkspaceName != manifest.Data.WorkspaceName {
 		t.Fatal("conditional snapshot")
 	}
 	for _, kind := range []string{"tasks", "agents", "assignments", "dependencies"} {
