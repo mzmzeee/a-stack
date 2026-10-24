@@ -20,20 +20,30 @@ When several Agents work on one project, you soon lose track of who is doing wha
 3. The Orchestrator divides the work into Tasks, assigns Agents to them and sets which Tasks depend on other Tasks.
 4. The Agents update their Tasks, write reports and send Task mail to the other Agents on the same Task.
 5. When an Agent needs your input, it marks its Task as Needs you, with a question.
-6. You watch the Task graph and the Agents in a read-only browser view.
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/graph-dark.png">
-  <img src="docs/images/graph-light.png" alt="The Graph tab of the browser view: four Tasks for an OAuth login. Arrows lead from the two Working Tasks to a Token exchange Task and from there to a Security review. One Working Task has a Needs you question, and the button at the top right says 1 needs you.">
-</picture>
+6. You follow the work in a read-only browser view.
 
 The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It runs on Linux, keeps all data on your computer and accepts connections only on `127.0.0.1`.
 
 If your Agents run in [Herdr](https://herdr.dev), a-stack can also tell an Agent to check its mail when another Agent mentions it. This is optional.
 
-The Agents tab shows the same Tasks in one row for each Agent:
+## The browser view
+
+The view has three tabs:
+
+- **Now** opens first. Its columns show the Tasks that need you, the Tasks in progress, the Tasks waiting for other Tasks and the Tasks that finished recently. A list beside them shows the latest changes.
+- **Graph** shows which Task waits for which. Finished Tasks shrink to one line, so the open work stands out.
+- **Agents** shows each Agent's Tasks in one row.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/graph-dark.png">
+  <img src="docs/images/graph-light.png" alt="The Graph tab of the browser view: four Tasks for an OAuth login. Curved lines lead from the two Working Tasks to a Token exchange Task and from there to a Security review. One Working Task has a Needs you question, and the button at the top right says 1 needs you.">
+</picture>
 
 ![The Agents tab of the browser view: 01-orchestrator with no Tasks, 02-backend with two Tasks, one of them with a Needs you question, then 03-frontend and 04-reviewer with one Task each.](docs/images/agents.png)
+
+Select a Task to see its report, its dependencies and its Task mail. The view reads the mail but cannot send it or change anything.
+
+Old work is archived so that it does not clutter the graph. a-stack archives a finished Task when all the Tasks that depend on it are finished too, or one day after it finished. You or the Orchestrator can also archive a Task with `a-stack task archive`. The Archived button shows archived Tasks again.
 
 ## Install
 
