@@ -18,6 +18,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - The graph is back to the v0.1.0 look: one column per rank and bracket lines between columns. Tasks without lines sit in rows below. The graph draws a dependency line only when no other path connects the two Tasks; the details still list every dependency.
 - Finished and cancelled Tasks are archived in the graph: hidden by default and shown dimmed with the Archived (N) toggle. This is a view setting only.
 
+### Fixed
+
+- Dragging the graph pans it also when the drag starts on a Task card, so a zoomed-in graph can be moved. A click without a drag still opens the Task.
+
 ## [0.1.2] - 2026-10-24
 
 The database schema does not change (schema version 5). One change can affect scripts: `serve` now exits with 3, not 1, when another `serve` owns the state directory.

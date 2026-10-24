@@ -370,7 +370,7 @@ function plural(n,word) { return `${n} ${word}${n===1?'':'s'}`; }
 function lost() { return stale&&lastSuccess>0&&Date.now()-lastSuccess>30000; }
 function updateHint() {
   const hint=$('footer-hint');hint.classList.toggle('lost',lost());
-  setText(hint,lost()?'Service unreachable. If you restarted it, run a-stack again.':state.view==='graph'?'Drag empty space to pan. Select a task to see its neighbours.':'Select a task for its report and dependencies.');
+  setText(hint,lost()?'Service unreachable. If you restarted it, run a-stack again.':state.view==='graph'?'Drag to pan. Select a task to see its neighbours.':'Select a task for its report and dependencies.');
 }
 function updateSource(message) {
   const service=version?'Local service '+version:'Local service';
@@ -396,12 +396,16 @@ $('status-filter').addEventListener('change',e=>{state.filter=e.target.value;ren
 $('clear-filters').addEventListener('click',()=>{state.query='';state.filter='all';$('search').value='';$('status-filter').value='all';render();$('search').focus();});
 $('zoom-out').onclick=()=>setZoom(state.zoom/1.2);$('zoom-in').onclick=()=>setZoom(state.zoom*1.2);$('zoom-reset').onclick=()=>setZoom(1);
 $('zoom-fit').onclick=()=>{setZoom(Math.min((panel.clientWidth-40)/width,(panel.clientHeight-40)/height,1));panel.scrollTo((panel.scrollWidth-panel.clientWidth)/2,(panel.scrollHeight-panel.clientHeight)/2);};
-let drag;
-panel.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('button'))return;drag={x:e.clientX,y:e.clientY,left:panel.scrollLeft,top:panel.scrollTop,start:Date.now()};panel.setPointerCapture(e.pointerId);panel.classList.add('panning');});
-panel.addEventListener('pointermove',e=>{if(drag){panel.scrollLeft=drag.left+drag.x-e.clientX;panel.scrollTop=drag.top+drag.y-e.clientY;}});
+// A drag pans from anywhere, also from a card. It starts after 4px, so a plain click still opens the Task.
+let drag, dragged=false;
+panel.addEventListener('pointerdown',e=>{if(e.button!==0||e.target.closest('button:not(.task-card)'))return;dragged=false;drag={x:e.clientX,y:e.clientY,left:panel.scrollLeft,top:panel.scrollTop,id:e.pointerId,moving:false};});
+panel.addEventListener('pointermove',e=>{if(!drag)return;
+  if(!drag.moving){if(Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<4)return;drag.moving=true;panel.setPointerCapture(drag.id);panel.classList.add('panning');}
+  panel.scrollLeft=drag.left+drag.x-e.clientX;panel.scrollTop=drag.top+drag.y-e.clientY;});
 const endDrag=()=>{drag=null;panel.classList.remove('panning');};
 // A click on empty space, without a drag, clears the focus.
-panel.addEventListener('pointerup',e=>{if(drag&&Math.hypot(e.clientX-drag.x,e.clientY-drag.y)<4&&state.focus)setFocus(null);endDrag();});panel.addEventListener('pointercancel',endDrag);
+panel.addEventListener('pointerup',e=>{if(drag){dragged=drag.moving;if(!dragged&&!e.target.closest('.task-card')&&state.focus)setFocus(null);}endDrag();});panel.addEventListener('pointercancel',endDrag);
+panel.addEventListener('click',e=>{if(dragged){e.stopPropagation();e.preventDefault();}dragged=false;},true);
 $('about-button').onclick=()=>{$('about-dialog').showModal();};
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 const attentionChoices = new Map();

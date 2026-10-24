@@ -36,7 +36,7 @@
     <div class="view" id="now-panel" role="tabpanel" aria-labelledby="now-tab" tabindex="0" aria-description="What is happening now. Columns list the Tasks that need you, are working, are waiting, or finished recently. Select a task for details.">
       <div class="now-layout"><div class="now-board" id="now-board"></div><section class="now-column now-feed" aria-labelledby="feed-heading"><header class="now-head"><h2 id="feed-heading">Latest changes</h2></header><ol class="feed-list" id="feed-list"></ol><p class="now-empty" id="feed-empty">No changes yet.</p></section></div>
     </div>
-    <div class="view" id="graph-panel" role="tabpanel" aria-labelledby="graph-tab" tabindex="0" hidden aria-description="Read-only task graph. Arrows point from prerequisites to dependent tasks. Scroll, or drag empty space, to explore. Select a task for details and named dependencies.">
+    <div class="view" id="graph-panel" role="tabpanel" aria-labelledby="graph-tab" tabindex="0" hidden aria-description="Read-only task graph. Arrows point from prerequisites to dependent tasks. Scroll, or drag, to explore. Select a task for details and named dependencies.">
       <div class="graph-space"><div class="graph-world" id="graph-world"></div></div>
     </div>
     <div class="view" id="agents-panel" role="tabpanel" aria-labelledby="agents-tab" tabindex="0" hidden><div class="agent-list" id="agent-list"></div></div>
@@ -50,7 +50,7 @@
       <button id="zoom-fit" aria-label="Fit graph"><span data-icon="fit"></span>Fit</button>
     </div>
     <button class="archive-toggle" id="archived" aria-pressed="false" title="Finished and cancelled Tasks"><span data-icon="archive"></span><span id="archived-label">Archived (0)</span></button>
-    <span class="footer-hint" id="footer-hint">Arrows show what comes next. Drag empty space to pan.</span>
+    <span class="footer-hint" id="footer-hint">Arrows show what comes next. Drag to pan.</span>
     <span id="result-count" role="status" aria-live="polite"></span>
     <button class="preview-button" id="about-button"><span data-icon="info"></span><span class="preview-label">Local service · connecting</span><span class="preview-short" aria-hidden="true">Read-only</span><span class="sr-only">About this view</span></button>
   </footer>

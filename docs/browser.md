@@ -110,7 +110,7 @@ A poll moves cards between columns in place. The selection, the focused card and
 - On a card, Enter opens the details. Escape closes them and returns the focus. In the Graph tab, a second Escape clears the focus highlight.
 - Search looks at Agent names, titles, Ticket references and the short report preview.
 - The status filter includes Cancelled and Needs you.
-- Drag an empty part of the graph to move it. Zoom and Fit are separate controls.
+- Drag anywhere in the graph to move it, also on a card. A click without a drag still opens the Task. Zoom and Fit are separate controls.
 - Fit scales the graph to the Task cards, never above 100%, and centers them in the panel.
 - In the Graph tab, filters dim the cards that do not match, so the connections stay visible. In the Now and Agents tabs, filters hide them. If only archived Tasks match, the Graph tab says so and points to the Archived toggle.
 - The details list every dependency of the Task, also archived ones, which are labelled "archived".
