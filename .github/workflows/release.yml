@@ -45,14 +45,27 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The notes are the CHANGELOG.md section of the tag, such as "## [0.1.1] - 2026-10-24".
+      - run: |
+          notes="$RUNNER_TEMP/notes.md"
+          awk -v v="${GITHUB_REF_NAME#v}" '
+            /^## / { p = index($0, "## [" v "]") == 1; next }
+            /^\[[^]]*\]: / { p = 0 }
+            p' CHANGELOG.md > "$notes"
+          if ! grep -q '[^[:space:]]' "$notes"; then
+            echo "::error::CHANGELOG.md has no section for $GITHUB_REF_NAME"
+            exit 1
+          fi
+          printf '\nTo update, run the install script again and restart the service. See [Update](https://github.com/mzmzeee/a-stack/blob/%s/docs/install.md#update).\n' "$GITHUB_REF_NAME" >> "$notes"
+          cat "$notes"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           path: dist
           merge-multiple: true
       - run: |
-          cp install.sh dist/
+          cp install.sh contrib/systemd/a-stack.service dist/
           cd dist
-          sha256sum a-stack_linux_*.tar.gz install.sh > SHA256SUMS
+          sha256sum a-stack_linux_*.tar.gz install.sh a-stack.service > SHA256SUMS
           cat SHA256SUMS
       # GitHub supports attestations on private repositories only with Enterprise Cloud.
       - if: github.event.repository.visibility == 'public'
@@ -64,4 +77,4 @@ jobs:
         run: |
           prerelease=()
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then prerelease=(--prerelease); fi
-          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes "${prerelease[@]}"
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --notes-file "$RUNNER_TEMP/notes.md" --generate-notes "${prerelease[@]}"
