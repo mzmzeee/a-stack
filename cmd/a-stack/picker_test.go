@@ -18,7 +18,7 @@ func TestPickerAgesPathsAndPrintableText(t *testing.T) {
 			t.Fatalf("shortenHome(%q,%q)=%q", c[0], c[1], got)
 		}
 	}
-	if got := printable("a\x1b[31mb‮\tc\xff"); strings.ContainsAny(got, "\x1b\t‮") || !strings.HasPrefix(got, "a�[31mb") {
+	if got := printable("a\x1b[31mb\u202e\tc\xff"); strings.ContainsAny(got, "\x1b\t\u202e") || !strings.HasPrefix(got, "a\uFFFD[31mb") {
 		t.Fatalf("printable kept control text: %q", got)
 	}
 	if !within("/p/a/sub", "/p/a") || !within("/p/a", "/p/a") || within("/p/ab", "/p/a") || !within("/x", "/") || within("", "/p") {

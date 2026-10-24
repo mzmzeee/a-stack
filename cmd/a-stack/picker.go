@@ -81,7 +81,7 @@ func shortenHome(path, home string) string {
 func printable(s string) string {
 	return strings.Map(func(r rune) rune {
 		if r == utf8.RuneError || !unicode.IsPrint(r) {
-			return '�'
+			return '\uFFFD'
 		}
 		return r
 	}, s)
