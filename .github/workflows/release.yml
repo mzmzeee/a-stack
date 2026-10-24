@@ -45,6 +45,18 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # A re-run, for example after a tag was pushed again, keeps the existing release.
+      - id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "::notice::A release for $GITHUB_REF_NAME already exists. This run does not change it. To publish again, delete the release first."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
       # The notes are the CHANGELOG.md section of the tag, such as "## [0.1.1] - 2026-10-24".
       - run: |
           notes="$RUNNER_TEMP/notes.md"
@@ -64,16 +76,19 @@ jobs:
           merge-multiple: true
       - run: |
           cp install.sh contrib/systemd/a-stack.service dist/
+          tar -czf dist/a-stack-skill.tar.gz -C skills a-stack
           cd dist
-          sha256sum a-stack_linux_*.tar.gz install.sh a-stack.service > SHA256SUMS
+          sha256sum a-stack_linux_*.tar.gz install.sh a-stack.service a-stack-skill.tar.gz > SHA256SUMS
           cat SHA256SUMS
       # GitHub supports attestations on private repositories only with Enterprise Cloud.
-      - if: github.event.repository.visibility == 'public'
+      - if: github.event.repository.visibility == 'public' && steps.existing.outputs.exists == 'false'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/a-stack_linux_*.tar.gz
-      - env:
+      - if: steps.existing.outputs.exists == 'false'
+        env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           prerelease=()
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then prerelease=(--prerelease); fi

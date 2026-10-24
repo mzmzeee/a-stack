@@ -87,10 +87,10 @@ Your data stays in the state directory when you update. The service needs a rest
    - If you started `a-stack serve` by hand, press Ctrl-C in its terminal and run `a-stack serve` again.
    - If systemd runs the service, run `systemctl --user restart a-stack`.
 
-4. Open the view again. The address of the view can change when the service restarts.
+4. If the open browser tab does not find the service again, open the view again. This command opens your last Session:
 
    ```sh
-   a-stack open --workspace WORKSPACE_ID --session SESSION_ID
+   a-stack
    ```
 
 During the restart, Agent commands fail with `storage_unavailable` for a few seconds. An Agent can run the same command again with the same operation ID. a-stack makes the change only one time.

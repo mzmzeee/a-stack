@@ -21,15 +21,26 @@ mkdir -p ~/.claude/skills
 cp -R skills/a-stack ~/.claude/skills/
 ```
 
-Without a checkout, download the folder from GitHub. Change the target folder for your harness:
+Without a checkout, download the skill from the latest release. The archive holds the `a-stack` folder. Change the target folder for your harness:
 
 ```sh
 mkdir -p ~/.claude/skills
-curl -fsSL https://github.com/mzmzeee/a-stack/archive/refs/heads/main.tar.gz \
-  | tar -xz -C ~/.claude/skills --strip-components=2 a-stack-main/skills/a-stack
+curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/a-stack-skill.tar.gz \
+  | tar -xz -C ~/.claude/skills
 ```
 
-The download works only after the skill is merged into `main`. Run the same command again to update the skill.
+To get the skill of a specific version, put the version in the URL. Releases up to v0.1.1 do not include the skill.
+
+```sh
+curl -fsSL https://github.com/mzmzeee/a-stack/releases/download/v0.1.2/a-stack-skill.tar.gz \
+  | tar -xz -C ~/.claude/skills
+```
+
+To update the skill, remove the old folder first, so that no removed files stay behind, and then run the download again:
+
+```sh
+rm -rf ~/.claude/skills/a-stack
+```
 
 ## Use
 
