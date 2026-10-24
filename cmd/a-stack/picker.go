@@ -181,7 +181,45 @@ func (p *picker) visible() []sessionRow { return filterRows(p.rows, !p.all, p.qu
 // chosen returns the selected row; call it only after pickChoose.
 func (p *picker) chosen() sessionRow { return p.visible()[p.selected] }
 
-// key handles one chunk of terminal input.
+// input applies each key of one terminal read in order, so an arrow key and
+// Enter or a paste in one read all count. It stops at Enter or a cancel.
+func (p *picker) input(in []byte) pickAction {
+	for _, k := range splitKeys(in) {
+		if action := p.key(k); action != pickContinue {
+			return action
+		}
+	}
+	return pickContinue
+}
+
+// splitKeys cuts terminal input into keys: an escape sequence (CSI such as
+// ESC [ 1 ; 5 C, or SS3 such as ESC O A), a lone ESC, one control byte or
+// one UTF-8 character.
+func splitKeys(in []byte) [][]byte {
+	keys := [][]byte{}
+	for i := 0; i < len(in); {
+		n := 1
+		switch {
+		case in[i] == 0x1b && i+1 < len(in) && in[i+1] == '[':
+			n = 2
+			for i+n < len(in) && in[i+n] >= 0x20 && in[i+n] <= 0x3f {
+				n++
+			}
+			if i+n < len(in) && in[i+n] >= 0x40 && in[i+n] <= 0x7e {
+				n++
+			}
+		case in[i] == 0x1b && i+2 < len(in) && in[i+1] == 'O':
+			n = 3
+		case in[i] >= 0x80:
+			_, n = utf8.DecodeRune(in[i:])
+		}
+		keys = append(keys, in[i:i+n])
+		i += n
+	}
+	return keys
+}
+
+// key handles one key.
 func (p *picker) key(in []byte) pickAction {
 	switch string(in) {
 	case "\x1b[A", "\x1bOA", "\x10":

@@ -219,3 +219,69 @@ func TestCLIShortcutParsing(t *testing.T) {
 		}
 	}
 }
+
+func TestCLIShortcutsReportLockedStateWithoutService(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	if err := os.Mkdir(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	// This stands for a serve that holds the lock but is still starting or hangs.
+	lock, err := os.OpenFile(filepath.Join(dir, "service.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(t.TempDir())
+	for _, args := range [][]string{{}, {"-r"}, {"new"}} {
+		var stdout, stderr bytes.Buffer
+		code := run(append(args, "--state-dir", dir, "--json", "--no-browser"), &stdout, &stderr)
+		var envelope struct {
+			Error struct{ Code, Message string } `json:"error"`
+		}
+		if code != 3 || stdout.Len() != 0 || json.Unmarshal(stderr.Bytes(), &envelope) != nil || envelope.Error.Code != "conflict" || !strings.Contains(envelope.Error.Message, "does not answer yet") || strings.Contains(envelope.Error.Message, "not running") {
+			t.Fatalf("%v: exit %d stdout=%q stderr=%s", args, code, stdout.String(), stderr.String())
+		}
+	}
+}
+
+func TestCLIStartedServiceStopsCleanlyOnHangup(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	t.Chdir(t.TempDir())
+	command := child(t, "--state-dir", dir, "--json", "--no-browser")
+	stdout, err := command.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	command.Stderr = &stderr
+	if err = command.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if command.ProcessState == nil {
+			_ = command.Process.Kill()
+			_ = command.Wait()
+		}
+	})
+	reader := bufio.NewReader(stdout)
+	for i := 0; i < 2; i++ { // the ready line and the hint
+		if _, err = reader.ReadBytes('\n'); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err = os.Stat(filepath.Join(dir, "service.json")); err != nil {
+		t.Fatal(err)
+	}
+	if command.Process.Signal(syscall.SIGHUP) != nil {
+		t.Fatal("hangup")
+	}
+	if err = command.Wait(); err != nil || stderr.Len() != 0 {
+		t.Fatalf("shutdown: %v %s", err, stderr.String())
+	}
+	if _, err = os.Stat(filepath.Join(dir, "service.json")); !os.IsNotExist(err) {
+		t.Fatalf("service.json left behind: %v", err)
+	}
+}

@@ -28,7 +28,7 @@ a-stack new [NAME]   # make a Session for the current folder and open it
 
 They act as the Operator with `operator.json` in the state directory. They accept `--state-dir`, `--no-browser` and `--json`, but no credential flags. Each one opens the view the same way as `open`: the same capability, the same `xdg-open` launch and the same fixed message when the launch fails. Before the URL, it prints the name and folder of the Session that it opens. With `--json`, the `data` object also has `workspace_id`, `workspace_path`, `session_id`, `session_name` and `current_folder`.
 
-If no service answers for the state directory, the command starts the service in the foreground first, with the same checks and lock as `serve`. It prints a line with the service URL (with `--json`, the same ready line as `serve`), opens the view, and keeps the service running until Ctrl-C or SIGTERM. A hint or a failed step does not stop the service. The error goes to stderr. To use `--listen` or `--herdr-executable`, start `serve` yourself.
+If no service answers for the state directory, the command starts the service in the foreground first, with the same checks and lock as `serve`. It prints a line with the service URL (with `--json`, the same ready line as `serve`), opens the view, and keeps the service running until Ctrl-C, SIGTERM or SIGHUP. SIGHUP comes when you close the terminal, so the service still shuts down cleanly and removes `service.json`. A hint or a failed step does not stop the service. The error goes to stderr. If another `serve` holds the state directory lock but does not answer yet, because it is still starting or hangs, the command says so and exits with 3. To use `--listen` or `--herdr-executable`, start `serve` yourself.
 
 ### How `a-stack` picks the Session
 
@@ -48,7 +48,7 @@ The picker lists all Sessions, newest change first, also closed ones. Each row s
 - Type to filter by Session name or folder. Case does not matter.
 - Up and Down, or Ctrl-P and Ctrl-N, move the selection. Enter opens the selected Session. Esc or Ctrl-C cancels.
 
-The picker uses raw terminal input and plain ANSI escapes, and it restores the terminal when it ends, also on SIGINT, SIGTERM or SIGHUP. Names and folders are shown with control characters replaced, so a Session name cannot change the terminal. If stdin or stdout is not a terminal, or with `--json`, `a-stack -r` prints `{"data":{"folder":"...","sessions":[...]}}` instead and opens nothing.
+The picker uses raw terminal input and plain ANSI escapes, and it restores the terminal when it ends, also on SIGINT, SIGTERM, SIGHUP or SIGQUIT. Names and folders are shown with control characters replaced, so a Session name cannot change the terminal. If stdin or stdout is not a terminal, or with `--json`, `a-stack -r` prints `{"data":{"folder":"...","sessions":[...]}}` instead and opens nothing.
 
 ### Make a Session with `a-stack new`
 

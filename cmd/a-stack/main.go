@@ -38,7 +38,7 @@ func writeError(stderr io.Writer, err error) int {
 		e = &stack.Error{Code: "storage_unavailable", Message: "command failed", Retryable: true}
 	}
 	_ = json.NewEncoder(stderr).Encode(map[string]any{"error": e})
-	if e == stack.ErrStateOwned {
+	if e == stack.ErrStateOwned || e == errStateBusy {
 		return 3 // systemd: RestartPreventExitStatus=3
 	}
 	if e.Code == "invalid_input" {
@@ -226,10 +226,11 @@ func readyLine(service *stack.Service) map[string]any {
 	return map[string]any{"data": map[string]any{"status": "ready", "url": service.Discovery.URL, "database_id": service.Discovery.DatabaseID, "version": service.Version}}
 }
 
-// serveForeground runs the service until SIGINT or SIGTERM. ready runs once the
-// service accepts requests; an error from it stops the service.
+// serveForeground runs the service until SIGINT, SIGTERM or SIGHUP. ready
+// runs once the service accepts requests; an error from it stops the service.
 func serveForeground(ctx context.Context, state, listen, herdrExecutable string, ready func(context.Context, *stack.Service) error) error {
-	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	// SIGHUP too: a service in a closed terminal removes its discovery file.
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 	service, err := stack.Start(ctx, state, listen)
 	if err != nil {
