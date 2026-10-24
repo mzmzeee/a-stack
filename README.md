@@ -90,6 +90,7 @@ Each command that changes data needs an `--operation-id`. You choose the ID: 8 t
 - [Browser view](docs/browser.md): open the view and read what it shows.
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
+- [Agent skill](docs/agent-skill.md): install the skill that teaches a coding agent to work in an a-stack Session.
 
 To see all commands and flags, run `a-stack --help`.
 
