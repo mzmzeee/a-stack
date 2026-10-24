@@ -43,7 +43,7 @@ a-stack trusts the local operating system account. File permissions and bearer c
 
 On a normal shutdown, the service deletes its own discovery file. After an abrupt stop, clients report that the service is unavailable until you start `serve` again.
 
-Without `--listen`, `serve` first tries the port it used the last time it ran without `--listen`. It keeps that port in the private file `last-port.json` in the state directory. If the port is taken, the service picks a free port and records that one. So after a restart, an open browser tab usually finds the service again at the same address. The new instance ID and the bearer checks still apply, and a browser credential still belongs to the database and its Session, not to the port.
+Without `--listen`, `serve` first tries the port it used the last time it ran without `--listen`. It keeps that port in the private file `last-port.json` in the state directory. If the port is taken, the service picks a free port, records that one, and prints one line on stderr that names both ports. So after a restart, an open browser tab usually finds the service again at the same address. The new instance ID and the bearer checks still apply, and a browser credential still belongs to the database and its Session, not to the port.
 
 When `serve` is ready, it prints one JSON line on stdout with `status`, `url`, `database_id` and `version`. `health` returns `database_id`, `sqlite_version`, `schema_version` and the `version` of the running service. After an update, compare it with `a-stack version` to see if the service still runs the old binary.
 

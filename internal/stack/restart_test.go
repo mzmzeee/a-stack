@@ -3,6 +3,7 @@ package stack
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -99,10 +100,16 @@ func TestDefaultStartFallsBackWhenLastPortIsTaken(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer squatter.Close()
+	if first.Notice != "" {
+		t.Fatal("first start has no last port to report", first.Notice)
+	}
 	second := serveTest(t, dir, "")
 	moved := second.listener.Addr().(*net.TCPAddr).Port
 	if moved == port {
 		t.Fatal("start reused a taken port")
+	}
+	if want := fmt.Sprintf("port %d from the last run is in use; using port %d. Open browser tabs need a-stack again.", port, moved); second.Notice != want {
+		t.Fatalf("notice = %q, want %q", second.Notice, want)
 	}
 	health := healthOf(t, dir)
 	if health.Version != "v9.8.7" || health.DatabaseID != first.Discovery.DatabaseID {
@@ -113,6 +120,9 @@ func TestDefaultStartFallsBackWhenLastPortIsTaken(t *testing.T) {
 	}
 	// An explicit --listen address never reads or changes the record.
 	explicit := serveTest(t, dir, "127.0.0.1:0")
+	if explicit.Notice != "" {
+		t.Fatal("explicit --listen reported the last port")
+	}
 	if err = explicit.Close(ctx); err != nil {
 		t.Fatal(err)
 	}

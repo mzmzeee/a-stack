@@ -20,6 +20,12 @@ export GOTOOLCHAIN=go1.27.3 CGO_ENABLED=1 GOBIN="$PWD/.tmp/bin"
 export PYTHONPYCACHEPREFIX="$PWD/.tmp/pycache" npm_config_loglevel=error
 mkdir -p .tmp
 
+# Tests keep private state in TMPDIR, and a-stack rejects state below any .git.
+# Use a fresh private TMPDIR so a stray .git above /tmp cannot break the suite.
+TMPDIR="$(mktemp -d "${XDG_RUNTIME_DIR:-/tmp}/a-stack-check.XXXXXX")"
+export TMPDIR
+trap 'chmod -R u+w "$TMPDIR" 2>/dev/null; rm -rf "$TMPDIR"' EXIT
+
 step() { printf '\n== %s\n' "$*"; }
 
 step gofmt

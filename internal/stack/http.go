@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"mime"
@@ -74,6 +75,7 @@ type Service struct {
 	Store     *Store
 	Discovery Discovery
 	Version   string // running build, for health and the browser view; set before Serve
+	Notice    string // one line for stderr when the last port was taken, else empty
 	server    *http.Server
 	listener  net.Listener
 	lock      *stateLock
@@ -91,19 +93,25 @@ type lastPort struct {
 }
 
 // listenDefault tries the remembered port first and falls back to a free one.
-func listenDefault(dir string) (net.Listener, error) {
+// The notice is set only when a remembered port was taken.
+func listenDefault(dir string) (listener net.Listener, notice string, err error) {
 	var last lastPort
-	if data, err := privateRead(filepath.Join(dir, lastPortFile)); err == nil && decodeJSON(data, &last) == nil && last.Port > 0 && last.Port < 65536 {
-		if listener, err := net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(last.Port))); err == nil {
-			return listener, nil
-		}
+	if data, err := privateRead(filepath.Join(dir, lastPortFile)); err != nil || decodeJSON(data, &last) != nil || last.Port <= 0 || last.Port >= 65536 {
+		last.Port = 0
+	} else if listener, err = net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(last.Port))); err == nil {
+		return listener, "", nil
 	}
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err == nil {
-		// Best effort: a missing record only means a new port next time.
-		_ = writePrivate(filepath.Join(dir, lastPortFile), lastPort{listener.Addr().(*net.TCPAddr).Port}, true)
+	listener, err = net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return nil, "", err
 	}
-	return listener, err
+	port := listener.Addr().(*net.TCPAddr).Port
+	// Best effort: a missing record only means a new port next time.
+	_ = writePrivate(filepath.Join(dir, lastPortFile), lastPort{port}, true)
+	if last.Port != 0 {
+		notice = fmt.Sprintf("port %d from the last run is in use; using port %d. Open browser tabs need a-stack again.", last.Port, port)
+	}
+	return listener, notice, nil
 }
 
 // Start acquires ownership before SQLite opens; clients never call this. An
@@ -142,8 +150,9 @@ func Start(ctx context.Context, dir, address string) (*Service, error) {
 		return nil, err
 	}
 	var listener net.Listener
+	var notice string
 	if address == "" {
-		listener, err = listenDefault(lock.dir)
+		listener, notice, err = listenDefault(lock.dir)
 	} else {
 		listener, err = net.Listen("tcp4", address)
 	}
@@ -155,7 +164,7 @@ func Start(ctx context.Context, dir, address string) (*Service, error) {
 			listener.Close()
 		}
 	}()
-	s := &Service{Store: store, listener: listener, lock: lock, Discovery: Discovery{URL: localURL(listener.Addr().String()), DatabaseID: store.id, InstanceID: opaqueID()}}
+	s := &Service{Store: store, Notice: notice, listener: listener, lock: lock, Discovery: Discovery{URL: localURL(listener.Addr().String()), DatabaseID: store.id, InstanceID: opaqueID()}}
 	// The stdlib server's error log can include attacker-provided bytes for bad
 	// requests. Discard it; startup/serve failures use bounded structured errors.
 	s.server = &http.Server{Handler: http.HandlerFunc(s.dispatch), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10, ErrorLog: log.New(io.Discard, "", 0)}
