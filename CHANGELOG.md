@@ -11,6 +11,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - The browser view has a Now tab, the new default. Its columns show the Tasks that need you (with the question), are working, are waiting (with the prerequisites they wait for) and finished recently, and a feed lists the latest changes. The view remembers the last tab.
 - The Task read data has `question_preview`, the start of the open Needs you question, and `last_action`, the action of the Task's latest change. The schema does not change.
 - In the Graph tab, selecting a Task highlights it, its direct prerequisites and dependents, and dims the rest. Escape or a click on empty space clears it.
+- The Working status icon spins, unless the system asks for reduced motion.
 
 ### Changed
 
