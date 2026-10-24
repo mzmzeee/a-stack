@@ -305,14 +305,6 @@ func (s *Store) SnapshotPage(ctx context.Context, token string, r SnapshotPageRe
 	if err != nil {
 		return empty, err
 	}
-	// A Task page prepares its long Task query once instead of once per Task.
-	var taskStmt *sql.Stmt
-	if r.Kind == "tasks" {
-		if taskStmt, err = tx.PrepareContext(ctx, taskByID); err != nil {
-			return empty, storageError()
-		}
-		defer taskStmt.Close()
-	}
 	result := SnapshotPage{ReadRevision: session.ReadRevision, Items: []any{}}
 	used := 2
 	last := ""
@@ -321,12 +313,7 @@ func (s *Store) SnapshotPage(ctx context.Context, token string, r SnapshotPageRe
 			result.Next = encodeSnapshotCursor(r, session.ReadRevision, last)
 			break
 		}
-		var item any
-		if taskStmt != nil {
-			item, err = scanTask(taskStmt.QueryRowContext(ctx, id, r.SessionID))
-		} else {
-			item, err = snapshotItem(ctx, tx, r, id)
-		}
+		item, err := snapshotItem(ctx, tx, r, id)
 		if err != nil {
 			return empty, publicError(err)
 		}

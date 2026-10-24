@@ -152,7 +152,13 @@ func TestMailCheckIndependentPositionsAndAggregateBudget(t *testing.T) {
 	}
 	_, err = s.CheckMail(ctx, f.b.Token, MailCheckRequest{Context: f.ref(0), AfterTask: oneTask.NextTask})
 	requireCode(t, err, "invalid_input")
-	wrong := map[string]string{f.taskID: encodeMailCursor(tasks[1], 0)}
+	// Start from the saved cursors, so the budget does not end the scan before
+	// it reaches the Task with the wrong cursor.
+	wrong := map[string]string{}
+	for task, cursor := range cursors {
+		wrong[task] = cursor
+	}
+	wrong[f.taskID] = encodeMailCursor(tasks[1], 0)
 	_, err = s.CheckMail(ctx, f.a.Token, MailCheckRequest{Context: f.ref(0), Cursors: wrong})
 	requireCode(t, err, "invalid_input")
 	_, err = s.CheckMail(ctx, f.operator.Token, MailCheckRequest{Context: f.ref(0)})

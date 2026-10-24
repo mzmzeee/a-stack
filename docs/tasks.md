@@ -177,7 +177,7 @@ Load the details, history and references of a selected Task only when you need t
 
 The client accepts 1 MiB at most for each response. The tests use the worst case of an escaped 64 KiB description and report plus notes and a question: an 831,851-byte detail response. Retained history in the tests needs four pages, and the largest page is 432,112 bytes.
 
-Fixtures with 10, 100 and 1,000 Tasks list every Task in 1, 1 and 10 pages. For 1,000 Tasks, the Task collection is about 556 KiB in total, with pages of about 56 KiB. A Task page prepares its Task query once, not once for each Task. In one local run, the 1,000 Tasks took about 26 ms, against about 75 ms when each Task prepared its own query. A chain of 1,000 Finished Tasks, where the chain rule archives 999, took about 27 ms. These are measurements of backend fixtures. They make no promise about the browser view or about production throughput. a-stack sets no limit on the total number of retained Tasks or history entries, and it never deletes them.
+Fixtures with 10, 100 and 1,000 Tasks list every Task in 1, 1 and 10 pages. For 1,000 Tasks, the Task collection is about 556 KiB in total, with pages of about 56 KiB. With the service's statement cache, the long Task query is prepared once. In one local run, the 1,000 Tasks took about 22 ms. A chain of 1,000 Finished Tasks, where the chain rule archives 999, took about 27 ms. These are measurements of backend fixtures. They make no promise about the browser view or about production throughput. a-stack sets no limit on the total number of retained Tasks or history entries, and it never deletes them.
 
 ## Internals
 
