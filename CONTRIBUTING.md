@@ -55,7 +55,7 @@ After a change to the browser view or the Operator commands, record the README d
 scripts/record-demo.sh
 ```
 
-The script builds a-stack and runs a short Session on a temporary service, with a temporary HOME. It records a real terminal (`scripts/demo-terminal.py`) and the browser view (agent-browser) at the same time and puts them side by side. It writes `docs/images/demo.gif`, `graph-light.png`, `graph-dark.png`, `agents.png` and `picker.png`, and deletes the temporary state when it ends. It needs Go, Python 3, ffmpeg, agent-browser, ImageMagick (`magick`) and curl. It downloads a pinned release of [agg](https://github.com/asciinema/agg) into `.tmp/` and checks its SHA-256. It does not need Docker.
+The script builds a-stack and runs a short Session on a temporary service, with a temporary HOME. It records a real terminal (`scripts/demo-terminal.py`) and the browser view (agent-browser) at the same time and stacks them under a caption for each scene. `scripts/demo-overlay.js` draws the outlines and callouts and zooms in, in the recording browser only. The scene list at the top of the script names the tab, the terminal and the caption of each scene. To try a change without touching the README images, set `DEMO_OUT` to another folder. It writes `docs/images/demo.gif`, `graph-light.png`, `graph-dark.png`, `agents.png` and `picker.png`, and deletes the temporary state when it ends. It needs Go, Python 3, ffmpeg, agent-browser, ImageMagick (`magick`) and curl. It downloads a pinned release of [agg](https://github.com/asciinema/agg) into `.tmp/` and checks its SHA-256. It does not need Docker.
 
 ## Design records
 
