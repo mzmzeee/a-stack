@@ -48,15 +48,36 @@ main() {
 	[ -n "$expected" ] && [ "$expected" = "$actual" ] || fail "checksum mismatch for $archive"
 
 	tar -xzf "$tmp/$archive" -C "$tmp" a-stack
+	# An existing binary is always replaced, also when it has the same version.
+	previous=""
+	[ ! -x "$install_dir/a-stack" ] || previous="$(binary_version "$install_dir/a-stack")"
 	mkdir -p "$install_dir"
 	install -m 755 "$tmp/a-stack" "$install_dir/a-stack"
-	installed="$("$install_dir/a-stack" version | sed 's/.*"version":"\([^"]*\)".*/\1/')"
-	echo "Installed a-stack $installed to $install_dir/a-stack"
+	installed="$(binary_version "$install_dir/a-stack")"
+	[ -n "$installed" ] || fail "$install_dir/a-stack does not run"
+	if [ -z "$previous" ]; then
+		echo "Installed a-stack $installed to $install_dir/a-stack"
+	elif [ "$previous" = "$installed" ]; then
+		echo "a-stack $installed is already installed in $install_dir/a-stack"
+	else
+		echo "Updated a-stack $previous -> $installed in $install_dir/a-stack"
+		if command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet a-stack 2>/dev/null; then
+			echo "Restart the service: systemctl --user restart a-stack"
+		else
+			echo "If a-stack serve is running, stop it with Ctrl-C and start it again."
+		fi
+		echo "Then run a-stack open again."
+	fi
 
 	case ":$PATH:" in
 		*":$install_dir:"*) ;;
 		*) echo "Add $install_dir to your PATH, for example: export PATH=\"$install_dir:\$PATH\"" ;;
 	esac
+}
+
+# Print the version of an a-stack binary, or nothing if it does not run.
+binary_version() {
+	"$1" version 2>/dev/null | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' || true
 }
 
 fail() {

@@ -34,6 +34,8 @@ It runs formatting, linters, vulnerability and secret scans, the tests with cove
 
 ## Releasing
 
+Before you tag, move the Unreleased entries in `CHANGELOG.md` into a section for the new version. The release uses that section as its notes, and stops if it is missing.
+
 Push a version tag from `main`:
 
 ```sh
@@ -41,7 +43,7 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-`.github/workflows/release.yml` runs every check, builds a static binary for `amd64` and `arm64`, and publishes a GitHub release. The release has `a-stack_linux_amd64.tar.gz`, `a-stack_linux_arm64.tar.gz`, `install.sh` and `SHA256SUMS`. A tag with a suffix, such as `v0.2.0-rc.1`, becomes a prerelease, which the installer's `latest` URL skips.
+`.github/workflows/release.yml` runs every check, builds a static binary for `amd64` and `arm64`, and publishes a GitHub release. The release has `a-stack_linux_amd64.tar.gz`, `a-stack_linux_arm64.tar.gz`, `install.sh`, `a-stack.service` and `SHA256SUMS`. A tag with a suffix, such as `v0.2.0-rc.1`, becomes a prerelease, which the installer's `latest` URL skips.
 
 To build the release archive for your own machine, run `scripts/build-release.sh v0.1.0`. It needs Docker and writes `dist/a-stack_linux_ARCH.tar.gz`.
 

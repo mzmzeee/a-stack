@@ -57,9 +57,43 @@ sh install.sh
 a-stack version
 ```
 
+The output shows the version that you installed:
+
 ```json
-{"data":{"version":"v0.1.0"}}
+{"data":{"version":"vX.Y.Z"}}
 ```
+
+## Update
+
+Your data stays in the state directory when you update. The service needs a restart before it uses the new version.
+
+1. Optional: back up your data first. The service must be running for this:
+
+   ```sh
+   mkdir -p -m 700 ~/a-stack-backups
+   a-stack storage backup --destination ~/a-stack-backups/before-update-$(date +%F-%H%M%S).db
+   ```
+
+2. Run the install script again:
+
+   ```sh
+   curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | sh
+   ```
+
+   It replaces the binary and prints the old and the new version, for example `Updated a-stack v0.1.0 -> v0.1.1`. To pick a version, set `A_STACK_VERSION` as in [Install script](#install-script).
+
+3. Restart the service. Until then, the running service keeps the old version.
+
+   - If you started `a-stack serve` by hand, press Ctrl-C in its terminal and run `a-stack serve` again.
+   - If systemd runs the service, run `systemctl --user restart a-stack`.
+
+4. Open the view again. The address of the view can change when the service restarts.
+
+   ```sh
+   a-stack open --workspace WORKSPACE_ID --session SESSION_ID
+   ```
+
+During the restart, Agent commands fail with `storage_unavailable` for a few seconds. An Agent can run the same command again with the same operation ID. a-stack makes the change only one time.
 
 ## Start a-stack automatically
 
@@ -69,14 +103,22 @@ The unit runs `~/.local/bin/a-stack`. If you installed the binary in another fol
 
 1. Stop any `a-stack serve` that you started by hand. Only one service can use a state directory. A second one stops with `conflict`.
 
+   Press Ctrl-C in the terminal where `a-stack serve` runs. If you closed that terminal, run this command:
+
+   ```sh
+   pkill -INT -f 'a-stack serve'
+   ```
+
+   `a-stack health` then fails, because no service runs.
+
 2. Download the unit into your systemd user folder:
 
    ```sh
    mkdir -p ~/.config/systemd/user
-   curl -fsSL -o ~/.config/systemd/user/a-stack.service https://raw.githubusercontent.com/mzmzeee/a-stack/main/contrib/systemd/a-stack.service
+   curl -fsSL -o ~/.config/systemd/user/a-stack.service https://github.com/mzmzeee/a-stack/releases/latest/download/a-stack.service
    ```
 
-   If you have a checkout of the repository, you can copy the unit from it instead:
+   If you installed a specific version, use `https://github.com/mzmzeee/a-stack/releases/download/vX.Y.Z/a-stack.service` instead. Releases up to v0.1.1 do not include the unit. For those, or if you have a checkout of the repository, copy the unit from the checkout:
 
    ```sh
    cp contrib/systemd/a-stack.service ~/.config/systemd/user/
@@ -95,6 +137,8 @@ The unit runs `~/.local/bin/a-stack`. If you installed the binary in another fol
    systemctl --user status a-stack
    a-stack health
    ```
+
+   `systemctl --user status a-stack` must show `active (running)`. If it shows `activating (auto-restart)` or `failed`, read the log with `journalctl --user -u a-stack`. A `conflict` error in the log means that another `a-stack serve` still runs. Go back to step 1.
 
    The service needs a moment to write its discovery file. If `a-stack health` fails right after the start, wait a second and run it again.
 
