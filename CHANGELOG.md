@@ -6,6 +6,17 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- The browser view has a Now tab, the new default. Its columns show the Tasks that need you (with the question), are working, are waiting (with the prerequisites they wait for) and finished recently, and a feed lists the latest changes. The view remembers the last tab.
+- The Task read data has `question_preview`, the start of the open Needs you question, and `last_action`, the action of the Task's latest change. The schema does not change.
+- In the Graph tab, selecting a Task highlights it, its direct prerequisites and dependents, and dims the rest. Escape or a click on empty space clears it.
+
+### Changed
+
+- The graph is back to the v0.1.0 look: one column per rank and bracket lines between columns. Tasks without lines sit in rows below. The graph draws a dependency line only when no other path connects the two Tasks; the details still list every dependency.
+- Finished and cancelled Tasks are archived in the graph: hidden by default and shown dimmed with the Archived (N) toggle. This is a view setting only.
+
 ## [0.1.2] - 2026-10-24
 
 The database schema does not change (schema version 5). One change can affect scripts: `serve` now exits with 3, not 1, when another `serve` owns the state directory.

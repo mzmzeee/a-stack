@@ -171,4 +171,45 @@ func TestBrowserCapabilityReplayAndPreviewBoundary(t *testing.T) {
 	if detail.Report != report {
 		t.Fatal("preview changed full report")
 	}
+	if got.LastAction != "task.report" || got.QuestionPreview != "" {
+		t.Fatal("last action after report", got.LastAction, got.QuestionPreview)
+	}
+}
+
+func TestTaskPageQuestionPreviewAndLastAction(t *testing.T) {
+	f := tasksFixture(t)
+	s := f.service.Store
+	task := f.create(t, "Question preview")
+	r := f.change(t, f.orch.Token, "assign", TaskChangeRequest{TaskID: task.ResourceID, ExpectedRevision: 1, AgentID: f.aID})
+	question := strings.Repeat("𐀀", 160) + "excluded"
+	r = f.change(t, f.a.Token, "attention.set", TaskChangeRequest{TaskID: task.ResourceID, ExpectedRevision: r.Revision, Question: question})
+	read := func() Task {
+		t.Helper()
+		page, err := s.SnapshotPage(ctx, f.a.Token, SnapshotPageRequest{Context: f.ref(0), Kind: "tasks"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range page.Items {
+			if got := item.(Task); got.ID == task.ResourceID {
+				return got
+			}
+		}
+		t.Fatal("Task missing from page")
+		return Task{}
+	}
+	got := read()
+	if !got.NeedsYou || got.LastAction != "task.attention.set" || utf8.RuneCountInString(got.QuestionPreview) != 160 || strings.Contains(got.QuestionPreview, "excluded") {
+		t.Fatal("question preview boundary", got.LastAction, len(got.QuestionPreview))
+	}
+	if f.show(t, task.ResourceID).Question.Question != question {
+		t.Fatal("preview changed full question")
+	}
+	r = f.change(t, f.a.Token, "attention.resolve", TaskChangeRequest{TaskID: task.ResourceID, ExpectedRevision: r.Revision, Note: "answered"})
+	if got = read(); got.NeedsYou || got.QuestionPreview != "" || got.LastAction != "task.attention.resolve" {
+		t.Fatal("resolved question still previewed", got.LastAction)
+	}
+	f.change(t, f.a.Token, "status", TaskChangeRequest{TaskID: task.ResourceID, ExpectedRevision: r.Revision, Progress: "finished", Summary: "done"})
+	if got = read(); got.LastAction != "task.status" || got.Progress != "finished" {
+		t.Fatal("last action after status", got.LastAction)
+	}
 }

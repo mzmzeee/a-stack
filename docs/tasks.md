@@ -133,11 +133,13 @@ A Task item has:
 - The ID, the title and the Ticket reference.
 - The progress and the revision.
 - The Unassigned flag and the number of assignees.
-- The Needs you flag.
+- The Needs you flag and `question_preview`, the first 160 Unicode code points of the open question.
 - The numbers of references, prerequisites and cancelled prerequisites.
 - The actor IDs, and the creation, update and report times.
+- `report_preview`, the first 160 Unicode code points of the report.
+- `last_action`, the action of the latest history entry, such as `task.status`. It happened at `updated_at`.
 
-It has no report or description body.
+It has no full report, question or description body.
 
 An assignment item has the Task and Agent IDs, the Agent name and the time of the assignment. Agent pages give the team metadata without private data. An Agent's runtime observation has its own `observed_at`, a `runtime_source` (`not-observed` or `caller-observation`) and `runtime_verified: false`. The age of a Task comes from `updated_at` and `report_at`. The age of a runtime observation comes from `observed_at`. Both are relative to the snapshot's `captured_at` plus the time that has passed since. a-stack never derives a runtime observation from Task progress.
 

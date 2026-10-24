@@ -16,7 +16,8 @@
     <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 20L12 4l7 16M8 14h8" stroke="currentColor" stroke-width="2.6"/></svg></span>a-stack</div>
     <span class="project-name" id="project-name" title="Workspace folder" hidden></span>
     <nav class="tabs" role="tablist" aria-label="Workspace views">
-      <button id="graph-tab" class="tab" role="tab" aria-selected="true" aria-controls="graph-panel" data-view="graph"><span data-icon="graph"></span>Graph</button>
+      <button id="now-tab" class="tab" role="tab" aria-selected="true" aria-controls="now-panel" data-view="now"><span data-icon="now"></span>Now</button>
+      <button id="graph-tab" class="tab" role="tab" aria-selected="false" aria-controls="graph-panel" tabindex="-1" data-view="graph"><span data-icon="graph"></span>Graph</button>
       <button id="agents-tab" class="tab" role="tab" aria-selected="false" aria-controls="agents-panel" tabindex="-1" data-view="agents"><span data-icon="agents"></span>Agents</button>
     </nav>
     <div class="theme-switch" role="group" aria-label="Compare appearance">
@@ -32,7 +33,10 @@
     <button class="attention-button" id="attention"><span data-icon="attention"></span>Needs you</button>
   </section>
   <main>
-    <div class="view" id="graph-panel" role="tabpanel" aria-labelledby="graph-tab" tabindex="0" aria-description="Read-only task graph. Arrows point from prerequisites to dependent tasks. Scroll, or drag empty space, to explore. Select a task for details and named dependencies.">
+    <div class="view" id="now-panel" role="tabpanel" aria-labelledby="now-tab" tabindex="0" aria-description="What is happening now. Columns list the Tasks that need you, are working, are waiting, or finished recently. Select a task for details.">
+      <div class="now-layout"><div class="now-board" id="now-board"></div><section class="now-column now-feed" aria-labelledby="feed-heading"><header class="now-head"><h2 id="feed-heading">Latest changes</h2></header><ol class="feed-list" id="feed-list"></ol><p class="now-empty" id="feed-empty">No changes yet.</p></section></div>
+    </div>
+    <div class="view" id="graph-panel" role="tabpanel" aria-labelledby="graph-tab" tabindex="0" hidden aria-description="Read-only task graph. Arrows point from prerequisites to dependent tasks. Scroll, or drag empty space, to explore. Select a task for details and named dependencies.">
       <div class="graph-space"><div class="graph-world" id="graph-world"></div></div>
     </div>
     <div class="view" id="agents-panel" role="tabpanel" aria-labelledby="agents-tab" tabindex="0" hidden><div class="agent-list" id="agent-list"></div></div>
@@ -45,6 +49,7 @@
       <button id="zoom-in" aria-label="Zoom in"><span data-icon="plus"></span></button>
       <button id="zoom-fit" aria-label="Fit graph"><span data-icon="fit"></span>Fit</button>
     </div>
+    <button class="archive-toggle" id="archived" aria-pressed="false" title="Finished and cancelled Tasks"><span data-icon="archive"></span><span id="archived-label">Archived (0)</span></button>
     <span class="footer-hint" id="footer-hint">Arrows show what comes next. Drag empty space to pan.</span>
     <span id="result-count" role="status" aria-live="polite"></span>
     <button class="preview-button" id="about-button"><span data-icon="info"></span><span class="preview-label">Local service · connecting</span><span class="preview-short" aria-hidden="true">Read-only</span><span class="sr-only">About this view</span></button>
@@ -53,7 +58,7 @@
 <dialog class="detail-panel" id="task-dialog" aria-labelledby="detail-title"></dialog>
 <dialog class="about-panel" id="about-dialog" aria-labelledby="about-title">
   <div class="detail-top"><span class="detail-kicker">READ-ONLY SESSION</span><button class="icon-button" data-close="about-dialog" aria-label="Close information"><span data-icon="close"></span></button></div>
-  <div class="detail-body"><h2 id="about-title">A look at the work.</h2><p>Graph shows dependencies. Agents shows assignments. Task progress is reported by assignees; runtime observations are separate and unverified.</p><p>This view reads Session metadata. Selecting a question does not resolve it. File references can be displayed or copied; this view never opens them.</p><p id="source-info"></p></div>
+  <div class="detail-body"><h2 id="about-title">A look at the work.</h2><p>Now shows what needs you and what changed. Graph shows dependencies. Agents shows assignments. Task progress is reported by assignees; runtime observations are separate and unverified.</p><p>This view reads Session metadata. Selecting a question does not resolve it. File references can be displayed or copied; this view never opens them.</p><p id="source-info"></p></div>
 </dialog>
 <dialog class="about-panel" id="attention-dialog" aria-labelledby="attention-title"><div class="detail-top"><h2 id="attention-title">Needs you</h2><button class="icon-button" data-close="attention-dialog" aria-label="Close Needs you"><span data-icon="close"></span></button></div><div class="detail-body" id="attention-list"></div></dialog>
 <script src="/assets/app.js"></script>

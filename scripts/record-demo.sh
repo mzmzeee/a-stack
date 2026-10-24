@@ -185,6 +185,13 @@ open_view() {
     python3 -c 'import json,sys;print("location.replace(%s)" % json.dumps(sys.stdin.read().strip()))' |
     "$1" eval --stdin >/dev/null
   "$1" wait --fn "!document.querySelector('.preview-label').textContent.includes('connecting')" >/dev/null
+  show_all_graph "$1"
+}
+# show_all_graph BROWSER: the demo shows the Graph tab with finished Tasks too, so
+# open the Graph tab and turn on Archived.
+show_all_graph() {
+  "$1" click '#graph-tab' >/dev/null
+  "$1" wait --fn "document.getElementById('archived').getAttribute('aria-pressed')==='true' || (document.getElementById('archived').click(), true)" >/dev/null
 }
 no_fragment() {
   case "$("$1" get url)" in *'#'*) die "the view kept its URL fragment" ;; esac
@@ -332,6 +339,7 @@ assign review 05-reviewer
 start 01-orchestrator plan
 start 04-database schema
 wait_graph rec 7 8
+show_all_graph rec
 rec click '#zoom-fit' >/dev/null
 sleep 1.5
 
