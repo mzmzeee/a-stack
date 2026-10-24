@@ -1,6 +1,6 @@
 # Local service
 
-The `a-stack` binary is both the command line and the local service. `serve` starts the service in the foreground. All other commands are clients: they read the service's discovery file and a credential file, and then send HTTP requests to the service. A client never starts a service and never opens the SQLite database.
+The `a-stack` binary is both the command line and the local service. `serve` starts the service in the foreground. All other commands are clients: they read the service's discovery file and a credential file, and then send HTTP requests to the service. A client never starts a service and never opens the SQLite database. The Operator commands `a-stack`, `a-stack -r` and `a-stack new` are the exception: when no service answers for the state directory, they run the service in the foreground exactly like `serve`, and then act as its client. They never start a service in the background.
 
 In the source, `cmd/a-stack` parses the arguments and handles signals for `serve`. The `internal/stack` package holds the state, SQLite, HTTP and client code.
 
@@ -45,7 +45,7 @@ On a normal shutdown, the service deletes its own discovery file. After an abrup
 
 ## Command line
 
-Flags can come before or after the command. All commands accept `--json` and `--state-dir DIR`. `serve` also accepts `--listen 127.0.0.1:PORT` (the default port is 0, which picks a free port) and `--herdr-executable FILE` (see [Mention notices](notifications.md)). Client commands also accept `--credential-file FILE` and `--as operator|agent|browser`.
+Flags can come before or after the command. All commands accept `--json` and `--state-dir DIR`. `a-stack` without a command, `a-stack -r` and `a-stack new [NAME]` also accept `--no-browser`, and take no credential or `serve` flags. They are described in [Open the last Session](browser.md#open-the-last-session). `serve` also accepts `--listen 127.0.0.1:PORT` (the default port is 0, which picks a free port) and `--herdr-executable FILE` (see [Mention notices](notifications.md)). Client commands also accept `--credential-file FILE` and `--as operator|agent|browser`.
 
 `serve` makes or checks its own Operator credential, and it does not accept credential flags. A client without `--credential-file` uses `operator.json` in the state directory. `--as agent` and `--as browser` require `--credential-file`. a-stack rejects a credential file of a different kind, and it never uses the Operator credential instead.
 
@@ -57,9 +57,9 @@ Workspace, Session, Agent, Task and mail commands need explicit Workspace and Se
 | `storage status` | `GET /v1/storage` | Operator |
 | `storage backup --destination ABSOLUTE_FILE` | `POST /v1/storage/backup` with `destination` | Operator |
 
-Every command except `open` and `--help` prints a JSON `data` object on stdout, also without `--json`. If a command fails, it prints a JSON `error` object on stderr and nothing on stdout. The exit code is 0 for success, 2 when the error code is `invalid_input`, and 1 for all other errors.
+Every command except `open`, the three Operator commands and `--help` prints a JSON `data` object on stdout, also without `--json`. Those commands print plain lines without `--json`. If a command fails, it prints a JSON `error` object on stderr and nothing on stdout. The exit code is 0 for success, 2 when the error code is `invalid_input`, and 1 for all other errors.
 
-The CLI never retries a request automatically. Client commands stop normally on SIGINT and SIGTERM, also while they wait for stdin. Only the foreground `serve` catches these signals, so that it can shut down cleanly. If an interrupted change was possibly committed, send it again with the same operation ID and payload to get the original receipt.
+The CLI never retries a request automatically. Client commands stop normally on SIGINT and SIGTERM, also while they wait for stdin. Only the foreground service catches these signals, so that it can shut down cleanly. The `a-stack -r` picker also catches them, restores the terminal and then ends the same way. If an interrupted change was possibly committed, send it again with the same operation ID and payload to get the original receipt.
 
 ## HTTP rules
 

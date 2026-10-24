@@ -47,39 +47,16 @@ To start a-stack at boot and restart it after a crash, see [Start a-stack automa
 
 ## Quick start
 
-1. Start the service, and keep this terminal open:
+```sh
+cd ~/code/my-project
+a-stack new          # first time: creates a Workspace and a Session and opens the view
+a-stack              # later: opens your last Session
+a-stack -r           # pick another Session
+```
 
-   ```sh
-   a-stack serve
-   ```
+If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C. If the service already runs, for example as a [systemd service](docs/install.md#start-a-stack-automatically), they use it and return.
 
-2. In a second terminal, create a Workspace for your project folder:
-
-   ```sh
-   a-stack workspace create --path ~/code/my-project --operation-id create-my-project
-   ```
-
-   ```json
-   {"data":{"operation_id":"create-my-project","resource_id":"_P8auKrcy…","revision":1,"outcome":"created",…}}
-   ```
-
-   The `resource_id` is the Workspace ID.
-
-3. Create a Session in the Workspace. The `resource_id` in the output is the Session ID.
-
-   ```sh
-   a-stack session create --workspace WORKSPACE_ID --name Build --operation-id create-build-session
-   ```
-
-4. Open the Session in your browser:
-
-   ```sh
-   a-stack open --workspace WORKSPACE_ID --session SESSION_ID
-   ```
-
-The Task graph is empty at this point. To add Agents and Tasks, follow [Getting started](docs/getting-started.md).
-
-Each command that changes data needs an `--operation-id`. You choose the ID: 8 to 128 letters, digits, `_` or `-`. If you are not sure that a command ran, run it again with the same ID. a-stack makes the change only one time.
+The Task graph is empty at first. To register Agents and give them Tasks, follow [Getting started](docs/getting-started.md).
 
 ## Documentation
 

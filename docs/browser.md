@@ -4,7 +4,7 @@ The browser view shows one Session: its Task graph, its Agents and the details o
 
 ## Open the view
 
-Run `serve` in one terminal. Then open one Workspace and Session:
+Run `serve` in one terminal. Then open one Workspace and Session by its IDs, or use one of the [shorter commands](#open-the-last-session):
 
 ```sh
 ./a-stack open --workspace WORKSPACE_ID --session SESSION_ID
@@ -15,6 +15,46 @@ Run `serve` in one terminal. Then open one Workspace and Session:
 `open` accepts the usual `--state-dir`, `--credential-file` and `--as` flags. The Operator or a currently registered Agent of the Session can open the view, also for a closed Session. The view gets only the caller's read access to Session metadata. A browser credential cannot open another view or use the write, mail, storage or runtime endpoints.
 
 `open` prints the URL before it runs `xdg-open`. If `xdg-open` fails, the command still succeeds, the URL is on stdout, and stderr shows a fixed message. With `--json`, the output is `{"data":{"url":"..."}}`.
+
+## Open the last Session
+
+The Operator has three shorter commands. They need no IDs:
+
+```sh
+a-stack              # open the last Session
+a-stack -r           # pick a Session in the terminal (also --resume)
+a-stack new [NAME]   # make a Session for the current folder and open it
+```
+
+They act as the Operator with `operator.json` in the state directory. They accept `--state-dir`, `--no-browser` and `--json`, but no credential flags. Each one opens the view the same way as `open`: the same capability, the same `xdg-open` launch and the same fixed message when the launch fails. Before the URL, it prints the name and folder of the Session that it opens. With `--json`, the `data` object also has `workspace_id`, `workspace_path`, `session_id`, `session_name` and `current_folder`.
+
+If no service answers for the state directory, the command starts the service in the foreground first, with the same checks and lock as `serve`. It prints a line with the service URL (with `--json`, the same ready line as `serve`), opens the view, and keeps the service running until Ctrl-C or SIGTERM. A hint or a failed step does not stop the service. The error goes to stderr. To use `--listen` or `--herdr-executable`, start `serve` yourself.
+
+### How `a-stack` picks the Session
+
+The service has no single "last changed" time for a Session. The command uses the latest `updated_at` of the Session itself and of its Tasks. Agent, dependency and mail changes do not count. The command reads all Sessions and their Task lists to find this time.
+
+1. It looks for the Workspace of the current folder: the Workspace whose folder is the current folder or the nearest parent of it.
+2. If that Workspace has an open Session, the command opens its most recently changed open Session.
+3. If not, it opens the most recently changed open Session of all Workspaces.
+
+The output says whether the Session belongs to the current folder. When there are other open Sessions, the output gives their number and points to `a-stack -r` (in JSON, `other_open_sessions`). If no Session exists, the command prints a hint to run `a-stack new` (in JSON, `{"data":{"hint":"..."}}`) and exits with 0. If all Sessions are closed, the hint points to `a-stack -r`.
+
+### Pick a Session with `a-stack -r`
+
+The picker lists all Sessions, newest change first, also closed ones. Each row shows the Session name, the Workspace folder (with `~` for your home folder), open or closed, the number of Tasks and of Needs you requests, and the age of the last change, such as `7m`, `2h` or `1d`.
+
+- It starts with the Sessions of the current folder. Tab switches between Current Folder and All. Without a Workspace for the current folder, it starts with All.
+- Type to filter by Session name or folder. Case does not matter.
+- Up and Down, or Ctrl-P and Ctrl-N, move the selection. Enter opens the selected Session. Esc or Ctrl-C cancels.
+
+The picker uses raw terminal input and plain ANSI escapes, and it restores the terminal when it ends, also on SIGINT, SIGTERM or SIGHUP. Names and folders are shown with control characters replaced, so a Session name cannot change the terminal. If stdin or stdout is not a terminal, or with `--json`, `a-stack -r` prints `{"data":{"folder":"...","sessions":[...]}}` instead and opens nothing.
+
+### Make a Session with `a-stack new`
+
+`a-stack new` uses the Workspace whose folder is exactly the current folder, after it resolves symlinks. If there is none, it creates one. Then it creates a Session named NAME, or named after the folder. Then it opens the view.
+
+[ADR 0003](adr/0003-retained-task-mail.md) asks the caller to make the operation IDs. Here the CLI is the caller: it makes a random ID (`cli-` and 22 characters) for each change and prints it, in JSON as `workspace_operation_id` and `session_operation_id`. If the outcome of a change is unknown, the error names the command and the operation ID to send the same change again.
 
 ## Keep the URL private
 

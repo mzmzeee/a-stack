@@ -43,7 +43,7 @@ You see a `data` object with the `database_id` of the new state. If you see an e
 
 If you built a-stack from source, set `bin` to the absolute path of your binary instead.
 
-Good to know: the service runs as a job of this shell, and the `trap` stops it when the shell exits. In normal use, you run `a-stack serve` in its own terminal, as the [README](../README.md) shows. a-stack accepts only private state and credential directories outside Git checkouts. The `umask 077` and `mktemp -d` make sure of this.
+Good to know: the service runs as a job of this shell, and the `trap` stops it when the shell exits. In normal use, you run `a-stack serve`, or `a-stack` alone, in its own terminal, as the [README](../README.md) shows. a-stack accepts only private state and credential directories outside Git checkouts. The `umask 077` and `mktemp -d` make sure of this.
 
 ## 2. Define the helpers
 
