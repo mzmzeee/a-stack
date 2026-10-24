@@ -172,4 +172,8 @@ func TestCLIParsingAndMachineErrors(t *testing.T) {
 		}
 	}
 	commandResult(t, []string{"--help", "--json"}, 0)
+	var out, errout bytes.Buffer
+	if run([]string{"version"}, &out, &errout) != 0 || strings.TrimSpace(out.String()) != `{"data":{"version":"dev"}}` {
+		t.Fatalf("bad version output %q", out.String())
+	}
 }

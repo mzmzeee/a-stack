@@ -16,16 +16,37 @@ a-stack is one Go binary with one SQLite database. It accepts connections only o
 - Each Agent has its own private credential. Repeating a change with the same operation ID applies it once, so retries are safe.
 - You can back up the database while the service runs, and restore it into a new state directory.
 
-## Requirements
+## Install
 
-- Linux
+a-stack runs on Linux, on x86-64 and ARM64. Install the latest release into `~/.local/bin`:
+
+```sh
+curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | sh
+```
+
+The script checks the download against the release's `SHA256SUMS` before it installs anything. To install a specific version or into another directory, set `A_STACK_VERSION` or `A_STACK_INSTALL_DIR`:
+
+```sh
+curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | A_STACK_VERSION=v0.1.0 A_STACK_INSTALL_DIR="$HOME/bin" sh
+```
+
+To install by hand, download `a-stack_linux_amd64.tar.gz` or `a-stack_linux_arm64.tar.gz` from the [releases page](https://github.com/mzmzeee/a-stack/releases), compare it with `SHA256SUMS`, and unpack the `a-stack` binary onto your `PATH`. The release binaries are statically linked and need no other libraries.
+
+Check the installed version:
+
+```sh
+a-stack version
+```
+
+### Requirements
+
+You need these only to build from source:
+
 - Go 1.27.3 with cgo (`CGO_ENABLED=1`) and a C compiler
 
 SQLite 3.53.4 is built into the binary from `github.com/mattn/go-sqlite3`. Do not build with the `libsqlite3` tag.
 
-## Install
-
-Build the binary from the repository root:
+### Build from source
 
 ```sh
 GOTOOLCHAIN=go1.27.3 CGO_ENABLED=1 go build -o a-stack ./cmd/a-stack
@@ -36,7 +57,7 @@ GOTOOLCHAIN=go1.27.3 CGO_ENABLED=1 go build -o a-stack ./cmd/a-stack
 Start the service in one terminal. It stays in the foreground until you press Ctrl-C:
 
 ```sh
-./a-stack serve
+a-stack serve
 ```
 
 ```json
@@ -48,7 +69,7 @@ On the first start, a-stack creates its state directory at `~/.local/state/a-sta
 In a second terminal, create a Workspace for your project folder and a Session for the team:
 
 ```sh
-./a-stack workspace create --path ~/code/my-project --operation-id create-my-project
+a-stack workspace create --path ~/code/my-project --operation-id create-my-project
 ```
 
 ```json
@@ -58,8 +79,8 @@ In a second terminal, create a Workspace for your project folder and a Session f
 Use the `resource_id` from the output as the Workspace ID. `session create` prints the Session ID the same way:
 
 ```sh
-./a-stack session create --workspace WORKSPACE_ID --name Build --operation-id create-build-session
-./a-stack open --workspace WORKSPACE_ID --session SESSION_ID
+a-stack session create --workspace WORKSPACE_ID --name Build --operation-id create-build-session
+a-stack open --workspace WORKSPACE_ID --session SESSION_ID
 ```
 
 `open` opens the Session in your browser. The Task graph is empty until you register Agents and they start creating Tasks.
@@ -78,7 +99,7 @@ Next, follow [Getting started](docs/getting-started.md) to register Agents, appo
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output and exit codes, the HTTP API, backup and restore.
 
-For every command and flag, run `./a-stack --help`.
+For every command and flag, run `a-stack --help`.
 
 ## Contributing
 

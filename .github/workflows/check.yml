@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call: # release.yml runs the same checks before it builds
 
 permissions:
   contents: read
@@ -22,4 +23,6 @@ jobs:
           go-version-file: go.mod
           cache-dependency-path: go.sum
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          cache-dependency-glob: scripts/check.sh # the uvx tool pins live there
       - run: scripts/check.sh

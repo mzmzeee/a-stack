@@ -59,7 +59,7 @@ python3 -m py_compile scripts/validate-v1.py
 uvx "ruff@$RUFF" check --no-cache scripts/validate-v1.py
 
 step "shellcheck $SHELLCHECK"
-uvx --from "shellcheck-py==$SHELLCHECK" shellcheck scripts/check.sh
+uvx --from "shellcheck-py==$SHELLCHECK" shellcheck scripts/check.sh scripts/build-release.sh install.sh
 
 step "actionlint $ACTIONLINT and zizmor $ZIZMOR"
 go install "github.com/rhysd/actionlint/cmd/actionlint@$ACTIONLINT"

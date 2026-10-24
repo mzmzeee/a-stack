@@ -8,12 +8,16 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
+
+// version is set by release builds with -ldflags "-X main.version=vX.Y.Z".
+var version string
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
@@ -35,6 +39,15 @@ func run(args []string, stdout, stderr io.Writer) int {
 	return 1
 }
 func invalid(message string) error { return &stack.Error{Code: "invalid_input", Message: message} }
+func buildVersion() string {
+	if version != "" {
+		return version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return "dev"
+}
 func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -85,12 +98,15 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		if machine {
 			flags := []string{}
 			fs.VisitAll(func(f *flag.Flag) { flags = append(flags, "--"+f.Name) })
-			return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(lifecycleCommands, taskCommands...), mailCommands...)...), "flags": flags}})
+			return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(lifecycleCommands, taskCommands...), mailCommands...)...), "flags": flags}})
 		}
-		_, err := io.WriteString(stdout, "Usage: a-stack serve|open|health|storage status|storage backup [flags]\nNotifications: notifications status/drain --workspace ID --session ID; serve --herdr-executable FILE (opt in)\nLifecycle: workspace create/list; session create/list/inspect/close/reopen/appoint; agent register/list/attach/rebind/observe\nTasks: task create/list/show/edit/assign/unassign/status/reopen/report/history/assignees/references/dependencies; task attention set/resolve; task reference add/remove; dependency add/remove/history; session snapshot/page\nMail: mail send/read/check; --body TEXT | --body-file FILE|-; --mention NAME (repeat); --cursor TOKEN; --cursor-file FILE|-; --after-task TOKEN; --task-limit 1..100; --limit 1..500 (mail)\n  --state-dir ABSOLUTE_DIR --credential-file FILE --as operator|agent|browser --json\n  --workspace ID --session ID --operation-id ID --expected-revision N\n  open --workspace ID --session ID [--no-browser] [--json]\n  --path DIR --name NAME --agent ID --worktree DIR --new-credential-file FILE\n  --runtime-id ID | --runtime-file FILE | --clear-runtime --runtime-state STATE\n  --task ID --title TEXT --description TEXT --report TEXT --body-file FILE|- --ticket REF\n  --progress waiting|working|finished|cancelled --reason TEXT --summary TEXT --question TEXT --note TEXT\n  --from PREREQUISITE --to DEPENDENT --location PATH_OR_URL --reference ID --reference-revision REV\n  --read-revision N --known-revision N --page-kind KIND --limit 1..100 --after CURSOR --listen 127.0.0.1:PORT (serve) --destination FILE (backup)\n")
+		_, err := io.WriteString(stdout, "Usage: a-stack serve|open|health|version|storage status|storage backup [flags]\nNotifications: notifications status/drain --workspace ID --session ID; serve --herdr-executable FILE (opt in)\nLifecycle: workspace create/list; session create/list/inspect/close/reopen/appoint; agent register/list/attach/rebind/observe\nTasks: task create/list/show/edit/assign/unassign/status/reopen/report/history/assignees/references/dependencies; task attention set/resolve; task reference add/remove; dependency add/remove/history; session snapshot/page\nMail: mail send/read/check; --body TEXT | --body-file FILE|-; --mention NAME (repeat); --cursor TOKEN; --cursor-file FILE|-; --after-task TOKEN; --task-limit 1..100; --limit 1..500 (mail)\n  --state-dir ABSOLUTE_DIR --credential-file FILE --as operator|agent|browser --json\n  --workspace ID --session ID --operation-id ID --expected-revision N\n  open --workspace ID --session ID [--no-browser] [--json]\n  --path DIR --name NAME --agent ID --worktree DIR --new-credential-file FILE\n  --runtime-id ID | --runtime-file FILE | --clear-runtime --runtime-state STATE\n  --task ID --title TEXT --description TEXT --report TEXT --body-file FILE|- --ticket REF\n  --progress waiting|working|finished|cancelled --reason TEXT --summary TEXT --question TEXT --note TEXT\n  --from PREREQUISITE --to DEPENDENT --location PATH_OR_URL --reference ID --reference-revision REV\n  --read-revision N --known-revision N --page-kind KIND --limit 1..100 --after CURSOR --listen 127.0.0.1:PORT (serve) --destination FILE (backup)\n")
 		return err
 	}
 	cmd := strings.Join(command, " ")
+	if cmd == "version" {
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]string{"version": buildVersion()}})
+	}
 	if cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) {
 		return invalid("unknown command; use --help")
 	}

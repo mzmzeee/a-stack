@@ -30,7 +30,7 @@ The script does not change `go.mod` and installs nothing globally. Go tools go t
 | Build | `go build -o .tmp/a-stack ./cmd/a-stack` | The product binary. |
 | Browser script | `node --check`, oxlint 1.89.0 | Syntax, then the rules in `.oxlintrc.json`. |
 | Validation runner | `python3 -m py_compile`, Ruff 0.17.2 | Syntax, then the rules in `ruff.toml`. |
-| Check script | ShellCheck 0.11.0 | `scripts/check.sh` itself. |
+| Shell scripts | ShellCheck 0.11.0 | `scripts/check.sh`, `scripts/build-release.sh` and `install.sh`. |
 | CI config | actionlint 1.7.12, zizmor 1.31.1 | `.github/` workflow syntax and workflow security. |
 | Secrets | gitleaks 8.30.1 | The Git history of the checkout. |
 | Workflow | `scripts/validate-v1.py --quick` | The disposable end-to-end workflow and engine fault tests against `.tmp/a-stack`. |
@@ -46,6 +46,7 @@ To change a tool version, edit the variable at the top of `scripts/check.sh` and
 - **Staticcheck** runs its default checks. One finding is suppressed in place: the empty critical section in `Service.Close` (`internal/stack/http.go`) waits for an HTTP-started notice drain to finish before the database closes.
 - **oxlint** uses the `correctness` category plus `no-undef` and `no-unused-vars`, with browser globals. The `suspicious` category was left out: on `app.js` it only reported style preferences, such as `toSorted()` instead of sorting a freshly built array.
 - **golangci-lint** was tried (v2.15.0) and left out. Beyond `go vet` and Staticcheck, it reported unchecked deferred `Close` and `Rollback` calls, error type assertions on errors the code never wraps, and style quick fixes. None was a defect.
+- **zizmor** has one inline suppression: `release.yml` calls `check.yml` with the `./` form instead of GitHub's newer `$/` self-repository form, because actionlint v1.7.12 rejects `$/`. Switch when actionlint supports it.
 - **Ruff** selects its default set (`E4`, `E7`, `E9`, `F`) plus flake8-bugbear (`B`) and Pylint errors (`PLE`). It adds no formatting or line-length rules. Six lines in `scripts/validate-v1.py` suppress `B023`, because those closures run at once inside the loop iteration that defines them; a comment above the first one says so.
 
 ## Known limits
