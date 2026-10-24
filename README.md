@@ -11,7 +11,7 @@ Keep an eye on your AI coding agents.
 
 When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
 
-![Demo, a terminal on the left and the browser view on the right: a-stack new creates a Session for an OAuth login and opens the view. Five Agents get seven Tasks and work on several at once. An Agent sends Task mail and asks a Needs you question, which lights up the needs you button until it is resolved. The cards finish with their reports, and a-stack -r then picks another Session in the terminal.](docs/images/demo.gif)
+![Demo in five captioned steps, with a terminal above the browser view and an arrow on each change. 1, a-stack new creates a Session for an OAuth login and opens the view. 2, the Orchestrator plans four Tasks, and the Agents 02-backend and 03-frontend start work. 3, 02-backend asks "GitHub or Google first?", and the Task moves to Needs you. 4, after the answer the Task works again, finishes, and the next Task starts. 5, a-stack -r picks another Session, which also has a question for you.](docs/images/demo.gif)
 
 ## How it works
 
@@ -24,7 +24,7 @@ When several Agents work on one project, you soon lose track of who is doing wha
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/graph-dark.png">
-  <img src="docs/images/graph-light.png" alt="The Graph tab of the browser view: seven Tasks for an OAuth login connected by dependency arrows. Two Tasks are Finished with their reports, two are Working, one of them with a Needs you question, and the button at the top right says 1 needs you.">
+  <img src="docs/images/graph-light.png" alt="The Graph tab of the browser view: four Tasks for an OAuth login. Arrows lead from the two Working Tasks to a Token exchange Task and from there to a Security review. One Working Task has a Needs you question, and the button at the top right says 1 needs you.">
 </picture>
 
 The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It runs on Linux, keeps all data on your computer and accepts connections only on `127.0.0.1`.
@@ -33,7 +33,7 @@ If your Agents run in [Herdr](https://herdr.dev), a-stack can also tell an Agent
 
 The Agents tab shows the same Tasks in one row for each Agent:
 
-![The Agents tab of the browser view: 01-orchestrator with its finished Task, 02-backend with three Tasks, one of them shared with 03-frontend and one with a Needs you question, and 03-frontend below.](docs/images/agents.png)
+![The Agents tab of the browser view: 01-orchestrator with no Tasks, 02-backend with two Tasks, one of them with a Needs you question, then 03-frontend and 04-reviewer with one Task each.](docs/images/agents.png)
 
 ## Install
 

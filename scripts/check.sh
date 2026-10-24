@@ -58,7 +58,8 @@ go build -o .tmp/a-stack ./cmd/a-stack
 
 step "oxlint $OXLINT"
 node --check internal/stack/browser/app.js
-npx --yes "oxlint@$OXLINT" --deny-warnings internal/stack/browser/app.js
+node --check scripts/demo-overlay.js
+npx --yes "oxlint@$OXLINT" --deny-warnings internal/stack/browser/app.js scripts/demo-overlay.js
 
 step "ruff $RUFF"
 python3 -m py_compile scripts/validate-v1.py scripts/demo-terminal.py

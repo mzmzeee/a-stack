@@ -6,10 +6,13 @@ pseudo-terminal and records everything the terminal shows. It takes one
 instruction per line from the control FIFO:
 
     line TEXT    type TEXT, press Enter and wait for the next prompt
-    keys TEXT    type TEXT; backslash escapes such as \\t, \\r and \\x1b work
+    keys TEXT    type TEXT
+    clear        press Ctrl-L and wait until the prompt is back at the top
     expect TEXT  wait until the terminal shows TEXT after the last keys
     mark         answer with the seconds since the recording started
     stop         end the recording and write the cast
+
+In line and keys, backslash escapes such as \\t, \\r and \\x1b work.
 
 After the first prompt and after each instruction, it writes one line to the
 ack FIFO: "ok", the seconds for mark, and for the first prompt the Unix time
@@ -135,7 +138,10 @@ def main():
         seen = term.prompts()
         answer = "ok"
         if name == "line":
-            term.type(text + "\r")
+            term.type(codecs.decode(text, "unicode_escape") + "\r")
+            term.wait_prompt(seen)
+        elif name == "clear":
+            term.type("\x0c")
             term.wait_prompt(seen)
         elif name == "keys":
             term.type(codecs.decode(text, "unicode_escape"))
