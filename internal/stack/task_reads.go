@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
@@ -22,11 +23,13 @@ type SnapshotCounts struct {
 	Assignments  int `json:"assignments"`
 }
 type SessionSnapshot struct {
-	Source     string          `json:"source"`
-	CapturedAt string          `json:"captured_at"`
-	Session    Session         `json:"session"`
-	Unchanged  bool            `json:"unchanged"`
-	Counts     *SnapshotCounts `json:"counts,omitempty"`
+	Source     string  `json:"source"`
+	CapturedAt string  `json:"captured_at"`
+	Session    Session `json:"session"`
+	// WorkspaceName is the last element of the Workspace path, never the full path.
+	WorkspaceName string          `json:"workspace_name"`
+	Unchanged     bool            `json:"unchanged"`
+	Counts        *SnapshotCounts `json:"counts,omitempty"`
 }
 type TaskReadRequest struct {
 	Context
@@ -123,7 +126,11 @@ func (s *Store) Snapshot(ctx context.Context, token string, r SnapshotRequest) (
 	if r.KnownRevision < 0 {
 		return SessionSnapshot{}, failure("invalid_input", "known_revision must not be negative")
 	}
-	snapshot := SessionSnapshot{Source: "local-service", CapturedAt: now(), Session: session, Unchanged: r.KnownRevision == session.ReadRevision}
+	var workspacePath string
+	if err = tx.QueryRowContext(ctx, `SELECT path FROM workspaces WHERE id=?`, session.WorkspaceID).Scan(&workspacePath); err != nil {
+		return SessionSnapshot{}, storageError()
+	}
+	snapshot := SessionSnapshot{Source: "local-service", CapturedAt: now(), Session: session, WorkspaceName: filepath.Base(workspacePath), Unchanged: r.KnownRevision == session.ReadRevision}
 	if snapshot.Unchanged {
 		return snapshot, nil
 	}

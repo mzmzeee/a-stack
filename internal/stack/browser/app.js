@@ -231,6 +231,7 @@ function render() {
   panel.hidden=state.view!=='graph';agentsPanel.hidden=state.view!=='agents';$('zoom-controls').hidden=state.view!=='graph';
   if(!model)return;
   setText(document.querySelector('.workspace-title h1'),model.snapshot.session.name);
+  setText($('project-name'),model.snapshot.workspace_name || '');$('project-name').hidden=!model.snapshot.workspace_name; // the Workspace folder name, never its full path
   setText(document.querySelector('.workspace-subtitle'),`${plural(model.agents.length,'agent')} · ${plural(model.tasks.length,'task')}${model.snapshot.session.closed?' · Closed Session':''}`);
   const count=model.tasks.filter(matches).length, attention=model.tasks.filter(t=>t.needs_you);
   $('attention').replaceChildren(iconNode('attention'),document.createTextNode(`${attention.length} needs you`));$('attention').disabled=!attention.length;

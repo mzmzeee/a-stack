@@ -70,6 +70,7 @@ The page sends the secret only in the `Authorization` header of data requests to
 
 The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It keeps the approved Graph and Agents tabs and both themes.
 
+- The header shows the name of the Workspace folder next to a-stack, for example `my-project`. It comes from the snapshot's `workspace_name`, which is only the last part of the Workspace path, so the home directory never appears in the view or in screenshots. The name is hidden in narrow windows.
 - Graph arrows point from a prerequisite to its dependent Task. The details also name both directions.
 - Full names wrap above the cards.
 - Groups of Tasks that are not connected sit side by side with a wide space between them, largest first, and wrap into rows that follow the shape of the panel. A Task with no dependencies is its own group. Inside a group, each Task is placed near the Tasks it connects to.
