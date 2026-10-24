@@ -22,7 +22,7 @@ me agent register --name 02-worker --new-credential-file "$CREDS/02-worker.json"
 
 - `data.resource_id` of the receipt is the new Agent's ID. Task commands take this ID, not the name.
 - A name has 1 to 64 letters, digits, `_` or `-`, starts with a letter or digit, and is unique in the Workspace.
-- Your own credential is enough. Never use the Operator credential.
+- Your own Agent credential is enough. Never use the Operator credential, and never run the Operator commands `a-stack` with no command, `a-stack new` or `a-stack -r`: they use the Operator credential and the current folder, and can create Workspaces, Sessions or a second service.
 - If the response is lost, run the same command again with the same operation ID and file name. Never delete a credential file because a response was lost.
 - To link the Agent's own worktree, add `--worktree ABSOLUTE_DIR`.
 
