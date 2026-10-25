@@ -95,6 +95,14 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 	if _, ok := c.Hooks["Notification"]; ok || len(c.Hooks) != 5 || commands(c, "SessionStart")[0] != want {
 		t.Fatalf("Codex hooks: %+v", c.Hooks)
 	}
+	// The credential file names the Workspace, Session and Agent, so they can
+	// be left out.
+	if _, errout, code = f.run("", "hook", "install", "--credential-file", f.workerFile, "--runtime-id", "it's-me"); code != 0 {
+		t.Fatalf("install from the credential context: %s", errout)
+	}
+	if c := commands(readSettings(t, claude), "Stop"); len(c) != 2 || c[1] != want {
+		t.Fatalf("install from the credential context: %v", c)
+	}
 	if info, err := os.Stat(claude); err != nil || info.Mode().Perm() != 0644 {
 		t.Fatal("install changed the file mode")
 	}
@@ -149,7 +157,7 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 	}
 	for _, bad := range [][]string{
 		{"hook", "install", "--credential-file", "relative.json", "--workspace", f.workspace, "--session", f.session, "--agent", f.worker},
-		{"hook", "install", "--credential-file", f.workerFile, "--workspace", f.workspace, "--session", f.session},
+		{"hook", "install", "--credential-file", f.workerFile, "--workspace", f.workspace, "--session", f.workspace, "--claude"},
 		{"hook", "install", "--credential-file", filepath.Join(f.state, "operator.json"), "--workspace", f.workspace, "--session", f.session, "--agent", f.worker},
 		{"hook", "install", "--credential-file", f.workerFile, "--workspace", f.workspace, "--session", f.session, "--name", "nobody"},
 	} {

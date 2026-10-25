@@ -334,18 +334,27 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 	if id.credential == "" || !filepath.IsAbs(id.credential) {
 		return "", invalid("--credential-file with an absolute path required")
 	}
-	if !stack.ValidID(id.ref.WorkspaceID) || !stack.ValidID(id.ref.SessionID) {
-		return "", invalid("--workspace and --session required")
-	}
-	if (id.agent == "") == (h.name == "") {
-		return "", invalid("choose --agent ID or --name NAME")
-	}
 	credential, err := stack.ReadCredential(id.credential)
 	if err != nil {
 		return "", err
 	}
 	if credential.Kind != stack.AgentCapability {
 		return "", invalid("the credential file is not an Agent credential")
+	}
+	// A credential file from v0.1.5 on names its Workspace, Session and Agent.
+	ref := lifecycleFlags{workspace: id.ref.WorkspaceID, session: id.ref.SessionID}
+	if err = fillContext(credential, &ref, "hook install"); err != nil {
+		return "", err
+	}
+	id.ref = stack.Context{WorkspaceID: ref.workspace, SessionID: ref.session}
+	if id.agent == "" && h.name == "" {
+		h.name = credential.AgentName
+	}
+	if !stack.ValidID(id.ref.WorkspaceID) || !stack.ValidID(id.ref.SessionID) {
+		return "", invalid("--workspace and --session required; this credential file does not name them")
+	}
+	if (id.agent == "") == (h.name == "") {
+		return "", invalid("choose --agent ID or --name NAME")
 	}
 	if h.name != "" {
 		client, err := stack.NewClient(id.state, id.credential, stack.AgentCapability)
