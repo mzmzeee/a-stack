@@ -87,7 +87,7 @@ Teach your coding agents to use a-stack. You do this once:
 a-stack skill install
 ```
 
-Then start your coding agent in your project folder and ask it to use a-stack as the Orchestrator, with your goal. For example: "Use a-stack and be the Orchestrator. Goal: add OAuth login." The agent makes a Session for the folder, plans the Tasks and registers the other Agents. It starts them itself, or gives you a short brief to paste into each one. If no a-stack service runs, the agent runs `a-stack service install` first.
+Then start your coding agent in your project folder and ask it to use a-stack as the Orchestrator, with your goal. For example: "Use a-stack and be the Orchestrator. Goal: add OAuth login." The agent makes a Session for the folder, plans the Tasks and registers the other Agents. It starts them itself, or gives you a short brief to paste into each one. If no a-stack service runs, the agent runs `a-stack service install` and tells you.
 
 To watch the team, run `a-stack` in the project folder:
 
