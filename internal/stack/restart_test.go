@@ -59,6 +59,11 @@ func TestRestartReusesPortSoAnOpenBrowserTabRecovers(t *testing.T) {
 	if response.Header.Get("X-A-Stack-Instance") != s.Discovery.InstanceID || response.Header.Get("X-A-Stack-Version") != "v9.8.7" || !strings.Contains(string(shell), `<meta name="a-stack-version" content="v9.8.7">`) {
 		t.Fatal("shell lacks the new instance or version")
 	}
+	// The page compares its view files with the service's, to offer a reload after an update.
+	assets := response.Header.Get("X-A-Stack-Assets")
+	if len(assets) != 24 || !strings.Contains(string(shell), `<meta name="a-stack-assets" content="`+assets+`">`) {
+		t.Fatalf("shell lacks the view files version %q", assets)
+	}
 	tab.Discovery.InstanceID = response.Header.Get("X-A-Stack-Instance")
 	if _, err = tab.Do(ctx, "POST", "/v1/session/snapshot", SnapshotRequest{Context: f.ref(0)}); err != nil {
 		t.Fatal("browser credential did not survive the restart", err)

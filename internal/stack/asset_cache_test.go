@@ -3,6 +3,7 @@ package stack
 import (
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -44,5 +45,8 @@ func TestBrowserAssetsRevalidateWithETag(t *testing.T) {
 	page, _ := get(u.Path, "")
 	if page.Header.Get("Cache-Control") != "no-store" || page.Header.Get("ETag") != "" {
 		t.Fatal("the page must stay no-store")
+	}
+	if page.Header.Get("X-A-Stack-Assets") != browserAssets || browserAssets == strings.Trim(browserAssetTags["browser/app.js"], `"`) {
+		t.Fatal("the page must name both view files together")
 	}
 }
