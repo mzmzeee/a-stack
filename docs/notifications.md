@@ -132,6 +132,16 @@ A notice that has passed the final preflight can still finish during a concurren
 
 The HTTP endpoints are authenticated `POST /v1/notifications/status` and `POST /v1/notifications/drain`, with explicit Workspace and Session and the same fields. Browser credentials cannot use either endpoint.
 
+## Jump to an Agent's pane
+
+The Operator can show a bound Agent's pane in Herdr:
+
+```sh
+./a-stack herdr focus --workspace "$workspace_id" --session "$session_id" --agent 02-worker --json
+```
+
+`--agent` takes the Agent's name or ID. The service runs it, because only the service can read bindings, so it needs `--herdr-executable` like notices do. It first checks the binding against Herdr's current metadata, as before a notice, but it also accepts a Blocked agent and a harness outside the supported lines. Then it runs `herdr agent focus PANE`, and `herdr tab focus TAB` if that fails. The answer is `{"focused": "agent"}` or `{"focused": "tab"}`, never the binding. A changed or missing pane gets `integration_unavailable`, and nothing is focused. Only the Operator can run it; the HTTP endpoint is `POST /v1/herdr/focus` with `agent`.
+
 ## Measurements and limits
 
 ### Fake Herdr fixture

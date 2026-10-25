@@ -9,15 +9,19 @@ import (
 )
 
 func isHerdrCommand(command string) bool {
-	return command == "herdr bind"
+	return command == "herdr bind" || command == "herdr focus"
 }
 
-// herdrRequest: herdr bind binds the calling Agent to its own Herdr pane. It
-// reads the pane from Herdr, then sends the same request as agent attach.
+// herdrRequest runs herdr focus in the service, which holds the bindings.
+// herdr bind binds the calling Agent to its own Herdr pane: it reads the pane
+// from Herdr, then sends the same request as agent attach.
 func herdrRequest(ctx context.Context, client *stack.Client, command string, f lifecycleFlags, executable string) ([]byte, error) {
 	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}
 	if f.workspace == "" || f.session == "" || f.agent == "" {
 		return nil, invalid("explicit --workspace, --session and --agent required")
+	}
+	if command == "herdr focus" {
+		return client.Do(ctx, "POST", "/v1/herdr/focus", stack.HerdrFocusRequest{Context: ref, Agent: f.agent})
 	}
 	name, err := agentName(ctx, client, ref, f.agent)
 	if err != nil {

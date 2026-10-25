@@ -67,6 +67,7 @@ type herdrAgent struct {
 	Name       string `json:"name"`
 	PaneID     string `json:"pane_id"`
 	TerminalID string `json:"terminal_id"`
+	TabID      string `json:"tab_id"`
 	Agent      string `json:"agent"`
 	Status     string `json:"agent_status"`
 	Session    struct {

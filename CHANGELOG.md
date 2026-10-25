@@ -14,6 +14,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
 - `a-stack view revoke --workspace ID --session ID` ends browser view access to one Session, and `--all` to every Session. Open tabs say that they lost access at their next refresh. Only the Operator can run it.
 - `a-stack herdr bind` lets an Agent that runs inside Herdr bind itself to its own pane, in place of a hand-written runtime file. It reads `HERDR_PANE_ID` and `HERDR_SOCKET_PATH`, asks Herdr for its pane's agent and native session, names an unnamed pane `a-<name>`, reads the harness version from `claude --version` or `codex --version`, and sends the usual `agent attach`. Without Herdr's integration it fails with the new error code `integration_missing` and names `herdr integration install claude` or `codex`. The agent skill has a short step for it.
+- `a-stack herdr focus --agent NAME` shows a bound Agent's pane in the Operator's Herdr. The service checks the binding against Herdr first, as before a notice, then runs `herdr agent focus`, or `herdr tab focus` if that fails. Only the Operator can run it.
 
 ### Changed
 

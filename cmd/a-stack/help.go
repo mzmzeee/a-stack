@@ -87,6 +87,7 @@ var helpGroups = []helpGroup{
 	}},
 	{"Herdr", []helpRow{
 		{"herdr bind", "", "Bind your Agent to its own Herdr pane"},
+		{"herdr focus", "", "Show an Agent's Herdr pane (Operator)"},
 	}},
 	{"Notices", []helpRow{
 		{"notifications status", "", "Show Herdr notice delivery"},
@@ -121,7 +122,7 @@ var requiredFlags = map[string]string{
 	"agent observe": "agent runtime-id runtime-state", "task assign": "agent", "task unassign": "agent",
 	"task create": "title", "task status": "progress", "task reference add": "location",
 	"task reference remove": "reference", "dependency add": "from to", "dependency remove": "from to",
-	"session page": "page-kind", "herdr bind": "agent",
+	"session page": "page-kind", "herdr bind": "agent", "herdr focus": "agent",
 }
 
 func flagRequired(command, name string) bool {
@@ -163,7 +164,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "herdr bind")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "herdr bind", "herdr focus")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string

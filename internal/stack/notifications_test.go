@@ -73,7 +73,7 @@ func TestHerdrExecutableHelper(t *testing.T) {
 			}
 		}
 	}
-	agent := map[string]any{"name": config.Binding.HerdrAlias, "pane_id": config.Binding.PaneID, "terminal_id": config.Binding.TerminalID, "agent": "codex", "agent_status": config.Status, "agent_session": map[string]any{"agent": "codex", "kind": "id", "source": "herdr:codex", "value": config.Binding.NativeSessionID}, "cwd": "must-not-be-retained", "terminal_title": "must-not-be-retained"}
+	agent := map[string]any{"name": config.Binding.HerdrAlias, "pane_id": config.Binding.PaneID, "terminal_id": config.Binding.TerminalID, "tab_id": "w1:t2", "agent": "codex", "agent_status": config.Status, "agent_session": map[string]any{"agent": "codex", "kind": "id", "source": "herdr:codex", "value": config.Binding.NativeSessionID}, "cwd": "must-not-be-retained", "terminal_title": "must-not-be-retained"}
 	if len(args) == 3 && args[0] == "agent" && args[1] == "get" {
 		switch config.Mode {
 		case "mismatch":
@@ -100,6 +100,15 @@ func TestHerdrExecutableHelper(t *testing.T) {
 			fakeHerdrWait(dir, "get-started")
 		case "unnamed", "rename_taken":
 			delete(agent, "name")
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": map[string]any{"agent": agent}})
+		os.Exit(0)
+	}
+	// herdr focus: agent focus by pane, else tab focus by the reported tab.
+	if len(args) == 3 && args[1] == "focus" && (args[0] == "agent" && args[2] == config.Binding.PaneID || args[0] == "tab" && args[2] == "w1:t2") {
+		if config.Mode == "focus_fails" && args[0] == "agent" {
+			fmt.Fprintln(os.Stderr, `{"error":{"code":"internal","message":"private raw diagnostic"}}`)
+			os.Exit(1)
 		}
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": map[string]any{"agent": agent}})
 		os.Exit(0)
