@@ -4,7 +4,7 @@ The browser view shows one Session: its Task graph, its Agents and the details o
 
 ## Open the view
 
-Run `serve` in one terminal. Then open one Workspace and Session by its IDs, or use one of the [shorter commands](#open-the-last-session):
+The view needs a running service: a user service set up with [`a-stack service install`](install.md#start-a-stack-automatically), or `a-stack serve` in a terminal. The [shorter commands](#open-the-last-session) start one for you when none runs. To open one Workspace and Session by its IDs:
 
 ```sh
 a-stack open --workspace WORKSPACE_ID --session SESSION_ID
@@ -81,7 +81,7 @@ a-stack view revoke --all
 
 ## What the view shows
 
-The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It has three tabs: Now, Graph and Agents, and a light and a dark theme. Now is the default tab. The view remembers the tab that you last used and the theme that you pick in the browser's local storage, so they stay after a browser restart. The theme buttons are Light, Dark and System. System is the default: the view follows the light or dark setting of your system, also from the first paint, without a light flash. The storage belongs to the view's address, so a service on a new port starts again from the defaults.
+The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It has three tabs, Now, Graph and Agents, and three theme buttons: Light, Dark and System. Now is the default tab, and System the default theme: the view follows the light or dark setting of your system, also from the first paint, without a light flash. The view remembers the tab that you last used and the theme that you pick in the browser's local storage, so they stay after a browser restart. The storage belongs to the view's address, so a service on a new port starts again from the defaults.
 
 - The header shows the name of the Workspace folder next to a-stack, for example `my-project`. It comes from the snapshot's `workspace_name`, which is only the last part of the Workspace path, so the home directory never appears in the view or in screenshots. The name is hidden in narrow windows.
 - A shared Task shows the same data in the card of each of its Agents. The Unassigned card shows Tasks with no assignee.
@@ -101,7 +101,7 @@ The Now tab answers what is happening and what needs you, without panning. It ha
 - Recently finished: finished and cancelled Tasks that are not [archived](tasks.md#archived-tasks), newest first. "Show archive (N)" adds the archived Tasks below them, dimmed. "Hide archive" removes them again.
 - Latest changes: the most recent changes, newest first. Each shows the Task title (two lines at most), the change on its own line, such as "Changed to Finished" or "Reported: …", and its age. The icon shows the kind of change: a status, a report, file references, Agents, a new Task, an edit, Needs you or the archive.
 
-A Task with an open request is in Needs you, whatever its progress. Each card shows the status, the Task mail count, the title, the assigned Agents, the first line of the latest report and the age of the last change, such as `2m ago` or `3h ago`. Inside a column, the newest change comes first. An empty column says so in one line. A long column scrolls inside itself. A Session with no Tasks says so and suggests to brief an Orchestrator with the a-stack skill; the Agents tab of a Session with no Agents says "No Agents yet". "Clear filters" shows only when a search or a status filter is set. Click a card, or press Enter on it, to open the details. Search and the status filter work on the board and on the feed.
+A Task with an open request is in Needs you, whatever its progress. Each card shows the status, the Task mail count, the title, the assigned Agents, the first line of the latest report and the age of the last change, such as `2m ago` or `3h ago`. Inside a column, the newest change comes first. An empty column says so in one line. A long column scrolls inside itself. A Session with no Tasks says so and suggests to brief an Orchestrator with the a-stack skill. "Clear filters" shows only when a search or a status filter is set. Click a card, or press Enter on it, to open the details. Search and the status filter work on the board and on the feed.
 
 The feed uses the Task's last action (`last_action`) at its `updated_at`, the report time `report_at`, and the differences that the page sees between two polls: progress changes and Needs you requests set or resolved. A change that is not the latest one of its Task shows only if the page was open when it happened. When two changes of one Task come between two polls, the feed shows the time of the later one for both. The page keeps up to 300 changes in memory and shows the latest 12.
 
@@ -137,6 +137,7 @@ The Agents tab shows one card per Agent, in a grid of columns at least 400px wid
 - "Most urgent first" puts the Agents with Needs you first, the oldest question first, then the Agents with the most Working and Waiting Tasks. "By name" sorts by name. Unassigned is always last. The view remembers the choice in local storage.
 - Archived Tasks are hidden unless the Archived toggle is on.
 - A poll updates the cards and rows in place, so the focus and the scroll position stay.
+- A Session with no Agents says "No Agents yet".
 
 ![A short clip of the Agents tab: 01-orchestrator with no Tasks, then 02-backend with its three finished Tasks, then 03-frontend and 04-reviewer.](images/demo-agents.gif)
 
@@ -180,17 +181,25 @@ When the snapshot has changed, the page loads all pages of Tasks, Agents, assign
 - The backoff starts at four seconds and grows to thirty seconds.
 - When the page is hidden, for example in a background tab, it polls every 30 seconds. Browsers can slow this down to once a minute in a tab that has been hidden for a long time. When the page is visible again, it polls at once.
 
+Until the first snapshot arrives, the page says that it is loading. It shows no columns, so it never says "Nothing needs you" before it knows.
+
+The full description, report, reason, result, question and file references load only for the selected Task. Text from the service is shown as text, also when it contains markup. References can be seen and copied. The page never follows or fetches them.
+
 ### Needs you in a background tab
 
 The tab title counts the open Needs you requests, such as `(2) Needs you · OAuth login – a-stack`, and the tab icon gets a red dot. Without requests, the title is the Session name and `a-stack`. Both update while the tab is hidden, at each poll.
 
 "Notify me" in the footer turns on system notifications. It is off by default. The first time, the browser asks for permission; if notifications are blocked for the page, the button is disabled and says so. The choice is kept in the browser's local storage. When a Task newly needs you and the tab is hidden or not focused, the page shows one notification with the Session name and the number of open requests. It never shows a question or a Task title. A click on it brings the tab forward. Notifications are made by the browser, so the service stores and sends nothing for them.
 
-Until the first snapshot arrives, the page says that it is loading. It shows no columns, so it never says "Nothing needs you" before it knows.
+### Footer and banners
 
-The footer shows the version of the local service and the time of the last successful check with it. If the last successful check is more than ten seconds old and the next one failed, a banner above the view says why, and the tab title starts with "Stale". The view stays, with muted colors. If the service still answered the last request, the banner says that the service is busy: Task changes keep restarting the collection, and the page shows the last complete view. If the service did not answer, the banner says since when, and that you can run `a-stack` again. That is needed only when the service came back on another port. If the first snapshot never arrives, the banner says that the local service does not answer. When the view has no access, the banner says why, and the tab title starts with "No access". When less than 1 GiB of disk space is free for the a-stack state, the footer says that disk space is low and to run `a-stack storage status`, also on narrow screens. The snapshot answer carries this as the header `X-A-Stack-Low-Disk: 1`, also when it is a 304, so the view needs no extra request. The About panel shows when the snapshot was captured, and its revision. A poll with no changes does not change the report or runtime times.
-
-The full description, report, reason, result, question and file references load only for the selected Task. Text from the service is shown as text, also when it contains markup. References can be seen and copied. The page never follows or fetches them.
+- The footer shows the version of the local service and the time of the last successful check with it. The About panel shows when the snapshot was captured, and its revision. A poll with no changes does not change the report or runtime times.
+- If the last successful check is more than ten seconds old and the next one failed, a banner above the view says why, and the tab title starts with "Stale". The view stays, with muted colors.
+  - If the service still answered the last request, the banner says that the service is busy: Task changes keep restarting the collection, and the page shows the last complete view.
+  - If the service did not answer, the banner says since when, and that you can run `a-stack` again. That is needed only when the service came back on another port.
+  - If the first snapshot never arrives, the banner says that the local service does not answer.
+- When the view has no access, the banner says why, and the tab title starts with "No access".
+- When less than 1 GiB of disk space is free for the a-stack state, the footer says that disk space is low and to run `a-stack storage status`, also on narrow screens. The snapshot answer carries this as the header `X-A-Stack-Low-Disk: 1`, also when it is a 304, so the view needs no extra request.
 
 ## Read interface and limits
 

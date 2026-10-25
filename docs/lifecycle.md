@@ -116,7 +116,7 @@ Observations also work when the Session is closed. They do not change the lifecy
 
 ## Close, reopen and inspect
 
-Only the Operator can run `session close` and `session reopen`. Both need `--expected-revision` and `--operation-id`. `session inspect` shows the current lifecycle revision, the Orchestrator and whether the Session is closed.
+Only the Operator can run `session close` and `session reopen`. Both need `--expected-revision` and `--operation-id`. `session inspect` shows the current lifecycle revision, the Orchestrator and whether the Session is closed. Run by an Agent, it also shows that Agent's own ID as `your_agent_id`.
 
 - A retry of the same operation returns its original receipt, also after the Session is closed.
 - A new operation with an old revision causes a conflict.

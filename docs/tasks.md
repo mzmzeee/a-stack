@@ -1,6 +1,6 @@
 # Tasks and the Task graph
 
-A Task belongs to one Session. Every Task command needs `--workspace ID --session ID`. Agent commands also need `--as agent --credential-file PRIVATE_FILE`, and can leave out the IDs when that file names them (see [Credential context](lifecycle.md#credential-context)). The current directory never changes the context. (Only the Operator commands `a-stack`, `a-stack -r` and `a-stack new` use it, to choose a Session to open. See [Workspaces, Sessions and Agents](lifecycle.md).) Before you use these commands, enroll the Operator, the Orchestrator and the other Agents as described in [Workspaces, Sessions and Agents](lifecycle.md).
+A Task belongs to one Session. The Operator names the Session in each Task command with `--workspace ID --session ID`. An Agent runs Task commands with `--as agent --credential-file PRIVATE_FILE`. A credential file from v0.1.5 or later names the Session, so the Agent can leave both IDs out (see [Credential context](lifecycle.md#credential-context)). The current directory never changes the context. (Only the Operator commands `a-stack`, `a-stack -r` and `a-stack new` use it, to choose a Session to open. See [Workspaces, Sessions and Agents](lifecycle.md).) Before you use these commands, enroll the Operator, the Orchestrator and the other Agents as described in [Workspaces, Sessions and Agents](lifecycle.md).
 
 ## Who can do what
 

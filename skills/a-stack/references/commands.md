@@ -8,10 +8,10 @@ Each command prints `{"data": ...}` on stdout. A change returns a receipt: `data
 
 | Command | What you get |
 | --- | --- |
-| `me session inspect` | `data.revision`, `data.graph_revision`, `data.orchestrator_id`, `data.closed` |
+| `me session inspect` | `data.revision`, `data.graph_revision`, `data.orchestrator_id`, `data.closed`, and your own Agent ID in `data.your_agent_id` |
 | `me session snapshot --known-revision 12` | Counts of Tasks, Agents, dependencies and assignments, or `unchanged: true` if `read_revision` is still 12 |
 | `me agent list` | `data.items[]` with each Agent's `id` and `name`; find your own ID here |
-| `me task list` | `data.items[]` with `id`, `title`, `progress`, `revision`, `unassigned`, `needs_you` |
+| `me task list` | `data.items[]` with `id`, `title`, `progress`, `revision`, `unassigned`, `needs_you`, `prerequisite_count` |
 | `me task show --task T` | One Task with `revision`, `progress`, `description`, `report`, `reason`, `result` |
 | `me task assignees --task T` | `data.items[].agent_name` and `agent_id` |
 | `me task history --task T` | Every change of the Task, with the changed texts |

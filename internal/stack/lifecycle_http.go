@@ -131,7 +131,11 @@ func (s *Store) InspectSession(ctx context.Context, token string, ref Context) (
 	if p.Kind == BrowserCapability {
 		return Session{}, failure("forbidden", "browser views use Session snapshot endpoints")
 	}
-	return ReadSession(ctx, tx, p, ref)
+	session, err := ReadSession(ctx, tx, p, ref)
+	if err == nil && p.Kind == AgentCapability {
+		session.YourAgentID = p.SubjectID
+	}
+	return session, err
 }
 func (s *Service) lifecycleHTTP(w http.ResponseWriter, r *http.Request, token string) bool {
 	var request any
