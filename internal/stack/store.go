@@ -75,6 +75,20 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 	if !sqliteSupported(s.sqliteVersion) {
 		return nil, failure("storage_unavailable", "SQLite >=3.51.3 is required")
 	}
+	// A damaged database must stop the start here, before it says ready.
+	var check string
+	if err = db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&check); err != nil || check != "ok" {
+		return nil, unusableDatabase("the state database %s failed the integrity check (PRAGMA quick_check); stop here, keep the file, and restore a backup: %s", path, restoreDocs)
+	}
+	var version, app int
+	if db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version) != nil || db.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app) != nil {
+		return nil, storageError()
+	}
+	if version > 0 && version < schemaVersion && app == applicationID {
+		if err = s.backupBeforeMigration(ctx, version); err != nil {
+			return nil, err
+		}
+	}
 	if err = s.migrate(ctx, migration1); err != nil {
 		return nil, err
 	}
@@ -90,6 +104,42 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 	}
 	ok = true
 	return s, nil
+}
+
+const restoreDocs = "https://github.com/mzmzeee/a-stack/blob/main/docs/foundation.md#backup-and-restore"
+
+// backupBeforeMigration copies the database at schema version to
+// state.db.pre-vN with VACUUM INTO before a migration changes it. It never
+// replaces an earlier copy: the next one is state.db.pre-vN.2, and so on.
+func (s *Store) backupBeforeMigration(ctx context.Context, version int) error {
+	base := s.path + ".pre-v" + strconv.Itoa(version)
+	for n := 1; n <= 100; n++ {
+		name := base
+		if n > 1 {
+			name += "." + strconv.Itoa(n)
+		}
+		f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		if err != nil {
+			break
+		}
+		// VACUUM INTO accepts the empty file, which keeps the owner-only mode.
+		_, err = s.db.ExecContext(ctx, "VACUUM main INTO ?", name)
+		if err == nil {
+			err = f.Sync()
+		}
+		if closeErr := f.Close(); err == nil {
+			err = closeErr
+		}
+		if err == nil && syncDir(filepath.Dir(s.path)) == nil {
+			return nil
+		}
+		os.Remove(name)
+		break
+	}
+	return failure("storage_unavailable", fmt.Sprintf("cannot write %s.pre-v%d, the backup before the schema migration; check free space and permissions in the state directory", filepath.Base(s.path), version))
 }
 func sqliteSupported(version string) bool {
 	parts := strings.Split(version, ".")
@@ -124,8 +174,11 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 	if tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version) != nil || tx.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app) != nil {
 		return storageError()
 	}
+	if version > schemaVersion && app == applicationID {
+		return unusableDatabase("the state database %s has schema version %d, but this a-stack supports schema version %d or older; update a-stack with a-stack update, or restore a backup made with this version: %s", s.path, version, schemaVersion, restoreDocs)
+	}
 	if version > schemaVersion || version < 0 || (version > 0 && app != applicationID) || (version == 0 && app != 0) {
-		return failure("storage_unavailable", "unsupported database schema; restore or use a compatible binary")
+		return unusableDatabase("the state database %s is not an a-stack database or has an unknown schema (version %d); use another state directory, or restore a backup: %s", s.path, version, restoreDocs)
 	}
 	if version == 0 {
 		var count int
@@ -133,7 +186,7 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 			return storageError()
 		}
 		if count != 0 {
-			return failure("storage_unavailable", "unrecognized database schema")
+			return unusableDatabase("the state database %s is not an a-stack database or has an unknown schema (version 0); use another state directory, or restore a backup: %s", s.path, restoreDocs)
 		}
 		if _, err = tx.ExecContext(ctx, migration); err != nil {
 			return storageError()

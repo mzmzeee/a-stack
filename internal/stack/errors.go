@@ -2,6 +2,7 @@ package stack
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 )
 
@@ -14,10 +15,19 @@ type Error struct {
 	Message         string    `json:"message"`
 	Retryable       bool      `json:"retryable"`
 	CurrentRevision *int64    `json:"current_revision,omitempty"`
+	unusable        bool
 }
 
 func (e *Error) Error() string            { return e.Code + ": " + e.Message }
 func failure(code, message string) *Error { return &Error{Code: code, Message: message} }
+
+// DatabaseUnusable reports a state database that this binary must not open:
+// it failed the integrity check, or its schema is newer or unknown. serve
+// exits with 4 for it, so that systemd does not restart it in a loop.
+func (e *Error) DatabaseUnusable() bool { return e.unusable }
+func unusableDatabase(format string, args ...any) *Error {
+	return &Error{Code: "storage_unavailable", Message: fmt.Sprintf(format, args...), unusable: true}
+}
 func storageError() *Error {
 	return &Error{Code: "storage_unavailable", Message: "storage operation failed; check available space, permissions and database integrity", Retryable: true}
 }

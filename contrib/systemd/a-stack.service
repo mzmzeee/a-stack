@@ -22,9 +22,11 @@ Type=exec
 ExecStart=%h/.local/bin/a-stack serve --state-dir %h/.local/state/a-stack
 Restart=on-failure
 RestartSec=2s
-# Exit code 3: another a-stack serve owns the state directory. Restarting
-# cannot help, so the unit fails at once and says so in its status.
-RestartPreventExitStatus=3
+# Exit code 3: another a-stack serve owns the state directory. Exit code 4:
+# the state database failed its integrity check, or has a newer or unknown
+# schema. Restarting cannot help, so the unit fails at once and says so in
+# its status.
+RestartPreventExitStatus=3 4
 UMask=0077
 NoNewPrivileges=yes
 LockPersonality=yes

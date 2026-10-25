@@ -6,6 +6,13 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Changed
+
+- `serve` runs SQLite `PRAGMA quick_check` before it says ready. On a damaged database it stops with exit code 4, names the database file and points to the restore steps. On a 940 MB database the check adds about 0.2 seconds to the start.
+- A state database with a newer or unknown schema also stops `serve` with exit code 4. The message names the schema version it found and the newest one it supports, and says how to get back: update a-stack, or restore a backup. The systemd unit now has `RestartPreventExitStatus=3 4`, so it does not restart in a loop. Download the unit again to get this.
+- Before a schema migration, `serve` writes a private copy of the database, `state.db.pre-vN`, with `VACUUM INTO`. It never replaces an earlier copy, and it does not migrate when it cannot write the copy.
+- The restore steps check the backup with `PRAGMA integrity_check` first.
+
 ## [0.1.4] - 2026-10-25
 
 ### Added
