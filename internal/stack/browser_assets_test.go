@@ -6,8 +6,9 @@ import (
 	"testing"
 )
 
-// The view is read-only, and its keys and storage stay in their bounds. These checks read the embedded files, so a
-// new feature cannot quietly call another endpoint, add a modal peek or touch storage outside a try.
+// The view reads, and makes one write: the Operator's answer to a Needs you question. Its keys and storage stay in
+// their bounds. These checks read the embedded files, so a new feature cannot quietly call another endpoint, add a
+// modal peek or touch storage outside a try.
 func TestBrowserAssetsStayReadOnly(t *testing.T) {
 	read := func(name string) string {
 		b, err := browserFiles.ReadFile("browser/" + name)
@@ -17,7 +18,7 @@ func TestBrowserAssetsStayReadOnly(t *testing.T) {
 		return string(b)
 	}
 	js, page := read("app.js"), read("index.html")
-	allowed := map[string]bool{"/v1/browser/redeem": true, "/v1/session/snapshot": true, "/v1/session/page": true, "/v1/task/show": true, "/v1/mail/read": true}
+	allowed := map[string]bool{"/v1/browser/redeem": true, "/v1/session/snapshot": true, "/v1/session/page": true, "/v1/task/show": true, "/v1/mail/read": true, "/v1/task/answer": true}
 	calls := regexp.MustCompile(`(?:fetch|request)\('([^']*)'`).FindAllStringSubmatch(js, -1)
 	if len(calls) != len(allowed) {
 		t.Errorf("app.js has %d endpoint calls, want %d", len(calls), len(allowed))
@@ -25,6 +26,12 @@ func TestBrowserAssetsStayReadOnly(t *testing.T) {
 	for _, c := range calls {
 		if !allowed[c[1]] {
 			t.Errorf("app.js calls %s", c[1])
+		}
+	}
+	// The answer: at most 4,096 bytes, a fresh operation ID per answer, the same one on a retry.
+	for _, want := range []string{"over=n>4096", "answer.op ||= 'view-'", "answerInput.addEventListener('input',()=>{answer.op='';"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js lacks %s", want)
 		}
 	}
 	// Storage can be missing or throw (private windows, blocked site data): every access sits in a try.

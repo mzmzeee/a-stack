@@ -17,7 +17,7 @@
   :root[data-theme="dark"] { color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--canvas); color: var(--ink); }
-  button, input, select { font: inherit; color: inherit; }
+  button, input, select, textarea { font: inherit; color: inherit; }
   button { cursor: pointer; }
   button, input, select { -webkit-tap-highlight-color: transparent; }
   button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
@@ -277,7 +277,7 @@
 .feed-mark { color: var(--muted); padding-top: 1px; }
 .feed-mark svg { width: 16px; height: 16px; }
 .feed-mark.working { color: var(--working); }
-.feed-mark.finished, .feed-mark.resolve { color: var(--finished); }
+.feed-mark.finished, .feed-mark.resolve, .feed-mark.answer { color: var(--finished); }
 .feed-mark.ask { color: var(--attention); }
 .feed-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
 .feed-title, .feed-what { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -473,3 +473,19 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; border: 1px solid 
 /* A quiet Working Task: a small chip on the status line. */
 .quiet-chip { padding: 0 6px; border-radius: 4px; background: var(--waiting-bg); color: var(--muted); font-size: 11.5px; line-height: 18px; font-weight: 550; white-space: nowrap; }
 .graph-world.far .quiet-chip { display: none; }
+/* The answer box under Needs you, the view's one write. */
+.answer-box { margin-top: 12px; }
+.answer-label { display: block; margin-bottom: 4px; font-size: 13px; font-weight: 600; }
+.answer-input { display: block; width: 100%; min-height: 76px; max-height: 40vh; resize: vertical; padding: 8px 10px; border: 1px solid var(--strong-line); border-radius: 6px; background: var(--surface); line-height: 1.45; }
+.answer-input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.answer-input[aria-invalid="true"] { border-color: var(--attention); }
+.answer-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; }
+.answer-count { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.answer-count.over { color: var(--attention); font-weight: 600; }
+.answer-send { min-height: 36px; padding: 6px 18px; border: 1px solid var(--accent); border-radius: 6px; background: var(--accent); color: var(--surface); font-weight: 600; }
+.answer-send[aria-disabled="true"] { opacity: .6; cursor: progress; }
+.answer-note { margin: 10px 0 0; font-size: 13px; }
+.answer-note:empty { display: none; }
+.answer-note:focus { outline: none; }
+.peek-answer { margin-top: 8px; }
+
