@@ -222,13 +222,13 @@ func readIDs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]stri
 	ids := []string{}
 	for rows.Next() {
 		var id string
-		if rows.Scan(&id) != nil {
-			return nil, storageError()
+		if err = rows.Scan(&id); err != nil {
+			return nil, storageError(err)
 		}
 		ids = append(ids, id)
 	}
-	if rows.Err() != nil {
-		return nil, storageError()
+	if err = rows.Err(); err != nil {
+		return nil, storageError(err)
 	}
 	return ids, nil
 }

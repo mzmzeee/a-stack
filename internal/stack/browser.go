@@ -128,14 +128,14 @@ func (s *Store) RedeemViewLink(ctx context.Context, r ViewRedeemRequest) (string
 		}
 		return "", errViewLink
 	}
-	c, err := IssueCapability(ctx, tx, BrowserCapability, opaqueID(), session)
+	token, err := issueViewToken(ctx, tx, session)
 	if err != nil {
 		return "", err
 	}
 	if tx.Commit() != nil {
 		return "", storageError()
 	}
-	return c.Token, nil
+	return token, nil
 }
 
 type ViewRevokeRequest struct {

@@ -371,22 +371,16 @@ func tokenHash(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// IssueCapability participates in the caller's registration/rebind transaction.
-// Only the hash persists; callers must deliver the returned credential privately.
-func IssueCapability(ctx context.Context, tx *sql.Tx, kind CapabilityKind, subject, session string) (Credential, error) {
-	if !validKind(kind) || subject == "" || len(subject) > 128 || len(session) > 128 || (kind == OperatorCapability && session != "") || (kind != OperatorCapability && session == "") {
-		return Credential{}, failure("invalid_input", "invalid credential scope")
-	}
-	c := Credential{Kind: kind, Token: opaqueID()}
-	var expires int64 // view tokens expire; Operator and Agent credentials do not
-	if kind == BrowserCapability {
-		expires = clockNow().Add(ViewTokenAge).Unix()
-	}
-	_, err := tx.ExecContext(ctx, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id,expires_at) VALUES(?,?,?,?,?)", tokenHash(c.Token), kind, subject, session, expires)
+// issueViewToken stores the hash of a new view token for one Session in the
+// caller's transaction and returns the token. Operator and Agent credentials
+// are not issued here: the CLI makes them and the service stores their hash.
+func issueViewToken(ctx context.Context, tx *sql.Tx, session string) (string, error) {
+	token := opaqueID()
+	_, err := tx.ExecContext(ctx, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id,expires_at) VALUES(?,'browser',?,?,?)", tokenHash(token), opaqueID(), session, clockNow().Add(ViewTokenAge).Unix())
 	if err != nil {
-		return Credential{}, storageError(err)
+		return "", storageError(err)
 	}
-	return c, nil
+	return token, nil
 }
 func authenticate(ctx context.Context, q interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row

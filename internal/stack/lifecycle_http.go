@@ -76,23 +76,9 @@ func (s *Store) ListLifecycle(ctx context.Context, token, action string, r ListR
 		}
 		return result, nil
 	case "session.list":
-		rows, err := tx.QueryContext(ctx, "SELECT id FROM sessions WHERE workspace_id=? AND (?='' OR id=?) AND id>? ORDER BY id LIMIT ?", r.WorkspaceID, r.SessionID, r.SessionID, r.After, r.Limit+1)
+		ids, err := readIDs(ctx, tx, "SELECT id FROM sessions WHERE workspace_id=? AND (?='' OR id=?) AND id>? ORDER BY id LIMIT ?", r.WorkspaceID, r.SessionID, r.SessionID, r.After, r.Limit+1)
 		if err != nil {
-			return nil, storageError(err)
-		}
-		ids := []string{}
-		for rows.Next() {
-			var id string
-			if err = rows.Scan(&id); err != nil {
-				rows.Close()
-				return nil, storageError(err)
-			}
-			ids = append(ids, id)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, storageError(err)
+			return nil, err
 		}
 		result := Page[Session]{Items: []Session{}}
 		for _, id := range ids {
@@ -111,23 +97,9 @@ func (s *Store) ListLifecycle(ctx context.Context, token, action string, r ListR
 		if _, err = ReadSession(ctx, tx, p, r.Context); err != nil {
 			return nil, err
 		}
-		rows, err := tx.QueryContext(ctx, "SELECT id FROM agents WHERE session_id=? AND id>? ORDER BY id LIMIT ?", r.SessionID, r.After, r.Limit+1)
+		ids, err := readIDs(ctx, tx, "SELECT id FROM agents WHERE session_id=? AND id>? ORDER BY id LIMIT ?", r.SessionID, r.After, r.Limit+1)
 		if err != nil {
-			return nil, storageError(err)
-		}
-		ids := []string{}
-		for rows.Next() {
-			var id string
-			if err = rows.Scan(&id); err != nil {
-				rows.Close()
-				return nil, storageError(err)
-			}
-			ids = append(ids, id)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, storageError(err)
+			return nil, err
 		}
 		result := Page[Agent]{Items: []Agent{}}
 		for _, id := range ids {
