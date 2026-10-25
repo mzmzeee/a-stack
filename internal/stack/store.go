@@ -18,7 +18,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const schemaVersion = 7
+const schemaVersion = 8
 const applicationID = 0x4153544b
 const migration1 = `
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -166,8 +166,64 @@ func sqliteSupported(version string) bool {
 	}
 	return true
 }
+
+// migration8 keeps Task texts and Task mail in rowid tables. A WITHOUT ROWID
+// table stores a row of more than about 1 KB on its own 4 KB overflow page; a
+// rowid table keeps rows of up to about 4 KB in the table page. The foreign key
+// of a mention now uses the primary key of its message, and a trigger checks
+// that the mention names the message's Task, which the composite foreign key
+// did before. So mail_messages needs no UNIQUE(id,task_id) index any more.
+// task_content_task keeps only task_id, which is all the foreign key check of
+// a Task needs: every read finds a text by its ID.
+const migration8 = `
+CREATE TABLE task_content_v8(id TEXT PRIMARY KEY NOT NULL,task_id TEXT NOT NULL REFERENCES tasks(id),kind TEXT NOT NULL,body TEXT NOT NULL,actor_id TEXT NOT NULL REFERENCES agents(id),received_at TEXT NOT NULL);
+INSERT INTO task_content_v8 SELECT id,task_id,kind,body,actor_id,received_at FROM task_content ORDER BY task_id,received_at;
+DROP TABLE task_content;
+ALTER TABLE task_content_v8 RENAME TO task_content;
+CREATE INDEX task_content_task ON task_content(task_id);
+CREATE TABLE mail_messages_v8(
+ id TEXT PRIMARY KEY NOT NULL, task_id TEXT NOT NULL REFERENCES tasks(id), sequence INTEGER NOT NULL CHECK(sequence>0),
+ sender_id TEXT NOT NULL REFERENCES agents(id), received_at TEXT NOT NULL, body TEXT NOT NULL,
+ UNIQUE(task_id,sequence)
+);
+INSERT INTO mail_messages_v8 SELECT id,task_id,sequence,sender_id,received_at,body FROM mail_messages ORDER BY task_id,sequence;
+CREATE TABLE mail_mentions_v8(
+ message_id TEXT NOT NULL REFERENCES mail_messages(id), task_id TEXT NOT NULL, recipient_id TEXT NOT NULL REFERENCES agents(id),
+ notice_state TEXT NOT NULL CHECK(notice_state IN ('pending','submitting','submitted','uncertain','suppressed','self')),
+ state_at TEXT NOT NULL,
+ PRIMARY KEY(message_id,recipient_id)
+) WITHOUT ROWID;
+INSERT INTO mail_mentions_v8 SELECT message_id,task_id,recipient_id,notice_state,state_at FROM mail_mentions;
+DROP TABLE mail_mentions;
+DROP TABLE mail_messages;
+ALTER TABLE mail_messages_v8 RENAME TO mail_messages;
+ALTER TABLE mail_mentions_v8 RENAME TO mail_mentions;
+CREATE INDEX mail_mentions_pending ON mail_mentions(notice_state,recipient_id,message_id);
+CREATE INDEX mail_mentions_membership ON mail_mentions(task_id,recipient_id,notice_state,message_id);
+CREATE TRIGGER mail_mentions_task BEFORE INSERT ON mail_mentions
+ WHEN NEW.task_id IS NOT (SELECT task_id FROM mail_messages WHERE id=NEW.message_id)
+ BEGIN SELECT RAISE(ABORT,'FOREIGN KEY constraint failed'); END;
+CREATE TRIGGER mail_mentions_task_change BEFORE UPDATE OF message_id,task_id ON mail_mentions
+ WHEN NEW.task_id IS NOT (SELECT task_id FROM mail_messages WHERE id=NEW.message_id)
+ BEGIN SELECT RAISE(ABORT,'FOREIGN KEY constraint failed'); END;
+`
+
+// migrate runs every migration the database lacks in one transaction.
+// Schema 8 rebuilds tables that other tables reference, which SQLite allows
+// only with foreign keys off, and it cannot change that inside a transaction.
+// So the migrations run on one connection with foreign keys off, and
+// PRAGMA foreign_key_check must find no broken reference before the commit.
 func (s *Store) migrate(ctx context.Context, migration string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	conn, err := s.db.Conn(ctx)
+	if err != nil {
+		return storageError(err)
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		return storageError(err)
+	}
+	defer conn.ExecContext(context.Background(), "PRAGMA foreign_keys=ON")
+	tx, err := conn.BeginTx(ctx, nil)
 	if err != nil {
 		return storageError(err)
 	}
@@ -175,6 +231,9 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 	var version, app int
 	if tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version) != nil || tx.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app) != nil {
 		return storageError()
+	}
+	if version == schemaVersion && app == applicationID {
+		return nil
 	}
 	if version > schemaVersion && app == applicationID {
 		return unusableDatabase("the state database %s has schema version %d, but this a-stack supports schema version %d or older; update a-stack with a-stack update, or restore a backup made with this version: %s", s.path, version, schemaVersion, restoreDocs)
@@ -248,6 +307,21 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=7"); err != nil {
 			return storageError(err)
 		}
+	}
+	if version < 8 {
+		if _, err = tx.ExecContext(ctx, migration8); err != nil {
+			return storageError(err)
+		}
+		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=8"); err != nil {
+			return storageError(err)
+		}
+	}
+	var broken bool
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pragma_foreign_key_check)").Scan(&broken); err != nil {
+		return storageError(err)
+	}
+	if broken {
+		return unusableDatabase("the state database %s has broken references (PRAGMA foreign_key_check), so it was not migrated; restore a backup: %s", s.path, restoreDocs)
 	}
 	if err = tx.Commit(); err != nil {
 		return storageError(err)
