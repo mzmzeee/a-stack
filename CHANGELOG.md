@@ -10,6 +10,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 - The agent hooks support OpenCode 1.19 or later. `a-stack hook install --opencode` writes the hook list `a-stack-hooks.json` and the plugin `plugins/a-stack.js` into OpenCode's config folder (`~/.config/opencode`, `$XDG_CONFIG_HOME/opencode`, or `$OPENCODE_CONFIG_DIR`). The plugin comes with the binary and runs the same `a-stack hook` commands: the reminder goes into the session's system prompt, also after a compaction; the mail nudge into the tool output or the prompt; `permission.asked` and `question.asked` record `blocked`; and when the session goes idle, the Stop guard starts one new turn with its reason, never after an error or an abort. Subagent sessions are skipped. Linux and macOS only; no `--project`. Checked end to end with the real OpenCode 1.19.4 and a scripted model. See [OpenCode](docs/hooks.md#opencode).
 - `a-stack herdr bind` binds OpenCode panes. Herdr's OpenCode integration reports the OpenCode session ID, as for Claude Code and Codex. Mention notices stay off for OpenCode until a native fixture verifies them.
+- Mention notices reach Pi 1.4.x (from 1.4.0, below 1.5). A native fixture with the real Pi 1.4.0 TUI in an isolated Herdr 0.9.5 showed that a notice sent while Pi is idle or working is queued and leads to the Agent's own mail check, and that a notice is held back while an extension dialog is open, then sent after it closes. See [Native Pi fixture](docs/notifications.md#native-pi-fixture).
 
 ## [0.1.6] - 2026-10-25
 

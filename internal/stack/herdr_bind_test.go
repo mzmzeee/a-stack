@@ -46,8 +46,8 @@ func TestHerdrBindReadsOwnPane(t *testing.T) {
 }
 
 // Herdr reports a Pi pane's session as the path of its session file. Bind
-// keeps the path as the native session; notices stay off until a native Pi
-// fixture verifies them.
+// keeps the path as the native session, and a Pi 1.4 pane passes the notice
+// check, as the native Pi fixture verified.
 func TestHerdrBindReadsPiPane(t *testing.T) {
 	f, env := bindFixture(t, "1.4.0")
 	f.config.Mode = "pi"
@@ -64,8 +64,11 @@ func TestHerdrBindReadsPiPane(t *testing.T) {
 		t.Fatal("the bound Pi pane does not match its binding:", reason)
 	}
 	f.n.adapter.verified = verifiedHarness
-	if reason := f.n.adapter.verify(ctx, *binding); reason != "unsupported_harness" {
-		t.Fatal("Pi notices are not verified yet:", reason)
+	if reason := f.n.adapter.verify(ctx, *binding); reason != "" {
+		t.Fatal("the bound Pi 1.4 pane fails the notice check:", reason)
+	}
+	if state, reason := f.n.adapter.submit(ctx, *binding); state != NoticeSubmitted {
+		t.Fatal("a notice to the bound Pi pane was not submitted:", reason)
 	}
 	for _, mode := range []string{"pi_id", "pi_relative"} {
 		f.config.Mode = mode

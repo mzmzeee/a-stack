@@ -817,7 +817,7 @@ func TestNotificationsProductionHarnessSupportPredicate(t *testing.T) {
 		// The verified minor line from the fixture version up, nothing else.
 		{"codex", "0.164.0", true}, {"codex", "0.164.1", true}, {"codex", "0.164.27", true}, {"codex", "0.165.0", false}, {"codex", "1.164.0", false},
 		{"codex", "0.163.9", false}, {"codex", "0.164.0-dev", false}, {"codex", "0.164", false}, {"codex", "0.164.01", false}, {"codex", "v0.164.0", false},
-		{"codex", "0.164.0.1", false}, {"codex", "", false}, {"pi", "0.164.0", false}, {"claude", "0.164.0", false}, {"Codex", "0.164.0", false}, {"unknown", "0.164.0", false},
+		{"codex", "0.164.0.1", false}, {"codex", "", false}, {"pi", "0.164.0", false}, {"pi", "1.4.0", true}, {"pi", "1.4.2", true}, {"pi", "1.5.0", false}, {"pi", "1.3.9", false}, {"claude", "0.164.0", false}, {"Codex", "0.164.0", false}, {"unknown", "0.164.0", false},
 	} {
 		t.Run(test.kind+"/"+test.version, func(t *testing.T) {
 			binding := RuntimeBinding{Harness: test.kind, HarnessVersion: test.version}
