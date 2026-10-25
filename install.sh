@@ -5,13 +5,17 @@
 #
 # It runs on Linux and macOS. It checks the release signature with OpenSSL 3,
 # if installed, and the SHA-256 checksum before it installs anything. macOS
-# ships LibreSSL instead, which the script does not use.
+# ships LibreSSL instead, so there it uses OpenSSL 3 from Homebrew, if
+# installed (brew install openssl@3).
 #
 # Environment:
-#   A_STACK_VERSION      release tag to install, such as v0.1.0 (default: latest)
-#   A_STACK_INSTALL_DIR  where to put the binary (default: ~/.local/bin)
-#   A_STACK_BASE_URL     release download URL, for mirrors and tests
-#                        (default: https://github.com/mzmzeee/a-stack/releases)
+#   A_STACK_VERSION            release tag to install, such as v0.1.0
+#                              (default: latest)
+#   A_STACK_INSTALL_DIR        where to put the binary (default: ~/.local/bin)
+#   A_STACK_REQUIRE_SIGNATURE  1 stops the install when the signature cannot
+#                              be checked (default: check only the checksum then)
+#   A_STACK_BASE_URL           release download URL, for mirrors and tests
+#                              (default: https://github.com/mzmzeee/a-stack/releases)
 set -eu
 
 main() {
@@ -29,6 +33,10 @@ main() {
 		aarch64 | arm64) arch=arm64 ;;
 		*) fail "unsupported architecture: $(uname -m)" ;;
 	esac
+	# A shell that runs under Rosetta on Apple silicon says x86_64.
+	if [ "$os" = darwin ] && [ "$arch" = amd64 ] && [ "$(sysctl -n sysctl.proc_translated 2>/dev/null)" = 1 ]; then
+		arch=arm64
+	fi
 	for tool in curl tar awk; do
 		command -v "$tool" >/dev/null 2>&1 || fail "$tool is required"
 	done
@@ -106,24 +114,36 @@ MCowBQYDK2VwAyEANkJiNRRt3iLovFX+EVrAxA1Z7a3diAw6F3PhyC9+D08=
 EOF
 }
 
-# Check SHA256SUMS.sig with OpenSSL 3 or later. Releases before v0.1.5 have
-# no signature; every later release must have a valid one.
+# Check SHA256SUMS.sig with OpenSSL 3 or later: the openssl on PATH, or the
+# one from Homebrew. Releases before v0.1.5 have no signature; every later
+# release must have a valid one.
 check_signature() {
-	case "$(openssl version 2>/dev/null)" in
-		"OpenSSL "[3-9].* | "OpenSSL "[1-9][0-9].*) ;;
-		*)
-			echo "OpenSSL 3 was not found, so the release signature was not checked, only the checksum."
-			echo "To check it by hand, see https://github.com/mzmzeee/a-stack/blob/main/docs/install.md#how-releases-are-verified"
-			return
-			;;
-	esac
+	openssl=""
+	for candidate in openssl ${HOMEBREW_PREFIX:+"$HOMEBREW_PREFIX/opt/openssl@3/bin/openssl"} \
+		/opt/homebrew/opt/openssl@3/bin/openssl /usr/local/opt/openssl@3/bin/openssl; do
+		case "$("$candidate" version 2>/dev/null)" in
+			"OpenSSL "[3-9].* | "OpenSSL "[1-9][0-9].*)
+				openssl="$candidate"
+				break
+				;;
+		esac
+	done
+	if [ -z "$openssl" ]; then
+		[ "${A_STACK_REQUIRE_SIGNATURE:-}" != 1 ] ||
+			fail "OpenSSL 3 was not found, so the release signature cannot be checked, which A_STACK_REQUIRE_SIGNATURE=1 needs; nothing was installed. Install OpenSSL 3 (on macOS: brew install openssl@3) and run the script again"
+		echo "OpenSSL 3 was not found, so the release signature was not checked, only the checksum." >&2
+		echo "To check it, install OpenSSL 3 (on macOS: brew install openssl@3) and run the script again, or see https://github.com/mzmzeee/a-stack/blob/main/docs/install.md#how-releases-are-verified" >&2
+		return
+	fi
 	if curl -fsSL --proto "$proto" --tlsv1.2 -o "$tmp/SHA256SUMS.sig" "$url/SHA256SUMS.sig" 2>/dev/null; then
 		release_key >"$tmp/release-key.pem"
-		openssl pkeyutl -verify -pubin -inkey "$tmp/release-key.pem" -rawin \
+		"$openssl" pkeyutl -verify -pubin -inkey "$tmp/release-key.pem" -rawin \
 			-in "$tmp/SHA256SUMS" -sigfile "$tmp/SHA256SUMS.sig" >/dev/null 2>&1 ||
 			fail "the signature of SHA256SUMS is not valid; nothing was installed"
 	elif [ "$version" != latest ] && unsigned_release "$version"; then
-		echo "a-stack $version has no release signature, as every release before v0.1.5; only the checksum was checked."
+		[ "${A_STACK_REQUIRE_SIGNATURE:-}" != 1 ] ||
+			fail "a-stack $version has no release signature, as every release before v0.1.5, and A_STACK_REQUIRE_SIGNATURE=1 needs one; nothing was installed"
+		echo "a-stack $version has no release signature, as every release before v0.1.5; only the checksum was checked." >&2
 	else
 		fail "download failed: $url/SHA256SUMS.sig; every release since v0.1.5 is signed"
 	fi
