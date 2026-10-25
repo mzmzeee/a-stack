@@ -22,11 +22,11 @@ var browserTemplate = template.Must(template.ParseFS(browserFiles, "browser/inde
 
 // browserAssetTags holds an ETag per embedded asset: a hash of its content, so
 // a browser revalidates and downloads the file again only after it changed.
-// browserAssets names both files together. The page has it, and after a
-// restart it compares it with the one of the service, to offer a reload.
+// browserAssets identifies the page and both assets. After a restart, an open
+// page compares it with the service's revision to offer a reload.
 var browserAssetTags, browserAssets = func() (map[string]string, string) {
 	tags, all := map[string]string{}, sha256.New()
-	for _, name := range []string{"browser/app.js", "browser/app.css"} {
+	for _, name := range []string{"browser/app.js", "browser/app.css", "browser/index.html"} {
 		b, _ := browserFiles.ReadFile(name)
 		sum := sha256.Sum256(b)
 		tags[name] = `"` + hex.EncodeToString(sum[:12]) + `"`

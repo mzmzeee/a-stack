@@ -1,6 +1,8 @@
 package stack
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"strings"
@@ -47,6 +49,21 @@ func TestBrowserAssetsRevalidateWithETag(t *testing.T) {
 		t.Fatal("the page must stay no-store")
 	}
 	if page.Header.Get("X-A-Stack-Assets") != browserAssets || browserAssets == strings.Trim(browserAssetTags["browser/app.js"], `"`) {
-		t.Fatal("the page must name both view files together")
+		t.Fatal("the page must name all view files together")
+	}
+}
+
+func TestBrowserRevisionIncludesPageAndAssets(t *testing.T) {
+	all := sha256.New()
+	for _, name := range []string{"browser/app.js", "browser/app.css", "browser/index.html"} {
+		body, err := browserFiles.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		sum := sha256.Sum256(body)
+		all.Write(sum[:])
+	}
+	if want := hex.EncodeToString(all.Sum(nil)[:12]); browserAssets != want {
+		t.Fatalf("view revision = %q, want %q (including the HTML page)", browserAssets, want)
 	}
 }
