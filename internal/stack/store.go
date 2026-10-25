@@ -603,7 +603,7 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	if _, err = os.Lstat(destination); err == nil {
 		return empty, failure("conflict", "backup destination already exists")
 	} else if !os.IsNotExist(err) {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	conn, err := s.db.Conn(ctx)
 	if err != nil {

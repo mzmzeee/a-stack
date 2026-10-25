@@ -71,8 +71,8 @@ func (s *Store) ListLifecycle(ctx context.Context, token, action string, r ListR
 			}
 			result.Items = append(result.Items, w)
 		}
-		if rows.Err() != nil {
-			return nil, storageError()
+		if err = rows.Err(); err != nil {
+			return nil, storageError(err)
 		}
 		return result, nil
 	case "session.list":

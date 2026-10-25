@@ -133,8 +133,8 @@ func (s *Store) RedeemViewLink(ctx context.Context, r ViewRedeemRequest) (string
 	if err != nil {
 		return "", err
 	}
-	if tx.Commit() != nil {
-		return "", storageError()
+	if err = tx.Commit(); err != nil {
+		return "", storageError(err)
 	}
 	return token, nil
 }

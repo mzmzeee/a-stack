@@ -58,7 +58,7 @@ func statePath(path string) (string, error) {
 			break
 		}
 		if !os.IsNotExist(err) {
-			return "", storageError()
+			return "", storageError(err)
 		}
 		next := filepath.Dir(probe)
 		if next == probe {
@@ -183,7 +183,7 @@ func lockState(path string) (*stateLock, error) {
 		if errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, ErrStateOwned
 		}
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	return &stateLock{dir: dir, file: f}, nil
 }
