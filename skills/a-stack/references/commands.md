@@ -11,12 +11,13 @@ Each command prints `{"data": ...}` on stdout. A change returns a receipt: `data
 | `me session inspect` | `data.revision`, `data.graph_revision`, `data.orchestrator_id`, `data.closed`, and your own Agent ID in `data.your_agent_id` |
 | `me session snapshot --known-revision 12` | Counts of Tasks, Agents, dependencies and assignments, or `unchanged: true` if `read_revision` is still 12 |
 | `me agent list` | `data.items[]` with each Agent's `id` and `name`; find your own ID here |
-| `me task list` | `data.items[]` with `id`, `title`, `progress`, `revision`, `unassigned`, `needs_you`, `prerequisite_count` |
+| `me task list` | `data.items[]` with `id`, `title`, `progress`, `revision`, `unassigned`, `needs_you`, `prerequisite_count`, `quiet` (Working, but no change and no Task mail for 30 minutes) |
 | `me task show --task T` | One Task with `revision`, `progress`, `description`, `report`, `reason`, `result` |
 | `me task assignees --task T` | `data.items[].agent_name` and `agent_id` |
 | `me task history --task T` | Every change of the Task, with the changed texts |
 | `me task references --task T` | The current file references, each with its `id` |
 | `me task dependencies --task T` | The prerequisites of T and their progress |
+| `me task handoff --task T` | A plain-text brief to take over T: its description, report, open question, unfinished prerequisites, assignees and the last 20 Task mails (`--limit N` for more). Only assignees see the mail. `--json` gives the same as data |
 | `me dependency history` | The dependency changes of the Session |
 
 Lists return `data.items` and, when more follow, `data.next`. Get the next page with `--after "$next"`. `--limit` takes 1 to 100.
@@ -109,10 +110,10 @@ Only the current Orchestrator can run these. See [orchestrator.md](orchestrator.
 
 ```sh
 me agent register --name 02-worker --new-credential-file /private/creds/02-worker.json --operation-id orch-register-02-worker
-me task create --title 'Build the API' --body-file /your/private/folder/api.md --ticket '#42' --operation-id orch-task-api-1
+me task create --title 'Build the API' --body-file /your/private/folder/api.md --ticket '#42' --after A --assign 02-worker --assign 01-orchestrator --operation-id orch-task-api-1
 me task edit --task T --title 'Build the REST API' --expected-revision R --operation-id orch-edit-api-1
-me task assign --task T --agent AGENT_ID --expected-revision R --operation-id orch-assign-api-02
-me task unassign --task T --agent AGENT_ID --expected-revision R --operation-id orch-unassign-api-02
+me task assign --task T --agent 02-worker --expected-revision R --operation-id orch-assign-api-02
+me task unassign --task T --agent 02-worker --expected-revision R --operation-id orch-unassign-api-02
 me dependency add --from A --to B --expected-revision G --operation-id orch-dep-a-b-1
 me dependency remove --from A --to B --expected-revision G --operation-id orch-undep-a-b-1
 me task archive --task T --expected-revision R --operation-id orch-archive-api-1
@@ -120,5 +121,7 @@ me task unarchive --task T --expected-revision R --operation-id orch-unarchive-a
 ```
 
 `task archive` takes only a Finished or Cancelled Task. It hides the Task in the Operator's graph and keeps everything. Task data shows `archived` and `archived_reason`: `command`, `chain` (every dependent is done) or `age` (it ended a day ago).
+
+`task create` links and assigns the new Task in the same operation: `--after A` (repeatable) makes it depend on A, and `--assign` (repeatable) adds an assignee. It needs no revision, and its receipt's `revision` is 1 plus the number of assignees. Without `--after`, while other Tasks are open, it prints a hint on stderr. `--agent` and `--assign` take an Agent name or ID.
 
 `G` is the Session's `graph_revision`: from `me session inspect`, or from the receipt of your last dependency change. `--from A --to B` means that B depends on A.

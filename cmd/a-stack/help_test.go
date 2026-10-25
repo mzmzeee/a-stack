@@ -70,7 +70,8 @@ func TestHelpPerCommandFollowsAcceptedFlags(t *testing.T) {
 		}
 		checkWidth(t, c, text)
 		// An Agent credential file names the Workspace and the Session.
-		if !strings.Contains(text, "\nUsage: a-stack "+c+" ") || strings.Contains(text, " VALUE") || strings.Contains(text, "Workspace ID (required)") || strings.Contains(text, "Session ID (required)") {
+		// --name names an Agent or a Session, never "Session or Agent".
+		if !strings.Contains(text, "\nUsage: a-stack "+c+" ") || strings.Contains(text, " VALUE") || strings.Contains(text, "Workspace ID (required)") || strings.Contains(text, "Session ID (required)") || strings.Contains(text, "Session or Agent name") {
 			t.Fatalf("%s help:\n%s", c, text)
 		}
 		for _, name := range strings.Fields(acceptedFlags(c)) {
@@ -86,13 +87,16 @@ func TestHelpPerCommandFollowsAcceptedFlags(t *testing.T) {
 			}
 		}
 	}
+	if !strings.Contains(helpOutput(t, "agent", "register", "--help"), "  --name NAME              Agent name (required)\n") || !strings.Contains(helpOutput(t, "session", "create", "--help"), "  --name NAME              Session name (required)\n") {
+		t.Fatal("--name help of agent register or session create")
+	}
 	create := helpOutput(t, "task", "create", "--help")
-	for _, want := range []string{"Create a Task.\n", "  --title TEXT             Task title (required)\n", "  --workspace ID           Workspace ID (required unless the credential file\n                           names it)\n", "  --session ID             Session ID (required unless the credential file names\n                           it)\n", "  --description TEXT       Task description\n", "  --credential-file FILE   "} {
+	for _, want := range []string{"Create a Task.\n", "  --title TEXT             Task title (required)\n", "  --workspace ID           Workspace ID (required with the Operator credential)\n", "  --session ID             Session ID (required with the Operator credential)\n", "  --description TEXT       Task description\n", "  --credential-file FILE   "} {
 		if !strings.Contains(create, want) {
 			t.Fatalf("task create help misses %q:\n%s", want, create)
 		}
 	}
-	if list := helpOutput(t, "help", "session", "list"); !strings.Contains(list, "Workspace ID (required unless") || strings.Contains(list, "Session ID (required") {
+	if list := helpOutput(t, "help", "session", "list"); !strings.Contains(list, "Workspace ID (required with the Operator credential)") || strings.Contains(list, "Session ID (required") {
 		t.Fatalf("session list help:\n%s", list)
 	}
 	send := helpOutput(t, "help", "mail", "send")
@@ -126,7 +130,7 @@ func TestHelpJSONStaysCompatible(t *testing.T) {
 	if len(help.Data.Commands) != len(old)+16 || strings.Join(help.Data.Commands[:len(old)], ",") != strings.Join(old, ",") || strings.Join(help.Data.Commands[len(old):], ",") != "new,skill install,skill uninstall,update,view revoke,service install,service uninstall,service status,status,watch,hook install,hook uninstall,hook,statusline,herdr bind,herdr focus" {
 		t.Fatalf("commands changed: %v", help.Data.Commands)
 	}
-	added := map[string]bool{"-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true, "--all": true, "--notify": true, "--notify-text": true, "--claude": true, "--codex": true, "--pi": true, "--orchestrator": true, "--no-stop-guard": true, "--no-mail-nudge": true, "--question-id": true, "--text": true}
+	added := map[string]bool{"-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true, "--all": true, "--notify": true, "--notify-text": true, "--claude": true, "--codex": true, "--pi": true, "--orchestrator": true, "--no-stop-guard": true, "--no-mail-nudge": true, "--assign": true, "--question-id": true, "--text": true}
 	before := []string{}
 	for _, f := range help.Data.Flags {
 		if !added[f] {

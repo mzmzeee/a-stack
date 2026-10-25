@@ -25,7 +25,8 @@
 # The view URL fragment is a credential. The script never prints it or writes
 # it to a file, and the terminal recording shows it as dots.
 #
-# Needs Go, Python 3, ffmpeg, ImageMagick (magick), agent-browser and curl.
+# Needs Go, Python 3, ffmpeg, ImageMagick (magick), gifsicle, agent-browser
+# and curl.
 # Downloads a pinned agg release into .tmp/ and checks its SHA-256.
 # Usage: scripts/record-demo.sh
 set -euo pipefail
@@ -61,6 +62,9 @@ AGG_VERSION=v1.9.0
 FPS=10
 # The GIF is 960 pixels wide, about the width of a README on GitHub.
 GIF_WIDTH=960 CAPTION_HEIGHT=44 VIEW_HEIGHT=480
+# 64 colors keep the status colors (48 lose the purple of Working), and a
+# light lossy compression (gifsicle's scale is 0 to 200) keeps text sharp.
+GIF_COLORS=64 GIF_LOSSY=40
 # The terminal: 100 columns fit most commands on one line, 8 rows fit the
 # picker.
 TERM_COLS=100 TERM_ROWS=8
@@ -73,7 +77,7 @@ ZOOM=1.5
 die() { printf 'record-demo: %s\n' "$*" >&2; exit 1; }
 step() { printf '== %s\n' "$*"; }
 
-for tool in go python3 ffmpeg magick agent-browser curl sha256sum; do
+for tool in go python3 ffmpeg magick gifsicle agent-browser curl sha256sum; do
   command -v "$tool" >/dev/null || die "$tool is not installed"
 done
 
@@ -143,8 +147,9 @@ trap 'exit 143' TERM
 step "build a-stack"
 mkdir -p "$work_dir/bin" "$cred_dir" "$demo_home/.local/state/a-stack" "$demo_home/code/oauth-app"
 bin="$work_dir/bin/a-stack"
-# The footer of the view shows this version.
-GOCACHE="$build_cache" go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" -o "$bin" ./cmd/a-stack
+# The footer of the view shows this version: the latest release tag, not the
+# development build in between.
+GOCACHE="$build_cache" go build -ldflags "-X main.version=$(git describe --tags --abbrev=0)" -o "$bin" ./cmd/a-stack
 
 # a-stack new and a-stack -r call xdg-open with the view URL. In the demo this
 # stand-in shows the URL in the recording browser instead.
@@ -842,10 +847,18 @@ make_gif() {
   done
   ffmpeg -v error -y -i "$work_dir/story.mkv" "${inputs[@]}" -filter_complex "
     $filters
-    ${labels}concat=n=$count:v=1,split[a][b];
-    [a]palettegen=max_colors=128:stats_mode=diff[p];
+    ${labels}concat=n=$count:v=1" -c:v ffv1 "$work_dir/$name.mkv"
+  # Keep the GIF small without making it faster. mpdecimate drops frames that
+  # barely change, such as video noise. While the view zooms or scrolls (a
+  # scene score of 0.004 or more), only every third frame stays. fps repeats
+  # the frame before in each gap, and gifsicle joins those repeats into one
+  # longer frame and stores only what changes.
+  ffmpeg -v error -y -i "$work_dir/$name.mkv" -filter_complex "
+    [0:v]mpdecimate,select='lt(scene,0.004)+not(mod(n,3))',fps=$FPS,split[a][b];
+    [a]palettegen=max_colors=$GIF_COLORS:stats_mode=diff[p];
     [b][p]paletteuse=dither=none:diff_mode=rectangle" \
-    "$out/$name.gif"
+    "$work_dir/$name.gif"
+  gifsicle -O3 --lossy="$GIF_LOSSY" "$work_dir/$name.gif" -o "$out/$name.gif"
 }
 for name in demo demo-graph demo-archive demo-agents; do make_gif "$name"; done
 

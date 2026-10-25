@@ -1,6 +1,6 @@
 # Tasks and the Task graph
 
-A Task belongs to one Session. The Operator names the Session in each Task command with `--workspace ID --session ID`. An Agent runs Task commands with `--as agent --credential-file PRIVATE_FILE`. A credential file from v0.1.5 or later names the Session, so the Agent can leave both IDs out (see [Credential context](lifecycle.md#credential-context)). The current directory never changes the context. (Only the Operator commands `a-stack`, `a-stack -r` and `a-stack new` use it, to choose a Session to open. See [Workspaces, Sessions and Agents](lifecycle.md).) Before you use these commands, enroll the Operator, the Orchestrator and the other Agents as described in [Workspaces, Sessions and Agents](lifecycle.md).
+A Task belongs to one Session. The Operator names the Session in each Task command with `--workspace ID --session ID`. An Agent runs Task commands with `--as agent --credential-file PRIVATE_FILE`. The Agent can leave both IDs out: the CLI takes them from the credential file, or for a file from before v0.1.5 from the service (see [Credential context](lifecycle.md#credential-context)). The current directory never changes the context. (Only the Operator commands `a-stack`, `a-stack -r` and `a-stack new` use it, to choose a Session to open. See [Workspaces, Sessions and Agents](lifecycle.md).) Before you use these commands, enroll the Operator, the Orchestrator and the other Agents as described in [Workspaces, Sessions and Agents](lifecycle.md).
 
 ## Who can do what
 
@@ -43,6 +43,18 @@ a-stack task status --as agent --credential-file "$worker_a_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --progress working --expected-revision 3 --operation-id task-start-work --json
 ```
+
+`task create` can link and assign the new Task in the same operation. Give `--after TASK_ID` once for each prerequisite and `--assign AGENT` once for each assignee. a-stack adds the dependencies and the assignments in the same transaction as the Task, or nothing when one of them is wrong, so a retry with the same operation ID is safe. A new Task has no dependents and nobody has read its revision yet, so these links need no expected revision, and no `session inspect` before them. The dependencies take the graph revision of the create. Each assignment is one Task revision with its own `task.assign` history entry, so the receipt's revision is 1 plus the number of assignees. The example above in one command:
+
+```sh
+a-stack task create --as agent --credential-file "$orchestrator_credential" \
+  --workspace "$workspace_id" --session "$session_id" --title "Build feature" \
+  --after "$design_task_id" --assign 02-worker --assign 03-worker \
+  --operation-id task-create-42 --json
+# data.revision is 3: the Task and its two assignments.
+```
+
+`--assign`, and `--agent` in every command that takes it except the hook commands, takes an Agent ID or the Agent's name. The CLI looks the name up with `agent list` in the Session and sends the ID. Names are unique in a Workspace; an unknown name fails before any change. A create without `--after` in a Session that has other open (Waiting or Working) Tasks prints one hint line on stderr, such as `a-stack: hint: the new Task has no prerequisites, and 3 other Task(s) are open; …`. stdout keeps only the receipt.
 
 Both assignees see the same Task ID, revision and status. `task show` reads the current details of one Task. `task list` shows all Tasks, also the Unassigned ones. Use the revision from the last response for the next change.
 
@@ -87,6 +99,19 @@ a-stack stores only the command, as `archived_at`, and the time the Task last be
 `task report --report TEXT` replaces the shared report. `task edit` accepts `--title`, `--description` and `--ticket`, in any combination. An explicitly empty description or Ticket reference clears it. If a large text does not change, a-stack reuses the stored copy.
 
 `task history` pages through the retained changes and the changed text versions. It does not store a full copy of the Task for each change. Each entry has `actor_kind`: `agent` with the Agent's `actor_id`, or `operator` with no `actor_id`. Only `task archive` and `task unarchive` write Operator entries. An Operator change keeps the Task's `updated_by`, which always names an Agent. A new Task stores no text for an empty description or for its starting reason `Not started`. Reads still show both, and in the `task.create` history entry these two texts have no `id`.
+
+## Hand a Task over
+
+When an Agent stops before its Task is done, for example at a usage limit or after a crash, `task handoff --task T` prints a brief that a fresh Agent can start from:
+
+- the Task, Session and Workspace IDs, the progress and revision, and the reason or result;
+- the description and the report;
+- the open Needs you question, who asked it and when;
+- the unfinished prerequisites: every prerequisite that is not Finished, with its progress and reason;
+- the assignees, as `@name` for mentions;
+- the latest Task mail, oldest first: 20 messages, or `--limit N` (1 to 500).
+
+The brief is plain text in Markdown. `--json` prints the same as `{"data":{"task":...,"asker_name":...,"unfinished_prerequisites":[...],"assignees":[...],"mail":{"readable":true,"total":37,"messages":[...]}}}`. The command only reads, with the same reads as `task show`, `task dependencies`, `task assignees` and `mail read`, so it changes nothing. Only assignees read Task mail: for anyone else, such as the Operator or an Orchestrator that is not assigned, the brief gives the number of messages and says that the credential cannot read them. Text from Agents keeps its line breaks; other control characters are replaced. The command needs no new service: it works with a v0.1.6 service too.
 
 ## Text input and limits
 
@@ -151,7 +176,7 @@ In the same transaction, a-stack rejects a duplicate dependency, a dependency fr
 
 `dependency history` lists the compact history of dependency changes. `task dependencies --task ID` lists the prerequisites of a Task and their current progress. Task details also show `cancelled_prerequisite_count`.
 
-Creating a Task or changing a dependency increases `graph_revision`. Other Task changes increase the Task revision and the Session `read_revision`, but not `graph_revision`. When a prerequisite is finished or cancelled, its dependent Tasks do not change, and they can still be finished.
+Creating a Task or changing a dependency increases `graph_revision`, by one for a create with any number of `--after` prerequisites. Other Task changes increase the Task revision and the Session `read_revision`, but not `graph_revision`. When a prerequisite is finished or cancelled, its dependent Tasks do not change, and they can still be finished.
 
 ## Closed Sessions
 
@@ -183,6 +208,8 @@ A Task item has:
 - `last_action`, the action of the latest history entry, such as `task.status`. It happened at `updated_at`.
 - `archived`, `archived_reason` (`command`, `chain` or `age`), `archived_at` and `ended_at`, as described in [Archived Tasks](#archived-tasks).
 - `mail_count`, the number of messages in the Task's mail. It is the last mail sequence, read from the `(task_id, sequence)` index.
+- `last_mail_at`, the time of the latest Task mail, left out when the Task has none.
+- `quiet`, true for a Working Task with no change and no Task mail for 30 minutes that does not wait for an answer to a Needs you question. The read derives it from `updated_at` and `last_mail_at`; nothing is stored. See [Quiet Tasks](watch.md#quiet-tasks).
 
 It has no full report, question or description body.
 

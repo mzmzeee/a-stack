@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"unicode/utf8"
 )
@@ -47,11 +48,15 @@ const MaxTaskNoteBytes = 2048
 
 // ReportPreview and QuestionPreview are limited to 160 Unicode code points in the read projection.
 // LastAction is the action of the Task's latest history entry, such as task.status; it happened at UpdatedAt.
+// LastMailAt is the time of the latest Task mail. Quiet marks a Working Task with no change and no Task mail
+// for QuietAfter that does not wait for the Operator's answer (see QuietAt).
 type Task struct {
 	ReportPreview                                   string `json:"report_preview,omitempty"`
 	QuestionPreview                                 string `json:"question_preview,omitempty"`
 	LastAction                                      string `json:"last_action,omitempty"`
 	MailCount                                       int64  `json:"mail_count"`
+	LastMailAt                                      string `json:"last_mail_at,omitempty"`
+	Quiet                                           bool   `json:"quiet"`
 	Archived                                        bool   `json:"archived"`
 	ArchivedReason                                  string `json:"archived_reason,omitempty"`
 	ArchivedAt                                      string `json:"archived_at,omitempty"`
@@ -106,7 +111,16 @@ type TaskCreateRequest struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	TicketRef   string `json:"ticket_ref,omitempty"`
+	// PrerequisiteIDs and AgentIDs link and assign the new Task in the same
+	// operation. Nobody holds the new Task's revision, and a Task without
+	// dependents cannot close a cycle, so they need no expected revision.
+	PrerequisiteIDs []string `json:"prerequisite_ids,omitempty"`
+	AgentIDs        []string `json:"agent_ids,omitempty"`
 }
+
+// MaxCreateLinks bounds the prerequisites, and the assignees, of one Task create.
+const MaxCreateLinks = 100
+
 type TaskChangeRequest struct {
 	Context
 	OperationID       string  `json:"operation_id"`
@@ -184,6 +198,7 @@ const taskColumns = `t.id,t.session_id,t.title,t.ticket_ref,t.progress,t.revisio
  COALESCE((SELECT substr(q.question,1,160) FROM task_questions q WHERE q.task_id=t.id AND q.resolved_at IS NULL),''),
  COALESCE((SELECT h.action FROM task_history h WHERE h.task_id=t.id ORDER BY h.sequence DESC LIMIT 1),''),
  COALESCE((SELECT max(m.sequence) FROM mail_messages m WHERE m.task_id=t.id),0),
+ COALESCE((SELECT m.received_at FROM mail_messages m WHERE m.task_id=t.id ORDER BY m.sequence DESC LIMIT 1),''),
  t.archived_at,t.ended_at,
  CASE WHEN t.progress IN ('finished','cancelled') THEN EXISTS(SELECT 1 FROM dependencies d WHERE d.session_id=t.session_id AND d.prerequisite_id=t.id)
   AND NOT EXISTS(SELECT 1 FROM dependencies d JOIN tasks n ON n.id=d.dependent_id WHERE d.session_id=t.session_id AND d.prerequisite_id=t.id AND n.progress NOT IN ('finished','cancelled')) ELSE 0 END`
@@ -196,9 +211,11 @@ const taskByID = "SELECT " + taskColumns + " FROM tasks t WHERE t.id=? AND t.ses
 
 func scanTask(row interface{ Scan(...any) error }) (Task, error) {
 	var t Task
-	err := row.Scan(&t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction, &t.MailCount, &t.ArchivedAt, &t.EndedAt, &t.chainDone)
+	err := row.Scan(&t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction, &t.MailCount, &t.LastMailAt, &t.ArchivedAt, &t.EndedAt, &t.chainDone)
 	t.Unassigned = t.AssigneeCount == 0
-	deriveArchive(&t, clockNow())
+	at := clockNow()
+	deriveArchive(&t, at)
+	t.Quiet = t.quiet(at)
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, failure("not_found", "Task not found in Session")
 	}
@@ -374,11 +391,66 @@ func (s *Store) CreateTask(ctx context.Context, token string, r TaskCreateReques
 		if err = recordTask(ctx, tx, p, id, "task.create", 1, TaskChange{Title: &r.Title, TicketRef: &r.TicketRef, TextIDs: texts, Progress: "waiting"}); err != nil {
 			return Receipt{}, err
 		}
+		revision, err := linkNewTask(ctx, tx, p, session, id, r)
+		if err != nil {
+			return Receipt{}, err
+		}
 		if err = bumpGraph(ctx, tx, r.SessionID); err != nil {
 			return Receipt{}, err
 		}
-		return Receipt{ResourceID: id, Revision: 1, Outcome: "created"}, nil
+		return Receipt{ResourceID: id, Revision: revision, Outcome: "created"}, nil
 	})
+}
+
+// linkNewTask adds the prerequisites and the assignees of a new Task, as
+// dependency add and task assign would, and returns the Task's revision. The
+// links take the graph revision of the create; each assignment is one Task
+// revision with its own history entry.
+func linkNewTask(ctx context.Context, tx *sql.Tx, p Principal, session Session, id string, r TaskCreateRequest) (int64, error) {
+	if len(r.PrerequisiteIDs) > MaxCreateLinks || len(r.AgentIDs) > MaxCreateLinks {
+		return 0, failure("invalid_input", fmt.Sprintf("at most %d prerequisites and %d assignees per Task create", MaxCreateLinks, MaxCreateLinks))
+	}
+	timestamp := now()
+	for i, prerequisite := range r.PrerequisiteIDs {
+		if slices.Contains(r.PrerequisiteIDs[:i], prerequisite) {
+			return 0, failure("invalid_input", "prerequisite "+prerequisite+" is given twice")
+		}
+		if _, err := taskInSession(ctx, tx, prerequisite, r.SessionID); err != nil {
+			if e, ok := err.(*Error); ok && e.Code == "not_found" {
+				return 0, failure("not_found", "prerequisite "+prerequisite+" is not a Task in this Session")
+			}
+			return 0, err
+		}
+		edge := opaqueID()
+		if _, err := tx.ExecContext(ctx, "INSERT INTO dependencies VALUES(?,?,?,?,?,?)", edge, r.SessionID, prerequisite, id, p.SubjectID, timestamp); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO graph_history(session_id,actor_id,action,edge_id,prerequisite_id,dependent_id,revision,received_at) VALUES(?,?,?,?,?,?,?,?)", r.SessionID, p.SubjectID, "add", edge, prerequisite, id, session.GraphRevision+1, timestamp); err != nil {
+			return 0, err
+		}
+	}
+	revision := int64(1)
+	for i, agent := range r.AgentIDs {
+		if slices.Contains(r.AgentIDs[:i], agent) {
+			return 0, failure("invalid_input", "Agent "+agent+" is given twice")
+		}
+		if _, err := agentInSession(ctx, tx, agent, r.SessionID); err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, "INSERT INTO task_assignees VALUES(?,?,?,?,?)", id, agent, p.SubjectID, timestamp, r.SessionID); err != nil {
+			return 0, err
+		}
+		revision++
+		if err := recordTask(ctx, tx, p, id, "task.assign", revision, TaskChange{AgentID: agent}); err != nil {
+			return 0, err
+		}
+	}
+	if revision > 1 {
+		if _, err := tx.ExecContext(ctx, "UPDATE tasks SET revision=? WHERE id=?", revision, id); err != nil {
+			return 0, err
+		}
+	}
+	return revision, nil
 }
 func taskRevision(expected int64, t Task) error {
 	err := expectedRevision(expected, t.Revision)

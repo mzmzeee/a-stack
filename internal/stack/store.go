@@ -677,8 +677,13 @@ type StorageStatus struct {
 	// FreeBytes is the free space of the database's file system, measured at
 	// most diskCheckInterval ago. It is absent when it cannot be measured.
 	FreeBytes *uint64 `json:"free_bytes,omitempty"`
-	LowDisk   bool    `json:"low_disk,omitempty"`
-	Warning   string  `json:"warning,omitempty"`
+	// FreeInFileBytes is the size of the free pages inside the database file.
+	// SQLite reuses them but never gives them back to the file system; a
+	// backup and a restore do (Note says so when they are a quarter or more).
+	FreeInFileBytes int64  `json:"free_in_file_bytes"`
+	Note            string `json:"note,omitempty"`
+	LowDisk         bool   `json:"low_disk,omitempty"`
+	Warning         string `json:"warning,omitempty"`
 }
 
 func (s *Store) Status() (StorageStatus, error) {
@@ -692,6 +697,12 @@ func (s *Store) Status() (StorageStatus, error) {
 			return status, storageError(err)
 		}
 		*target = info.Size()
+	}
+	if err := s.db.QueryRow("SELECT freelist_count*page_size FROM pragma_freelist_count,pragma_page_size").Scan(&status.FreeInFileBytes); err != nil {
+		return status, storageError(err)
+	}
+	if status.FreeInFileBytes > 0 && status.FreeInFileBytes*4 >= status.DatabaseBytes {
+		status.Note = "a quarter or more of state.db is free pages, which SQLite reuses; to make the file smaller, write a backup with storage backup and restore it"
 	}
 	if free, err := s.disk.get(s.path); err == nil {
 		status.FreeBytes = &free
