@@ -3,8 +3,9 @@
 #
 #   curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | sh
 #
-# It checks the release signature with OpenSSL 3, if installed, and the
-# SHA-256 checksum before it installs anything.
+# It runs on Linux and macOS. It checks the release signature with OpenSSL 3,
+# if installed, and the SHA-256 checksum before it installs anything. macOS
+# ships LibreSSL instead, which the script does not use.
 #
 # Environment:
 #   A_STACK_VERSION      release tag to install, such as v0.1.0 (default: latest)
@@ -18,22 +19,34 @@ main() {
 	version="${A_STACK_VERSION:-latest}"
 	install_dir="${A_STACK_INSTALL_DIR:-$HOME/.local/bin}"
 
-	[ "$(uname -s)" = Linux ] || fail "a-stack supports Linux only"
+	case "$(uname -s)" in
+		Linux) os=linux ;;
+		Darwin) os=darwin ;;
+		*) fail "a-stack supports Linux and macOS only" ;;
+	esac
 	case "$(uname -m)" in
 		x86_64 | amd64) arch=amd64 ;;
 		aarch64 | arm64) arch=arm64 ;;
 		*) fail "unsupported architecture: $(uname -m)" ;;
 	esac
-	for tool in curl tar sha256sum awk; do
+	for tool in curl tar awk; do
 		command -v "$tool" >/dev/null 2>&1 || fail "$tool is required"
 	done
+	# macOS has shasum instead of sha256sum.
+	if command -v sha256sum >/dev/null 2>&1; then
+		sha256="sha256sum"
+	elif command -v shasum >/dev/null 2>&1; then
+		sha256="shasum -a 256"
+	else
+		fail "sha256sum or shasum is required"
+	fi
 
 	if [ "$version" = latest ]; then
 		url="$repo_url/latest/download"
 	else
 		url="$repo_url/download/$version"
 	fi
-	archive="a-stack_linux_$arch.tar.gz"
+	archive="a-stack_${os}_$arch.tar.gz"
 	# Refuse plain HTTP, also after redirects, unless a mirror is set.
 	proto='=https'
 	[ -z "${A_STACK_BASE_URL:-}" ] || proto='=https,http,file'
@@ -48,7 +61,7 @@ main() {
 		fail "download failed: $url/SHA256SUMS"
 	check_signature
 	expected="$(awk -v f="$archive" '$2 == f { print $1 }' "$tmp/SHA256SUMS")"
-	actual="$(sha256sum "$tmp/$archive" | cut -d ' ' -f 1)"
+	actual="$($sha256 "$tmp/$archive" | cut -d ' ' -f 1)"
 	[ -n "$expected" ] && [ "$expected" = "$actual" ] || fail "checksum mismatch for $archive"
 
 	tar -xzf "$tmp/$archive" -C "$tmp" a-stack
@@ -65,8 +78,10 @@ main() {
 		echo "a-stack $installed is already installed in $install_dir/a-stack"
 	else
 		echo "Updated a-stack $previous -> $installed in $install_dir/a-stack"
-		if command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet a-stack 2>/dev/null; then
+		if [ "$os" = linux ] && command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet a-stack 2>/dev/null; then
 			echo "Restart the service: systemctl --user restart a-stack"
+		elif [ "$os" = darwin ] && launchctl print "gui/$(id -u)/dev.a-stack" 2>/dev/null | grep -q 'state = running'; then
+			echo "Restart the service: launchctl kickstart -k gui/$(id -u)/dev.a-stack"
 		else
 			echo "If a-stack serve is running, stop it with Ctrl-C and start it again."
 		fi
@@ -98,6 +113,7 @@ check_signature() {
 		"OpenSSL "[3-9].* | "OpenSSL "[1-9][0-9].*) ;;
 		*)
 			echo "OpenSSL 3 was not found, so the release signature was not checked, only the checksum."
+			echo "To check it by hand, see https://github.com/mzmzeee/a-stack/blob/main/docs/install.md#how-releases-are-verified"
 			return
 			;;
 	esac

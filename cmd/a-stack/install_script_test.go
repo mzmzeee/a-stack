@@ -2,7 +2,9 @@ package main
 
 import (
 	"crypto/ed25519"
+	"crypto/sha256"
 	"crypto/x509"
+	"encoding/hex"
 	"encoding/pem"
 	"os"
 	"os/exec"
@@ -18,14 +20,14 @@ func TestInstallScriptChecksTheSignature(t *testing.T) {
 	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
 		t.Skip("install.sh supports amd64 and arm64")
 	}
-	for _, tool := range []string{"sh", "curl", "openssl", "sha256sum"} {
+	for _, tool := range []string{"sh", "curl", "tar", "awk"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skip(tool + " is not installed")
 		}
 	}
-	if out, _ := exec.Command("openssl", "version").Output(); !strings.HasPrefix(string(out), "OpenSSL 3") {
-		t.Skip("OpenSSL 3 is not installed")
-	}
+	// macOS has LibreSSL, so only the case without OpenSSL 3 runs there.
+	out, _ := exec.Command("openssl", "version").Output()
+	openSSL3 := strings.HasPrefix(string(out), "OpenSSL 3")
 	original, err := os.ReadFile("../../install.sh")
 	if err != nil {
 		t.Fatal(err)
@@ -45,6 +47,14 @@ func TestInstallScriptChecksTheSignature(t *testing.T) {
 	if err = os.WriteFile(filepath.Join(oldSSL, "openssl"), []byte("#!/bin/sh\necho 'LibreSSL 3.8.2'\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// And a fake macOS on arm64, with LibreSSL as there.
+	mac := t.TempDir()
+	if err = os.WriteFile(filepath.Join(mac, "openssl"), []byte("#!/bin/sh\necho 'LibreSSL 3.3.6'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(mac, "uname"), []byte("#!/bin/sh\ncase \"$1\" in -s) echo Darwin ;; -m) echo arm64 ;; esac\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 
 	for _, c := range []struct {
 		name, tag, sig, path string
@@ -57,22 +67,31 @@ func TestInstallScriptChecksTheSignature(t *testing.T) {
 		{"missing on latest", "latest", "missing", "", false, "every release since v0.1.5 is signed"},
 		{"missing on an old release", "v0.1.4", "missing", "", true, "a-stack v0.1.4 has no release signature"},
 		{"bad on an old release", "v0.1.4", "bad", "", false, "the signature of SHA256SUMS is not valid"},
-		{"no OpenSSL 3", "v0.2.0", "bad", oldSSL, true, "OpenSSL 3 was not found, so the release signature was not checked"},
+		{"no OpenSSL 3", "v0.2.0", "bad", oldSSL, true, "To check it by hand, see https://github.com/mzmzeee/a-stack/blob/main/docs/install.md#how-releases-are-verified"},
+		{"macOS", "v0.2.0", "good", mac, true, "Installed a-stack v0.2.0"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			if c.path == "" && !openSSL3 {
+				t.Skip("OpenSSL 3 is not installed")
+			}
 			mirror := t.TempDir()
 			tag := c.tag
 			if tag == "latest" {
 				tag = "v0.2.0"
 			}
 			archive := tarGz(t, map[string]string{"a-stack": fakeBinary(tag)})
-			sums := (&fakeRelease{}).sums(archive)
+			name := releaseArchive(runtime.GOOS, runtime.GOARCH)
+			if c.path == mac {
+				name = releaseArchive("darwin", "arm64")
+			}
+			sum := sha256.Sum256(archive)
+			sums := []byte(hex.EncodeToString(sum[:]) + "  " + name + "\n")
 			sig := ed25519.Sign(testKey, sums)
 			if c.sig == "bad" {
 				sig[0]++
 			}
 			for _, dir := range []string{filepath.Join(mirror, "download", tag), filepath.Join(mirror, "latest", "download")} {
-				files := map[string][]byte{releaseArchive(runtime.GOOS, runtime.GOARCH): archive, "SHA256SUMS": sums}
+				files := map[string][]byte{name: archive, "SHA256SUMS": sums}
 				if c.sig != "missing" {
 					files["SHA256SUMS.sig"] = sig
 				}
