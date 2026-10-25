@@ -1,6 +1,6 @@
 # Install
 
-a-stack runs on Linux and macOS, on x86-64 (`amd64`) and ARM64 (`arm64`). The Linux release binaries are statically linked. They do not need other libraries. The macOS release binaries run on macOS 12 or later and use only the libraries that come with macOS. macOS releases start with v0.1.5.
+a-stack runs on Linux and macOS, on x86-64 (`amd64`) and ARM64 (`arm64`). The Linux release binaries are statically linked. They do not need other libraries. The macOS release binaries run on macOS 12 or later and use only the libraries that come with macOS.
 
 On both systems, a-stack keeps its data in `~/.local/state/a-stack`, or in `$XDG_STATE_HOME/a-stack` when `XDG_STATE_HOME` is set. macOS uses the same folder as Linux, so the commands in these guides and the agent skill work the same on both.
 

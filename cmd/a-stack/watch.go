@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -27,7 +28,7 @@ func isWatchCommand(command string) bool { return command == "watch" || command 
 type watchFlags struct{ all, notify, notifyText bool }
 
 func (f *watchFlags) register(fs *flag.FlagSet) {
-	fs.BoolVar(&f.notify, "notify", false, "Also show a desktop notice through notify-send")
+	fs.BoolVar(&f.notify, "notify", false, "Also show a desktop notice through notify-send (osascript on macOS)")
 	fs.BoolVar(&f.notifyText, "notify-text", false, "Put the question in the desktop notice (implies --notify)")
 }
 
@@ -225,10 +226,14 @@ func statusCounts(r sessionStatus) string {
 // It reads a Session's Tasks again only when its read revision changed.
 func (w *watcher) watch(ctx context.Context) error {
 	if w.notify {
-		if path, err := exec.LookPath("notify-send"); err == nil {
+		tool := "notify-send"
+		if runtime.GOOS == "darwin" {
+			tool = "osascript"
+		}
+		if path, err := exec.LookPath(tool); err == nil {
 			w.notifySend = path
 		} else if w.notifier == nil {
-			_, _ = io.WriteString(w.stderr, "notify-send is not installed; watch shows no desktop notices.\n")
+			_, _ = io.WriteString(w.stderr, tool+" is not installed; watch shows no desktop notices.\n")
 		}
 	}
 	rows, err := w.poll(ctx, true)
@@ -392,7 +397,8 @@ func eventLine(e watchEvent) string {
 	return fmt.Sprintf("%s  %s  %s: %s\n", e.At, printable(e.Session), printable(e.Title), printable(truncate(what, 120)))
 }
 
-// desktopNotice runs notify-send. A failure only costs the notice.
+// desktopNotice runs notify-send, or osascript on macOS. A failure only
+// costs the notice.
 func (w *watcher) desktopNotice(summary, body string) {
 	if w.notifier != nil {
 		_ = w.notifier(summary, body)
@@ -404,6 +410,10 @@ func (w *watcher) desktopNotice(summary, body string) {
 	args := []string{"--app-name=a-stack", summary}
 	if body != "" {
 		args = append(args, body)
+	}
+	if runtime.GOOS == "darwin" {
+		// The texts go in as arguments, never into the script.
+		args = []string{"-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", summary, body}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
