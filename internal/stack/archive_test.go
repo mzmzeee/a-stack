@@ -247,7 +247,7 @@ func TestArchiveMigrationFromV5(t *testing.T) {
 				db.QueryRow("SELECT count(*) FROM task_history").Scan(&entries) != nil {
 				t.Fatal("history before the downgrade")
 			}
-			if _, err = db.Exec(undoMigration7 + undoMigration6 + "PRAGMA user_version=5"); err != nil {
+			if _, err = db.Exec(undoMigration9 + undoMigration7 + undoMigration6 + "PRAGMA user_version=5"); err != nil {
 				t.Fatal(err)
 			}
 			if fail {
