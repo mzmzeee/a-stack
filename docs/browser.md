@@ -1,6 +1,6 @@
 # Browser view
 
-The browser view shows one Session: its Task graph, its Agents and the details of each Task. It is read-only. It shows the Task mail of a Task, but it cannot send mail or change anything.
+The browser view shows one Session: its Task graph, its Agents and the details of each Task. It is read-only, with one exception: it can answer a Needs you question (see [The one write](#the-one-write)). It shows the Task mail of a Task, but it cannot send other mail or change anything else.
 
 ## Open the view
 
@@ -212,6 +212,10 @@ The Now tab uses two more optional fields of the Task data. `question_preview` i
 The Task data also has `mail_count`, the number of messages in the Task's mail. Mail is append-only, so this is the last mail sequence, which SQLite reads from the `(task_id, sequence)` index. A mail send raises the Session read revision, so the next poll sees the new count. On the 1,000-Task fixture, `mail_count` added about 15 KB to the whole Task collection.
 
 `POST /v1/session/snapshot` returns an ETag made of the Session ID, the read revision and the number of Tasks that the age rule archives. That number grows when a done Task becomes 24 hours old, which does not change the read revision. When the ETag the page sends has another number, or none, the answer is a full one with `unchanged: false`, even for the same `known_revision`. The service checks `If-None-Match` after the normal authenticated read. CLI clients can still use the JSON `known_revision`. The collection limits and the page budget of 768 KiB still apply. During polling, the page does not load details for every Task. It refreshes only the selected Task's details, when that Task's revision changes.
+
+### The one write
+
+The view token can make one change: answer the open Needs you question of a Task in its own Session, with `POST /v1/task/answer`. It is the same operation as [`a-stack answer`](tasks.md#answer-a-question). The body is JSON with `workspace_id`, `session_id`, `operation_id`, `task_id`, `question_id` and `answer`, plain text of 4,096 bytes at most. The request needs the view token, the `X-A-Stack-Instance` header, `Content-Type: application/json`, the right `Host`, and an `Origin` header equal to the service URL; without `Origin` the view token gets `forbidden`. A form on another site cannot send the bearer token, the instance header or JSON, so it cannot answer for you. The answer fails with `forbidden` for another Session, `conflict` when the Task has no open question or another one than `question_id`, and `invalid_input` for an empty, too long or not UTF-8 answer. Every other write, such as `mail/send` or a Task change, still gets `forbidden`.
 
 The public part of the service has exactly three resources: `/view/WORKSPACE_ID/SESSION_ID`, `/assets/app.css` and `/assets/app.js`. The service reads no files to serve them. It checks `Host` and `Origin` before it serves an asset or data, and it refuses queries and `GET` requests with a body. The Content Security Policy allows scripts and connections only to the same origin, and it blocks framing, forms and changes of the base URL. Inline styles are allowed for the numeric positions in the graph, but data never becomes CSS or HTML. The service has no CORS grants, no general file endpoint and no arbitrary navigation. Task mail bodies come only from `/v1/mail/read`, for one Task of the Session at a time. The service never exposes transcripts or private runtime bindings. The page is never stored (`Cache-Control: no-store`). The browser keeps the two assets but asks each time whether they changed (`no-cache` with an ETag that is a hash of the file), so a new version of a-stack reaches the next page load.
 

@@ -29,7 +29,7 @@ There are three kinds of credentials:
 
 - The Operator credential manages Workspaces, Sessions and Agents.
 - An Agent credential belongs to one registered Agent in one Session.
-- A browser credential, or view token, gives read-only access to one Session for 30 days. Only the Operator makes one, through a one-time view link. See [Keep the URL private](browser.md#keep-the-url-private).
+- A browser credential, or view token, gives read-only access to one Session for 30 days, and can answer its Needs you questions. Only the Operator makes one, through a one-time view link. See [Keep the URL private](browser.md#keep-the-url-private).
 
 On the first start, the service writes `operator.json` privately and durably. Only then does it store the token hash. If the service crashes between these two steps, the next start uses the same file. After that, if `operator.json` is missing, unsafe or does not match, the service does not start. It never makes a replacement. Keep a copy of the original Operator credential with your backups. Only that original file can recover Operator access.
 
@@ -76,7 +76,7 @@ The CLI never retries a request automatically. Client commands stop normally on 
 
 The service listens only on `127.0.0.1`. Every data request needs the instance ID and a bearer token, except `POST /v1/browser/redeem`, which trades the one-time code of a view link for a view token. The `Host` header must match the bound address. If a request has an `Origin` header, it must match the service URL. The service has no cross-origin access, and it rejects query parameters, so a token can never be in a query string. Clients do not follow redirects and do not use proxy settings from the environment.
 
-A browser credential can use only the Session read endpoints and `POST /v1/mail/read` for the Tasks of its Session. It cannot use the `health` or `storage` endpoints. An Agent credential can use `health`, but it cannot read storage status or make backups.
+A browser credential can use only the Session read endpoints, `POST /v1/mail/read` and `POST /v1/task/answer` for the Tasks of its Session. The answer is its one write, and it needs an `Origin` header (see [The one write](browser.md#the-one-write)). It cannot use the `health` or `storage` endpoints. An Agent credential can use `health`, but it cannot read storage status or make backups.
 
 Request rules:
 

@@ -9,6 +9,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 ### Added
 
 - Homebrew and Scoop packages. Install with `brew install mzmzeee/tap/a-stack` on macOS and Linux, or `scoop bucket add mzmzeee https://github.com/mzmzeee/scoop-bucket` and `scoop install mzmzeee/a-stack` on Windows. See [Package managers](docs/install.md#package-managers).
+- The Operator can answer a Needs you question from the CLI: `a-stack answer --task T --question-id Q --text TEXT` (or `--body-file`), with `--workspace`, `--session` and `--operation-id`. `task show` prints the question's `id`. In one operation, the answer is saved on the question, the question is resolved, and the answer goes out as Task mail from the Operator (`sender_kind` `operator`, `sender_name` `Operator`) that mentions every assignee, so the Agents get it through `mail check`, the mail nudge and mention notices, also after a restart. The question ID is the guard: an answer to a question that was resolved or replaced gets `conflict`, while a report in the meantime does not stop it. Answers are plain text of 4,096 bytes at most. Only the Operator can answer. `task show` adds `answered_question` with the latest answer, and Task history records `task.answer` by the Operator. See [Answer a question](docs/tasks.md#answer-a-question).
+- `POST /v1/task/answer` is the browser view's one write: a view token can answer the open question of a Task in its own Session, with the same `Host`, instance and JSON checks as its reads, and only with an `Origin` header equal to the service URL. Every other write stays `forbidden` for the view. See [The one write](docs/browser.md#the-one-write).
 
 ## [0.1.6] - 2026-10-25
 

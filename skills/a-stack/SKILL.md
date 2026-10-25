@@ -5,7 +5,7 @@ description: Work as an Agent in an a-stack Session with the a-stack CLI (Tasks,
 
 # Work in an a-stack Session
 
-a-stack is a local service and CLI that lets a human Operator watch a team of AI coding Agents. The Agents share a Task graph, one Task mail thread per Task and Needs you questions through the `a-stack` CLI, and the Operator follows them in a read-only browser view.
+a-stack is a local service and CLI that lets a human Operator watch a team of AI coding Agents. The Agents share a Task graph, one Task mail thread per Task and Needs you questions through the `a-stack` CLI, and the Operator follows them in a browser view, where the only thing the Operator can do is answer a Needs you question.
 
 If you are the Session's Orchestrator, also read [references/orchestrator.md](references/orchestrator.md). For every command, flag and error, read [references/commands.md](references/commands.md).
 
@@ -69,7 +69,7 @@ When you wait for another Task, set `--progress waiting --reason 'Waits for the 
 
 If an a-stack hook blocks you from stopping, write the report and finish, or set Waiting with a reason. If it says there is new Task mail, run your `mail check`.
 
-When only the Operator can decide, ask one clear question with `me task attention set --task T --question 'Which release gets this?' --expected-revision R --operation-id 02-worker-ask-1`. Then stop, and say in your conversation that you wait for the Operator's answer. After the answer, run `task attention resolve` with a `--note` (see [references/commands.md](references/commands.md)).
+When only the Operator can decide, ask one clear question with `me task attention set --task T --question 'Which release gets this?' --expected-revision R --operation-id 02-worker-ask-1`. Then stop, and say in your conversation that you wait for the Operator's answer. The Operator answers in your conversation, or with `a-stack answer` or the browser view. That answer arrives as Task mail from the Operator (`sender_name` is `Operator`), and it already resolves the question: read it with `mail check`, and run `task show` again for the new revision. When the Operator answers in your conversation instead, run `task attention resolve` with a `--note` (see [references/commands.md](references/commands.md)).
 
 ## Rules
 
