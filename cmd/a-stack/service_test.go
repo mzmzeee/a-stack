@@ -44,7 +44,8 @@ func serviceSetup(t *testing.T) (f *fakeSystemd, exe, state, file string) {
 		"is-enabled a-stack":        func() (string, error) { return "disabled", errExit },
 		"loginctl show-user":        func() (string, error) { return "Linger=no", nil },
 	}}
-	oldRun, oldExecutable, oldWait := runCommand, executable, serviceWait
+	oldRun, oldExecutable, oldWait, oldOS := runCommand, executable, serviceWait, serviceOS
+	serviceOS = "linux"
 	runCommand = func(name string, args ...string) (string, error) {
 		var call string
 		switch {
@@ -62,7 +63,7 @@ func serviceSetup(t *testing.T) (f *fakeSystemd, exe, state, file string) {
 		return "", nil
 	}
 	executable, serviceWait = func() (string, error) { return exe, nil }, 2*time.Second
-	t.Cleanup(func() { runCommand, executable, serviceWait = oldRun, oldExecutable, oldWait })
+	t.Cleanup(func() { runCommand, executable, serviceWait, serviceOS = oldRun, oldExecutable, oldWait, oldOS })
 	return f, exe, filepath.Join(root, "state"), filepath.Join(root, "config", "systemd", "user", "a-stack.service")
 }
 

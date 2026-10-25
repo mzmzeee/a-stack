@@ -1,5 +1,5 @@
-// Package stack implements the local service foundation. Linux is the initial
-// supported platform; its advisory flock is held until the database closes.
+// Package stack implements the local service foundation. It runs on Linux and
+// macOS; its advisory flock is held until the database closes.
 package stack
 
 import (
@@ -11,6 +11,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 )
@@ -190,7 +192,24 @@ func lockState(path string) (*stateLock, error) {
 
 // ErrStateOwned means another serve holds the state directory lock. The CLI
 // gives it its own exit code so that systemd does not restart in a loop.
-var ErrStateOwned = failure("conflict", "another a-stack serve is already running for this state directory; stop it (Ctrl-C in its terminal, or systemctl --user stop a-stack) or use it")
+var ErrStateOwned = failure("conflict", "another a-stack serve is already running for this state directory; stop it (Ctrl-C in its terminal, or "+ServiceCommand("stop")+") or use it")
+
+// LaunchdLabel names the launchd agent that a-stack service install writes
+// on macOS.
+const LaunchdLabel = "dev.a-stack"
+
+// ServiceCommand is the shell command that does verb (start, stop or
+// restart) to the service that a-stack service install set up: the systemd
+// user unit on Linux, the launchd agent on macOS. On macOS, stop sends
+// SIGTERM; serve then exits with 0, and launchd starts it again only after
+// a failure.
+func ServiceCommand(verb string) string {
+	if runtime.GOOS == "darwin" {
+		action := map[string]string{"start": "kickstart", "stop": "kill TERM", "restart": "kickstart -k"}[verb]
+		return "launchctl " + action + " gui/" + strconv.Itoa(os.Getuid()) + "/" + LaunchdLabel
+	}
+	return "systemctl --user " + verb + " a-stack"
+}
 
 func (l *stateLock) close() { _ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN); _ = l.file.Close() }
 
@@ -229,8 +248,8 @@ func ReadCredential(path string) (Credential, error) {
 }
 
 // An Agent never starts the service, so the hint also tells it whom to ask.
-const (
-	startHint          = "start it with a-stack serve (or systemctl --user start a-stack), or ask the Operator to start it; then run the same command again"
+var (
+	startHint          = "start it with a-stack serve (or " + ServiceCommand("start") + "), or ask the Operator to start it; then run the same command again"
 	serviceDown        = "the a-stack service is not running; " + startHint
 	serviceUnreachable = "cannot reach the a-stack service; if it stopped, " + startHint
 )

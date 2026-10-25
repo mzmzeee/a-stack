@@ -18,6 +18,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
 // fakeBinary is a release binary: a script that prints its version, and
@@ -63,7 +65,7 @@ func (f *fakeRelease) sums(archive []byte) []byte {
 	if f.badSum {
 		sum[0]++
 	}
-	return []byte(hex.EncodeToString(sum[:]) + "  a-stack_linux_" + runtime.GOARCH + ".tar.gz\nabc  install.sh\n")
+	return []byte(hex.EncodeToString(sum[:]) + "  " + releaseArchive(runtime.GOOS, runtime.GOARCH) + "\nabc  install.sh\n")
 }
 
 func (f *fakeRelease) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -73,7 +75,7 @@ func (f *fakeRelease) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	tag, file, _ := strings.Cut(strings.TrimPrefix(r.URL.Path, "/download/"), "/")
 	archive, ok := f.archives[tag]
-	name := "a-stack_linux_" + runtime.GOARCH + ".tar.gz"
+	name := releaseArchive(runtime.GOOS, runtime.GOARCH)
 	switch {
 	case !ok:
 		http.NotFound(w, r)
@@ -172,7 +174,7 @@ func TestUpdateReplacesTheBinary(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := result.Data
-	if d.Previous != "v0.2.0" || d.Version != "v0.3.0" || d.Path != exe || !d.Updated || strings.Join(d.Skills, ",") != "/skills/a-stack" || d.RestartHint != "Restart the service: systemctl --user restart a-stack" {
+	if d.Previous != "v0.2.0" || d.Version != "v0.3.0" || d.Path != exe || !d.Updated || strings.Join(d.Skills, ",") != "/skills/a-stack" || d.RestartHint != "Restart the service: "+stack.ServiceCommand("restart") {
 		t.Fatalf("json %s", out)
 	}
 	if data, _ := os.ReadFile(log); string(data) != "skill install --refresh --json --project\n" {

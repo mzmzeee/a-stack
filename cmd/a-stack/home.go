@@ -81,7 +81,7 @@ func (h *home) run(ctx context.Context) error {
 const closeHint = "Closing this terminal stops a-stack. To keep it running, run: a-stack service install"
 
 // errStateBusy exits with 3, like stack.ErrStateOwned.
-var errStateBusy = &stack.Error{Code: "conflict", Message: "another a-stack serve owns this state directory but does not answer yet; wait a moment or stop it (Ctrl-C in its terminal, or systemctl --user stop a-stack)"}
+var errStateBusy = &stack.Error{Code: "conflict", Message: "another a-stack serve owns this state directory but does not answer yet; wait a moment or stop it (Ctrl-C in its terminal, or " + stack.ServiceCommand("stop") + ")"}
 
 func (h *home) setup() {
 	if wd, err := os.Getwd(); err == nil {
@@ -270,7 +270,7 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 		"Workspace: " + row.WorkspaceID + "   Session: " + row.SessionID,
 		"Your name: " + h.orchestrator + "   Your private folder: make one with mktemp -d",
 		"Work in: " + h.cwd,
-		"Goal: <describe the goal>. Plan the Tasks, register one Agent per Task and brief each one.",
+		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register one Agent per Task and brief each one.",
 	}, "\n")
 	fields["orchestrator_id"], fields["orchestrator_credential_file"], fields["brief"] = receipt.Data.ResourceID, credential, brief
 	fields["register_operation_id"], fields["appoint_operation_id"] = registerID, appointID

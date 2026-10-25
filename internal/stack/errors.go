@@ -13,8 +13,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/mattn/go-sqlite3"
 )
 
 // Error is the shared HTTP/CLI error contract. Messages never include SQL,
@@ -152,18 +150,14 @@ func failedFunction() string {
 // errorClass describes err without its message, which can hold SQL, paths or
 // values. SQLite and errno texts are fixed strings for a code.
 func errorClass(err error) string {
-	var driver sqlite3.Error
+	if class := sqliteClass(err); class != "" {
+		return class
+	}
 	var errno syscall.Errno
 	var public *Error
 	switch {
 	case err == nil:
 		return "cause not recorded"
-	case errors.As(err, &driver):
-		class := fmt.Sprintf("SQLite error %d (%s), extended code %d", int(driver.Code), driver.Code.Error(), int(driver.ExtendedCode))
-		if driver.SystemErrno != 0 {
-			class += fmt.Sprintf(", errno %d (%s)", int(driver.SystemErrno), driver.SystemErrno.Error())
-		}
-		return class
 	case errors.As(err, &errno):
 		return fmt.Sprintf("%T, errno %d (%s)", err, int(errno), errno.Error())
 	case errors.As(err, &public):

@@ -15,8 +15,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/mattn/go-sqlite3"
 )
 
 const schemaVersion = 8
@@ -66,15 +64,8 @@ const stmtCacheSize = 128
 const JournalSizeLimit = 8 << 20
 
 // driverName is go-sqlite3 with JournalSizeLimit set on each new connection;
-// the driver has no DSN parameter for it.
+// the driver has no DSN parameter for it. sqlite_cgo.go registers it.
 const driverName = "sqlite3-a-stack"
-
-func init() {
-	sql.Register(driverName, &sqlite3.SQLiteDriver{ConnectHook: func(c *sqlite3.SQLiteConn) error {
-		_, err := c.Exec("PRAGMA journal_size_limit="+strconv.Itoa(JournalSizeLimit), nil)
-		return err
-	}})
-}
 
 func openStore(ctx context.Context, path string) (*Store, error) {
 	u := url.URL{Scheme: "file", Path: path}

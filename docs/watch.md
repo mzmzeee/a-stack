@@ -44,7 +44,7 @@ With `--json`, watch prints the first status as one JSON document and then one d
 
 ### Desktop notices
 
-`--notify` also shows a desktop notice through `notify-send`, when it is installed, for each Session with a new Needs you: `a-stack: 1 needs you in OAuth login`. The number counts all open questions in that Session. The notice has no question text, because notices can show on a locked screen or in a shared screen. To include the questions, use `--notify-text` (it turns on `--notify`). Without `notify-send`, watch says so once and keeps printing.
+`--notify` also shows a desktop notice through `notify-send` when it is installed, or through `osascript` on macOS, for each Session with a new Needs you: `a-stack: 1 needs you in OAuth login`. The number counts all open questions in that Session. The notice has no question text, because notices can show on a locked screen or in a shared screen. To include the questions, use `--notify-text` (it turns on `--notify`). Without `notify-send`, watch says so once and keeps printing.
 
 ## Claude Code status line
 

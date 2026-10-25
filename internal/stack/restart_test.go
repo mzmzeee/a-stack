@@ -155,7 +155,7 @@ func healthOf(t *testing.T, dir string) Health {
 func TestOwnedStateAndStoppedServiceMessages(t *testing.T) {
 	dir := privateTestDir(t)
 	s := serveTest(t, dir, "")
-	if _, err := Start(ctx, dir, ""); err != ErrStateOwned || ErrStateOwned.Code != "conflict" || !strings.Contains(ErrStateOwned.Message, "systemctl --user stop a-stack") {
+	if _, err := Start(ctx, dir, ""); err != ErrStateOwned || ErrStateOwned.Code != "conflict" || !strings.Contains(ErrStateOwned.Message, ServiceCommand("stop")) {
 		t.Fatal("second start did not report the owned state directory", err)
 	}
 	if err := s.Close(ctx); err != nil {
@@ -163,7 +163,7 @@ func TestOwnedStateAndStoppedServiceMessages(t *testing.T) {
 	}
 	_, err := NewClient(dir, "", "")
 	requireCode(t, err, "storage_unavailable")
-	if e, ok := err.(*Error); !ok || !e.Retryable || !strings.Contains(e.Message, "start it with a-stack serve (or systemctl --user start a-stack), or ask the Operator to start it") {
+	if e, ok := err.(*Error); !ok || !e.Retryable || !strings.Contains(e.Message, "start it with a-stack serve (or "+ServiceCommand("start")+"), or ask the Operator to start it") {
 		t.Fatal("stopped service message", err)
 	}
 }
