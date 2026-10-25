@@ -322,11 +322,21 @@ func serviceInstall(unit, file, state, home string, data map[string]any) ([]stri
 	if err != nil {
 		return nil, err
 	}
+	// When systemd does not take a new unit, remove it again, so that the
+	// failed install leaves nothing behind.
+	undo := func(err error) error {
+		if status == "created" {
+			_, _ = systemctl("disable", unit)
+			os.Remove(file)
+			_, _ = systemctl("daemon-reload")
+		}
+		return err
+	}
 	if out, err := systemctl("daemon-reload"); err != nil {
-		return nil, systemdFailed("daemon-reload", out)
+		return nil, undo(systemdFailed("daemon-reload", out))
 	}
 	if out, err := systemctl("enable", "--now", unit); err != nil {
-		return nil, systemdFailed("enable --now "+unit, out)
+		return nil, undo(systemdFailed("enable --now "+unit, out))
 	}
 	data["unit_file_status"], data["binary"], data["state_dir"] = status, exe, state
 	lines := installedLines(status, "unit", file, exe, state)
@@ -394,20 +404,67 @@ func serviceUninstall(unit, file string, data map[string]any) ([]string, error) 
 	return []string{"Stopped and disabled " + unit + ".service and removed " + file + ".", "The state directory and your data stay as they are."}, nil
 }
 
+// systemdUnitFile is the file that systemd loaded the unit from, or "".
+func systemdUnitFile(unit string) string {
+	path, err := systemctl("show", "-p", "FragmentPath", "--value", unit)
+	if err != nil {
+		return ""
+	}
+	return path
+}
+
+// serviceProgram is the binary that the service manager runs as the a-stack
+// service, from the unit, plist or task it loaded, and whether it runs now.
+func serviceProgram() (binary string, running bool) {
+	unit, err := unitName()
+	if err != nil {
+		return "", false
+	}
+	switch serviceOS {
+	case "darwin":
+		return launchdProgram(launchdLabel(unit))
+	case "windows":
+		content, ok := queryTask(unit)
+		binary, _, _ = taskCommand(content)
+		return binary, ok
+	}
+	home, err := os.UserHomeDir()
+	content, readErr := os.ReadFile(systemdUnitFile(unit))
+	if err != nil || readErr != nil {
+		return "", false
+	}
+	binary, _ = unitCommand(string(content), home)
+	_, err = systemctl("is-active", "--quiet", unit)
+	return binary, err == nil
+}
+
 func serviceStatus(unit, file, state, home string, data map[string]any) []string {
 	content, err := os.ReadFile(file)
 	installed := err == nil
+	// systemd can load the unit from elsewhere, such as from a package in
+	// /usr/lib/systemd/user; then Enabled and Active are about that one.
+	loaded := ""
+	if !installed {
+		if path := systemdUnitFile(unit); path != "" && path != file {
+			if content, err = os.ReadFile(path); err == nil {
+				loaded = path
+			}
+		}
+	}
 	enabled, _ := systemctl("is-enabled", unit)
 	active, _ := systemctl("is-active", unit)
 	value, name := linger()
 	data["installed"], data["enabled"], data["active"], data["linger"] = installed, enabled, active, value
 	column := func(label, text string) string { return fmt.Sprintf("%-11s%s", label, text) }
 	lines := []string{column("Unit file:", file)}
-	if !installed {
+	if loaded != "" {
+		data["loaded_unit_file"] = loaded
+		lines[0] = column("Unit file:", loaded+" (a-stack service install would write "+file+")")
+	} else if !installed {
 		lines[0] = column("Unit file:", "not installed; run a-stack service install")
 	}
 	lines = append(lines, column("Enabled:", enabled), column("Active:", active))
-	if installed {
+	if installed || loaded != "" {
 		binary, dir := unitCommand(string(content), home)
 		data["binary"], data["state_dir"] = binary, dir
 		if _, err := os.Stat(binary); err != nil {

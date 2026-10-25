@@ -135,6 +135,9 @@ func TuneServiceGC() {
 }
 
 func Start(ctx context.Context, dir, address string) (*Service, error) {
+	if !builtWithCgo {
+		return nil, failure("storage_unavailable", "this a-stack was built without cgo, so it cannot open its SQLite database; build it with CGO_ENABLED=1 and a C compiler, or install a release binary")
+	}
 	storageLog.setOutput(storageLogOutput)
 	if address != "" {
 		host, _, err := net.SplitHostPort(address)

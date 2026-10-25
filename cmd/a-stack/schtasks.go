@@ -274,6 +274,11 @@ func schtasksInstall(name, state, log string, data map[string]any) ([]string, er
 	running := installed && healthErr == nil
 	if !running {
 		if out, err := schtasks("/Run", "/TN", name); err != nil {
+			// A new task that cannot run goes again, so that the failed
+			// install leaves nothing behind.
+			if status == "created" {
+				_, _ = schtasks("/Delete", "/TN", name, "/F")
+			}
 			return nil, schtasksFailed("/Run /TN "+name, out)
 		}
 	}

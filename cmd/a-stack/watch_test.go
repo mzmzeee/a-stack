@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -245,8 +246,22 @@ func TestWatchSkipsUnchangedSessionsAndNotifiesText(t *testing.T) {
 	if len(lines) != 2 || json.Unmarshal([]byte(lines[0]), &first) != nil || json.Unmarshal([]byte(lines[1]), &second) != nil || first.Data.Change != "created" || second.Data.Change != "needs_you" || second.Data.Text != "A & B?" || strings.Contains(out.String(), "\a") {
 		t.Fatalf("JSON events: %q", out.String())
 	}
-	if len(notices) != 1 || notices[0] != "a-stack: 1 needs you in Build|A &amp; B?" {
+	if len(notices) != 1 || notices[0] != "a-stack: 1 needs you in Build|A & B?" {
 		t.Fatalf("notice with text: %q", notices)
+	}
+}
+
+// notify-send reads the body as markup, and an argument that starts with -
+// as an option; macOS shows plain text.
+func TestNoticeArgs(t *testing.T) {
+	if got := noticeArgs("linux", "-s", "-a <b> & c"); !slices.Equal(got, []string{"--app-name=a-stack", "--", "-s", "-a &lt;b&gt; &amp; c"}) {
+		t.Fatalf("notify-send %q", got)
+	}
+	if got := noticeArgs("linux", "s", ""); !slices.Equal(got, []string{"--app-name=a-stack", "--", "s"}) {
+		t.Fatalf("notify-send without body %q", got)
+	}
+	if got := noticeArgs("darwin", "s", "a <b> & c\x07"); got[len(got)-2] != "s" || got[len(got)-1] != "a <b> & c"+printable("\x07") {
+		t.Fatalf("osascript %q", got)
 	}
 }
 

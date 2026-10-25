@@ -1,6 +1,6 @@
 # Install
 
-a-stack runs on Linux, macOS and Windows, on x86-64 (`amd64`) and ARM64 (`arm64`). The Linux release binaries are statically linked. They do not need other libraries. The macOS release binaries run on macOS 12 or later and use only the libraries that come with macOS. The Windows release binaries run on Windows 10 or later and use only the libraries that come with Windows.
+a-stack runs on Linux, macOS and Windows, on x86-64 (`amd64`) and ARM64 (`arm64`). The Linux release binaries are statically linked. They do not need other libraries. The macOS release binaries run on macOS 13 or later and use only the libraries that come with macOS. The Windows release binaries run on Windows 10 or later and use only the libraries that come with Windows.
 
 On Linux and macOS, a-stack keeps its data in `~/.local/state/a-stack`, or in `$XDG_STATE_HOME/a-stack` when `XDG_STATE_HOME` is set. macOS uses the same folder as Linux, so the commands in these guides and the agent skill work the same on both. On Windows, the folder is `%LOCALAPPDATA%\a-stack`; see [On Windows](#on-windows).
 
@@ -12,19 +12,20 @@ curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.s
 
 The script does these steps:
 
-1. It finds the archive for your processor.
+1. It finds the archive for your processor. On a Mac with Apple silicon it takes the `arm64` archive, also when the shell runs under Rosetta.
 2. It downloads the archive and the release's `SHA256SUMS` file.
-3. It checks the signature of `SHA256SUMS` with OpenSSL 3, if OpenSSL 3 is installed. macOS has LibreSSL instead, so there the script checks only the checksum and says so. See [How releases are verified](#how-releases-are-verified).
+3. It checks the signature of `SHA256SUMS` with OpenSSL 3, if OpenSSL 3 is installed. macOS has LibreSSL instead, so there the script uses OpenSSL 3 from Homebrew (`brew install openssl@3`). Without OpenSSL 3, it checks only the checksum and says so on stderr. See [How releases are verified](#how-releases-are-verified).
 4. It compares the checksum. If the signature or the checksum is not correct, it stops and installs nothing.
 5. It installs the binary in `~/.local/bin`, without `sudo`.
 6. It tells you if this folder is not on your `PATH`.
 
-To change the version or the folder, set these variables:
+To change the version or the folder, or to refuse an install without a checked signature, set these variables:
 
 | Variable | Default | Example |
 | --- | --- | --- |
 | `A_STACK_VERSION` | the latest release | `v0.1.0` |
 | `A_STACK_INSTALL_DIR` | `~/.local/bin` | `$HOME/bin` |
+| `A_STACK_REQUIRE_SIGNATURE` | not set: without OpenSSL 3, check only the checksum | `1`: stop and install nothing when the signature cannot be checked, also for a release before v0.1.5 |
 
 ```sh
 curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | A_STACK_VERSION=v0.1.0 A_STACK_INSTALL_DIR="$HOME/bin" sh
@@ -90,7 +91,7 @@ With Go installed, you can build and install a release with one command:
 CGO_ENABLED=1 go install github.com/mzmzeee/a-stack/cmd/a-stack@latest
 ```
 
-- It needs a C compiler, such as `gcc`, on macOS the Xcode command line tools (`xcode-select --install`), or on Windows a MinGW-w64 `gcc` on the `PATH`, because SQLite is built in with cgo. Without one, the build fails.
+- It needs a C compiler, such as `gcc`, on macOS the Xcode command line tools (`xcode-select --install`), or on Windows a MinGW-w64 `gcc` on the `PATH`, because SQLite is built in with cgo. Without one, the build fails. Without `CGO_ENABLED=1` and without a C compiler, Go builds without cgo, and `a-stack serve` stops and says that it was built without cgo.
 - It needs Go 1.27.3 or later. An older `go` downloads that version itself, unless `GOTOOLCHAIN=local` is set.
 - It installs the binary in `$(go env GOBIN)`, or `~/go/bin` when `GOBIN` is not set. Make sure that folder is on your `PATH`.
 - The build takes about a minute. `a-stack version` shows the release, such as `v0.1.4`. Use `@vX.Y.Z` instead of `@latest` for another version.
@@ -113,7 +114,8 @@ MCowBQYDK2VwAyEANkJiNRRt3iLovFX+EVrAxA1Z7a3diAw6F3PhyC9+D08=
 ```
 
 - `a-stack update` checks the signature before it trusts `SHA256SUMS`. A missing or wrong signature stops the update, and nothing changes.
-- The install script checks it with OpenSSL 3 or later. Without OpenSSL 3, it says that it did not check the signature, links to this section and checks only the checksum. macOS has LibreSSL, not OpenSSL 3. To check the signature there too, install OpenSSL 3 with Homebrew (`brew install openssl@3`) and run the script with it first on your `PATH`: `curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | PATH="$(brew --prefix openssl@3)/bin:$PATH" sh`.
+- The install script checks it with OpenSSL 3 or later: the `openssl` on your `PATH`, or else the one from Homebrew (`openssl@3` below `$HOMEBREW_PREFIX`, `/opt/homebrew` or `/usr/local`). macOS has LibreSSL, not OpenSSL 3, so on a Mac run `brew install openssl@3` first. Without OpenSSL 3, the script says on stderr that it did not check the signature, links to this section and checks only the checksum. With `A_STACK_REQUIRE_SIGNATURE=1`, it stops instead and installs nothing.
+- The checksum alone comes from the same server as the archive, so it shows only that the download is complete. The install script does not run the downloaded binary to check its own signature: that binary is not trusted yet, and a changed one could say that it is fine. Once a-stack is installed, `a-stack update` checks every later release with the key in the installed binary.
 - The Windows install script, `install.ps1`, checks only the checksum. To check the signature on Windows, use `openssl` from Git for Windows (`C:\Program Files\Git\usr\bin\openssl.exe`, OpenSSL 3) as shown below.
 - Releases up to v0.1.4 have no signature. `a-stack update` and `install.sh` accept them with a warning, but only when you name such a version: `a-stack update --version v0.1.4` or `A_STACK_VERSION=v0.1.4`. For v0.1.5 and later, a missing signature is an error.
 
@@ -123,7 +125,7 @@ To check a signature by hand, save the public key above as `a-stack-release.pem`
 openssl pkeyutl -verify -pubin -inkey a-stack-release.pem -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig
 ```
 
-It prints `Signature Verified Successfully`. On macOS, run `"$(brew --prefix openssl@3)/bin/openssl"` instead of `openssl`. Then check the archive with `sha256sum --check --ignore-missing SHA256SUMS`, or on macOS with `shasum -a 256 --check --ignore-missing SHA256SUMS`.
+It prints `Signature Verified Successfully`. On macOS, run `"$(brew --prefix openssl@3)/bin/openssl"` instead of `openssl`. The macOS and Linux archives name owner 0 and the time of the release commit and hold no extended attributes, so the same binary always gives the same archive. Then check the archive with `sha256sum --check --ignore-missing SHA256SUMS`, or on macOS with `shasum -a 256 --check --ignore-missing SHA256SUMS`.
 
 Releases also have GitHub build provenance attestations: since v0.1.5 for every file, `install.sh` included, and before that for the archives. With the [GitHub CLI](https://cli.github.com/), check a downloaded file like this:
 
@@ -181,7 +183,7 @@ Your data stays in the state directory when you update. The service needs a rest
 
    To pick a version with the script, set `A_STACK_VERSION` as in [Install script](#install-script).
 
-3. Restart the service. Until then, the running service keeps the old version.
+3. Restart the service. Until then, the running service keeps the old version. `a-stack update` prints the restart command when the service runs the binary that it replaced.
 
    - If you started `a-stack serve` by hand, press Ctrl-C in its terminal and run `a-stack serve` again.
    - If systemd runs the service, run `systemctl --user restart a-stack`.
@@ -196,14 +198,38 @@ Your data stays in the state directory when you update. The service needs a rest
 
 During the restart, Agent commands fail with `storage_unavailable` and `retryable: true` for a few seconds. An Agent can run the same command again with the same operation ID. a-stack makes the change only one time.
 
-When the new version has a new database schema, the first start migrates the database. Before that, it writes a private copy of the database, `state.db.pre-vN`, in the state directory (N is the old schema version).
+When the new version has a new database schema, the first start migrates the database. Before that, it writes a private copy of the database, `state.db.pre-vN`, in the state directory (N is the old schema version). After the migration, `serve` writes one line to its output (the journal under systemd, the log file under launchd and Task Scheduler). It names the copy, says that an older a-stack cannot open the database now, and links to the next section.
+
+The migration needs free space in the state directory. For schema 8 (v0.1.6), plan for up to three times the size of `state.db`: one copy, and twice the size of the Task text and mail tables that it rebuilds, first in the WAL file and then in the database file. If less space is free, `serve` stops before it writes anything and says how much it needs. If a start fails after the copy, the next start of the unchanged database uses that copy again instead of writing another one. After the migration, the database file keeps the freed pages; to make it small again, make a backup and restore it (see [Backup and restore](foundation.md#backup-and-restore)).
 
 ### Go back to an older version
 
 An older a-stack cannot open a database that a newer one migrated. `a-stack serve` then stops with exit code 4 and a message that names the schema version it found and the newest one it supports. The systemd unit does not restart it. launchd on macOS tries again every 10 seconds, and Task Scheduler on Windows every minute; each try writes the same message to the log. To get back:
 
 - Update to the newer version again: `a-stack update`, or `a-stack update --version vX.Y.Z`.
-- Or, to stay on the older version, restore the `state.db.pre-vN` copy or a backup made with the older version, as in [Backup and restore](foundation.md#backup-and-restore). Changes made after that copy are lost.
+- Or, to stay on the older version, put back the copy that the migration made, `state.db.pre-vN`, or a backup made with the older version. Changes made after that copy are lost, and Agents registered after it must be registered again.
+
+To put the copy back, install the older version first with `a-stack update --version vX.Y.Z`. Then stop the service:
+
+- If you started `a-stack serve` by hand, press Ctrl-C in its terminal.
+- If systemd runs the service, run `systemctl --user stop a-stack`.
+- If launchd runs the service on macOS, run `launchctl bootout gui/$(id -u)/dev.a-stack`. launchd keeps starting an older a-stack that stops with exit code 4, so `kill TERM` is not enough.
+- If Task Scheduler runs the service on Windows, run `schtasks /Change /TN a-stack /DISABLE` and then `schtasks /End /TN a-stack`.
+
+Move the state directory aside, and put the copy and the Operator credential in a new state directory in the same place. `state.db.pre-v7` is the copy that v0.1.6 made of a v0.1.5 database; use the name that `serve` printed after the migration:
+
+```sh
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/a-stack"
+old_dir="$state_dir.before-restore-$(date +%Y%m%d-%H%M%S)"
+mv "$state_dir" "$old_dir"
+mkdir -m 700 "$state_dir"
+install -m 600 "$old_dir/state.db.pre-v7" "$state_dir/state.db"
+install -m 600 "$old_dir/operator.json" "$state_dir/operator.json"
+```
+
+On Windows, the state directory is `%LOCALAPPDATA%\a-stack`; move it aside and copy the two files in the same way.
+
+Start the service again: run `a-stack serve`, or `systemctl --user start a-stack`, or `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.a-stack.plist`, or `schtasks /Change /TN a-stack /ENABLE` and then `schtasks /Run /TN a-stack`. The CLI, the Agents and the agent hooks find the service as before, because the state directory is the same. Keep the old folder until you have checked the restored database, as in [Backup and restore](foundation.md#backup-and-restore).
 
 ## Start a-stack automatically
 
@@ -226,7 +252,7 @@ The service runs the `a-stack` binary that you ran, with its real path, and the 
 On Linux, `a-stack service install` sets up a systemd user service. systemd starts it when your user manager starts, and starts it again if it crashes. It does these steps:
 
 1. It writes the unit `~/.config/systemd/user/a-stack.service` (or below `$XDG_CONFIG_HOME`). If the unit exists and differs, it replaces the unit and says `Updated`. If systemd runs the service already, it tells you to restart the service to use the new unit.
-2. It runs `systemctl --user daemon-reload` and `systemctl --user enable --now a-stack`.
+2. It runs `systemctl --user daemon-reload` and `systemctl --user enable --now a-stack`. If one of them fails and the unit file is new, it removes the unit file again, so the failed install leaves nothing behind.
 3. It waits until the service answers, and prints its URL. If the service does not answer, read the log with `journalctl --user -u a-stack`.
 4. It checks linger. Without linger, systemd starts your user services only when you log in, and stops them when you log out. If linger is off, the command prints the command that turns it on, and does not run it:
 
@@ -234,7 +260,7 @@ On Linux, `a-stack service install` sets up a systemd user service. systemd star
    loginctl enable-linger "$USER"
    ```
 
-`a-stack service status` shows whether the unit file exists, whether it is enabled and active, the binary and the state directory in the unit, and linger.
+`a-stack service status` shows whether the unit file exists, whether it is enabled and active, the binary and the state directory in the unit, and linger. When systemd loads an `a-stack` unit from another file, such as `/usr/lib/systemd/user/a-stack.service` from a package, status shows that file and its binary and state directory, and `--json` has it as `loaded_unit_file`.
 
 `a-stack service uninstall` stops and disables the service, removes the unit file and runs `systemctl --user daemon-reload`.
 
@@ -247,16 +273,16 @@ To stop the service until the next boot or login, run `systemctl --user stop a-s
 On macOS, `a-stack service install` sets up a launchd agent. launchd starts it when you log in, and starts it again after a crash. The agent runs only while you are logged in; macOS has nothing like linger. It does these steps:
 
 1. It writes the agent `~/Library/LaunchAgents/dev.a-stack.plist`. It writes the service's output, such as the ready line with the URL, to `~/Library/Logs/a-stack.log`. If the plist exists and differs, it replaces the plist and says `Updated`. If launchd runs the agent already, it prints the two commands that load the new plist.
-2. If the agent is not loaded, it runs `launchctl enable gui/UID/dev.a-stack` and `launchctl bootstrap gui/UID ~/Library/LaunchAgents/dev.a-stack.plist`, with your user ID as UID. If the agent is loaded, it runs `launchctl kickstart gui/UID/dev.a-stack`, which starts the service only if it stopped.
+2. If the agent is not loaded, it runs `launchctl enable gui/UID/dev.a-stack` and `launchctl bootstrap gui/UID ~/Library/LaunchAgents/dev.a-stack.plist`, with your user ID as UID. If the agent is loaded, it runs `launchctl kickstart gui/UID/dev.a-stack`, which starts the service only if it stopped. If one of these commands fails and the plist is new, it removes the plist again.
 3. It waits until the service answers, and prints its URL. If the service does not answer, read the log and the output of `launchctl print gui/$(id -u)/dev.a-stack`.
 
 The plist names the state directory with `--state-dir`, because launchd does not get the variables of your shell.
 
 launchd starts the service again after it exits with an error. Unlike systemd, it cannot skip exit codes 3 (another `a-stack serve` owns the state directory) and 4 (the database is damaged or has a newer schema), so it tries again every 10 seconds, and the log shows the error each time. Stop the other `a-stack serve`, or see [Go back to an older version](#go-back-to-an-older-version).
 
-`a-stack service status` shows the plist, launchd's state of the agent (such as `running`, or `not loaded`), the binary and the state directory in the plist, and the log file. With `--json`, `unit` is the label `dev.a-stack`, `unit_file` is the plist, `loaded` and `active` take the place of `enabled` and `linger`, and `log` is the log file.
+`a-stack service status` shows the plist, launchd's state of the agent (such as `running`, or `not loaded`), the binary and the state directory in the plist, and the log file. With `--json`, `unit` is the label `dev.a-stack`, `unit_file` is the plist, `loaded` and `active` take the place of `enabled` and `linger`, and `log` is the log file. When launchd loaded the agent from another plist, status shows that plist, as `loaded_unit_file` with `--json`.
 
-`a-stack service uninstall` runs `launchctl bootout gui/UID/dev.a-stack` and removes the plist. It never touches the log.
+`a-stack service uninstall` runs `launchctl bootout gui/UID/dev.a-stack` and removes the plist. It also unloads an agent whose plist is already gone. It never touches the log.
 
 To control the service by hand:
 
@@ -273,7 +299,7 @@ After `kill TERM`, the service exits with 0, so launchd does not start it again 
 On Windows, `a-stack service install` sets up a Task Scheduler task named `a-stack`. Task Scheduler starts it when you log in, and starts it again within a minute after it stops. The task runs only while you are logged in, with your normal rights, also on battery, and without a time limit. It does these steps:
 
 1. It creates the task with `schtasks /Create`. If the task exists and differs, it replaces the task and says `Updated`. If the service runs already, it prints the commands that restart it.
-2. If the service does not run, it starts the task with `schtasks /Run /TN a-stack`.
+2. If the service does not run, it starts the task with `schtasks /Run /TN a-stack`. If that fails and the task is new, it deletes the task again.
 3. It waits until the service answers, and prints its URL. If the service does not answer, read the log and the output of `schtasks /Query /TN a-stack /V /FO LIST`.
 
 The service started by Task Scheduler has no terminal. It leaves its console window and writes its output, such as the ready line with the URL, to a log file next to the state directory: `%LOCALAPPDATA%\a-stack.log` for the default state directory. At each start, it empties the log when the log is larger than 1 MiB. A console window can show for a moment when the task starts.
@@ -388,8 +414,8 @@ Windows support is new. The CI runs the tests on Windows x64 and starts the rele
 
 You need these only to build from source:
 
-- Linux, macOS 12 or later, or Windows 10 or later
-- Go 1.27.3 with cgo (`CGO_ENABLED=1`) and a C compiler. On macOS, install the Xcode command line tools with `xcode-select --install`. On Windows, put a MinGW-w64 `gcc`, such as the one from [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) or MSYS2, on your `PATH`.
+- Linux, macOS 13 or later, or Windows 10 or later
+- Go 1.27.3 with cgo (`CGO_ENABLED=1`) and a C compiler. On macOS, install the Xcode command line tools with `xcode-select --install`. A binary built without cgo cannot open its database: `serve` stops and says that it was built without cgo. On Windows, put a MinGW-w64 `gcc`, such as the one from [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) or MSYS2, on your `PATH`.
 
 SQLite 3.53.4 is built into the binary from `github.com/mattn/go-sqlite3`. Do not build with the `libsqlite3` tag.
 

@@ -50,6 +50,7 @@ go install "golang.org/x/vuln/cmd/govulncheck@$GOVULNCHECK"
 step "go test with coverage (.tmp/coverage.out)"
 go test -count=1 -coverprofile=.tmp/coverage.out ./...
 go tool cover -func=.tmp/coverage.out | tail -n 1
+CGO_ENABLED=0 go test -count=1 -run TestStartWithoutCgo ./internal/stack  # sqlite_nocgo.go
 
 step go test -race
 go test -race -count=1 ./...
