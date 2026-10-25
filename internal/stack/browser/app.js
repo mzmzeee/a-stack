@@ -478,7 +478,7 @@ const favicon=document.querySelector('link[rel="icon"]'), plainIcon=favicon.href
 const dotIcon=plainIcon.replace('%3C/svg%3E',"%3Ccircle cx='25' cy='7' r='6.5' fill='%23d93025' stroke='%23ffffff' stroke-width='2'/%3E%3C/svg%3E");
 function updateTitle() {
   const n=model?model.tasks.filter(t=>t.needs_you).length:0;
-  const title=(staleShown()?'Stale · ':'')+(n?`(${n}) Needs you · `:'')+(model?model.snapshot.session.name+' – a-stack':'a-stack');
+  const title=(notice&&!model?'No access · ':staleShown()?'Stale · ':'')+(n?`(${n}) Needs you · `:'')+(model?model.snapshot.session.name+' – a-stack':'a-stack');
   if(document.title!==title)document.title=title;
   const href=n?dotIcon:plainIcon;if(favicon.getAttribute('href')!==href)favicon.setAttribute('href',href);
 }
