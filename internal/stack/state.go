@@ -102,7 +102,7 @@ func statePath(path string) (string, error) {
 			}
 			for p := resolved; ; p = filepath.Dir(p) {
 				if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
-					return "", failure("invalid_input", "application state and generated credentials must be outside project checkouts")
+					return "", failure("invalid_input", "application state and generated credentials must be outside project checkouts, and "+p+" is a Git checkout (it has .git); choose a folder outside it, for the state with --state-dir")
 				}
 				if filepath.Dir(p) == p {
 					break

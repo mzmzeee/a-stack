@@ -70,7 +70,8 @@ func TestHelpPerCommandFollowsAcceptedFlags(t *testing.T) {
 		}
 		checkWidth(t, c, text)
 		// An Agent credential file names the Workspace and the Session.
-		if !strings.Contains(text, "\nUsage: a-stack "+c+" ") || strings.Contains(text, " VALUE") || strings.Contains(text, "Workspace ID (required)") || strings.Contains(text, "Session ID (required)") {
+		// --name names an Agent or a Session, never "Session or Agent".
+		if !strings.Contains(text, "\nUsage: a-stack "+c+" ") || strings.Contains(text, " VALUE") || strings.Contains(text, "Workspace ID (required)") || strings.Contains(text, "Session ID (required)") || strings.Contains(text, "Session or Agent name") {
 			t.Fatalf("%s help:\n%s", c, text)
 		}
 		for _, name := range strings.Fields(acceptedFlags(c)) {
@@ -85,6 +86,9 @@ func TestHelpPerCommandFollowsAcceptedFlags(t *testing.T) {
 				t.Fatalf("%s: required flag --%s is not accepted", command, name)
 			}
 		}
+	}
+	if !strings.Contains(helpOutput(t, "agent", "register", "--help"), "  --name NAME              Agent name (required)\n") || !strings.Contains(helpOutput(t, "session", "create", "--help"), "  --name NAME              Session name (required)\n") {
+		t.Fatal("--name help of agent register or session create")
 	}
 	create := helpOutput(t, "task", "create", "--help")
 	for _, want := range []string{"Create a Task.\n", "  --title TEXT             Task title (required)\n", "  --workspace ID           Workspace ID (required unless the credential file\n                           names it)\n", "  --session ID             Session ID (required unless the credential file names\n                           it)\n", "  --description TEXT       Task description\n", "  --credential-file FILE   "} {

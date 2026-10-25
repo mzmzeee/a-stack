@@ -14,6 +14,18 @@ Upgrading from v0.1.6: run `a-stack update`, then restart the service (`systemct
 - Task mail can come from the Operator (schema 9). Such a message has `sender_kind: "operator"`, an empty `sender_id` and the `sender_name` "Operator"; Agent mail has no `sender_kind` and reads the same as before.
 
 - Homebrew and Scoop packages. Install with `brew install mzmzeee/tap/a-stack` on macOS and Linux, or `scoop bucket add mzmzeee https://github.com/mzmzeee/scoop-bucket` and `scoop install mzmzeee/a-stack` on Windows. See [Package managers](docs/install.md#package-managers).
+- A Working Task with no change and no Task mail for 30 minutes is quiet: its Agent may have stopped. `a-stack status` shows it among the working Tasks, such as `2 working (1 quiet)`, and `--json` has `quiet`. The Task data in `task list`, `task show` and the browser view's pages has `quiet` and `last_mail_at`. `a-stack watch` prints a line and rings the bell once when a Task turns quiet. A Task that waits for an answer to its Needs you question is never quiet. a-stack derives this when it reads a Task, with no schema change and no background job; the view's snapshot ETag counts quiet Tasks, so an open view sees a Task turn quiet in an idle Session. See [Quiet Tasks](docs/watch.md#quiet-tasks).
+- `a-stack task handoff --task T` prints a brief that a fresh Agent can start from when another Agent stopped: the Task, its description and report, the open Needs you question, the unfinished prerequisites, the assignees as `@name`, and the latest 20 Task mails (`--limit N`). Plain text by default, `--json` too. It only reads; the mail is there only for an assignee. The skill tells an Agent that takes over a Task, and the Orchestrator that hands one over, to use it. See [Hand a Task over](docs/tasks.md#hand-a-task-over).
+- `a-stack storage status` shows `free_in_file_bytes`, the free pages inside `state.db`, and a `note` when they are a quarter of the file or more. After the schema 8 migration the file kept the pages it freed, and the status did not say why the file was bigger; a backup and a restore make it small again.
+
+### Changed
+
+- When the state directory or a new credential file is inside a Git checkout, the error names the folder that has the `.git` and says to choose a folder outside it with `--state-dir`. Before, a user who keeps dotfiles in Git in the home folder got no hint where the checkout was.
+- The help of `agent register` says `--name` is the Agent name, and the help of `session create` says it is the Session name, instead of "Session or Agent name".
+
+### Changed
+
+- The README demo GIF is 2.9 MB instead of 7.4 MB, at the same pace, and the demo images show the release version instead of a development build. `scripts/record-demo.sh` drops frames that do not change, keeps fewer frames while the view zooms, uses 64 colors and compresses with gifsicle, which it now needs.
 
 ## [0.1.6] - 2026-10-25
 
