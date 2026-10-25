@@ -63,6 +63,7 @@
     <button class="toggle-button" id="archived" aria-pressed="false" title="Finished and cancelled Tasks"><span data-icon="archive"></span><span id="archived-label">Archived (0)</span></button>
     <button class="toggle-button" id="mark-seen" hidden><span class="new-dot" aria-hidden="true"></span>Mark all seen</button>
     <button class="toggle-button" id="minimap-toggle" aria-pressed="true" aria-keyshortcuts="m" title="The minimap shows while the graph is larger than the panel. Key: m" hidden><span data-icon="map"></span>Minimap</button>
+    <button class="toggle-button" id="unlinked" aria-pressed="false" hidden></button>
     <span class="footer-hint" id="footer-hint">Arrows show what comes next. Drag to pan.</span>
     <span id="result-count" role="status" aria-live="polite"></span>
     <button class="toggle-button" id="notify" aria-pressed="false" hidden><span data-icon="bell"></span>Notify me</button>
@@ -77,7 +78,7 @@
 </dialog>
 <dialog class="about-panel" id="keys-dialog" aria-labelledby="keys-title">
   <div class="detail-top"><h2 id="keys-title">Keyboard</h2><button class="icon-button" data-close="keys-dialog" aria-label="Close keyboard map"><span data-icon="close"></span></button></div>
-  <div class="detail-body keys"><p>These keys work while the focus is in the Graph or Agents tab, so typing elsewhere never triggers them. They only move around: no key changes anything.</p>
+  <div class="detail-body keys"><p>These keys work while the focus is in the Graph or Agents tab, so typing elsewhere never triggers them. They only move around and change nothing. The one exception is Ctrl+Enter in the answer box of a Task's details: it sends the answer.</p>
     <section><h3>Graph and Agents</h3><dl><dt><kbd>g</kbd> <kbd>n</kbd></dt><dd>Now</dd><dt><kbd>g</kbd> <kbd>g</kbd></dt><dd>Graph</dd><dt><kbd>g</kbd> <kbd>a</kbd></dt><dd>Agents</dd><dt><kbd>/</kbd></dt><dd>Find an Agent or Task</dd><dt><kbd>u</kbd></dt><dd>Next Task that needs you</dd><dt><kbd>?</kbd></dt><dd>This map</dd></dl></section>
     <section><h3>Graph</h3><dl><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next or previous Task</dd><dt><kbd>Space</kbd></dt><dd>Peek at the Task, or close the peek</dd><dt><kbd>Enter</kbd></dt><dd>Full details</dd><dt><kbd>Esc</kbd></dt><dd>Close the peek, then clear the highlight</dd><dt><kbd>f</kbd></dt><dd>Fit</dd><dt><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, zoom out, 100%</dd><dt><kbd>m</kbd></dt><dd>Minimap on or off</dd></dl></section>
   </div>

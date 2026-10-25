@@ -35,7 +35,7 @@ const graph = $('graph-world'), panel = $('graph-panel'), agentsPanel = $('agent
 const svgNS = 'http://www.w3.org/2000/svg';
 const views = ['now','graph','agents'];
 // focus is the Task highlighted in the graph with its direct neighbours; it stays after the details close.
-const state = {view:'now',theme:'light',query:'',filter:'all',zoom:1,selected:null,focus:null,archived:false,allFinished:false};
+const state = {view:'now',theme:'light',query:'',filter:'all',zoom:1,selected:null,focus:null,unlinked:false,archived:false,allFinished:false};
 let graphTasks = [], graphEdges = [], hiddenEdges = [], focusIds = null;
 let model = null, etag = '', instance = document.querySelector('meta[name="a-stack-instance"]').content, version = document.querySelector('meta[name="a-stack-version"]').content;
 // The version and the asset files this page came with; after a restart the service may run others.
@@ -128,6 +128,12 @@ const mailText=t=>t.mail_count?` ${plural(t.mail_count,'Task mail message')}.`:'
 const seenKey='a-stack-seen:'+location.pathname;let seenAt=Number(load(seenKey)) || 0;
 const fresh=at=>seenAt>0&&Date.parse(at)>seenAt, isNew=t=>fresh(t.updated_at), newText=t=>isNew(t)?' Changed since you looked.':'';
 function markSeen() {if(!model)return;seenAt=Math.max(seenAt,...model.tasks.map(t=>Date.parse(t.updated_at) || 0));save(seenKey,String(seenAt));}
+// A quiet Task is Working without a change or Task mail for 30 minutes (the service decides): a "quiet" chip, and
+// "Quiet for 45 min." in the label, counted from the later of the last change and the last Task mail.
+function quietFor(t) {const m=Math.max(0,Math.floor((Date.now()-Math.max(Date.parse(t.updated_at) || 0,Date.parse(t.last_mail_at) || 0))/60000));return m<60?`${m} min`:m<1440?`${Math.floor(m/60)} h`:`${Math.floor(m/1440)} d`;}
+const quietText=t=>t.quiet?` Quiet for ${quietFor(t)}.`:'';
+function quietChip(n,t) {n.hidden=!t.quiet;const tip=t.quiet?`No change and no Task mail for ${quietFor(t)}`:'';if(n.title!==tip)n.title=tip;}
+const chip=()=>el('span','quiet-chip','quiet');
 // Screen reader labels: a sentence ends with one mark, so a question keeps its own; a list reads "A, B and C".
 const sentence=s=>/[.?!…]$/.test(s)?s:s+'.';
 const listing=a=>a.length<3?a.join(' and '):a.slice(0,-1).join(', ')+' and '+a.at(-1);
@@ -135,10 +141,10 @@ const asked=t=>t.needs_you?' '+sentence(t.question_preview?'Needs you: '+t.quest
 function makeCard(t) {
   const article=el('article','task-unit');article.dataset.task=t.id;
   const own=el('div','owners'), button=el('button','task-card');button.dataset.openTask=t.id;
-  const top=el('span','card-top'),st=el('span','status'),mail=el('span','mail-count'),title=el('span','task-title'),note=el('span','task-note'),foot=el('span','task-caption');
-  top.append(st,mail);button.append(top,title,note,foot);article.append(own,button);
+  const top=el('span','card-top'),st=el('span','status'),quiet=chip(),mail=el('span','mail-count'),title=el('span','task-title'),note=el('span','task-note'),foot=el('span','task-caption');
+  top.append(st,quiet,mail);button.append(top,title,note,foot);article.append(own,button);
   button.addEventListener('click',e=>e.detail?peek(t.id):openTask(t.id,button)); // a pointer click peeks; Enter opens the details
-  return {article,own,button,st,mail,title,note,foot};
+  return {article,own,button,st,quiet,mail,title,note,foot};
 }
 // A card in the graph. Only the graph uses these cards; Now and Agents have their own.
 function patchCard(c,t) {
@@ -148,14 +154,14 @@ function patchCard(c,t) {
       const n=el('span','owner');n.append(iconNode('agent'),el('span','owner-name',name));return n;
     }));
   }
-  status(c.st,t);statusMark(c.button,t);setText(c.title,t.title);setText(c.note,t.report_preview || 'No report yet.');mailCount(c.mail,t.mail_count);
+  status(c.st,t);statusMark(c.button,t);setText(c.title,t.title);setText(c.note,t.report_preview || 'No report yet.');mailCount(c.mail,t.mail_count);quietChip(c.quiet,t);
   const hidden=hiddenPrerequisites.get(t.id) || 0;
   const caption=[t.reference_count ? `${t.reference_count} file reference${t.reference_count===1?'':'s'}`:'',t.cancelled_prerequisite_count?`${t.cancelled_prerequisite_count} cancelled prerequisite${t.cancelled_prerequisite_count===1?'':'s'}`:'',hidden?`${hidden} archived prerequisite${hidden===1?'':'s'} hidden`:''].filter(Boolean).join(' · ');
   // In the graph, done Tasks without an open question are one-line blocks; the details still show everything.
   const compact=compactTask(t), tip=compact?t.title:'';c.article.classList.toggle('compact',compact);if(c.button.title!==tip)c.button.title=tip; // a compact block may cut its title
   setText(c.foot,caption);
   c.button.classList.toggle('selected',state.selected===t.id||state.focus===t.id); // the focused Task keeps its outline
-  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${t.needs_you?' Needs you.':''} Assigned to ${listing(names) || 'Unassigned'}.${mailText(t)}${caption?' '+sentence(caption):''}${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
+  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${t.needs_you?' Needs you.':''}${quietText(t)} Assigned to ${listing(names) || 'Unassigned'}.${mailText(t)}${caption?' '+sentence(caption):''}${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
   const visible=matches(t);
   c.article.classList.toggle('archived',!!t.archived);
   c.article.classList.toggle('unfocused',!!focusIds&&!focusIds.has(t.id)&&!t.needs_you); // Needs you never fades
@@ -299,7 +305,7 @@ function drawEdges() {
 function connection(e,d) {
   const p=document.createElementNS(svgNS,'path');p.setAttribute('d',d);p.classList.add('connection');
   const near=e.prerequisite_id===state.focus||e.dependent_id===state.focus||e.prerequisite_id===state.selected||e.dependent_id===state.selected;
-  if(near)p.classList.add('active');else if(state.focus)p.classList.add('unfocused');
+  if(near)p.classList.add('active');else if(focusIds)p.classList.add('unfocused');
   p.setAttribute('marker-end',near?'url(#arrow-active)':'url(#arrow)');
   index();if(!matches(taskByID.get(e.prerequisite_id))&&!matches(taskByID.get(e.dependent_id)))p.classList.add('faded');
   return p;
@@ -307,7 +313,8 @@ function connection(e,d) {
 function measure(name,run) {performance.clearMarks(name+'-start');performance.clearMarks(name+'-end');performance.clearMeasures(name);performance.mark(name+'-start');run();performance.mark(name+'-end');performance.measure(name,name+'-start',name+'-end');}
 function patchGraph() {
   if(state.focus&&!graphTasks.some(t=>t.id===state.focus))state.focus=null;
-  focusIds=state.focus?focusSet():null;mapBase=null; // statuses and filters color the minimap
+  const loose=state.unlinked?unlinkedTasks():[];if(!loose.length)state.unlinked=false;
+  focusIds=state.focus?focusSet():state.unlinked?new Set(loose.map(t=>t.id)):null;mapBase=null; // statuses and filters color the minimap
   const ids=new Set(graphTasks.map(t=>t.id));
   for(const [id,c] of cards)if(!ids.has(id)){c.article.remove();cards.delete(id);}
   // Archived prerequisites that the graph hides, named in the caption of the Tasks that need them.
@@ -349,9 +356,9 @@ function makeAgentCard(id) {
   return {section,name,avatar,meta,chips,open,moreWaiting,moreDone,doneList,empty,rows:new Map()};
 }
 function makeRow(t) {
-  const li=el('li'),b=el('button','task-row'),st=el('span','row-status'),main=el('span','row-main'),title=el('span','row-title'),question=el('span','row-question'),others=el('span','row-meta'),side=el('span','row-side'),mail=el('span','mail-count'),when=el('time','now-age');
-  main.append(title,question,others);side.append(mail,when);b.append(st,main,side);li.append(b);b.dataset.openTask=t.id;b.addEventListener('click',()=>openTask(t.id,b));
-  return {li,b,st,title,question,others,mail,when};
+  const li=el('li'),b=el('button','task-row'),st=el('span','row-status'),main=el('span','row-main'),title=el('span','row-title'),question=el('span','row-question'),others=el('span','row-meta'),side=el('span','row-side'),quiet=chip(),mail=el('span','mail-count'),when=el('time','now-age');
+  main.append(title,question,others);side.append(quiet,mail,when);b.append(st,main,side);li.append(b);b.dataset.openTask=t.id;b.addEventListener('click',()=>openTask(t.id,b));
+  return {li,b,st,title,question,others,quiet,mail,when};
 }
 function patchRow(r,t,agent) {
   const kind=t.needs_you?'needs-you':t.progress;
@@ -359,9 +366,9 @@ function patchRow(r,t,agent) {
   const others=owners(t).filter(n=>n!==agent);
   setText(r.title,t.title);setText(r.question,t.needs_you?t.question_preview || '':'');r.question.hidden=!r.question.textContent;
   setText(r.others,others.length?'with '+others.slice(0,2).join(', ')+(others.length>2?` +${others.length-2}`:''):'');r.others.hidden=!others.length;
-  mailCount(r.mail,t.mail_count);stamp(r.when,t.updated_at);
+  mailCount(r.mail,t.mail_count);quietChip(r.quiet,t);stamp(r.when,t.updated_at);
   r.b.classList.toggle('selected',state.selected===t.id);r.b.classList.toggle('archived',!!t.archived);
-  r.b.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${t.archived?' Archived.':''}${asked(t)}${others.length?' With '+listing(others)+'.':''}${mailText(t)} Changed ${age(t.updated_at)}.${newText(t)}`);r.b.classList.toggle('is-new',isNew(t));
+  r.b.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${quietText(t)}${t.archived?' Archived.':''}${asked(t)}${others.length?' With '+listing(others)+'.':''}${mailText(t)} Changed ${age(t.updated_at)}.${newText(t)}`);r.b.classList.toggle('is-new',isNew(t));
   return r.li;
 }
 function patchAgents() {
@@ -415,20 +422,20 @@ const column=t=>t.needs_you?'attention':t.progress==='working'?'working':t.progr
 const firstLine=text=>(text || '').split('\n').find(l=>l.trim())?.trim() || '';
 function stamp(n,at) { if(n.dataset.at!==at){n.dataset.at=at;n.dateTime=at;} setText(n,at?age(at):''); }
 function makeNowCard(t) {
-  const button=el('button','task-card now-card'),top=el('span','now-top'),st=el('span','status'),mail=el('span','mail-count'),when=el('time','now-age'),title=el('span','task-title'),own=el('span','now-owners'),question=el('span','now-question'),waits=el('span','now-waits'),note=el('span','task-note');
-  top.append(st,mail,when);button.append(top,title,own,question,waits,note);button.dataset.openTask=t.id;
+  const button=el('button','task-card now-card'),top=el('span','now-top'),st=el('span','status'),quiet=chip(),mail=el('span','mail-count'),when=el('time','now-age'),title=el('span','task-title'),own=el('span','now-owners'),question=el('span','now-question'),waits=el('span','now-waits'),note=el('span','task-note');
+  top.append(st,quiet,mail,when);button.append(top,title,own,question,waits,note);button.dataset.openTask=t.id;
   button.addEventListener('click',()=>openTask(t.id,button));
-  return {button,st,mail,when,title,own,question,waits,note};
+  return {button,st,quiet,mail,when,title,own,question,waits,note};
 }
 function patchNowCard(c,t,byID) {
   const names=owners(t), blockers=(prerequisites.get(t.id) || []).map(e=>byID.get(e.prerequisite_id)).filter(p=>p&&!done(p)).map(p=>p.title);
-  status(c.st,t);statusMark(c.button,t);mailCount(c.mail,t.mail_count);stamp(c.when,t.updated_at);setText(c.title,t.title);
+  status(c.st,t);statusMark(c.button,t);mailCount(c.mail,t.mail_count);quietChip(c.quiet,t);stamp(c.when,t.updated_at);setText(c.title,t.title);
   const ownKey=names.join('\n');if(c.own.dataset.key!==ownKey){c.own.dataset.key=ownKey;c.own.replaceChildren(iconNode('agent'),el('span','owner-name',names.join(', ') || 'Unassigned'));}
   setText(c.question,t.question_preview || '');c.question.hidden=!t.needs_you||!t.question_preview;
   setText(c.waits,blockers.length?'Waits for: '+blockers.slice(0,3).join(', ')+(blockers.length>3?` +${blockers.length-3} more`:''):'');c.waits.hidden=t.progress!=='waiting'||!blockers.length;
   const report=firstLine(t.report_preview);setText(c.note,report || 'No report yet.');
   c.button.classList.toggle('selected',state.selected===t.id);c.button.classList.toggle('archived',!!t.archived);
-  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${t.archived?' Archived.':''}${asked(t)} Assigned to ${listing(names) || 'Unassigned'}.${c.waits.hidden?'':' '+sentence(c.waits.textContent)}${mailText(t)} Changed ${age(t.updated_at)}.${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
+  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${quietText(t)}${t.archived?' Archived.':''}${asked(t)} Assigned to ${listing(names) || 'Unassigned'}.${c.waits.hidden?'':' '+sentence(c.waits.textContent)}${mailText(t)} Changed ${age(t.updated_at)}.${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
 }
 // Moving a node keeps its focus where the browser supports moveBefore.
 function place(list,node,ref) { if(node.nextSibling===ref&&node.parentNode===list)return; try{if(list.moveBefore&&node.isConnected&&node.ownerDocument===list.ownerDocument){list.moveBefore(node,ref);return;}}catch{} list.insertBefore(node,ref); }
@@ -452,7 +459,7 @@ function patchNow() {
 // The feed keeps the changes this page has seen: each Task's last action at its updated_at, its report time,
 // and differences between polls. A change that is not a Task's latest one shows only while the page watched it.
 const events=new Map();let feedModel=null;const feedRows=new Map();
-const actionKinds={'task.create':'create','task.status':'status','task.reopen':'status','task.report':'report','task.attention.set':'ask','task.attention.resolve':'resolve','task.assign':'assign','task.unassign':'assign','task.reference.add':'refs','task.reference.remove':'refs','task.archive':'archive','task.unarchive':'unarchive'};
+const actionKinds={'task.create':'create','task.status':'status','task.reopen':'status','task.report':'report','task.attention.set':'ask','task.attention.resolve':'resolve','task.assign':'assign','task.unassign':'assign','task.reference.add':'refs','task.reference.remove':'refs','task.archive':'archive','task.unarchive':'unarchive','task.answer':'answer'};
 function addEvent(t,kind,at) {
   if(!at)return;const key=`${t.id}|${kind}|${at}`;if(events.has(key))return;
   events.set(key,{key,task:t.id,kind,at,progress:t.progress,text:kind==='report'?firstLine(t.report_preview):kind==='ask'?t.question_preview || '':''});
@@ -465,16 +472,16 @@ function collectEvents() {
     addEvent(t,'report',t.report_at);
     const p=before?.get(t.id);if(!p)continue;
     if(p.progress!==t.progress)addEvent(t,'status',t.updated_at);
-    if(p.needs_you!==t.needs_you)addEvent(t,t.needs_you?'ask':'resolve',t.updated_at);
+    if(p.needs_you!==t.needs_you&&!(kind==='answer'&&!t.needs_you))addEvent(t,t.needs_you?'ask':'resolve',t.updated_at);
   }
   const ids=new Set(model.tasks.map(t=>t.id));for(const [k,e] of events)if(!ids.has(e.task))events.delete(k);
   if(events.size>300)[...events.values()].sort((a,b)=>a.at<b.at?-1:1).slice(0,events.size-300).forEach(e=>events.delete(e.key));
 }
 // The action is its own line under the title, so a long title never hides it.
 function eventText(e) {
-  return {status:`Changed to ${labels[e.progress] || e.progress}`,create:'Added',report:e.text?'Reported: '+e.text:'Reported',ask:e.text?'Needs you: '+e.text:'Needs you',resolve:'Needs you resolved',assign:'Agents changed',refs:'File references changed',archive:'Archived',unarchive:'Unarchived',edit:'Edited'}[e.kind];
+  return {status:`Changed to ${labels[e.progress] || e.progress}`,create:'Added',report:e.text?'Reported: '+e.text:'Reported',ask:e.text?'Needs you: '+e.text:'Needs you',resolve:'Needs you resolved',assign:'Agents changed',refs:'File references changed',archive:'Archived',unarchive:'Unarchived',answer:'Answered by the Operator',edit:'Edited'}[e.kind];
 }
-const feedIcons={ask:'attention',resolve:'finished',archive:'archive',unarchive:'archive',report:'report',refs:'file',assign:'agents',create:'plus',edit:'edit'};
+const feedIcons={answer:'mail',ask:'attention',resolve:'finished',archive:'archive',unarchive:'archive',report:'report',refs:'file',assign:'agents',create:'plus',edit:'edit'};
 function patchFeed(byID) {
   if(feedModel!==model)collectEvents();
   const list=$('feed-list'), shown=[...events.values()].filter(e=>byID.has(e.task)&&matches(byID.get(e.task))).sort((a,b)=>a.at<b.at?1:a.at>b.at?-1:a.key<b.key?-1:1).slice(0,12);
@@ -533,16 +540,22 @@ function render() {
   // The Archived toggle works in the Graph and Agents tabs.
   const archived=model.tasks.filter(t=>t.archived).length;setText($('archived-label'),`Archived (${archived})`);$('archived').setAttribute('aria-pressed',String(state.archived));
   $('archived').setAttribute('aria-label',`${state.archived?'Hide':'Show'} ${plural(archived,'archived Task')} in the Graph and Agents tabs`);
+  const loose=state.view==='graph'&&model.tasks.filter(t=>!done(t)).length>1?unlinkedTasks():[], note=$('unlinked');note.hidden=!loose.length;
+  setText(note,loose.length===1?'1 open Task has no links':`${loose.length} open Tasks have no links`);note.setAttribute('aria-pressed',String(state.unlinked));
   const changed=model.tasks.filter(isNew).length;$('mark-seen').hidden=!changed;$('mark-seen').setAttribute('aria-label',`Mark all seen: ${plural(changed,'Task')} changed since you looked`);
   if(state.view==='graph')redrawMinimap();
   patchPeek();updateSource();
 }
 $('mark-seen').onclick=()=>{markSeen();render();};
+// Open Tasks with neither prerequisites nor dependents, from the dependencies the view already has. The note in the
+// graph highlights them, like the focus of one Task; it changes nothing.
+function unlinkedTasks() {const linked=new Set();for(const e of model.dependencies){linked.add(e.prerequisite_id);linked.add(e.dependent_id);}return model.tasks.filter(t=>!done(t)&&!t.archived&&!linked.has(t.id));}
+$('unlinked').onclick=()=>{const on=!state.unlinked;state.focus=null;peekID=null;state.unlinked=on;render();const first=on&&cards.get(unlinkedTasks()[0]?.id);if(first)first.button.scrollIntoView({block:'nearest',inline:'nearest'});};
 addEventListener('pagehide',markSeen);
 // Only the visible view is patched. The others are patched when they show, if their inputs changed since.
 const patched={}, patchers={now:()=>patchNow(),graph:()=>patchGraph(),agents:()=>patchAgents()};
 function patchView(view) {
-  const inputs=[model,state.query,state.filter,state.archived,state.focus,state.selected,state.allFinished,seenAt], last=patched[view];
+  const inputs=[model,state.query,state.filter,state.archived,state.focus,state.unlinked,state.selected,state.allFinished,seenAt], last=patched[view];
   if(last&&inputs.every((x,i)=>x===last[i]))return;
   patched[view]=inputs;patchers[view]();
 }
@@ -689,7 +702,7 @@ panel.addEventListener('pointermove',e=>{if(!drag)return;
   panel.scrollLeft=drag.left+drag.x-e.clientX;panel.scrollTop=drag.top+drag.y-e.clientY;});
 const endDrag=()=>{drag=null;panel.classList.remove('panning');};
 // A click on empty space, without a drag, clears the focus.
-panel.addEventListener('pointerup',e=>{if(drag){dragged=drag.moving;if(!dragged&&!e.target.closest('.task-card')&&state.focus)setFocus(null);}endDrag();});panel.addEventListener('pointercancel',endDrag);
+panel.addEventListener('pointerup',e=>{if(drag){dragged=drag.moving;if(!dragged&&!e.target.closest('.task-card')&&(state.focus||state.unlinked))setFocus(null);}endDrag();});panel.addEventListener('pointercancel',endDrag);
 panel.addEventListener('click',e=>{if(dragged){e.stopPropagation();e.preventDefault();}dragged=false;},true);
 $('about-button').onclick=()=>{$('about-dialog').showModal();};
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
@@ -717,10 +730,61 @@ for(const [key,label]of Object.entries({status:'Status',owners:'Agents',ticket:'
   const row=el('div','detail-prop'),dd=el('dd');row.append(el('dt','',label),dd);props.append(row);propRows[key]=row;detailFields[key]=dd;
 }
 detailFields.status.append(detailStatus);
-for(const [key,label]of Object.entries({question:'Needs you',report:'Latest report',description:'Description',reason:'Reason',result:'Result',references:'File references'})){
+for(const [key,label]of Object.entries({question:'Needs you',answered:'Answered',report:'Latest report',description:'Description',reason:'Reason',result:'Result',references:'File references'})){
   const section=el('section','detail-section'),h=el('h3','',label),content=el('div','detail-text');section.append(h,content);section.hidden=true;body.append(section);detailFields[key]=content;
 }
 detailFields.question.parentElement.classList.add('detail-question');
+// The view's one write: the Operator's answer to the open Needs you question. Each answer gets a fresh operation ID;
+// sending the same text to the same question again reuses it, so the service stores the answer once.
+const answerInput=el('textarea','answer-input'),answerCount=el('span','answer-count'),answerSend=el('button','answer-send','Send'),answerNote=el('p','answer-note'),answerBox=el('div','answer-box');
+{const label=el('label','answer-label','Your answer'),row=el('div','answer-row');answerInput.id='answer-text';label.htmlFor=answerInput.id;answerCount.id='answer-count';answerInput.rows=3;
+  answerInput.setAttribute('aria-describedby',answerCount.id);answerInput.setAttribute('aria-keyshortcuts','Control+Enter Meta+Enter');answerNote.setAttribute('role','status');answerNote.tabIndex=-1;
+  row.append(answerCount,answerSend);answerBox.append(label,answerInput,row);answerBox.hidden=true;detailFields.question.parentElement.append(answerBox);detailFields.question.parentElement.after(answerNote);}
+const answer={task:null,question:'',op:'',sent:'',busy:false,refused:false};let answerFocus=false;
+function patchAnswer() {
+  const n=new TextEncoder().encode(answerInput.value).length, over=n>4096;
+  setText(answerCount,`${n.toLocaleString('en-US')} / 4,096 bytes${over?' · too long':''}`);answerCount.classList.toggle('over',over);answerInput.setAttribute('aria-invalid',String(over));
+  answerSend.disabled=!answer.question||over||!answerInput.value.trim();answerSend.setAttribute('aria-disabled',String(answer.busy));answerInput.readOnly=answer.busy; // busy keeps the focus on Send
+}
+function resetAnswer(id) {Object.assign(answer,{task:id,question:'',op:'',sent:'',refused:false});answerInput.value='';setText(answerNote,'');answerBox.hidden=true;patchAnswer();}
+function answerSent() {
+  const to=owners(taskByID.get(answer.task) || {}), inside=answerBox.contains(document.activeElement);Object.assign(answer,{sent:answer.question,op:''});answerInput.value='';answerBox.hidden=true;
+  setText(answerNote,to.length?`Sent to ${listing(to)}.`:'Sent. The Task has no Agents yet; the answer waits in its Task mail.');if(inside)answerNote.focus();
+}
+// After each details read: the box shows while the Task has an open question that this page did not just answer.
+// When the question goes away after a send whose reply was lost, and the answered question holds this text, it arrived.
+function showAnswer(q,a) {
+  const id=q?.id || '';
+  if(id!==answer.question){
+    if(answer.op&&a?.id===answer.question&&a.answer===answerInput.value)answerSent();
+    else if(answer.question&&answerInput.value.trim()&&!answer.refused)setText(answerNote,id?'The question changed. Check your answer before you send it.':'This question was answered or resolved meanwhile.');
+    else if(id&&!answer.refused)setText(answerNote,''); // a new question: the last "Sent to" goes
+    Object.assign(answer,{question:id,op:'',refused:false});
+  }
+  const inside=answerBox.contains(document.activeElement);answerBox.hidden=!id||answer.sent===id;patchAnswer();
+  if(inside&&answerBox.hidden)(answerNote.textContent?answerNote:close).focus(); // the focus stays near, on the note that says why
+  if(answerFocus){answerFocus=false;if(!answerBox.hidden)answerInput.focus();}
+}
+const answerErrors={forbidden:'Open the view again with a-stack.',unauthorized:'Open the view again with a-stack.',session_closed:'This Session is closed, so it takes no more answers.',invalid_input:'The service refused the answer: it must be 1 to 4,096 bytes of text.',not_found:'This Task is no longer in the Session.'};
+async function sendAnswer() {
+  patchAnswer();if(answerSend.disabled||answer.busy)return;
+  const task=answer.task, question=answer.question;
+  answer.op ||= 'view-'+[...crypto.getRandomValues(new Uint8Array(12))].map(b=>b.toString(16).padStart(2,'0')).join('');
+  answer.busy=true;patchAnswer();setText(answerNote,'Sending…');
+  try{
+    await request('/v1/task/answer',{operation_id:answer.op,task_id:task,question_id:question,answer:answerInput.value});
+    if(answer.task!==task||answer.question!==question)return;
+    answerSent();refresh();
+  }catch(error){
+    if(answer.task!==task)return;
+    const restarted=error.status===409&&/instance/.test(error.detail || ''), refused=error.code==='conflict'&&!restarted;answer.refused=refused;
+    setText(answerNote,restarted?'The service restarted. Send again.':refused?'This question was already answered or replaced. The details show the current state.':answerErrors[error.code] || 'The service did not answer. Send again: the answer is stored once.');
+    if(error.code==='conflict'){detailKey='';refresh();}
+  }finally{answer.busy=false;patchAnswer();}
+}
+answerInput.addEventListener('input',()=>{answer.op='';patchAnswer();});
+answerInput.addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();sendAnswer();}});
+answerSend.onclick=sendAnswer;
 function detailText(name,text) { setText(detailFields[name],text || '');detailFields[name].parentElement.hidden=!text; }
 // Task mail loads only when the Operator opens the section, oldest first, in pages that follow the mail read cursor.
 const mailToggle=el('button','mail-toggle'),mailThread=el('div','mail-thread'),mailList=el('ol','mail-list'),mailStatus=el('p','detail-footnote mail-status'),mailMore=el('button','plain-button mail-more','Load more');
@@ -763,9 +827,9 @@ mailToggle.onclick=()=>{
 mailMore.onclick=()=>fetchMail();
 dialog.append(top,body);
 dialog.addEventListener('close',()=>{detailEpoch++;state.selected=null;detailKey='';render();if(returnFocus?.isConnected&&!returnFocus.closest('[inert]')&&!returnFocus.closest('[hidden]'))returnFocus.focus();else $(state.view+'-tab').focus();});
-function setFocus(id) {state.focus=id;if(!id)peekID=null;render();}
+function setFocus(id) {state.focus=id;state.unlinked=false;if(!id)peekID=null;render();}
 $('archived').addEventListener('click',()=>{state.archived=!state.archived;save('a-stack-archived',state.archived?'1':'0');render();});
-function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){resetMail(id);for(const name of ['description','report','reason','result','question','references'])detailText(name,'');delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
+function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){resetMail(id);resetAnswer(id);for(const name of ['description','report','reason','result','question','answered','references'])detailText(name,'');delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
 const archiveReasons={command:'Archived with task archive.',chain:'Archived: every Task that depends on it is finished or cancelled.',age:'Archived: it ended more than 24 hours ago.'};
 function patchDetailMetadata(t) {
   setText(detailTitle,t.title);status(detailStatus,t);setText(detailArchive,t.archived?archiveReasons[t.archived_reason] || 'Archived.':'');detailArchive.hidden=!t.archived;
@@ -790,14 +854,15 @@ function patchDependencies(t,fields,rowsOf,limit,pick) {
 // A click on a card, or Space, opens it. It never takes or traps the focus: j and k move the focus to the next or
 // previous card in layout order and the peek follows. Escape closes it and puts the focus back on the card. The title
 // is a polite live region, so a screen reader hears the new Task. The full details stay a modal dialog.
-const peekBox=$('peek'), peekCount=el('span','peek-count'), peekClose=el('button','icon-button'), peekTitle=el('h2'), peekStatus=el('div','status'), peekQuestion=el('p','peek-question'), peekProps=el('dl','detail-props'), peekWhen=el('time','now-age'), peekNew=el('span'), peekReport=el('p','peek-report'), peekOpen=el('button','plain-button','Open details'), peekFields={}, peekRows={};
+const peekBox=$('peek'), peekCount=el('span','peek-count'), peekClose=el('button','icon-button'), peekTitle=el('h2'), peekStatus=el('div','status'), peekQuestion=el('p','peek-question'), peekProps=el('dl','detail-props'), peekWhen=el('time','now-age'), peekNew=el('span'), peekReport=el('p','peek-report'), peekOpen=el('button','plain-button','Open details'), peekAnswer=el('button','plain-button peek-answer','Answer'), peekFields={}, peekRows={};
 let peekID=null;
 {
   const head=el('div','detail-top'), inner=el('div','peek-body');peekTitle.id='peek-title';peekTitle.setAttribute('aria-live','polite');
   peekClose.setAttribute('aria-label','Close peek');peekClose.append(iconNode('close'));peekClose.onclick=()=>closePeek();head.append(peekCount,peekClose);
   for(const [key,label] of Object.entries({status:'Status',owners:'Agents',ticket:'Ticket',requires:'Requires',requiredBy:'Required by',mail:'Task mail',changed:'Changed'})){const row=el('div','detail-prop'),dd=el('dd');row.append(el('dt','',label),dd);peekProps.append(row);peekRows[key]=row;peekFields[key]=dd;}
   peekFields.status.append(peekStatus);peekFields.changed.append(peekWhen,peekNew);
-  peekOpen.onclick=()=>openTask(peekID,cards.get(peekID)?.button);inner.append(peekTitle,peekQuestion,peekProps,peekReport,peekOpen);peekBox.append(head,inner);
+  peekOpen.onclick=()=>openTask(peekID,cards.get(peekID)?.button);peekAnswer.setAttribute('aria-label','Answer in the details');peekAnswer.onclick=()=>{answerFocus=true;openTask(peekID,cards.get(peekID)?.button);};
+  inner.append(peekTitle,peekQuestion,peekAnswer,peekProps,peekReport,peekOpen);peekBox.append(head,inner);
 }
 const layoutCards=()=>[...graph.querySelectorAll('.task-unit:not([inert]) > .task-card')]; // the DOM follows the layout
 function peek(id) {peekID=id;setFocus(id);}
@@ -807,7 +872,7 @@ function patchPeek() {
   if(peekID&&(!t||!c||c.article.inert))peekID=null; // gone, archived away or filtered out
   peekBox.hidden=!peekID||state.view!=='graph';if(peekBox.hidden)return;
   const list=layoutCards();setText(peekCount,`${list.indexOf(c.button)+1} of ${list.length}`);
-  setText(peekTitle,t.title);status(peekStatus,t);setText(peekQuestion,t.needs_you?t.question_preview || 'Needs you':'');peekQuestion.hidden=!t.needs_you;
+  setText(peekTitle,t.title);status(peekStatus,t);setText(peekQuestion,t.needs_you?t.question_preview || 'Needs you':'');peekQuestion.hidden=peekAnswer.hidden=!t.needs_you;
   setText(peekFields.owners,owners(t).join(', ') || 'Unassigned');setText(peekFields.ticket,t.ticket_ref || '');peekRows.ticket.hidden=!t.ticket_ref;
   setText(peekFields.mail,t.mail_count?plural(t.mail_count,'message'):'None');stamp(peekWhen,t.updated_at);setText(peekNew,isNew(t)?' · new since you looked':'');setText(peekReport,t.report_preview || 'No report yet.');
   patchDependencies(t,peekFields,peekRows,4,o=>cards.get(o.id)&&!cards.get(o.id).article.inert?goTo(o.id):openTask(o.id,c.button));
@@ -820,8 +885,9 @@ function goTo(id) {const b=cards.get(id).button;b.focus({preventScroll:true});b.
 let gAt=0;
 $('keys-button').onclick=()=>$('keys-dialog').showModal();
 document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&e.target===$('search')&&state.query){e.preventDefault();$('search').value='';state.query='';render();return;} // the search text goes first
   if(e.ctrlKey||e.metaKey||e.altKey||e.isComposing||document.querySelector('dialog[open]'))return;
-  if(e.key==='Escape'){if(state.view!=='graph')return;if(peekID){e.preventDefault();closePeek();}else if(state.focus){e.preventDefault();setFocus(null);}return;}
+  if(e.key==='Escape'){if(state.view!=='graph')return;if(peekID){e.preventDefault();closePeek();}else if(state.focus||state.unlinked){e.preventDefault();setFocus(null);}return;}
   const where=panel.contains(e.target)||peekBox.contains(e.target)?'graph':agentsPanel.contains(e.target)?'agents':'', k=e.key, g=Date.now()-gAt<1500;
   if(!where||e.target.closest('input, select, textarea'))return;
   gAt=0;
@@ -847,19 +913,20 @@ async function loadDetail() {
     const [detail,refs]=await Promise.all([request('/v1/task/show',{task_id:t.id,read_revision:revision}),pages('references',revision,t.id)]);
     if(epoch!==detailEpoch||state.selected!==t.id)return;
     for(const name of ['description','report','reason','result'])detailText(name,detail.data[name]);
-    const q=detail.data.question;detailText('question',q?`${q.question}\nAsked by ${model.agents.find(a=>a.id===q.asker_id)?.name || q.asker_id} at ${new Date(q.asked_at).toLocaleString()}${q.note?'\n'+q.note:''}`:'');
+    const q=detail.data.question;detailText('question',q?`${q.question}\nAsked by ${model.agents.find(a=>a.id===q.asker_id)?.name || q.asker_id} at ${new Date(q.asked_at).toLocaleString()}${q.note?'\n'+q.note:''}`:'');showAnswer(q,detail.data.answered_question);
+    const a=detail.data.answered_question;detailText('answered',a?`${a.question}\nAnswer: ${a.answer}\nAnswered at ${new Date(a.resolved_at).toLocaleString()}`:'');
     const referencesKey=JSON.stringify(refs);
     if(detailFields.references.dataset.key!==t.id+referencesKey){detailFields.references.dataset.key=t.id+referencesKey;detailFields.references.replaceChildren(...refs.map(ref=>{const row=el('div','reference'),text=el('code','',ref.location+(ref.revision?' @ '+ref.revision:'')),copy=el('button','plain-button','Copy');copy.setAttribute('aria-label','Copy reference '+ref.location);copy.onclick=async()=>{try{await navigator.clipboard.writeText(ref.location);copy.textContent='Copied';}catch{copy.textContent='Select text to copy';}};row.append(text,copy);return row;}));
     }
     detailFields.references.parentElement.hidden=!refs.length;
-    setText(detailLoading,`Read-only · viewing does not resolve requests. Read revision ${revision}${t.report_at?' · report received '+new Date(t.report_at).toLocaleString():''}.`);
+    setText(detailLoading,`Viewing changes nothing; only Send answers a question. Read revision ${revision}${t.report_at?' · report received '+new Date(t.report_at).toLocaleString():''}.`);
   }catch{if(epoch===detailEpoch){detailKey='';setText(detailLoading,'Details unavailable · saved content may be stale. Retrying with the next refresh.');}}
 }
 async function request(endpoint,payload,headers={},signal) {
   const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,'X-A-Stack-Instance':instance,...headers},body:JSON.stringify({...context,...payload}),credentials:'omit',cache:'no-store',redirect:'error',signal});
   const low=response.headers.get('X-A-Stack-Low-Disk')==='1';
   if(response.status===304)return {unchanged:true,etag:response.headers.get('ETag'),low};
-  if(!response.ok){const error=new Error('Read unavailable');error.status=response.status;throw error;}
+  if(!response.ok){const error=new Error('Request refused');error.status=response.status;try{const e=(await response.json()).error;error.code=e?.code;error.detail=e?.message || '';}catch{}throw error;}
   const result=await response.json();if(!result.data)throw new Error('Invalid read response');return {...result,etag:response.headers.get('ETag'),low};
 }
 async function pages(kind,revision,task_id,signal) {
