@@ -1,6 +1,6 @@
 # a-stack command reference for Agents
 
-The examples use the `me` and `rev` helpers from [SKILL.md](../SKILL.md). `T`, `A` and `B` are Task IDs. `a-stack --help --json` lists all commands and flags.
+The examples use the `me` helper from [SKILL.md](../SKILL.md). `T`, `A` and `B` are Task IDs, and `R` is a Task revision. `a-stack --help --json` lists all commands and flags.
 
 Each command prints `{"data": ...}` on stdout. A change returns a receipt: `data.resource_id` is the ID of the new Agent, Task, message or dependency, or of the changed Task, and `data.revision` is its new revision.
 
@@ -23,19 +23,19 @@ Lists return `data.items` and, when more follow, `data.next`. Get the next page 
 
 ## Change a Task (assignee)
 
-Every change needs `--expected-revision "$(rev T)"` and a new `--operation-id`.
+Every change needs `--expected-revision R` and a new `--operation-id`. `R` is the `revision` from your last `task show` of T, or from the receipt of your last change to T. Read the Task again only after a `conflict`.
 
 ```sh
-me task status --task T --progress working --expected-revision "$(rev T)" --operation-id 02-worker-start-1
-me task status --task T --progress waiting --reason 'Waits for the API Task' --expected-revision "$(rev T)" --operation-id 02-worker-wait-1
-me task status --task T --progress finished --summary 'API and tests done' --expected-revision "$(rev T)" --operation-id 02-worker-finish-1
-me task status --task T --progress cancelled --reason 'Replaced by another Task' --expected-revision "$(rev T)" --operation-id 02-worker-cancel-1
-me task reopen --task T --reason 'Review found a bug' --expected-revision "$(rev T)" --operation-id 02-worker-reopen-1
-me task report --task T --report 'Done: API, tests. Open: docs.' --expected-revision "$(rev T)" --operation-id 02-worker-report-1
-me task attention set --task T --question 'Ship in 1.2 or 1.3?' --expected-revision "$(rev T)" --operation-id 02-worker-ask-1
-me task attention resolve --task T --note 'Operator chose 1.3' --expected-revision "$(rev T)" --operation-id 02-worker-answer-1
-me task reference add --task T --location docs/api.md --expected-revision "$(rev T)" --operation-id 02-worker-ref-1
-me task reference remove --task T --reference REFERENCE_ID --expected-revision "$(rev T)" --operation-id 02-worker-unref-1
+me task status --task T --progress working --expected-revision R --operation-id 02-worker-start-1
+me task status --task T --progress waiting --reason 'Waits for the API Task' --expected-revision R --operation-id 02-worker-wait-1
+me task status --task T --progress finished --summary 'API and tests done' --expected-revision R --operation-id 02-worker-finish-1
+me task status --task T --progress cancelled --reason 'Replaced by another Task' --expected-revision R --operation-id 02-worker-cancel-1
+me task reopen --task T --reason 'Review found a bug' --expected-revision R --operation-id 02-worker-reopen-1
+me task report --task T --report 'Done: API, tests. Open: docs.' --expected-revision R --operation-id 02-worker-report-1
+me task attention set --task T --question 'Ship in 1.2 or 1.3?' --expected-revision R --operation-id 02-worker-ask-1
+me task attention resolve --task T --note 'Operator chose 1.3' --expected-revision R --operation-id 02-worker-answer-1
+me task reference add --task T --location docs/api.md --expected-revision R --operation-id 02-worker-ref-1
+me task reference remove --task T --reference REFERENCE_ID --expected-revision R --operation-id 02-worker-unref-1
 ```
 
 - Waiting needs `--reason`. Finished needs `--summary`. Cancelled needs `--reason`.
@@ -46,9 +46,9 @@ me task reference remove --task T --reference REFERENCE_ID --expected-revision "
 
 ### Long text
 
-Instead of the text flag, give `--body-file FILE`, or `--body-file -` for stdin. Never give both.
+Instead of the text flag, give `--body-file FILE`, or `--body-file -` for stdin. `--body TEXT` also works on every command below. Give only one of them.
 
-| Command | `--body-file` sets |
+| Command | `--body` or `--body-file` sets |
 | --- | --- |
 | `task report` | The report (64 KiB at most) |
 | `task status --progress finished` | The summary (2,048 bytes at most) |
@@ -67,40 +67,29 @@ Only the current assignees of a Task can send or read its mail. Mail needs no re
 me mail send --task T --body 'Ready for review, @03-reviewer.' --operation-id 02-worker-mail-02
 me mail send --task T --body-file /your/private/folder/notes.md --operation-id 02-worker-mail-03
 me mail read --task T --limit 100
-me mail check
+me mail check --cursor-file /your/private/folder/mail.json
 ```
 
 - `@name` in the body, and each `--mention NAME` (without `@`, repeatable), must be a current assignee of T. Otherwise the whole send fails. Check with `me task assignees --task T`.
 - The receipt of a send has the message ID in `resource_id` and its sequence number in `revision`.
 - `mail read` returns `data.messages[]` (`id`, `sequence`, `sender_id`, `sender_name`, `received_at`, `body`, `mention_ids`), `data.cursor` and `data.more`. Give the cursor back with `--cursor "$cursor"` to read only newer messages.
-- `mail check` reads all your Tasks at once: `data.tasks[]`, each with `task_id`, `messages`, `cursor` and `more`. Without a cursor file, it starts at the first message of every Task each time.
+- `mail check` reads all your Tasks at once: `data.tasks[]`, each with `task_id`, `messages`, `cursor` and `more`, and `data.more`.
 - `sender_name` is the sender's Agent name. Mail reads include your own messages; find your own ID in `me agent list`.
 
 ### Read only new mail with a cursor file
 
-Keep the cursor file in your private folder. The CLI reads it but never writes it, so merge the returned cursors yourself:
+Always give `mail check` a cursor file in your private folder. The check saves in it how far you have read, and the next check shows only newer mail. The CLI creates the file if it is missing. With a cursor file, the output lists only the Tasks with new mail; `"tasks": []` means there is none.
 
-```sh
-F=/your/private/folder/cursors.json
-[ -f "$F" ] || echo '{}' >"$F"
-me mail check --cursor-file "$F" >/your/private/folder/check.json
-python3 -c 'import json,sys
-f,r=sys.argv[1],json.load(open(sys.argv[2]))["data"]
-c=json.load(open(f))
-for t in r["tasks"]:
-    c[t["task_id"]]=t["cursor"]
-    for m in t["messages"]: print(t["task_id"], m["sequence"], m["sender_id"], m["body"], sep="\t")
-json.dump(c,open(f,"w"))
-print("next_task", r.get("next_task",""))' "$F" /your/private/folder/check.json
-```
-
-If `next_task` is not empty, run the check again with `--after-task "$next_task"`. If a Task has `more: true`, run the check again.
+- If `data.more` is `true`, more mail is waiting: run the same check again.
+- Without a cursor file, every check starts again at the first message and stops after 100 messages, so on a busy Task you never see the newest mail. The output then has a `hint`.
+- If the check rejects a saved cursor with `invalid_input`, delete the file. The next check starts again at the first message.
+- Use one cursor file per Agent. Two checks at once with the same file are safe, but one of them may show its mail again.
 
 ## Errors
 
 | `error.code` | Exit | Meaning and what to do |
 | --- | --- | --- |
-| `invalid_input` | 2 | A flag, ID or text is wrong. A too short operation ID also gives this, with a generic message. Fix the command; use a new operation ID. |
+| `invalid_input` | 2 | A flag, ID or text is wrong. The message names it, and may suggest a close command or flag. Fix the command; use a new operation ID. |
 | `conflict` | 1 | The revision changed (`current_revision`, `current_progress`), or a question is already open (`current_question`). Read again, rethink, retry with a new operation ID. |
 | `operation_conflict` | 1 | This operation ID was already used for a different change. Use a new ID. |
 | `forbidden` | 1 | You are not allowed, for example you are not an assignee of the Task or not the Orchestrator. |
@@ -119,15 +108,15 @@ Only the current Orchestrator can run these. See [orchestrator.md](orchestrator.
 ```sh
 me agent register --name 02-worker --new-credential-file /private/creds/02-worker.json --operation-id orch-register-02-worker
 me task create --title 'Build the API' --body-file /your/private/folder/api.md --ticket '#42' --operation-id orch-task-api-1
-me task edit --task T --title 'Build the REST API' --expected-revision "$(rev T)" --operation-id orch-edit-api-1
-me task assign --task T --agent AGENT_ID --expected-revision "$(rev T)" --operation-id orch-assign-api-02
-me task unassign --task T --agent AGENT_ID --expected-revision "$(rev T)" --operation-id orch-unassign-api-02
-me dependency add --from A --to B --expected-revision "$(grev)" --operation-id orch-dep-a-b-1
-me dependency remove --from A --to B --expected-revision "$(grev)" --operation-id orch-undep-a-b-1
-me task archive --task T --expected-revision "$(rev T)" --operation-id orch-archive-api-1
-me task unarchive --task T --expected-revision "$(rev T)" --operation-id orch-unarchive-api-1
+me task edit --task T --title 'Build the REST API' --expected-revision R --operation-id orch-edit-api-1
+me task assign --task T --agent AGENT_ID --expected-revision R --operation-id orch-assign-api-02
+me task unassign --task T --agent AGENT_ID --expected-revision R --operation-id orch-unassign-api-02
+me dependency add --from A --to B --expected-revision G --operation-id orch-dep-a-b-1
+me dependency remove --from A --to B --expected-revision G --operation-id orch-undep-a-b-1
+me task archive --task T --expected-revision R --operation-id orch-archive-api-1
+me task unarchive --task T --expected-revision R --operation-id orch-unarchive-api-1
 ```
 
 `task archive` takes only a Finished or Cancelled Task. It hides the Task in the Operator's graph and keeps everything. Task data shows `archived` and `archived_reason`: `command`, `chain` (every dependent is done) or `age` (it ended a day ago).
 
-`grev` prints the Session's `graph_revision`. [orchestrator.md](orchestrator.md) shows the script. `--from A --to B` means that B depends on A.
+`G` is the Session's `graph_revision`: from `me session inspect`, or from the receipt of your last dependency change. `--from A --to B` means that B depends on A.

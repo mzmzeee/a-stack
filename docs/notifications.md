@@ -7,7 +7,7 @@ Task mail always works through ordinary mail checks. A mention notice is an opti
 To turn on notices, start the service with an installed Herdr executable:
 
 ```sh
-./a-stack serve --state-dir "$state_dir" --herdr-executable /absolute/path/to/herdr --json
+a-stack serve --state-dir "$state_dir" --herdr-executable /absolute/path/to/herdr --json
 ```
 
 Without this flag, notices are off and mail works as usual. If the integration data is missing or not supported, the notices stay pending with a diagnostic, and a-stack tries again with a bounded backoff. Mail and Task updates still work. a-stack configures no accounts, no background agent launcher and no global Herdr settings.
@@ -89,11 +89,11 @@ A notice that has passed the final preflight can still finish during a concurren
 ## Diagnostics and maintenance
 
 ```sh
-./a-stack notifications status --state-dir "$state_dir" \
+a-stack notifications status --state-dir "$state_dir" \
   --workspace "$workspace_id" --session "$session_id" --json
 # An Agent gives its own private credential and sees only its own delivery state.
 # Operator-only maintenance pass, with 4 recipient checks by default and 16 at most:
-./a-stack notifications drain --state-dir "$state_dir" \
+a-stack notifications drain --state-dir "$state_dir" \
   --workspace "$workspace_id" --session "$session_id" --limit 4 --json
 ```
 

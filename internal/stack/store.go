@@ -465,11 +465,11 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	authorizeReplay func(context.Context, *sql.Tx, Principal, Receipt) error,
 	apply func(context.Context, *sql.Tx, Principal) (Receipt, error)) (Receipt, error) {
 	empty := Receipt{}
-	if len(op.ID) < 8 || len(op.ID) > 128 || len(op.Name) == 0 || len(op.Name) > 64 || len(op.Scope) == 0 || len(op.Scope) > 128 || len(op.Payload) > MaxRequestBytes || !json.Valid(op.Payload) || authorizeReplay == nil || apply == nil {
-		return empty, failure("invalid_input", "operation ID, bounded payload, scope and authorization callbacks required")
-	}
 	if !validOperationID(op.ID) {
-		return empty, failure("invalid_input", "invalid operation ID")
+		return empty, failure("invalid_input", OperationIDRule)
+	}
+	if len(op.Name) == 0 || len(op.Name) > 64 || len(op.Scope) == 0 || len(op.Scope) > 128 || len(op.Payload) > MaxRequestBytes || !json.Valid(op.Payload) || authorizeReplay == nil || apply == nil {
+		return empty, failure("invalid_input", "bounded payload, scope and authorization callbacks required")
 	}
 	b, _ := json.Marshal(struct {
 		Name, Scope string
@@ -651,6 +651,9 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	}
 	return StorageStatus{DatabaseID: s.id, DatabaseBytes: info.Size()}, nil
 }
+
+// OperationIDRule is the error message for an operation ID that breaks it.
+const OperationIDRule = "operation ID must be 8–128 letters, digits, _ or -"
 
 func validOperationID(id string) bool {
 	if len(id) < 8 || len(id) > 128 {

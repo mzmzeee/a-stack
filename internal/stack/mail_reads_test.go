@@ -146,8 +146,11 @@ func TestMailCheckIndependentPositionsAndAggregateBudget(t *testing.T) {
 			t.Fatal("saved caller cursor ignored")
 		}
 	}
+	if noNew.More {
+		t.Fatal("more without waiting mail")
+	}
 	oneTask, err := s.CheckMail(ctx, f.a.Token, MailCheckRequest{Context: f.ref(0), Cursors: cursors, TaskLimit: 1})
-	if err != nil || oneTask.NextTask == "" || len(oneTask.Tasks) != 1 {
+	if err != nil || oneTask.NextTask == "" || len(oneTask.Tasks) != 1 || !oneTask.More {
 		t.Fatal("bounded Task enumeration")
 	}
 	_, err = s.CheckMail(ctx, f.b.Token, MailCheckRequest{Context: f.ref(0), AfterTask: oneTask.NextTask})
