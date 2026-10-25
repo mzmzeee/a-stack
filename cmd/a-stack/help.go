@@ -318,6 +318,11 @@ func flagText(fs *flag.FlagSet, command, name string) string {
 			text += ", or --summary with --progress finished"
 		}
 	}
+	if name == "name" && command == "agent register" {
+		text = "Agent name"
+	} else if name == "name" && command == "session create" {
+		text = "Session name"
+	}
 	if name == "limit" && command == "task handoff" {
 		text = "How many of the latest Task mails to show: 1 to 500 (default 20)"
 	}
