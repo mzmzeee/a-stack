@@ -98,7 +98,19 @@ func TestHerdrExecutableHelper(t *testing.T) {
 			os.Exit(0)
 		case "get_wait":
 			fakeHerdrWait(dir, "get-started")
+		case "unnamed", "rename_taken":
+			delete(agent, "name")
 		}
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": map[string]any{"agent": agent}})
+		os.Exit(0)
+	}
+	// herdr bind names its own unnamed pane; Herdr refuses a live name in use.
+	if len(args) == 4 && args[0] == "agent" && args[1] == "rename" && args[2] == config.Binding.PaneID && herdrName.MatchString(args[3]) {
+		if config.Mode == "rename_taken" {
+			fmt.Fprintln(os.Stderr, `{"error":{"code":"agent_name_taken","message":"private raw diagnostic"}}`)
+			os.Exit(1)
+		}
+		agent["name"] = args[3]
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": map[string]any{"agent": agent}})
 		os.Exit(0)
 	}

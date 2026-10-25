@@ -81,7 +81,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&refresh, "refresh", false, "Replace only the skill copies that exist; write no new ones")
 	fs.BoolVar(&check, "check", false, "Only print the current and the latest version")
 	fs.BoolVar(&all, "all", false, "Revoke the views of every Session")
-	fs.StringVar(&herdrExecutable, "herdr-executable", "", "Turn on Herdr mention notices with this herdr binary")
+	fs.StringVar(&herdrExecutable, "herdr-executable", "", "The herdr binary; serve turns on mention notices with it")
 	var lifecycle lifecycleFlags
 	lifecycle.register(fs)
 	var tasks taskFlags
@@ -138,7 +138,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		}
 		cmd = "new"
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) {
+	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -190,6 +190,14 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 	if cmd == "view revoke" {
 		data, err := client.RevokeViews(ctx, stack.ViewRevokeRequest{Context: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, All: all})
+		if err != nil {
+			return err
+		}
+		_, err = stdout.Write(append(data, '\n'))
+		return err
+	}
+	if isHerdrCommand(cmd) {
+		data, err := herdrRequest(ctx, client, cmd, lifecycle, herdrExecutable)
 		if err != nil {
 			return err
 		}

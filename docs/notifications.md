@@ -28,7 +28,28 @@ The Codex fixture had Herdr client and server 0.9.5 with protocol 22, and the ac
 
 ## Enroll a recipient
 
-Enroll the recipient as described in [Workspaces, Sessions and Agents](lifecycle.md). Attach its new registration with `agent attach --runtime-file PRIVATE_FILE`. To replace a binding that is already set, the Operator must run `agent rebind`, which also rotates the credential. Keep the binding in a private JSON file like this one:
+Enroll the recipient as described in [Workspaces, Sessions and Agents](lifecycle.md). Then the Agent binds its new registration to its own Herdr pane. It runs this inside that pane, with its own credential:
+
+```sh
+a-stack herdr bind --as agent --credential-file "$credential_dir/worker.json" \
+  --workspace "$workspace_id" --session "$session_id" --agent "$worker_id" \
+  --expected-revision 1 --operation-id worker-bind-1 --json
+```
+
+`herdr bind` needs Herdr's integration for the harness, because only the integration reports the harness's native session to Herdr. Install it once with `herdr integration install claude` or `herdr integration install codex`, then start the harness again in its pane.
+
+The command does these steps:
+
+1. It reads `HERDR_ENV`, `HERDR_PANE_ID` and `HERDR_SOCKET_PATH`, which Herdr sets in each pane. Outside a Herdr pane it fails with `invalid_input`.
+2. It checks the Herdr server, like a notice does, and runs `herdr agent get` for its own pane.
+3. The pane must hold Claude Code or Codex, with a native session that Herdr's integration reported. Otherwise it fails with `integration_missing`, and the message names the `herdr integration install` command.
+4. If the pane's agent has no Herdr name yet, it names it `a-` plus the lowercase a-stack name, cut to 32 characters, with `herdr agent rename`. It renames only its own pane. If Herdr refuses the name, it fails with `conflict`.
+5. It runs the harness's own `--version`, such as `codex --version`, and keeps the first `MAJOR.MINOR.PATCH`.
+6. It sends the same request as `agent attach`, with the instance ID `herdr:` plus the terminal ID. The binding never goes to a file, and the receipt does not show it.
+
+Give `--herdr-executable` when `herdr` is not on your `PATH`. A retry with the same operation ID returns the original receipt, as long as the pane and the harness version are unchanged. `herdr bind` attaches only a new, unbound registration. To replace a binding that is already set, the Operator must run `agent rebind`, which also rotates the credential. a-stack never reports agent state or sessions to Herdr, because Herdr restarts a pane with a reported session after a server restart.
+
+Without Herdr's integration, or for another tool, you can attach a binding by hand with `agent attach --runtime-file PRIVATE_FILE`. Keep it in a private JSON file like this one:
 
 ```json
 {
@@ -54,7 +75,7 @@ Before a delivery, the adapter checks all of these:
 
 A target in the state Working, Idle or Done accepts normal queued input. A target that is Blocked, Unknown, stopped, missing or changed does not. a-stack does not wait for the target to be idle.
 
-Herdr's `agent get` does not report the harness version. So `harness_version` is what you declare at registration, and it is separate from the queue-test evidence. When you rebind or upgrade an Agent, keep this declaration correct.
+Herdr's `agent get` does not report the harness version. So `harness_version` is what `herdr bind` read from the harness, or what you declared in the file, and it is separate from the queue-test evidence. When you upgrade the harness to another minor line, the Operator must rebind the Agent.
 
 ## How a-stack calls Herdr
 
