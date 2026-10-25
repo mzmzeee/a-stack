@@ -32,6 +32,9 @@ func TestPopulatedV3MailUpgradeAndFailureRecovery(t *testing.T) {
 			if _, err = db.Exec("INSERT INTO metadata VALUES('database_id',?);INSERT INTO workspaces VALUES(?,?,?);INSERT INTO sessions(id,workspace_id,name,created_at,updated_at) VALUES(?,?,?,?,?);INSERT INTO agents(id,workspace_id,session_id,name,created_at,updated_at) VALUES(?,?,?,?,?,?);UPDATE sessions SET orchestrator_id=? WHERE id=?;INSERT INTO capabilities VALUES(?,'agent',?,?)", id, workspace, privateTestDir(t), timestamp, session, workspace, "v3", timestamp, timestamp, agent, workspace, session, "v3-agent", timestamp, timestamp, agent, session, tokenHash(credential.Token), agent, session); err != nil {
 				t.Fatal(err)
 			}
+			if _, err = db.Exec(expiresStandIn); err != nil {
+				t.Fatal(err)
+			}
 			old := &Store{db: db, path: path, id: id}
 			if err = old.ensureOperator(ctx, dir); err != nil {
 				t.Fatal(err)
@@ -55,7 +58,7 @@ func TestPopulatedV3MailUpgradeAndFailureRecovery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = db.Exec(undoMigration6 + "DROP TABLE mail_messages"); err != nil {
+			if _, err = db.Exec(undoMigration6 + dropExpires + "DROP TABLE mail_messages"); err != nil {
 				t.Fatal(err)
 			}
 			if fail {

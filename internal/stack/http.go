@@ -243,6 +243,10 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, failure("conflict", "service instance changed; reload discovery"))
 		return
 	}
+	if r.URL.Path == "/v1/browser/redeem" {
+		s.redeemHTTP(w, r)
+		return
+	}
 	values := r.Header.Values("Authorization")
 	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
 		writeError(w, failure("unauthorized", "valid bearer credential required"))
