@@ -6,6 +6,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- The agent hooks have a Stop guard and a Task mail nudge, both on by default. The Stop guard blocks a stop once while one of the Agent's Tasks is `working` without a report since its last status change, and names the Task and the two ways out: report and finish, or set `waiting` with a reason. It never blocks twice in a row and lets the agent stop on any error. The nudge checks the Agent's Task mail after a tool call or a prompt, at most every 30 seconds per harness session, with its own cursor file in `~/.cache/a-stack/hooks/`, and tells the agent `New Task mail on "TITLE"; run mail check.` without sender or text. The Agent's own cursor file does not move. A check adds about 5 to 13 ms to a tool call, a skipped one under 1 ms. Hooks installed with v0.1.5 get both with the new binary; `hook install --no-stop-guard` and `--no-mail-nudge` turn them off. See [Stop guard](docs/hooks.md#stop-guard) and [Task mail nudge](docs/hooks.md#task-mail-nudge).
+
 ## [0.1.5] - 2026-10-25
 
 Upgrading from v0.1.4: run `a-stack update`, then restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`). The first start copies the database to `state.db.pre-v6` and moves it to schema 7. Open browser views lose access once, because old view links are revoked: run `a-stack` to open a new one. If you set up the systemd unit by hand, run `a-stack service install` once to update it.

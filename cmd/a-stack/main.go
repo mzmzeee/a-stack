@@ -218,7 +218,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 	if isHookCommand(cmd) {
-		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}}
+		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, noStopGuard: hooks.noStopGuard, noMailNudge: hooks.noMailNudge}
 		if cmd == "hook" {
 			runHook(id, os.Stdin, stdout)
 			return nil
