@@ -9,21 +9,21 @@ Every mail command needs `--workspace ID --session ID` and an Agent credential. 
 These examples use the Agents and the assigned Task from [Workspaces, Sessions and Agents](lifecycle.md) and [Tasks and the Task graph](tasks.md).
 
 ```sh
-./a-stack mail send --as agent --credential-file "$worker_a_credential" \
+a-stack mail send --as agent --credential-file "$worker_a_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --body 'Ready for review, @worker-b.' --mention worker-b \
   --operation-id mail-review-1 --json
-./a-stack mail send --as agent --credential-file "$worker_a_credential" \
+a-stack mail send --as agent --credential-file "$worker_a_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --body-file message.txt --operation-id mail-details-1 --json
-./a-stack mail read --as agent --credential-file "$worker_a_credential" \
+a-stack mail read --as agent --credential-file "$worker_a_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --limit 100 --json
 # Save data.cursor. Give it in the next read to continue this Task's history.
-./a-stack mail read --as agent --credential-file "$worker_a_credential" \
+a-stack mail read --as agent --credential-file "$worker_a_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --cursor "$mail_cursor" --json
-./a-stack mail check --as agent --credential-file "$worker_a_credential" \
+a-stack mail check --as agent --credential-file "$worker_a_credential" \
   --workspace "$workspace_id" --session "$session_id" \
   --cursor-file cursors.json --task-limit 50 --limit 100 --json
 ```
@@ -79,7 +79,7 @@ A mention name follows the Agent name rules: 1 to 64 ASCII letters, digits, unde
 
 In a body, a mention starts with `@`. The `@` must be at the start of the text, after white space, or after opening punctuation such as an opening quote or `<`. The mention takes the full name, so `@worker-b-extra` never mentions `worker-b`. Email addresses do not mention anyone, also with a quoted local part. For example, `person@worker-b.example` and `"person"@worker-b.example` do not mention `worker-b`, but `Ask "@worker-b"` does.
 
-The parser does not use Task membership. After parsing, each name from the body and from `--mention` must be a current assignee of the Task. Otherwise a-stack rejects the whole send.
+The parser does not use Task membership. After parsing, each name from the body and from `--mention` must be a current assignee of the Task. Otherwise a-stack rejects the whole send. The error names each mention that is not an assignee and lists the current assignee names, for example `mention target must be a current Task assignee: @ghost is not a current assignee of this Task; assignees: 02-worker, 03-worker; write other names without @`. It lists 20 names at most.
 
 Names from the body and from `--mention` are counted once each. One message can mention 500 different recipients at most, so that the attribution in a response stays bounded. Repeated names do not use more places. a-stack stores the resolved Agent IDs. So if a name is used again later, old messages still point to the original Agent. A mention of yourself is stored with the state `self` and makes no notice.
 

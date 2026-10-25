@@ -18,8 +18,11 @@ type Enrollment struct {
 }
 
 func PrepareAgentCredential(path, databaseID, action, operationID string, request any) (string, error) {
-	if !filepath.IsAbs(path) || !validToken(databaseID) || !validOperationID(operationID) {
-		return "", failure("invalid_input", "new private credential filename and operation ID required")
+	if !validOperationID(operationID) {
+		return "", failure("invalid_input", OperationIDRule)
+	}
+	if !filepath.IsAbs(path) || !validToken(databaseID) {
+		return "", failure("invalid_input", "new credential file must be an absolute file name")
 	}
 	parent, err := os.Lstat(filepath.Dir(path))
 	if err != nil {

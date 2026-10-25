@@ -23,10 +23,10 @@ import (
 // --session names them.
 func isWatchCommand(command string) bool { return command == "watch" || command == "status" }
 
+// watchFlags are the flags of watch and status; all is the shared --all.
 type watchFlags struct{ all, notify, notifyText bool }
 
 func (f *watchFlags) register(fs *flag.FlagSet) {
-	fs.BoolVar(&f.all, "all", false, "Every Session, not only those of the current folder")
 	fs.BoolVar(&f.notify, "notify", false, "Also show a desktop notice through notify-send")
 	fs.BoolVar(&f.notifyText, "notify-text", false, "Put the question in the desktop notice (implies --notify)")
 }

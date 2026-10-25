@@ -23,17 +23,17 @@ IDs and private runtime bindings are separate from display names and from Herdr 
 Start the service as the [README](../README.md) shows. These examples use the default state directory. If you use a different one, give the same `--state-dir ABSOLUTE_DIR` to every command.
 
 ```sh
-./a-stack workspace create --path /absolute/project --operation-id project-create-1 --json
+a-stack workspace create --path /absolute/project --operation-id project-create-1 --json
 # Set workspace_id to data.resource_id from this receipt.
-./a-stack session create --workspace "$workspace_id" --name "Build" \
+a-stack session create --workspace "$workspace_id" --name "Build" \
   --operation-id session-create-1 --json
 # Set session_id to data.resource_id from this receipt.
 credential_dir="$(mktemp -d)"
-./a-stack agent register --workspace "$workspace_id" --session "$session_id" \
+a-stack agent register --workspace "$workspace_id" --session "$session_id" \
   --name 01-orchestrator --new-credential-file "$credential_dir/orchestrator.json" \
   --operation-id orchestrator-register-1 --json
 # Set orchestrator_id to data.resource_id from this receipt.
-./a-stack session appoint --workspace "$workspace_id" --session "$session_id" \
+a-stack session appoint --workspace "$workspace_id" --session "$session_id" \
   --agent "$orchestrator_id" --expected-revision 1 --operation-id appoint-initial-1 --json
 ```
 
@@ -44,7 +44,7 @@ When the Operator replaces the Orchestrator, the old Agent loses the Orchestrato
 The Operator or the current Orchestrator can register more Agents in an open Session. This example uses only the Orchestrator's credential:
 
 ```sh
-./a-stack agent register --as agent --credential-file "$credential_dir/orchestrator.json" \
+a-stack agent register --as agent --credential-file "$credential_dir/orchestrator.json" \
   --workspace "$workspace_id" --session "$session_id" --name 02-worker \
   --new-credential-file "$credential_dir/worker.json" --operation-id worker-register-1 --json
 ```
@@ -56,9 +56,9 @@ These scopes prevent accidental use of the wrong API permissions. They do not pr
 An Agent gives its credential and its context in every call:
 
 ```sh
-./a-stack session inspect --as agent --credential-file "$credential_dir/worker.json" \
+a-stack session inspect --as agent --credential-file "$credential_dir/worker.json" \
   --workspace "$workspace_id" --session "$session_id" --json
-./a-stack agent attach --as agent --credential-file "$credential_dir/worker.json" \
+a-stack agent attach --as agent --credential-file "$credential_dir/worker.json" \
   --workspace "$workspace_id" --session "$session_id" --agent "$worker_id" \
   --runtime-id explicit-runtime-instance-id --expected-revision 1 \
   --operation-id worker-attach-1 --json
@@ -86,7 +86,7 @@ If an Agent loses its token, the Operator recovers access with `agent rebind`. T
 A runtime binding links an Agent registration to the running process that acts as that Agent. Only the Agent's own credential can attach a binding to its new, unbound registration. After that, only the Operator can change the binding, with `agent rebind`:
 
 ```sh
-./a-stack agent rebind --workspace "$workspace_id" --session "$session_id" \
+a-stack agent rebind --workspace "$workspace_id" --session "$session_id" \
   --agent "$worker_id" --expected-revision 2 --runtime-id replacement-instance \
   --new-credential-file "$credential_dir/worker-replacement.json" \
   --operation-id worker-rebind-1 --json

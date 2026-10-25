@@ -25,6 +25,7 @@ var helpGroups = []helpGroup{
 		{"status", "", "Count what needs you, works, waits and finished"},
 		{"watch", "", "Print each change and ring on a new Needs you"},
 		{"statusline", "", "Print a status line for Claude Code"},
+		{"view revoke", "", "End browser view access: one Session or --all"},
 	}},
 	{"Agent skill", []helpRow{
 		{"skill install", "", "Install the agent skill in ~/.claude and ~/.agents"},
@@ -38,6 +39,9 @@ var helpGroups = []helpGroup{
 		{"health", "", "Check the running service"},
 		{"version", "", "Print the version"},
 		{"update", "", "Install the latest release in place of this binary"},
+		{"service install", "", "Keep the service running with systemd"},
+		{"service uninstall", "", "Stop the systemd service and remove its unit"},
+		{"service status", "", "Show the systemd service, linger and health"},
 		{"storage status", "", "Show database and WAL sizes"},
 		{"storage backup", "", "Write a checked backup of the database"},
 	}},
@@ -50,6 +54,8 @@ var helpGroups = []helpGroup{
 		{"session close", "", "Close a Session"},
 		{"session reopen", "", "Reopen a closed Session"},
 		{"session appoint", "", "Appoint the Orchestrator of a Session"},
+		{"session snapshot", "", "Show a Session's revisions and counts"},
+		{"session page", "", "Read one page of a Session collection"},
 		{"agent register", "", "Register an Agent and write its credential"},
 		{"agent list", "", "List the Agents of a Session"},
 		{"agent attach", "", "Bind a running instance to an Agent"},
@@ -79,8 +85,6 @@ var helpGroups = []helpGroup{
 		{"dependency add", "", "Make one Task depend on another"},
 		{"dependency remove", "", "Remove a dependency"},
 		{"dependency history", "", "List the changes of the Task graph"},
-		{"session snapshot", "", "Show a Session's revisions and counts"},
-		{"session page", "", "Read one page of a Session collection"},
 	}},
 	{"Task mail", []helpRow{
 		{"mail send", "", "Send Task mail to the other assignees"},
@@ -162,7 +166,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "status", "watch", "hook install", "hook uninstall", "hook", "statusline")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string
@@ -174,7 +178,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 	default:
 		text = prefixHelp(command)
 		if text == "" {
-			return invalid("unknown command; use --help")
+			return invalid("no help for " + short(command) + didYouMean(command) + "; use --help")
 		}
 	}
 	_, err := io.WriteString(stdout, text)
@@ -288,6 +292,12 @@ var flagValues = map[string]string{
 
 func flagText(fs *flag.FlagSet, command, name string) string {
 	text := fs.Lookup(name).Usage
+	if name == "body" && command != "mail send" {
+		text = "Same as --" + textFlag(command, "")
+		if command == "task status" {
+			text += ", or --summary with --progress finished"
+		}
+	}
 	if flagRequired(command, name) {
 		text += " (required)"
 	}

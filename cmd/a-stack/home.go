@@ -48,7 +48,7 @@ func (h *home) run(ctx context.Context) error {
 		if h.machine {
 			err = json.NewEncoder(h.stdout).Encode(readyLine(service))
 		} else {
-			_, err = fmt.Fprintf(h.stdout, "The a-stack service is running at %s. Press Ctrl-C to stop it.\n", service.Discovery.URL)
+			_, err = fmt.Fprintf(h.stdout, "The a-stack service is running at %s. Press Ctrl-C to stop it.\n%s\n", service.Discovery.URL, closeHint)
 		}
 		if err != nil {
 			return err
@@ -73,6 +73,10 @@ func (h *home) run(ctx context.Context) error {
 	}
 	return err
 }
+
+// closeHint follows the ready line when a shortcut starts the service in
+// the foreground.
+const closeHint = "Closing this terminal stops a-stack. To keep it running, run: a-stack service install"
 
 // errStateBusy exits with 3, like stack.ErrStateOwned.
 var errStateBusy = &stack.Error{Code: "conflict", Message: "another a-stack serve owns this state directory but does not answer yet; wait a moment or stop it (Ctrl-C in its terminal, or systemctl --user stop a-stack)"}
@@ -155,7 +159,7 @@ func (h *home) resumeSession(ctx context.Context, client *stack.Client) error {
 }
 
 // create reuses the Workspace of exactly this folder or makes it, then makes a
-// Session. The CLI is the caller that generates the operation IDs, and it
+// Session, unless an open Session of that name exists there. The CLI is the caller that generates the operation IDs, and it
 // prints them so that a change with an unknown outcome can be sent again.
 func (h *home) create(ctx context.Context, client *stack.Client) error {
 	if h.cwd == "" {
@@ -171,8 +175,28 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 			row.WorkspaceID = w.ID
 		}
 	}
+	row.Name = h.name
+	if row.Name == "" {
+		row.Name = filepath.Base(h.cwd)
+	}
 	fields := map[string]any{}
 	before := []string{}
+	if row.WorkspaceID != "" {
+		// A second `a-stack new` opens the open Session of the same name
+		// instead of making a twin. Another name makes a new Session.
+		sessions, err := listPages[stack.Session](ctx, client, "/v1/session/list", stack.Context{WorkspaceID: row.WorkspaceID})
+		if err != nil {
+			return err
+		}
+		for _, s := range sessions {
+			if !s.Closed && s.Name == row.Name {
+				row.SessionID = s.ID
+				fields["existing_session"] = true
+				before = append(before, fmt.Sprintf("The Session %q already exists in this folder. To make another one, run: a-stack new NAME", printable(row.Name)))
+				return h.openWith(ctx, client, row, fields, before, nil)
+			}
+		}
+	}
 	if row.WorkspaceID == "" {
 		id := operationID()
 		receipt, err := mutate(ctx, client, "/v1/workspace/create", stack.WorkspaceCreateRequest{OperationID: id, Path: h.cwd}, "workspace create from this folder", id)
@@ -182,10 +206,6 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 		row.WorkspaceID = receipt.ResourceID
 		fields["workspace_operation_id"] = id
 		before = append(before, fmt.Sprintf("Created the Workspace %s (operation ID %s).", printable(shortenHome(h.cwd, h.homeDir)), id))
-	}
-	row.Name = h.name
-	if row.Name == "" {
-		row.Name = filepath.Base(h.cwd)
 	}
 	id := operationID()
 	receipt, err := mutate(ctx, client, "/v1/session/create", stack.SessionCreateRequest{OperationID: id, WorkspaceID: row.WorkspaceID, Name: row.Name}, "session create --workspace "+row.WorkspaceID+" with the same name", id)

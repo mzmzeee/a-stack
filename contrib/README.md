@@ -49,4 +49,4 @@ git commit -m "a-stack X.Y.Z"
 git push
 ```
 
-Users then run `brew install mzmzeee/tap/a-stack`. The formula is for Linux only, because a-stack has no macOS build yet. It installs only the binary; for the service, users follow [Start a-stack automatically](../docs/install.md#start-a-stack-automatically) with the path that `brew --prefix` shows. Users update with `brew upgrade`.
+Users then run `brew install mzmzeee/tap/a-stack`. The formula is for Linux only, because a-stack has no macOS build yet. It installs only the binary; for the service, users run `a-stack service install` (see [Start a-stack automatically](../docs/install.md#start-a-stack-automatically)). The unit then names the binary's real path in the Homebrew Cellar, which changes with each version, so users run `a-stack service install` again after `brew upgrade`. Users update with `brew upgrade`, not `a-stack update`.

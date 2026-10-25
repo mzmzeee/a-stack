@@ -68,7 +68,7 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 		t.Fatal("fixture")
 	}
 	t.Chdir(f.project)
-	install := []string{"hook", "install", "--credential-file", f.workerFile, "--workspace", f.workspace, "--session", f.session, "--name", "02-worker", "--runtime-id", "it's-me", "--state-dir", f.state}
+	install := []string{"hook", "install", "--credential-file", f.workerFile, "--workspace", f.workspace, "--session", f.session, "--name", "02-worker", "--runtime-id", "it's-me"}
 	out, errout, code := f.run("", install...)
 	if code != 0 || !strings.Contains(out, "Installed the a-stack hooks for "+f.project+" in:\n  "+claude+"\n  "+codex+"\n") || !strings.Contains(out, "run /hooks in Codex") {
 		t.Fatalf("install: %d %q %s", code, out, errout)
