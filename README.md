@@ -6,7 +6,7 @@ Keep an eye on your AI coding agents.
 [![Latest release](https://img.shields.io/github/v/release/mzmzeee/a-stack)](https://github.com/mzmzeee/a-stack/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/mzmzeee/a-stack/total)](https://github.com/mzmzeee/a-stack/releases)
 [![Go version](https://img.shields.io/github/go-mod/go-version/mzmzeee/a-stack)](go.mod)
-[![Platform: Linux amd64 | arm64](https://img.shields.io/badge/platform-Linux%20amd64%20%7C%20arm64-blue)](docs/install.md)
+[![Platform: Linux and macOS, amd64 | arm64](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20amd64%20%7C%20arm64-blue)](docs/install.md)
 [![License: MIT](https://img.shields.io/github/license/mzmzeee/a-stack)](LICENSE)
 
 When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
@@ -28,7 +28,7 @@ Works with Claude Code and Codex (with hooks), [Herdr](https://herdr.dev) (optio
 5. When an Agent needs your input, it marks its Task as Needs you, with a question.
 6. You follow the work in a read-only browser view.
 
-The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It runs on Linux, keeps all data on your computer and accepts connections only on `127.0.0.1`.
+The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It runs on Linux and macOS, keeps all data on your computer and accepts connections only on `127.0.0.1`.
 
 If your Agents run in [Herdr](https://herdr.dev), a-stack can also tell an Agent to check its mail when another Agent mentions it. This is optional.
 
@@ -69,11 +69,11 @@ Old work is archived so that it does not clutter the graph. a-stack archives a f
 curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | sh
 ```
 
-The script installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download, `go install` (it needs a C compiler) or a build from source, see [Install](docs/install.md).
+The script works on Linux and macOS, on `amd64` and `arm64`. It installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download, `go install` (it needs a C compiler) or a build from source, see [Install](docs/install.md).
 
 To update, run `a-stack update` and restart the service. See [Update](docs/install.md#update).
 
-To start a-stack at boot and restart it after a crash, run `a-stack service install`. See [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
+To start a-stack at login and restart it after a crash, run `a-stack service install`. It uses systemd on Linux and launchd on macOS. See [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
 
 ## Quick start
 
@@ -86,7 +86,7 @@ a-stack -r           # pick another Session
 
 ![The a-stack -r picker in a terminal: three Sessions with their folders, open or closed, Task counts and one needs you. Tab switches between this folder and all folders.](docs/images/picker.png)
 
-If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C or close the terminal. To keep it running, run `a-stack service install`. If the service already runs, for example as a [systemd service](docs/install.md#start-a-stack-automatically), they use it and return.
+If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C or close the terminal. To keep it running, run `a-stack service install`. If the service already runs, for example as a [systemd or launchd service](docs/install.md#start-a-stack-automatically), they use it and return.
 
 The Task graph is empty at first. `a-stack new --orchestrator 01-orchestrator` also registers and appoints an Orchestrator and prints a brief to give your coding agent. To hand the Session to an Orchestrator agent that registers the other Agents and plans the Tasks, see [Hand your Session to an Orchestrator](docs/getting-started.md#hand-your-session-to-an-orchestrator). To try a whole team on throwaway state first, follow [Getting started](docs/getting-started.md).
 

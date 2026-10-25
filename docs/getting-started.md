@@ -6,7 +6,7 @@ The guide keeps all its state in new temporary directories, so it does not touch
 
 ## What you need
 
-- Linux.
+- Linux or macOS.
 - The `a-stack` binary on your `PATH`. See [Install](install.md).
 - Python 3. The guide uses it only to read values from the JSON output.
 

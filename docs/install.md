@@ -1,6 +1,8 @@
 # Install
 
-a-stack runs on Linux, on x86-64 (`amd64`) and ARM64 (`arm64`). The release binaries are statically linked. They do not need other libraries.
+a-stack runs on Linux and macOS, on x86-64 (`amd64`) and ARM64 (`arm64`). The Linux release binaries are statically linked. They do not need other libraries. The macOS release binaries run on macOS 12 or later and use only the libraries that come with macOS. macOS releases start with v0.1.5.
+
+On both systems, a-stack keeps its data in `~/.local/state/a-stack`, or in `$XDG_STATE_HOME/a-stack` when `XDG_STATE_HOME` is set. macOS uses the same folder as Linux, so the commands in these guides and the agent skill work the same on both.
 
 ## Install script
 
@@ -12,7 +14,7 @@ The script does these steps:
 
 1. It finds the archive for your processor.
 2. It downloads the archive and the release's `SHA256SUMS` file.
-3. It checks the signature of `SHA256SUMS` with OpenSSL 3, if OpenSSL 3 is installed. See [How releases are verified](#how-releases-are-verified).
+3. It checks the signature of `SHA256SUMS` with OpenSSL 3, if OpenSSL 3 is installed. macOS has LibreSSL instead, so there the script checks only the checksum and says so. See [How releases are verified](#how-releases-are-verified).
 4. It compares the checksum. If the signature or the checksum is not correct, it stops and installs nothing.
 5. It installs the binary in `~/.local/bin`, without `sudo`.
 6. It tells you if this folder is not on your `PATH`.
@@ -39,12 +41,14 @@ sh install.sh
 ## Manual download
 
 1. Open the [releases page](https://github.com/mzmzeee/a-stack/releases).
-2. Download `a-stack_linux_amd64.tar.gz` or `a-stack_linux_arm64.tar.gz`, `SHA256SUMS` and `SHA256SUMS.sig`.
+2. Download the archive for your system, `SHA256SUMS` and `SHA256SUMS.sig`. The archives are `a-stack_linux_amd64.tar.gz` and `a-stack_linux_arm64.tar.gz` for Linux, and `a-stack_darwin_arm64.tar.gz` (Apple silicon) and `a-stack_darwin_amd64.tar.gz` (Intel) for macOS.
 3. Check the archive, either with the release signature or with the GitHub attestation. See [How releases are verified](#how-releases-are-verified). Then check the checksum:
 
    ```sh
    sha256sum --check --ignore-missing SHA256SUMS
    ```
+
+   On macOS, use `shasum -a 256 --check --ignore-missing SHA256SUMS`.
 
 4. Unpack the binary into a folder on your `PATH`:
 
@@ -60,7 +64,7 @@ With Go installed, you can build and install a release with one command:
 CGO_ENABLED=1 go install github.com/mzmzeee/a-stack/cmd/a-stack@latest
 ```
 
-- It needs a C compiler, such as `gcc`, because SQLite is built in with cgo. Without one, the build fails.
+- It needs a C compiler, such as `gcc`, or on macOS the Xcode command line tools (`xcode-select --install`), because SQLite is built in with cgo. Without one, the build fails.
 - It needs Go 1.27.3 or later. An older `go` downloads that version itself, unless `GOTOOLCHAIN=local` is set.
 - It installs the binary in `$(go env GOBIN)`, or `~/go/bin` when `GOBIN` is not set. Make sure that folder is on your `PATH`.
 - The build takes about a minute. `a-stack version` shows the release, such as `v0.1.4`. Use `@vX.Y.Z` instead of `@latest` for another version.
@@ -83,7 +87,7 @@ MCowBQYDK2VwAyEANkJiNRRt3iLovFX+EVrAxA1Z7a3diAw6F3PhyC9+D08=
 ```
 
 - `a-stack update` checks the signature before it trusts `SHA256SUMS`. A missing or wrong signature stops the update, and nothing changes.
-- The install script checks it with OpenSSL 3 or later. Without OpenSSL 3, it prints one line that it did not check the signature, and checks only the checksum.
+- The install script checks it with OpenSSL 3 or later. Without OpenSSL 3, it says that it did not check the signature, links to this section and checks only the checksum. macOS has LibreSSL, not OpenSSL 3. To check the signature there too, install OpenSSL 3 with Homebrew (`brew install openssl@3`) and run the script with it first on your `PATH`: `curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | PATH="$(brew --prefix openssl@3)/bin:$PATH" sh`.
 - Releases up to v0.1.4 have no signature. Both accept them with a warning, but only when you name such a version: `a-stack update --version v0.1.4` or `A_STACK_VERSION=v0.1.4`. For v0.1.5 and later, a missing signature is an error.
 
 To check a signature by hand, save the public key above as `a-stack-release.pem` and run:
@@ -92,7 +96,7 @@ To check a signature by hand, save the public key above as `a-stack-release.pem`
 openssl pkeyutl -verify -pubin -inkey a-stack-release.pem -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig
 ```
 
-It prints `Signature Verified Successfully`. Then check the archive with `sha256sum --check --ignore-missing SHA256SUMS`.
+It prints `Signature Verified Successfully`. On macOS, run `"$(brew --prefix openssl@3)/bin/openssl"` instead of `openssl`. Then check the archive with `sha256sum --check --ignore-missing SHA256SUMS`, or on macOS with `shasum -a 256 --check --ignore-missing SHA256SUMS`.
 
 Releases also have GitHub build provenance attestations: since v0.1.5 for every file, `install.sh` included, and before that for the archives. With the [GitHub CLI](https://cli.github.com/), check a downloaded file like this:
 
@@ -153,6 +157,7 @@ Your data stays in the state directory when you update. The service needs a rest
 
    - If you started `a-stack serve` by hand, press Ctrl-C in its terminal and run `a-stack serve` again.
    - If systemd runs the service, run `systemctl --user restart a-stack`.
+   - If launchd runs the service on macOS, run `launchctl kickstart -k gui/$(id -u)/dev.a-stack`.
 
 4. If the open browser tab does not find the service again, open the view again. This command opens your last Session:
 
@@ -166,14 +171,14 @@ When the new version has a new database schema, the first start migrates the dat
 
 ### Go back to an older version
 
-An older a-stack cannot open a database that a newer one migrated. `a-stack serve` then stops with exit code 4 and a message that names the schema version it found and the newest one it supports. The systemd unit does not restart it. To get back:
+An older a-stack cannot open a database that a newer one migrated. `a-stack serve` then stops with exit code 4 and a message that names the schema version it found and the newest one it supports. The systemd unit does not restart it. launchd on macOS tries again every 10 seconds, and each try writes the same message to the log. To get back:
 
 - Update to the newer version again: `a-stack update`, or `a-stack update --version vX.Y.Z`.
 - Or, to stay on the older version, restore the `state.db.pre-vN` copy or a backup made with the older version, as in [Backup and restore](foundation.md#backup-and-restore). Changes made after that copy are lost.
 
 ## Start a-stack automatically
 
-If you start a-stack with `a-stack`, `a-stack new` or `a-stack -r`, the service runs in that terminal. When you close the terminal, a-stack stops. On Linux with systemd, a user service can run `a-stack serve` for you instead. systemd starts it when your user manager starts, and starts it again if it crashes. You do not need `sudo`.
+If you start a-stack with `a-stack`, `a-stack new` or `a-stack -r`, the service runs in that terminal. When you close the terminal, a-stack stops. On Linux with systemd, a user service can run `a-stack serve` for you instead. systemd starts it when your user manager starts, and starts it again if it crashes. You do not need `sudo`. On macOS, the same command sets up a launchd agent; see [On macOS with launchd](#on-macos-with-launchd).
 
 Run this command:
 
@@ -281,12 +286,41 @@ To stop the service until the next boot or login, run `systemctl --user stop a-s
 
 To stop the service and not start it automatically again, run `systemctl --user disable --now a-stack`. To remove the unit, see [Uninstall](#uninstall).
 
+### On macOS with launchd
+
+On macOS, `a-stack service install` sets up a launchd agent instead of a systemd unit. launchd starts it when you log in, and starts it again after a crash. You do not need `sudo`. The agent runs only while you are logged in; macOS has nothing like linger.
+
+It does these steps:
+
+1. It checks that no `a-stack serve` runs for the state directory outside launchd. If one runs, it stops and changes nothing. Press Ctrl-C in the terminal of that service, then run the command again.
+2. It writes the agent `~/Library/LaunchAgents/dev.a-stack.plist`. The agent runs the `a-stack` binary that you ran, with its real path, and the state directory that the CLI uses. It writes the service's output, such as the ready line with the URL, to `~/Library/Logs/a-stack.log`. If the plist exists and differs, it replaces the plist and says `Updated`. If launchd runs the agent already, it prints the two commands that load the new plist.
+3. If the agent is not loaded, it runs `launchctl enable gui/UID/dev.a-stack` and `launchctl bootstrap gui/UID ~/Library/LaunchAgents/dev.a-stack.plist`, with your user ID as UID. If the agent is loaded, it runs `launchctl kickstart gui/UID/dev.a-stack`, which starts the service only if it stopped.
+4. It waits until the service answers, and prints its URL. If the service does not answer, read the log and the output of `launchctl print gui/$(id -u)/dev.a-stack`.
+
+The plist names the state directory with `--state-dir`, because launchd does not get the variables of your shell. Run `a-stack service install` again after you move the binary or change `XDG_STATE_HOME`.
+
+launchd starts the service again after it exits with an error. Unlike systemd, it cannot skip exit codes 3 (another `a-stack serve` owns the state directory) and 4 (the database is damaged or has a newer schema), so it tries again every 10 seconds, and the log shows the error each time. Stop the other `a-stack serve`, or see [Go back to an older version](#go-back-to-an-older-version).
+
+`a-stack service status` shows the plist, launchd's state of the agent (such as `running`, or `not loaded`), the binary and the state directory in the plist, the log file and the result of `a-stack health`. With `--json`, `unit` is the label `dev.a-stack`, `unit_file` is the plist, `loaded` and `active` take the place of `enabled` and `linger`, and `log` is the log file.
+
+`a-stack service uninstall` runs `launchctl bootout gui/UID/dev.a-stack` and removes the plist. It never touches the state directory or the log.
+
+To control the service by hand:
+
+```sh
+launchctl kickstart -k gui/$(id -u)/dev.a-stack   # restart
+launchctl kill TERM gui/$(id -u)/dev.a-stack      # stop until the next login
+launchctl kickstart gui/$(id -u)/dev.a-stack      # start again
+```
+
+After `kill TERM`, the service exits with 0, so launchd does not start it again until you log in again or run `kickstart`.
+
 ## Requirements
 
 You need these only to build from source:
 
-- Linux
-- Go 1.27.3 with cgo (`CGO_ENABLED=1`) and a C compiler
+- Linux, or macOS 12 or later
+- Go 1.27.3 with cgo (`CGO_ENABLED=1`) and a C compiler. On macOS, install the Xcode command line tools with `xcode-select --install`.
 
 SQLite 3.53.4 is built into the binary from `github.com/mattn/go-sqlite3`. Do not build with the `libsqlite3` tag.
 
@@ -302,11 +336,13 @@ This binary uses your system's C library. To build the static release binary, se
 
 ## Uninstall
 
-If you set up the systemd user service, stop it and remove the unit:
+If you set up the systemd user service or the launchd agent, stop it and remove the unit or the plist:
 
 ```sh
 a-stack service uninstall
 ```
+
+On macOS, also remove the log if you do not need it: `rm ~/Library/Logs/a-stack.log`.
 
 If you added a drop-in, remove it too: `rm -rf ~/.config/systemd/user/a-stack.service.d`. Without `a-stack service`, run these commands:
 
