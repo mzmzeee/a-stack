@@ -11,10 +11,10 @@ If you are the Session's Orchestrator, also read [references/orchestrator.md](re
 
 ## Set yourself up when nobody briefed you
 
-If the Operator asks you directly to use a-stack or to be the Orchestrator, and gives you no credential file, set yourself up. Do not ask the Operator for IDs or paths:
+If the Operator asks you directly to use a-stack or to be the Orchestrator, gives you no credential file, and nothing earlier in this conversation briefed you as an Agent, set yourself up. Do not ask the Operator for IDs or paths. If you were briefed as an Agent before and lost the details, ask the one who briefed you instead; do not set yourself up as the Orchestrator.
 
-1. Run `a-stack new --orchestrator 01-orchestrator --no-browser --json` in the project folder. It makes or reuses the folder's Workspace and Session, registers you, appoints you as the Orchestrator and prints `orchestrator_credential_file`, `workspace_id`, `session_id` and a `brief`. Running it again returns the same hand-off, so it is safe after a lost answer or in a new conversation.
-2. If it fails because the service is not running, run `a-stack service install` (a user service, no sudo), tell the Operator that you did, then run step 1 again.
+1. Run `a-stack new --orchestrator 01-orchestrator --no-browser --json` in the project folder. It makes or reuses the folder's Workspace and Session, registers you, appoints you as the Orchestrator and prints `orchestrator_credential_file`, `workspace_id`, `session_id` and a `brief`. Running it again returns the same hand-off, so it is safe after a lost answer or in a new conversation. If the output has `"existing_orchestrator": true`, the Session already had this Orchestrator: tell the Operator that you are taking over as `01-orchestrator`, and stop if they say another conversation still is.
+2. If it says the folder is inside another Workspace, run step 1 in that folder. If it fails because the service is not running, run `a-stack service install` (a user service, no sudo), tell the Operator that you did, then run step 1 again.
 3. If it says the Session already has an Orchestrator, ask the Operator whether to use another Session or to replace the Orchestrator. For another Session in the same folder, use a new Session name and a new Agent name, because Agent names are unique in a project folder: `a-stack new NAME --orchestrator 01-orchestrator-NAME --no-browser --json`.
 4. Follow the brief: set up `me` below with the credential file, then read [references/orchestrator.md](references/orchestrator.md). The output has no view link; tell the Operator to open the view with `a-stack`.
 
@@ -50,7 +50,7 @@ A script keeps working in shells that forget functions between commands. Write i
 
 ## If you run inside Herdr
 
-If `HERDR_PANE_ID` is set in your shell, bind yourself to your pane once, so that a mention can reach you as a short notice: `me herdr bind --agent YOUR_AGENT_ID --expected-revision 1 --operation-id 02-worker-bind-1`. Find your Agent ID in `me agent list`. If it fails with `integration_missing`, tell the Operator the `herdr integration install` command from the message; do not run it yourself. A `conflict` that says the binding is established means you are already bound. Mail works the same without a binding.
+If `HERDR_PANE_ID` is set in your shell, bind yourself to your pane once, so that a mention can reach you as a short notice: `me herdr bind --agent YOUR_AGENT_ID --expected-revision 1 --operation-id 02-worker-bind-1`. `me session inspect` shows your Agent ID as `your_agent_id`. If it fails with `integration_missing`, tell the Operator the `herdr integration install` command from the message; do not run it yourself. A `conflict` that says the binding is established means you are already bound. Mail works the same without a binding.
 
 ## Work loop
 

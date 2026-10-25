@@ -34,7 +34,7 @@ me task assign --task T --agent YOUR_AGENT_ID --expected-revision 2 --operation-
 - Write the description so that the assignee can do the Task from it alone: the goal, the files, what done means.
 - `--ticket '#42'` links a Ticket. Each Ticket reference is unique in the Session.
 - Make Tasks for your own work too, such as merging, reviewing or releasing, and assign yourself.
-- Assign yourself to every Task you hand out (your own Agent ID is `orchestrator_id` in `me session inspect`). Only assignees can read and send a Task's mail, so without it the other Agents cannot reach you there, and you cannot reopen the Task.
+- Assign yourself to every Task you hand out (your own Agent ID is `your_agent_id` in `me session inspect`). Only assignees can read and send a Task's mail, so without it the other Agents cannot reach you there, and you cannot reopen the Task.
 
 ## 3. Link every Task
 

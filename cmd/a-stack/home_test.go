@@ -362,6 +362,17 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), `"existing_orchestrator":true`) || !strings.Contains(stdout.String(), legacy) {
 		t.Fatalf("hand-off from the v0.1.5 path: exit %d %s %s", code, stdout.String(), stderr.String())
 	}
+	// A worker's credential file, where v0.1.5 kept Orchestrators' files, does
+	// not pass as the Orchestrator's.
+	worker := filepath.Join(root, "a-stack-agents", "02-worker.json")
+	if code := run([]string{"agent", "register", "--as", "agent", "--credential-file", legacy, "--name", "02-worker", "--new-credential-file", worker, "--operation-id", "register-worker-1", "--state-dir", dir}, &stdout, &stderr); code != 0 {
+		t.Fatalf("register a worker: exit %d %s", code, stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"new", "--orchestrator", "02-worker", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "already has an Orchestrator") {
+		t.Fatalf("a worker's file passed as the Orchestrator's: exit %d %s %s", code, stdout.String(), stderr.String())
+	}
 	// Another project gets its own credential file with the same Orchestrator
 	// name. (Within one Workspace, Agent names stay unique.)
 	var other struct {
@@ -380,6 +391,17 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	if other.Data.SessionID == got.SessionID || other.Data.Credential != filepath.Join(root, "a-stack-agents", other.Data.SessionID, "01-orch.json") {
 		t.Fatalf("hand-off in another Session %+v", other.Data)
 	}
+	// A subfolder of a project with a Workspace does not get a second team.
+	sub := filepath.Join(project, "src")
+	if err := os.Mkdir(sub, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(sub)
+	stderr.Reset()
+	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "inside the Workspace") {
+		t.Fatalf("hand-off in a subfolder: exit %d %s", code, stderr.String())
+	}
+	t.Chdir(project)
 	// The same Session with another name: it already has an Orchestrator.
 	stderr.Reset()
 	if code := run([]string{"new", "--orchestrator", "02-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "already has an Orchestrator") {

@@ -188,10 +188,18 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 		return err
 	}
 	row := sessionRow{WorkspacePath: h.cwd, CurrentFolder: true}
+	outer := ""
 	for _, w := range workspaces {
 		if w.Path == h.cwd {
 			row.WorkspaceID = w.ID
+		} else if within(h.cwd, w.Path) && len(w.Path) > len(outer) {
+			outer = w.Path
 		}
+	}
+	// An agent started in a subfolder would otherwise make a second team for
+	// the same project.
+	if h.orchestrator != "" && row.WorkspaceID == "" && outer != "" {
+		return invalid("this folder is inside the Workspace " + outer + "; run the same command there")
 	}
 	row.Name = h.name
 	if row.Name == "" {
@@ -315,7 +323,8 @@ func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row 
 }
 
 // ownsOrchestrator reports whether the credential file at path belongs to the
-// Orchestrator id of the Session ref.
+// Orchestrator id of the Session ref: the service names the caller of an
+// inspect, so a file of another Agent of the Session does not pass.
 func (h *home) ownsOrchestrator(ctx context.Context, path string, ref stack.Context, id string) bool {
 	c, err := stack.ReadCredential(path)
 	if err != nil || c.Kind != stack.AgentCapability || c.WorkspaceID != ref.WorkspaceID || c.SessionID != ref.SessionID || c.AgentName != h.orchestrator {
@@ -326,7 +335,7 @@ func (h *home) ownsOrchestrator(ctx context.Context, path string, ref stack.Cont
 		return false
 	}
 	session, err := inspectSession(ctx, own, ref)
-	return err == nil && session.OrchestratorID != nil && *session.OrchestratorID == id
+	return err == nil && session.YourAgentID == id && session.OrchestratorID != nil && *session.OrchestratorID == id
 }
 
 // orchestratorName is the service's Agent name rule.
