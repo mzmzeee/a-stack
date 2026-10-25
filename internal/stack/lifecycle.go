@@ -552,6 +552,11 @@ func (s *Store) BindAgent(ctx context.Context, token, action string, r AgentBind
 		if err != nil {
 			return Receipt{}, err
 		}
+		// A new binding gets its pending notices tried at once; the commit
+		// wakes the notifier. No timer retries a parked binding.
+		if _, err = tx.ExecContext(ctx, "UPDATE notice_targets SET failures=0,next_attempt=0 WHERE session_id=? AND recipient_id=? AND (failures!=0 OR next_attempt!=0)", session.ID, agent.ID); err != nil {
+			return Receipt{}, err
+		}
 		if err = bumpSessionRead(ctx, tx, session.ID); err != nil {
 			return Receipt{}, err
 		}

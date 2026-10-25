@@ -28,6 +28,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - The release notes say to run `a-stack update`.
 - `scripts/build-release.sh` pins the versions of the Alpine packages it installs (`gcc`, `musl-dev`, `binutils`).
 - Mention notices accept a harness release in the minor line of a fixture-verified version, from that version up: Codex 0.164.x from 0.164.0, where only 0.164.0 was accepted. Herdr is accepted when its running server reports protocol 22 and a compatible CLI and endpoint (`herdr status server --json`), not only when the CLI prints `herdr 0.9.5`. A Herdr that is not running is now `herdr_unavailable`.
+- With Herdr notices on, an Agent without a complete binding (`binding_incomplete`) or with an unsupported harness (`unsupported_harness`) is no longer checked again every 30 seconds. Its notices wait until its binding is attached or changed, or the service starts, and `notifications status` shows `next_attempt_unix_ms: -1`. Each check was a committed write: on the 2,000-Task fixture with 23 such Agents and no clients, the idle service wrote 3,809,280 bytes in 120 seconds before (the WAL grew from 94,792 to 473,832 bytes, 13.7 wakeups a second), and now writes 0 bytes (2.7 wakeups a second).
 
 ### Fixed
 

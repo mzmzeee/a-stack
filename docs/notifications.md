@@ -90,7 +90,7 @@ If the process cannot start, or Herdr answers `agent_blocked` before any input, 
 
 A storage failure never records a successful outcome that was not committed. Recovery sends no input and does not assume that an old target is still current. Every later delivery checks the current binding again.
 
-After a failure, a-stack waits 5, 10, 20 and then 30 seconds before it tries the target again. A timer wakes the dispatcher every five seconds, and each commit wakes it at once. A closed Session pauses new claims. When the Session is reopened, its pending notices can be sent again. Nothing resets a final state.
+After a failure, a-stack waits 5, 10, 20 and then 30 seconds before it tries the target again. A timer wakes the dispatcher every five seconds, and each commit wakes it at once. A closed Session pauses new claims. When the Session is reopened, its pending notices can be sent again. Nothing resets a final state. An Agent without a complete Herdr binding (`binding_incomplete`), or with a harness outside the supported lines (`unsupported_harness`), gets no timed retries: these reasons depend only on the binding. Its notices stay pending until its binding is attached or changed, or the service starts again. Each check would otherwise be a committed write, every 30 seconds for each such Agent.
 
 A notice that has passed the final preflight can still finish during a concurrent close, rebind or removal. Herdr 0.9.5 has no atomic check that the expected Agent is still in the pane between the lookup and the input, so this race remains. That is why notices stay generic, and why each later mail read checks the current assignment again. See the [tagged Herdr prompt contract](https://github.com/herdrdev/herdr/blob/v0.9.5/docs/next/website/src/content/docs/agent-automation.mdx).
 
@@ -105,7 +105,7 @@ A notice that has passed the final preflight can still finish during a concurren
   --workspace "$workspace_id" --session "$session_id" --limit 4 --json
 ```
 
-`notifications status` lists 50 Agents by default and 100 at most. To get the next page, give the `data.next` value with `--after`. The Operator can select one Agent with `--agent`. An Agent sees only itself. The status shows whether notices are enabled, a safe reason, the time of the next attempt, and the number of references in each state. It never shows private bindings, mail bodies or read positions.
+`notifications status` lists 50 Agents by default and 100 at most. To get the next page, give the `data.next` value with `--after`. The Operator can select one Agent with `--agent`. An Agent sees only itself. The status shows whether notices are enabled, a safe reason, the time of the next attempt (`-1` while it waits for a new binding), and the number of references in each state. It never shows private bindings, mail bodies or read positions.
 
 `notifications drain` runs one bounded maintenance pass over the durable batches. It does not change mail, and it does not resend anything. If you run it again, it never resends `submitted` or `uncertain` references.
 

@@ -810,3 +810,53 @@ func TestNotificationsProductionHarnessSupportPredicate(t *testing.T) {
 		}
 	}
 }
+
+// An incomplete or unsupported binding waits for a new binding or a service
+// start, not for a timer: idle retries were committed writes every 30 s.
+func TestNotificationsParkedTargetWaitsForBinding(t *testing.T) {
+	for _, mode := range []string{"incomplete", "unsupported"} {
+		t.Run(mode, func(t *testing.T) {
+			f := noticeTestFixture(t)
+			clock := time.Now()
+			f.n.clock = func() time.Time { return clock }
+			if mode == "incomplete" {
+				execTest(t, f.service.Store, "UPDATE agents SET binding='{}' WHERE id=?", f.bID)
+			} else {
+				f.n.adapter.verified = func(RuntimeBinding) bool { return false }
+			}
+			f.send(t, f.a.Token, "Parked @03-worker")
+			if r := f.drain(t, 4); r.Pending != 1 || countTest(t, f.service.Store, "SELECT count(*) FROM notice_targets WHERE next_attempt=-1") != 1 {
+				t.Fatal("unfixable binding not parked", r)
+			}
+			changes := countTest(t, f.service.Store, "SELECT total_changes()")
+			clock = clock.Add(24 * time.Hour)
+			if r := f.drain(t, 4); r.Checked != 0 || len(f.calls(t)) != 0 || countTest(t, f.service.Store, "SELECT total_changes()") != changes {
+				t.Fatal("parked target retried or written on a timer", r)
+			}
+			status, err := f.service.notificationStatus(ctx, f.b.Token, NoticeRequest{Context: f.ref(0)})
+			if err != nil || status.Targets[0].NextAttempt != -1 {
+				t.Fatal("status hides the park", err)
+			}
+			if mode == "unsupported" {
+				// A service start, maybe with a newer support table, tries it again.
+				f.n.adapter.verified = func(RuntimeBinding) bool { return true }
+				if err = f.service.enableNotifications(newHerdr(filepath.Join(f.dir, "not-installed"))); err != nil {
+					t.Fatal(err)
+				}
+				f.service.notifier.stop()
+			} else {
+				binding := f.config.Binding
+				binding.InstanceID = "rebound-instance"
+				if _, err = f.service.Store.BindAgent(ctx, f.operator.Token, "rebind", AgentBindingRequest{Context: f.ref(0), OperationID: opaqueID(), AgentID: f.bID, ExpectedRevision: 2, Runtime: &binding, CredentialHash: tokenHash(opaqueID())}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if countTest(t, f.service.Store, "SELECT count(*) FROM notice_targets WHERE next_attempt=-1") != 0 {
+				t.Fatal("park kept after a new binding or a start")
+			}
+			if r := f.drain(t, 4); r.Submitted != 1 || f.prompts(t) != 1 {
+				t.Fatal("parked target not retried", r)
+			}
+		})
+	}
+}
