@@ -4,7 +4,7 @@
 # contrib/README.md for how to publish a new version.
 
 pkgname=a-stack-bin
-pkgver=0.1.4
+pkgver=0.1.6
 pkgrel=1
 pkgdesc='Keep an eye on your AI coding agents: a local Task graph, Task mail and a read-only browser view'
 arch=('x86_64' 'aarch64')
@@ -17,10 +17,10 @@ source=("a-stack-$pkgver.service::$url/releases/download/v$pkgver/a-stack.servic
         "LICENSE-$pkgver::https://raw.githubusercontent.com/mzmzeee/a-stack/v$pkgver/LICENSE")
 source_x86_64=("a-stack-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/a-stack_linux_amd64.tar.gz")
 source_aarch64=("a-stack-$pkgver-aarch64.tar.gz::$url/releases/download/v$pkgver/a-stack_linux_arm64.tar.gz")
-sha256sums=('b377f11bdfb9c5a53dca8ff79f6cf645223a4a631206d4cbe54bf85c937326e3'
+sha256sums=('a7fa5d609d454dae942631e26f6b461fe91902574f54cc6f08fae475b88e0f46'
             'a9b85fd5f10a0de80267e54dbd1518eda8fa488103d29a9695d06bb10ba130af')
-sha256sums_x86_64=('be8c73261bbab152fb52ea58f6e2c23ab092f2041f7e76146987b71a380d29fa')
-sha256sums_aarch64=('982ac6a72fb2c52a2141eea319a2e48632edc36a72af05ff2e59f9925caf5534')
+sha256sums_x86_64=('0a28a8c2561009b18956b55e036da31d98eeaf3245d1a32a2431e5c8f598c241')
+sha256sums_aarch64=('86b8e36a1e49574b53f61a683cfc2cd6ddb24c129bbb67e0a1ed4afb94500e63')
 
 package() {
   install -Dm755 a-stack "$pkgdir/usr/bin/a-stack"

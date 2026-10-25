@@ -103,7 +103,7 @@ CGO_ENABLED=1 go install github.com/mzmzeee/a-stack/cmd/a-stack@latest
 
 ## Package managers
 
-An AUR package (`a-stack-bin`), a Homebrew formula for Linux and a Scoop manifest for Windows are prepared in [`contrib/`](../contrib/README.md), but not published yet. They install the release binary and check it against the release's `SHA256SUMS`. If you install a-stack with a package manager, update it with that package manager: `a-stack update` cannot replace a binary in `/usr/bin`, and on Windows it refuses to replace a binary in a Scoop or WinGet folder and names `scoop update a-stack` or `winget upgrade a-stack` instead.
+An AUR package (`a-stack-bin`), a Homebrew formula for Linux and macOS and a Scoop manifest for Windows are prepared in [`contrib/`](../contrib/README.md), but not published yet. They install the release binary and check it against the release's `SHA256SUMS`. If you install a-stack with a package manager, update it with that package manager: `a-stack update` cannot replace a binary in `/usr/bin`, and on Windows it refuses to replace a binary in a Scoop or WinGet folder and names `scoop update a-stack` or `winget upgrade a-stack` instead.
 
 ## How releases are verified
 

@@ -10,11 +10,11 @@
     "architecture": {
         "64bit": {
             "url": "https://github.com/mzmzeee/a-stack/releases/download/v0.1.6/a-stack_windows_amd64.zip",
-            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+            "hash": "58615c881f9779d68277afc4ec5f4ad756da12e99a48525019f2360ae42e792b"
         },
         "arm64": {
             "url": "https://github.com/mzmzeee/a-stack/releases/download/v0.1.6/a-stack_windows_arm64.zip",
-            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+            "hash": "04097c080b433a830a04e33c3a070d40a809685e0d0006c54e4356dc84d904c9"
         }
     },
     "bin": "a-stack.exe",

@@ -1,23 +1,32 @@
-# Homebrew formula for a-stack on Linux, from the release archives. See
-# contrib/README.md for how to publish a new version.
+# Homebrew formula for a-stack on Linux and macOS, from the release archives.
+# See contrib/README.md for how to publish a new version.
 class AStack < Formula
   desc "Keep an eye on your AI coding agents"
   homepage "https://github.com/mzmzeee/a-stack"
-  version "0.1.4"
+  version "0.1.6"
   license "MIT"
 
-  on_linux do
+  on_macos do
     on_intel do
-      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.4/a-stack_linux_amd64.tar.gz"
-      sha256 "be8c73261bbab152fb52ea58f6e2c23ab092f2041f7e76146987b71a380d29fa"
+      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.6/a-stack_darwin_amd64.tar.gz"
+      sha256 "a4dc045bab8a163cb3ec3640dc38d42fcad3cb9e91177c6503873ee451ff5a7e"
     end
     on_arm do
-      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.4/a-stack_linux_arm64.tar.gz"
-      sha256 "982ac6a72fb2c52a2141eea319a2e48632edc36a72af05ff2e59f9925caf5534"
+      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.6/a-stack_darwin_arm64.tar.gz"
+      sha256 "618d217cce4388b8e2b8806b42a05f63b59cda014ada8f81a5f35e2c261ab825"
     end
   end
 
-  depends_on :linux
+  on_linux do
+    on_intel do
+      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.6/a-stack_linux_amd64.tar.gz"
+      sha256 "0a28a8c2561009b18956b55e036da31d98eeaf3245d1a32a2431e5c8f598c241"
+    end
+    on_arm do
+      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.6/a-stack_linux_arm64.tar.gz"
+      sha256 "86b8e36a1e49574b53f61a683cfc2cd6ddb24c129bbb67e0a1ed4afb94500e63"
+    end
+  end
 
   def install
     bin.install "a-stack"

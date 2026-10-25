@@ -3,7 +3,7 @@
 - `systemd/a-stack.service`: the systemd user unit. See [Start a-stack automatically](../docs/install.md#start-a-stack-automatically).
 - `pi/a-stack.ts`: the Pi extension that `a-stack hook install --pi` writes. See [Pi](../docs/hooks.md#pi).
 - `aur/PKGBUILD`: the AUR package `a-stack-bin`, from the release archives.
-- `homebrew/a-stack.rb`: a Homebrew formula for Linux, from the release archives.
+- `homebrew/a-stack.rb`: a Homebrew formula for Linux and macOS, from the release archives.
 - `scoop/a-stack.json`: a Scoop manifest for Windows, from the release archives.
 
 The packages install the release binary of one version and check it against that release's `SHA256SUMS`. They are not published yet. The steps below publish them; nothing in this repository does it automatically.
@@ -14,7 +14,7 @@ After the release workflow has published `vX.Y.Z`:
 
 1. Download its checksums: `curl -fsSL -O https://github.com/mzmzeee/a-stack/releases/download/vX.Y.Z/SHA256SUMS`. Check the signature first, as in [How releases are verified](../docs/install.md#how-releases-are-verified).
 2. In `aur/PKGBUILD`, set `pkgver=X.Y.Z` and `pkgrel=1`. Copy the sums of `a-stack.service`, `a-stack_linux_amd64.tar.gz` and `a-stack_linux_arm64.tar.gz` from `SHA256SUMS`. The LICENSE sum changes only when the license file changes (`sha256sum LICENSE`). Or run `updpkgsums` from `pacman-contrib`, which downloads the files and writes all sums.
-3. In `homebrew/a-stack.rb`, set `version` and both `url`s to the new version, and the two archive sums.
+3. In `homebrew/a-stack.rb`, set `version` and the four `url`s to the new version, and the four archive sums.
 4. In `scoop/a-stack.json`, set `version` and both `url`s to the new version, and the sums of `a-stack_windows_amd64.zip` and `a-stack_windows_arm64.zip`. Or, on Windows with Scoop, run `& "$(scoop prefix scoop)\bin\checkver.ps1" -Dir contrib\scoop -App a-stack -Update`, which finds the latest release and takes the sums from its `SHA256SUMS`.
 5. Commit the files here.
 
@@ -52,7 +52,7 @@ git commit -m "a-stack X.Y.Z"
 git push
 ```
 
-Users then run `brew install mzmzeee/tap/a-stack`. The formula is for Linux only, because v0.1.4 has no macOS archives. For the first release with macOS archives, add an `on_macos` block with `a-stack_darwin_amd64.tar.gz` and `a-stack_darwin_arm64.tar.gz` and their sums, and remove `depends_on :linux`. It installs only the binary; for the service, users run `a-stack service install` (see [Start a-stack automatically](../docs/install.md#start-a-stack-automatically)). The service then runs the binary by its real path in the Homebrew Cellar, which changes with each version, so users run `a-stack service install` again after `brew upgrade`. Users update with `brew upgrade`, not `a-stack update`.
+Users then run `brew install mzmzeee/tap/a-stack`. The formula covers Linux and macOS (13 or later) on amd64 and arm64. It installs only the binary; for the service, users run `a-stack service install` (see [Start a-stack automatically](../docs/install.md#start-a-stack-automatically)). The service then runs the binary by its real path in the Homebrew Cellar, which changes with each version, so users run `a-stack service install` again after `brew upgrade`. Users update with `brew upgrade`, not `a-stack update`.
 
 ## Publish the Scoop bucket
 
