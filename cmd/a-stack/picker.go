@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"runtime"
 	"sort"
@@ -10,6 +11,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 )
+
+// errPickerCancelled is the runPicker error when the Operator cancels.
+var errPickerCancelled = errors.New("picker cancelled")
 
 // sessionRow is one Session as the Operator shortcuts list it. It holds IDs and
 // names only, never credentials.

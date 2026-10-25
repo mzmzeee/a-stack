@@ -45,8 +45,6 @@ func terminalSize(f *os.File) (int, int) {
 	return int(size.cols), int(size.rows)
 }
 
-var errPickerCancelled = errors.New("picker cancelled")
-
 // runPicker draws p on out and reads keys from in until the Operator chooses a
 // Session or cancels. It restores the terminal on every return and on panics.
 // On SIGINT, SIGTERM or SIGHUP it restores the terminal and raises the signal
