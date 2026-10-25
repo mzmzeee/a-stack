@@ -39,6 +39,10 @@ Check it with `me session inspect`. If that fails with `explicit --workspace and
 
 A script keeps working in shells that forget functions between commands. Write it with your file-write tool if you have one, and call it by its literal full path, not through a variable. Below, `me` stands for that full path, and `/your/private/folder/mail.json` for a file in your private folder.
 
+## If you run inside Herdr
+
+If `HERDR_PANE_ID` is set in your shell, bind yourself to your pane once, so that a mention can reach you as a short notice: `me herdr bind --agent YOUR_AGENT_ID --expected-revision 1 --operation-id 02-worker-bind-1`. Find your Agent ID in `me agent list`. If it fails with `integration_missing`, tell the Operator the `herdr integration install` command from the message; do not run it yourself. A `conflict` that says the binding is established means you are already bound. Mail works the same without a binding.
+
 ## Work loop
 
 Do this for each of your Tasks. `T` is the Task ID, `02-worker` stands for your name, and `R` is the Task's revision (see Rules).

@@ -6,6 +6,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-25
+
+Upgrading from v0.1.4: run `a-stack update`, then restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`). The first start copies the database to `state.db.pre-v6` and moves it to schema 7. Open browser views lose access once, because old view links are revoked: run `a-stack` to open a new one. If you set up the systemd unit by hand, run `a-stack service install` once to update it.
+
 ### Added
 
 - `a-stack new --orchestrator NAME` also registers that Agent, with a credential file in `a-stack-agents` next to the state directory, appoints it as the Orchestrator and prints a brief to paste into the coding agent. It checks the name and the credential file before it makes anything, and refuses a Session that already has an Orchestrator.
@@ -19,6 +23,9 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - The service logs the cause of each `storage_unavailable` error to stderr, one line per error: the operation, and the Go error type, SQLite result codes or system error number, never a body, an ID, a credential or SQL text. The same line is logged at most once every 10 seconds. Before, a code bug looked like a full disk, and the real cause was lost.
 - `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
 - `a-stack view revoke --workspace ID --session ID` ends browser view access to one Session, and `--all` to every Session. Open tabs say that they lost access at their next refresh. Only the Operator can run it.
+- `a-stack herdr bind` lets an Agent that runs inside Herdr bind itself to its own pane, in place of a hand-written runtime file. It reads `HERDR_PANE_ID` and `HERDR_SOCKET_PATH`, asks Herdr for its pane's agent and native session, names an unnamed pane `a-<name>`, reads the harness version from `claude --version` or `codex --version`, and sends the usual `agent attach`. Without Herdr's integration it fails with the new error code `integration_missing` and names `herdr integration install claude` or `codex`. The agent skill has a short step for it.
+- `a-stack herdr focus --agent ID` shows a bound Agent's pane in the Operator's Herdr. The service checks the binding against Herdr first, as before a notice, then runs `herdr agent focus`, or `herdr tab focus` if that fails. Only the Operator can run it.
+- `contrib/herdr` holds a small Herdr plugin: the action "Open a-stack view" runs `a-stack open` for the Session named in its config file, and the popup pane `watch` runs `a-stack watch` for it. Install it with `herdr plugin install mzmzeee/a-stack/contrib/herdr`.
 - `--body TEXT` works on every command that takes one inline text (`task create`, `task edit`, `task status`, `task reopen`, `task report`, `task attention set` and `resolve`), like `--body-file`. The specific flags such as `--report` stay.
 - A mistyped command, help topic or flag gets a suggestion, such as `unknown command tsak list (did you mean task list?)`. A stray word gets `unexpected argument abc for task show (did you mean --task abc?)`.
 - `a-stack task` and other first words alone print the commands of the group, like `a-stack help task`, and exit with 0. With flags, they fail with `invalid_input` and list the words that can follow.
@@ -35,7 +42,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - The browser keeps `app.js` and `app.css` and asks the service each time whether they changed (`Cache-Control: no-cache` with an ETag of their content). An unchanged file comes back as an empty 304 answer, which saves 76 KB on each page load. The page itself stays `no-store`.
 - The Working status icon turns three times when a Task starts working, then stays still, and waits while the tab is hidden. An endless spin kept the browser busy: about 6.5% of a CPU core with 150 Tasks open.
 - `serve` runs SQLite `PRAGMA quick_check` before it says ready. On a damaged database it stops with exit code 4, names the database file and points to the restore steps. On a 940 MB database the check adds about 0.2 seconds to the start.
-- A state database with a newer or unknown schema also stops `serve` with exit code 4. The message names the schema version it found and the newest one it supports, and says how to get back: update a-stack, or restore a backup. The systemd unit now has `RestartPreventExitStatus=3 4`, so it does not restart in a loop. Download the unit again to get this.
+- A state database with a newer or unknown schema also stops `serve` with exit code 4. The message names the schema version it found and the newest one it supports, and says how to get back: update a-stack, or restore a backup. The systemd unit now has `RestartPreventExitStatus=3 4`, so it does not restart in a loop. Run `a-stack service install` to update the unit.
 - Before a schema migration, `serve` writes a private copy of the database, `state.db.pre-vN`, with `VACUUM INTO`. It never replaces an earlier copy, and it does not migrate when it cannot write the copy.
 - The restore steps check the backup with `PRAGMA integrity_check` first.
 - When the service is not running, cannot be reached or its response is cut off, the CLI error has `retryable: true`, because the change may have been made. The message also says to ask the Operator to start the service, which is what an Agent must do.
@@ -43,6 +50,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - `a-stack update --version` with an older version warns that the older a-stack may not open the current database, and says how to go back.
 - The release notes say to run `a-stack update`.
 - `scripts/build-release.sh` pins the versions of the Alpine packages it installs (`gcc`, `musl-dev`, `binutils`).
+- Mention notices accept a harness release in the minor line of a fixture-verified version, from that version up: Codex 0.164.x from 0.164.0, where only 0.164.0 was accepted. Herdr is accepted when its running server reports protocol 22 and a compatible CLI and endpoint (`herdr status server --json`), not only when the CLI prints `herdr 0.9.5`. A Herdr that is not running is now `herdr_unavailable`. Claude Code stays mail-only: a partial check with Claude Code 2.1.310 showed bind and focus work, and a mention parks as `unsupported_harness` until a full fixture run. See [Claude Code: partial fixture](docs/notifications.md#claude-code-partial-fixture).
+- With Herdr notices on, an Agent without a complete binding (`binding_incomplete`) or with an unsupported harness (`unsupported_harness`) is no longer checked again every 30 seconds. Its notices wait until its binding is attached or changed, or the service starts, and `notifications status` shows `next_attempt_unix_ms: -1`. Each check was a committed write: on the 2,000-Task fixture with 23 such Agents and no clients, the idle service wrote 3,809,280 bytes in 120 seconds before (the WAL grew from 94,792 to 473,832 bytes, 13.7 wakeups a second), and now writes 0 bytes (2.7 wakeups a second).
 - `invalid_input` errors name what is wrong: the flag that does not apply to the command, the unknown flag, the bad value (`invalid value "abc" for --expected-revision`), and the missing or bad text field (`--reason is required for --progress waiting`, `title is required`, `reason exceeds 2048 bytes`).
 - A bad operation ID gets `operation ID must be 8–128 letters, digits, _ or -`, also on `agent register`, instead of a generic or misleading message. The `--operation-id` help states the rule.
 - A mail with a mention that is not a current assignee names each such mention and lists the assignee names.
@@ -183,7 +192,8 @@ The first release.
 - One static Linux binary for `amd64` and `arm64`, with SQLite built in. It accepts connections only on `127.0.0.1`.
 - An install script that checks the download against the release checksums.
 
-[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/mzmzeee/a-stack/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/mzmzeee/a-stack/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/mzmzeee/a-stack/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/mzmzeee/a-stack/compare/v0.1.1...v0.1.2

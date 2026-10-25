@@ -11,6 +11,12 @@ Keep an eye on your AI coding agents.
 
 When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
 
+- **Any agent, one picture.** Claude Code, Codex and any agent that can run a command share the same Tasks, dependencies and mail. You see the whole team in one browser tab.
+- **Your data stays here.** One binary and one SQLite file, reachable only from `127.0.0.1`. No account, no cloud, no telemetry. View links work once, and releases are signed.
+- **Nothing is lost when a session ends.** Reports, Task mail and answered questions stay after an Agent compacts, crashes or hits its limit, so a new Agent can pick up where the last one stopped.
+
+Works with Claude Code and Codex (with hooks), [Herdr](https://herdr.dev) (optional) and any agent with a shell. Runs on Linux; macOS and Windows are coming.
+
 ![Demo in seven captioned steps, with a terminal above the browser view and an arrow on each change. 1, a-stack new creates a Session for an OAuth login and opens the Now tab. 2, the Orchestrator adds four Tasks, which wait in the Waiting column. 3, the Agents 02-backend and 03-frontend start work, and their Tasks move to Working. 4, 02-backend sends Task mail to @03-frontend, 03-frontend replies, and the Task details show both messages with the mention highlighted. 5, 02-backend asks "GitHub or Google first?", the Task moves to Needs you and the button says 1 needs you. 6, after the answer the Task is Working again. 7, a-stack -r picks another Session, which also has a question for you.](docs/images/demo.gif)
 
 ## How it works
@@ -102,7 +108,7 @@ To see all commands, run `a-stack --help`. To see the flags of one command, run 
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, and the checks.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and the checks.
 
 ## License
 
