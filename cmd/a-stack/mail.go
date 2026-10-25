@@ -75,7 +75,7 @@ func readMailCursors(path string) (map[string]string, error) {
 }
 func mailRequest(ctx context.Context, client *stack.Client, command string, l lifecycleFlags, t taskFlags, f mailFlags, seen map[string]bool) ([]byte, error) {
 	if l.workspace == "" || l.session == "" {
-		return nil, invalid("explicit --workspace and --session required")
+		return nil, missingContext
 	}
 	ref := stack.Context{WorkspaceID: l.workspace, SessionID: l.session}
 	var body any

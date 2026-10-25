@@ -8,15 +8,17 @@ Each command prints `{"data": ...}` on stdout. A change returns a receipt: `data
 
 | Command | What you get |
 | --- | --- |
-| `me session inspect` | `data.revision`, `data.graph_revision`, `data.orchestrator_id`, `data.closed`, and your own Agent ID in `data.your_agent_id` |
+| `me session inspect` | `data.revision`, `data.graph_revision`, `data.orchestrator_id`, `data.closed`, your own Agent ID in `data.your_agent_id`, and the Operator's standing orders in `data.standing_orders.body` when there are some |
+| `me workspace orders show` | The standing orders of your Workspace as `data.body` (empty when there are none) |
 | `me session snapshot --known-revision 12` | Counts of Tasks, Agents, dependencies and assignments, or `unchanged: true` if `read_revision` is still 12 |
 | `me agent list` | `data.items[]` with each Agent's `id` and `name`; find your own ID here |
-| `me task list` | `data.items[]` with `id`, `title`, `progress`, `revision`, `unassigned`, `needs_you`, `prerequisite_count` |
+| `me task list` | `data.items[]` with `id`, `title`, `progress`, `revision`, `unassigned`, `needs_you`, `prerequisite_count`, `quiet` (Working, but no change and no Task mail for 30 minutes) |
 | `me task show --task T` | One Task with `revision`, `progress`, `description`, `report`, `reason`, `result` |
 | `me task assignees --task T` | `data.items[].agent_name` and `agent_id` |
 | `me task history --task T` | Every change of the Task, with the changed texts |
 | `me task references --task T` | The current file references, each with its `id` |
 | `me task dependencies --task T` | The prerequisites of T and their progress |
+| `me task handoff --task T` | A plain-text brief to take over T: its description, report, open question, unfinished prerequisites, assignees and the last 20 Task mails (`--limit N` for more). Only assignees see the mail. `--json` gives the same as data |
 | `me dependency history` | The dependency changes of the Session |
 
 Lists return `data.items` and, when more follow, `data.next`. Get the next page with `--after "$next"`. `--limit` takes 1 to 100.
@@ -41,7 +43,7 @@ me task reference remove --task T --reference REFERENCE_ID --expected-revision R
 - Waiting needs `--reason`. Finished needs `--summary`. Cancelled needs `--reason`.
 - A Finished or Cancelled Task needs `task reopen` before its progress changes again. Reopening sets it to Waiting.
 - Finishing does not ask the other assignees or check the prerequisites. It marks the whole shared Task as done.
-- A Task has at most one open question. Only `task attention resolve` closes it.
+- A Task has at most one open question. `task attention resolve` closes it, and so does the Operator's answer from `a-stack answer` or the browser view. That answer arrives as Task mail from the Operator and raises the Task's revision. `task show` then shows it in `answered_question` (`question`, `answer`, `resolved_at`).
 - A file reference is a path or URL that people can copy. a-stack never reads the file. `task reference remove` takes the reference `id` from `task references`.
 
 ### Long text
@@ -72,9 +74,10 @@ me mail check --cursor-file /your/private/folder/mail.json
 
 - `@name` in the body, and each `--mention NAME` (without `@`, repeatable), must be a current assignee of T. Otherwise the whole send fails. Check with `me task assignees --task T`.
 - The receipt of a send has the message ID in `resource_id` and its sequence number in `revision`.
-- `mail read` returns `data.messages[]` (`id`, `sequence`, `sender_id`, `sender_name`, `received_at`, `body`, `mention_ids`), `data.cursor` and `data.more`. Give the cursor back with `--cursor "$cursor"` to read only newer messages.
+- `mail read` returns `data.messages[]` (`id`, `sequence`, `sender_kind` for Operator mail, `sender_id`, `sender_name`, `received_at`, `body`, `mention_ids`), `data.cursor` and `data.more`. Give the cursor back with `--cursor "$cursor"` to read only newer messages.
 - `mail check` reads all your Tasks at once: `data.tasks[]`, each with `task_id`, `messages`, `cursor` and `more`, and `data.more`.
 - `sender_name` is the sender's Agent name. Mail reads include your own messages; find your own ID in `me agent list`.
+- Mail with `sender_kind: "operator"`, `sender_name: "Operator"` and an empty `sender_id` is the Operator's answer to the Task's Needs you question. It mentions every assignee. The question is already resolved; do not resolve it again.
 
 ### Read only new mail with a cursor file
 
@@ -108,10 +111,10 @@ Only the current Orchestrator can run these. See [orchestrator.md](orchestrator.
 
 ```sh
 me agent register --name 02-worker --new-credential-file /private/creds/02-worker.json --operation-id orch-register-02-worker
-me task create --title 'Build the API' --body-file /your/private/folder/api.md --ticket '#42' --operation-id orch-task-api-1
+me task create --title 'Build the API' --body-file /your/private/folder/api.md --ticket '#42' --after A --assign 02-worker --assign 01-orchestrator --operation-id orch-task-api-1
 me task edit --task T --title 'Build the REST API' --expected-revision R --operation-id orch-edit-api-1
-me task assign --task T --agent AGENT_ID --expected-revision R --operation-id orch-assign-api-02
-me task unassign --task T --agent AGENT_ID --expected-revision R --operation-id orch-unassign-api-02
+me task assign --task T --agent 02-worker --expected-revision R --operation-id orch-assign-api-02
+me task unassign --task T --agent 02-worker --expected-revision R --operation-id orch-unassign-api-02
 me dependency add --from A --to B --expected-revision G --operation-id orch-dep-a-b-1
 me dependency remove --from A --to B --expected-revision G --operation-id orch-undep-a-b-1
 me task archive --task T --expected-revision R --operation-id orch-archive-api-1
@@ -119,5 +122,7 @@ me task unarchive --task T --expected-revision R --operation-id orch-unarchive-a
 ```
 
 `task archive` takes only a Finished or Cancelled Task. It hides the Task in the Operator's graph and keeps everything. Task data shows `archived` and `archived_reason`: `command`, `chain` (every dependent is done) or `age` (it ended a day ago).
+
+`task create` links and assigns the new Task in the same operation: `--after A` (repeatable) makes it depend on A, and `--assign` (repeatable) adds an assignee. It needs no revision, and its receipt's `revision` is 1 plus the number of assignees. Without `--after`, while other Tasks are open, it prints a hint on stderr. `--agent` and `--assign` take an Agent name or ID.
 
 `G` is the Session's `graph_revision`: from `me session inspect`, or from the receipt of your last dependency change. `--from A --to B` means that B depends on A.

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -11,7 +13,7 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-var taskCommands = []string{"task create", "task list", "task show", "task edit", "task assign", "task unassign", "task status", "task reopen", "task archive", "task unarchive", "task report", "task history", "task assignees", "task references", "task dependencies", "task attention set", "task attention resolve", "task reference add", "task reference remove", "dependency add", "dependency remove", "dependency history", "session snapshot", "session page"}
+var taskCommands = []string{"task create", "task list", "task show", "task edit", "task assign", "task unassign", "task status", "task reopen", "task archive", "task unarchive", "task report", "task history", "task assignees", "task references", "task dependencies", "task handoff", "task attention set", "task attention resolve", "task reference add", "task reference remove", "dependency add", "dependency remove", "dependency history", "session snapshot", "session page", "answer"}
 
 func isTaskCommand(command string) bool {
 	for _, c := range taskCommands {
@@ -23,8 +25,9 @@ func isTaskCommand(command string) bool {
 }
 
 type taskFlags struct {
-	task, title, description, ticket, report, progress, reason, summary, question, note, location, referenceRevision, reference, from, to, body, bodyFile, pageKind string
-	readRevision, knownRevision                                                                                                                                     int64
+	task, title, description, ticket, report, progress, reason, summary, question, questionID, text, note, location, referenceRevision, reference, from, to, body, bodyFile, pageKind string
+	readRevision, knownRevision                                                                                                                                                       int64
+	assign                                                                                                                                                                            []string
 }
 
 func (f *taskFlags) register(fs *flag.FlagSet) {
@@ -38,6 +41,8 @@ func (f *taskFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.summary, "summary", "", "Result summary of the finished Task")
 	fs.StringVar(&f.question, "question", "", "Question for the Operator")
 	fs.StringVar(&f.note, "note", "", "Note for the resolved question")
+	fs.StringVar(&f.questionID, "question-id", "", "ID of the open Needs you question; task show prints it")
+	fs.StringVar(&f.text, "text", "", "Your answer to the question")
 	fs.StringVar(&f.location, "location", "", "File path or URL to show")
 	fs.StringVar(&f.referenceRevision, "reference-revision", "", "Revision of the referenced file")
 	fs.StringVar(&f.reference, "reference", "", "Reference ID")
@@ -48,15 +53,21 @@ func (f *taskFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.pageKind, "page-kind", "", "tasks, agents, dependencies, assignments, references, history or graph_history")
 	fs.Int64Var(&f.readRevision, "read-revision", 0, "Read at this Session read revision")
 	fs.Int64Var(&f.knownRevision, "known-revision", 0, "Return unchanged when this is still the revision")
+	fs.Func("assign", "Agent ID or name to assign; repeat for more", func(value string) error {
+		f.assign = append(f.assign, value)
+		return nil
+	})
 }
 func taskAllowedFlags(command string) string {
 	switch command {
 	case "task create":
-		return "operation-id title description body body-file ticket"
+		return "operation-id title description body body-file ticket after assign"
 	case "task list":
 		return "limit after read-revision"
 	case "task show":
 		return "task read-revision"
+	case "task handoff":
+		return "task limit"
 	case "task history", "task assignees", "task references", "task dependencies":
 		return "task limit after read-revision"
 	case "task edit":
@@ -75,6 +86,8 @@ func taskAllowedFlags(command string) string {
 		return "task operation-id expected-revision question body body-file"
 	case "task attention resolve":
 		return "task operation-id expected-revision note body body-file"
+	case "answer":
+		return "task operation-id question-id text body-file"
 	case "task reference add":
 		return "task operation-id expected-revision location reference-revision"
 	case "task reference remove":
@@ -110,6 +123,8 @@ func textFlag(command, progress string) string {
 		return "question"
 	case "task attention resolve":
 		return "note"
+	case "answer":
+		return "text"
 	}
 	return ""
 }
@@ -118,7 +133,7 @@ func textFlag(command, progress string) string {
 // flag, and checks the text that the chosen progress needs. It runs before
 // the CLI connects to the service.
 func (f *taskFlags) readText(command string, seen map[string]bool) error {
-	texts := map[string]*string{"description": &f.description, "report": &f.report, "reason": &f.reason, "summary": &f.summary, "question": &f.question, "note": &f.note}
+	texts := map[string]*string{"description": &f.description, "report": &f.report, "reason": &f.reason, "summary": &f.summary, "question": &f.question, "note": &f.note, "text": &f.text}
 	field := textFlag(command, f.progress)
 	if seen["body"] || seen["body-file"] {
 		if field == "" || seen[field] || seen["body"] && seen["body-file"] {
@@ -160,14 +175,14 @@ func bodyText(path string) (string, error) {
 }
 func taskRequest(ctx context.Context, client *stack.Client, command string, l lifecycleFlags, f taskFlags, seen map[string]bool) ([]byte, error) {
 	if l.workspace == "" || l.session == "" {
-		return nil, invalid("explicit --workspace and --session required")
+		return nil, missingContext
 	}
 	ref := stack.Context{WorkspaceID: l.workspace, SessionID: l.session}
 	path := "/v1/" + strings.ReplaceAll(command, " ", "/")
 	var body any
 	switch command {
 	case "task create":
-		body = stack.TaskCreateRequest{Context: ref, OperationID: l.operationID, Title: f.title, Description: f.description, TicketRef: f.ticket}
+		body = stack.TaskCreateRequest{Context: ref, OperationID: l.operationID, Title: f.title, Description: f.description, TicketRef: f.ticket, PrerequisiteIDs: l.afters, AgentIDs: f.assign}
 	case "task show":
 		body = stack.TaskReadRequest{Context: ref, TaskID: f.task, ReadRevision: f.readRevision}
 	case "task list", "task history", "task assignees", "task references", "task dependencies", "session page", "dependency history":
@@ -193,6 +208,9 @@ func taskRequest(ctx context.Context, client *stack.Client, command string, l li
 		body = stack.SnapshotPageRequest{Context: ref, Kind: kind, TaskID: f.task, ReadRevision: f.readRevision, After: l.after, Limit: l.limit}
 	case "session snapshot":
 		body = stack.SnapshotRequest{Context: ref, KnownRevision: f.knownRevision}
+	case "answer":
+		path = "/v1/task/answer"
+		body = stack.AnswerRequest{Context: ref, OperationID: l.operationID, TaskID: f.task, QuestionID: f.questionID, Answer: f.text}
 	case "dependency add", "dependency remove":
 		body = stack.DependencyRequest{Context: ref, OperationID: l.operationID, ExpectedGraphRevision: l.revision, PrerequisiteID: f.from, DependentID: f.to}
 	default:
@@ -212,4 +230,30 @@ func taskRequest(ctx context.Context, client *stack.Client, command string, l li
 		body = r
 	}
 	return client.Do(ctx, "POST", path, body)
+}
+
+// unlinkedHint prints one line on stderr when task create made a Task without
+// prerequisites while the Session has other open Tasks: a forgotten --after
+// leaves the Operator's graph without lines. The data on stdout stays the
+// receipt. A failed read prints nothing.
+func unlinkedHint(ctx context.Context, client *stack.Client, ref stack.Context, created []byte, stderr io.Writer) {
+	var receipt struct {
+		Data stack.Receipt `json:"data"`
+	}
+	if json.Unmarshal(created, &receipt) != nil {
+		return
+	}
+	tasks, err := listPages[stack.Task](ctx, client, "/v1/task/list", ref)
+	if err != nil {
+		return
+	}
+	open := 0
+	for _, task := range tasks {
+		if task.ID != receipt.Data.ResourceID && (task.Progress == "waiting" || task.Progress == "working") {
+			open++
+		}
+	}
+	if open > 0 {
+		fmt.Fprintf(stderr, "a-stack: hint: the new Task has no prerequisites, and %d other Task(s) are open; give --after TASK_ID when it waits for one, or link it with dependency add\n", open)
+	}
 }

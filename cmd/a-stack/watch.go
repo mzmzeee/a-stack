@@ -69,11 +69,15 @@ type watcher struct {
 type watchedSession struct {
 	readRevision int64
 	tasks        map[string]stack.Task
+	// quietAt is when the next known Working Task turns quiet, which changes
+	// no read revision; zero when none will.
+	quietAt time.Time
 }
 
 // sessionStatus is one row of `a-stack status`. A Task that needs you is
-// counted only there, not also as working or waiting. Finished counts the
-// finished Tasks that are not archived.
+// counted only there, not also as working or waiting. Quiet counts the
+// Working Tasks that are also quiet. Finished counts the finished Tasks that
+// are not archived.
 type sessionStatus struct {
 	WorkspaceID   string `json:"workspace_id"`
 	WorkspacePath string `json:"workspace_path"`
@@ -82,6 +86,7 @@ type sessionStatus struct {
 	Closed        bool   `json:"closed"`
 	NeedsYou      int    `json:"needs_you"`
 	Working       int    `json:"working"`
+	Quiet         int    `json:"quiet"`
 	Waiting       int    `json:"waiting"`
 	Finished      int    `json:"finished"`
 }
@@ -171,6 +176,9 @@ func countTasks(s scopedSession, tasks []stack.Task) sessionStatus {
 			r.NeedsYou++
 		case t.Progress == "working":
 			r.Working++
+			if t.Quiet {
+				r.Quiet++
+			}
 		case t.Progress == "waiting":
 			r.Waiting++
 		case t.Progress == "finished" && !t.Archived:
@@ -218,7 +226,11 @@ func (w *watcher) printStatus(rows []sessionStatus) error {
 }
 
 func statusCounts(r sessionStatus) string {
-	return fmt.Sprintf("%d needs you · %d working · %d waiting · %d finished", r.NeedsYou, r.Working, r.Waiting, r.Finished)
+	quiet := ""
+	if r.Quiet > 0 {
+		quiet = fmt.Sprintf(" (%d quiet)", r.Quiet)
+	}
+	return fmt.Sprintf("%d needs you · %d working%s · %d waiting · %d finished", r.NeedsYou, r.Working, quiet, r.Waiting, r.Finished)
 }
 
 // watch prints the status once, then one line per change until ctx ends.
@@ -289,8 +301,9 @@ func errorText(err error) string {
 	return "the service did not answer"
 }
 
-// poll reads the Sessions in scope and the Tasks of each changed one. On the
-// first poll it only records them and returns their status rows.
+// poll reads the Sessions in scope and the Tasks of each changed one, or of
+// one with a Working Task that turns quiet by now. On the first poll it only
+// records them and returns their status rows.
 func (w *watcher) poll(ctx context.Context, first bool) ([]sessionStatus, error) {
 	sessions, err := w.scope(ctx)
 	if err != nil {
@@ -299,7 +312,7 @@ func (w *watcher) poll(ctx context.Context, first bool) ([]sessionStatus, error)
 	rows := []sessionStatus{}
 	for _, s := range sessions {
 		known := w.seen[s.ID]
-		if known != nil && known.readRevision == s.ReadRevision {
+		if known != nil && known.readRevision == s.ReadRevision && (known.quietAt.IsZero() || w.now().Before(known.quietAt)) {
 			continue
 		}
 		tasks, err := w.tasks(ctx, s)
@@ -320,15 +333,20 @@ func (w *watcher) poll(ctx context.Context, first bool) ([]sessionStatus, error)
 		}
 		known.readRevision = s.ReadRevision
 		known.tasks = map[string]stack.Task{}
+		known.quietAt = time.Time{}
 		for _, t := range tasks {
 			known.tasks[t.ID] = t
+			if q := t.QuietAt(); !t.Quiet && !q.IsZero() && (known.quietAt.IsZero() || q.Before(known.quietAt)) {
+				known.quietAt = q
+			}
 		}
 	}
 	return rows, nil
 }
 
 // report prints the changes from before to now, rings the bell on a new
-// Needs you and sends the desktop notice when it is on.
+// Needs you or a Task that turns quiet, and sends the desktop notice of a new
+// Needs you when it is on.
 func (w *watcher) report(s scopedSession, before map[string]stack.Task, now []stack.Task) error {
 	at := w.now().Format("15:04:05")
 	events := []watchEvent{}
@@ -336,6 +354,7 @@ func (w *watcher) report(s scopedSession, before map[string]stack.Task, now []st
 		events = append(events, watchEvent{At: at, SessionID: s.ID, Session: s.Name, TaskID: t.ID, Title: t.Title, Change: change, From: from, To: to, Text: text})
 	}
 	questions := []string{}
+	ring := false
 	for _, t := range now {
 		p, ok := before[t.ID]
 		switch {
@@ -353,6 +372,10 @@ func (w *watcher) report(s scopedSession, before map[string]stack.Task, now []st
 		if ok && t.ReportAt != "" && t.ReportAt != p.ReportAt {
 			add(t, "report", "", "", t.ReportPreview)
 		}
+		if t.Quiet && !(ok && p.Quiet) {
+			add(t, "quiet", "", "", "")
+			ring = true
+		}
 	}
 	var b strings.Builder
 	for _, e := range events {
@@ -366,7 +389,7 @@ func (w *watcher) report(s scopedSession, before map[string]stack.Task, now []st
 		}
 		b.WriteString(eventLine(e))
 	}
-	if len(questions) > 0 && !w.machine {
+	if (len(questions) > 0 || ring) && !w.machine {
 		b.WriteString("\a")
 	}
 	if _, err := io.WriteString(w.stdout, b.String()); err != nil {
@@ -396,8 +419,18 @@ func eventLine(e watchEvent) string {
 		what = "Needs you answered"
 	case "report":
 		what = "new report: " + e.Text
+	case "quiet":
+		what = "quiet: Working, but no change or Task mail for " + quietText()
 	}
 	return fmt.Sprintf("%s  %s  %s: %s\n", e.At, printable(e.Session), printable(e.Title), printable(truncate(what, 120)))
+}
+
+// quietText says how long a Task goes without news before it is quiet.
+func quietText() string {
+	if stack.QuietAfter%time.Minute == 0 {
+		return fmt.Sprintf("%d min", int(stack.QuietAfter/time.Minute))
+	}
+	return stack.QuietAfter.String()
 }
 
 // desktopNotice runs notify-send, or osascript on macOS. A failure only

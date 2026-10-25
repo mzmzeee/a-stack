@@ -218,7 +218,7 @@ func TestMigration7DeletesOldBrowserCredentials(t *testing.T) {
 	}
 	// A v6 database holds browser credentials that never expire.
 	legacy := opaqueID()
-	if _, err = db.Exec(undoMigration7+"INSERT INTO capabilities VALUES(?,'browser','legacy-view',?);PRAGMA user_version=6", tokenHash(legacy), f.sessions[1]); err != nil {
+	if _, err = db.Exec(undoMigration9+undoMigration7+"INSERT INTO capabilities VALUES(?,'browser','legacy-view',?);PRAGMA user_version=6", tokenHash(legacy), f.sessions[1]); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()

@@ -2,7 +2,7 @@
 
 This page describes how the Operator sets up a team and how Agents get their credentials. It also covers runtime bindings, and Session close and reopen.
 
-The service gives each Workspace, Session and Agent a stable opaque ID. The CLI always sends these IDs explicitly, from flags or from an Agent credential file that names them (see [Credential context](#credential-context)). The current directory never selects a Workspace or a Session, and lifecycle commands never look up an Agent by its name. There is one exception: the three Operator commands `a-stack`, `a-stack -r` and `a-stack new` use the current folder as a default or a filter, and their output shows the folder they used. No other command and no Agent command uses the current directory. See [Open the last Session](browser.md#open-the-last-session).
+The service gives each Workspace, Session and Agent a stable opaque ID. The CLI always sends these IDs explicitly, from flags, from an Agent credential file that names them, or from the service for an Agent credential (see [Credential context](#credential-context)). The current directory never selects a Workspace or a Session, and lifecycle commands never look up an Agent by its name. There is one exception: the three Operator commands `a-stack`, `a-stack -r` and `a-stack new` use the current folder as a default or a filter, and their output shows the folder they used. No other command and no Agent command uses the current directory. See [Open the last Session](browser.md#open-the-last-session).
 
 ## Workspaces, Sessions and Agents
 
@@ -85,7 +85,7 @@ If an Agent loses its token, the Operator recovers access with `agent rebind`. T
 
 When a command runs with an Agent credential file that has these fields, the CLI takes `--workspace` and `--session` from the file if they are not given. A flag that is given must name the same ID, or the command fails with `invalid_input` before it sends anything. The context still comes only from a file that the caller names, never from the current folder or from environment variables, which child processes and subagents would inherit.
 
-Credential files from before v0.1.5 have no context. They keep working with explicit `--workspace` and `--session`.
+Credential files from before v0.1.5 have only the kind and the token. For such a file, the CLI asks the service which Workspace and Session the token belongs to (`GET /v1/credential`, which returns `kind`, `workspace_id`, `session_id`, `agent_id` and `agent_name` of the caller's own credential), and fills in `--workspace` and `--session` the same way. The service stores the Session of each token, so the token alone is enough, and the file stays as it is. A service before v0.1.7 has no such read; then the command fails with `invalid_input` and a message that says which flags to add and that the Operator finds the IDs with `a-stack workspace list` and `a-stack session list --workspace WORKSPACE_ID`. Explicit `--workspace` and `--session` keep working with every file. `hook install` still needs them for such a file.
 
 ## Runtime bindings
 
@@ -124,6 +124,23 @@ Only the Operator can run `session close` and `session reopen`. Both need `--exp
 
 A close runs in order with other guarded changes, never at the same time. It keeps all registrations and history, and it never starts or stops terminals. Reopening does not change any work status or runtime.
 
+## Standing orders
+
+Standing orders are the Operator's rules for every Agent of a Workspace, such as "commit as mzmzeee only" or "never change the GitHub About text". They are kept in a-stack, so an Agent on any harness, a subagent, or an agent after a compaction reads the same rules. They override an Agent's own defaults.
+
+```sh
+a-stack workspace orders show --workspace "$workspace_id"
+a-stack workspace orders set --workspace "$workspace_id" --body-file orders.txt --expected-revision 1 --operation-id orders-0001
+a-stack workspace orders clear --workspace "$workspace_id" --expected-revision 2 --operation-id orders-0002
+```
+
+- Only the Operator sets and clears them. `--body TEXT` or `--body-file FILE` (`-` for stdin) gives the text: plain UTF-8 of at most 4 KiB, with no control characters other than tabs and line breaks.
+- `show` returns `workspace_id`, `body`, `revision` and `updated_at`. A Workspace without orders has an empty `body` and revision 1, so the first `set` takes `--expected-revision 1`. Each change adds one, also a clear. The same text again changes nothing.
+- An Agent reads its own Workspace's orders with `workspace orders show`, and in `session inspect` as `standing_orders` (`body`, `revision`, `updated_at`), which is left out while there are none.
+- The SessionStart reminder of the [agent hooks](hooks.md) shows the first 8 lines, each cut to 200 characters, and the command that shows the rest. The brief of `a-stack new --orchestrator` shows them the same way, and `task handoff` shows them in full.
+- The [browser view](browser.md#what-the-view-shows) shows them read-only. A change gives every Session of the Workspace a new `read_revision`, so open views show it at their next poll.
+- Each change adds a `workspace.orders.set` or `workspace.orders.clear` entry to the lifecycle history.
+
 ## Lists
 
 `workspace list`, `session list` and `agent list` return `{items, next}`. `next` is present only when more items follow. A list returns 50 items by default. Use `--limit` with a value from 1 to 100. To get the next page, give the `next` value with `--after ID`.
@@ -134,7 +151,7 @@ A close runs in order with other guarded changes, never at the same time. It kee
 
 Metadata never contains bearer tokens, credential hashes or private bindings. Output and errors follow the [command line rules](foundation.md#command-line).
 
-The HTTP endpoints are `POST /v1/workspace/{create,list}`, `/v1/session/{create,list,inspect,close,reopen,appoint}` and `/v1/agent/{register,list,attach,rebind,observe}`. They take strict typed JSON requests. The CLI builds these payloads. A role or actor name in a request never gives authority.
+The HTTP endpoints are `POST /v1/workspace/{create,list}`, `/v1/workspace/orders/{show,set,clear}`, `/v1/session/{create,list,inspect,close,reopen,appoint}` and `/v1/agent/{register,list,attach,rebind,observe}`. They take strict typed JSON requests. The CLI builds these payloads. A role or actor name in a request never gives authority.
 
 ## Revisions
 

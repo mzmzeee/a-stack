@@ -75,7 +75,20 @@ On Windows, run this in PowerShell instead. It installs `a-stack.exe` in `%LOCAL
 irm https://github.com/mzmzeee/a-stack/releases/latest/download/install.ps1 | iex
 ```
 
-To update, run `a-stack update` and restart the service. See [Update](docs/install.md#update).
+Or use a package manager. With Homebrew, on macOS or Linux:
+
+```sh
+brew install mzmzeee/tap/a-stack
+```
+
+With Scoop, on Windows:
+
+```powershell
+scoop bucket add mzmzeee https://github.com/mzmzeee/scoop-bucket
+scoop install mzmzeee/a-stack
+```
+
+To update, run `a-stack update` and restart the service. If you installed with Homebrew or Scoop, update with `brew upgrade` or `scoop update a-stack` instead. See [Update](docs/install.md#update).
 
 To start a-stack at login and restart it after a crash, run `a-stack service install`. It uses systemd on Linux, launchd on macOS and Task Scheduler on Windows. See [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
 

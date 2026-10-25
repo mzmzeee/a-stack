@@ -166,27 +166,45 @@ func validateCommandFlags(command string, seen map[string]bool) error {
 	return nil
 }
 
-// checkIDs rejects an ID flag whose value cannot be an ID, such as an Agent
-// name given to --agent. The CLI never looks a name up: the caller chooses the
-// ID.
-func checkIDs(seen map[string]bool, l lifecycleFlags, t taskFlags) error {
-	ids := []struct{ flag, value, kind, list string }{
+// checkIDs rejects an ID flag whose value cannot be an ID. --agent and
+// --assign also take an Agent name, which the CLI looks up in the Session
+// (agentIDs); the hook commands take only an Agent ID.
+func checkIDs(command string, seen map[string]bool, l lifecycleFlags, t taskFlags) error {
+	type idFlag struct{ flag, value, kind, list string }
+	agentKind := "an Agent ID or name"
+	if isHookCommand(command) {
+		agentKind = "an Agent ID"
+	}
+	ids := []idFlag{
 		{"workspace", l.workspace, "a Workspace ID", "a-stack workspace list"},
 		{"session", l.session, "a Session ID", "a-stack session list"},
-		{"agent", l.agent, "an Agent ID", "a-stack agent list"},
+		{"agent", l.agent, agentKind, "a-stack agent list"},
 		{"task", t.task, "a Task ID", "a-stack task list"},
 		{"from", t.from, "a Task ID", "a-stack task list"},
 		{"to", t.to, "a Task ID", "a-stack task list"},
 		{"reference", t.reference, "a reference ID", "a-stack task references"},
+		{"question-id", t.questionID, "a question ID", "a-stack task show"},
+	}
+	if command == "task create" {
+		for _, after := range l.afters {
+			ids = append(ids, idFlag{"after", after, "a Task ID", "a-stack task list"})
+		}
+	}
+	for _, assign := range t.assign {
+		ids = append(ids, idFlag{"assign", assign, agentKind, "a-stack agent list"})
 	}
 	for _, id := range ids {
 		if !seen[id.flag] || stack.ValidID(id.value) {
 			continue
 		}
+		name := (id.flag == "agent" || id.flag == "assign") && looksLikeAgentName(id.value)
+		if name && agentKind != "an Agent ID" {
+			continue
+		}
 		what := short(id.value) + " is not one"
 		if id.value == "" {
 			what = "it is empty"
-		} else if id.flag == "agent" && len(id.value) < 40 && looksLikeAgentName(id.value) {
+		} else if name && len(id.value) < 40 {
 			what = id.value + " looks like a name"
 		}
 		return invalid("--" + id.flag + " takes " + id.kind + "; " + what + "; see " + id.list)

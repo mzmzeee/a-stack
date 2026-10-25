@@ -5,9 +5,9 @@ description: Work as an Agent in an a-stack Session with the a-stack CLI (Tasks,
 
 # Work in an a-stack Session
 
-a-stack is a local service and CLI that lets a human Operator watch a team of AI coding Agents. The Agents share a Task graph, one Task mail thread per Task and Needs you questions through the `a-stack` CLI, and the Operator follows them in a read-only browser view.
+a-stack is a local service and CLI that lets a human Operator watch a team of AI coding Agents. The Agents share a Task graph, one Task mail thread per Task and Needs you questions through the `a-stack` CLI, and the Operator follows them in a browser view, where the only thing the Operator can do is answer a Needs you question.
 
-If you are the Session's Orchestrator, also read [references/orchestrator.md](references/orchestrator.md). For every command, flag and error, read [references/commands.md](references/commands.md).
+If you are the Session's Orchestrator, also read [references/orchestrator.md](references/orchestrator.md). In short: create each Task with its prerequisites and assignees in one command, `task create --title ... --after PREREQUISITE_TASK_ID --assign 02-worker --assign 01-orchestrator`, so the Operator's graph shows the order of the work. For every command, flag and error, read [references/commands.md](references/commands.md).
 
 ## Set yourself up when nobody briefed you
 
@@ -24,7 +24,7 @@ When an Orchestrator or the Operator briefs you, you get:
 
 - The `a-stack` binary on your `PATH`.
 - The path of your credential file.
-- The Workspace ID and the Session ID. A credential file from a-stack v0.1.5 or later also names them.
+- The Workspace ID and the Session ID. The CLI finds them from your credential file alone, so you need them only for an old service (see below).
 - Your Agent name, such as `02-worker`, and your Task IDs.
 - A state directory, only if the service does not use the default one.
 - A private folder for your helper scripts. If you get none, make one with `mktemp -d`.
@@ -44,7 +44,7 @@ Write a script named `me` in your private folder, with your real paths, and make
 exec a-stack --state-dir /path/to/state --as agent --credential-file /path/to/02-worker.json "$@"
 ```
 
-Check it with `me session inspect`. If that fails with `explicit --workspace and --session required`, your credential file is older and does not name them: add `--workspace WORKSPACE_ID --session SESSION_ID` before `"$@"`.
+Check it with `me session inspect`. If that fails with `this credential file is from before a-stack v0.1.5`, the service is too old to look up your Workspace and Session: add `--workspace WORKSPACE_ID --session SESSION_ID` from your brief before `"$@"`.
 
 A script keeps working in shells that forget functions between commands. Write it with your file-write tool if you have one, and call it by its literal full path, not through a variable. Below, `me` stands for that full path, and `/your/private/folder/mail.json` for a file in your private folder.
 
@@ -52,13 +52,17 @@ A script keeps working in shells that forget functions between commands. Write i
 
 If `HERDR_PANE_ID` is set in your shell, bind yourself to your pane once, so that a mention can reach you as a short notice: `me herdr bind --agent YOUR_AGENT_ID --expected-revision 1 --operation-id 02-worker-bind-1`. `me session inspect` shows your Agent ID as `your_agent_id`. If it fails with `integration_missing`, tell the Operator the `herdr integration install` command from the message; do not run it yourself. A `conflict` that says the binding is established means you are already bound. Mail works the same without a binding.
 
+## Standing orders
+
+The Operator can give standing orders for the whole Workspace, such as how to sign commits or what never to change. They override your own defaults and your harness's memory, and they apply to every Task. Read them when you start and after a compaction: `me session inspect` shows them as `standing_orders.body` (left out when there are none), and `me workspace orders show` shows them alone. The a-stack hooks also put their first lines in your context. Only the Operator changes them. If your brief contradicts them, ask the one who briefed you.
+
 ## Work loop
 
 Do this for each of your Tasks. `T` is the Task ID, `02-worker` stands for your name, and `R` is the Task's revision (see Rules).
 
-1. Read the Task with `me task show --task T`. Its `revision` is your first `R`. Run `me task dependencies --task T`: while a prerequisite is not Finished, set Waiting with a reason that names it, and start only when it is done or its assignee says in Task mail that you can. Read your new Task mail with `me mail check --cursor-file /your/private/folder/mail.json`. If the output has `"more": true`, run the same check again.
+1. Read the Task with `me task show --task T`. Its `revision` is your first `R`. Run `me task dependencies --task T`: while a prerequisite is not Finished, set Waiting with a reason that names it, and start only when it is done or its assignee says in Task mail that you can. Read your new Task mail with `me mail check --cursor-file /your/private/folder/mail.json`. If the output has `"more": true`, run the same check again. When you take over a Task that another Agent started, also read `me task handoff --task T`: the report, the open question and the latest Task mail.
 2. Start (a new Task is Waiting until an assignee starts it): `me task status --task T --progress working --expected-revision R --operation-id 02-worker-start-1`. The receipt's `revision` is your next `R`.
-3. Do the work. At each milestone, send one short Task mail: `me mail send --task T --body 'Tests pass; writing docs next' --operation-id 02-worker-mail-01`.
+3. Do the work. At each milestone, send one short Task mail: `me mail send --task T --body 'Tests pass; writing docs next' --operation-id 02-worker-mail-01`. A Working Task with no change and no Task mail for 30 minutes shows the Operator that it is quiet, as if you had stopped.
 4. Run `me mail check --cursor-file /your/private/folder/mail.json` again between big steps and before you finish. It shows only mail you have not seen. Answer what other assignees ask you.
 5. Write the report: `me task report --task T --report 'What was done, and where' --expected-revision R --operation-id 02-worker-report-1`. For long text, use `--body-file FILE` or `--body-file -` (stdin) instead of `--report`. The report is shared and each report replaces the last one, so read it first when the Task has other assignees.
 6. Tell the other assignees in Task mail what you did. Then finish when the whole shared Task is done: `me task status --task T --progress finished --summary 'What was done' --expected-revision R --operation-id 02-worker-finish-1`. Finishing needs no approval, and the Orchestrator does not finish your Task for you. If only your part is done, say so in Task mail and leave the Task Working.
@@ -69,7 +73,7 @@ When you wait for another Task, set `--progress waiting --reason 'Waits for the 
 
 If an a-stack hook blocks you from stopping, write the report and finish, or set Waiting with a reason. If it says there is new Task mail, run your `mail check`.
 
-When only the Operator can decide, ask one clear question with `me task attention set --task T --question 'Which release gets this?' --expected-revision R --operation-id 02-worker-ask-1`. Then stop, and say in your conversation that you wait for the Operator's answer. After the answer, run `task attention resolve` with a `--note` (see [references/commands.md](references/commands.md)).
+When only the Operator can decide, ask one clear question with `me task attention set --task T --question 'Which release gets this?' --expected-revision R --operation-id 02-worker-ask-1`. Then stop, and say in your conversation that you wait for the Operator's answer. The Operator answers in your conversation, or with `a-stack answer` or the browser view. That answer arrives as Task mail from the Operator (`sender_name` is `Operator`), and it already resolves the question: read it with `mail check`, and run `task show` again for the new revision. When the Operator answers in your conversation instead, run `task attention resolve` with a `--note` (see [references/commands.md](references/commands.md)).
 
 ## Rules
 

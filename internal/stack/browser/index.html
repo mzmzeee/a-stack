@@ -30,21 +30,23 @@
   </header>
   <section class="workspacebar" aria-label="Workspace and filters">
     <div class="workspace-title"><h1>Loading Session</h1><p class="workspace-subtitle">Connecting to local service</p></div>
-    <label class="search"><span data-icon="search"></span><span class="sr-only">Find an agent or task</span><input id="search" type="search" placeholder="Find an agent or task…" autocomplete="off" spellcheck="false"></label>
+    <label class="search"><span data-icon="search"></span><span class="sr-only">Find an agent or task</span><input id="search" type="search" aria-keyshortcuts="/" placeholder="Find an agent or task…" autocomplete="off" spellcheck="false"></label>
     <label class="sr-only" for="status-filter">Filter task status</label>
     <select class="status-filter" id="status-filter"><option value="all">All statuses</option><option value="working">Working</option><option value="blocked">Needs you</option><option value="waiting">Waiting</option><option value="finished">Finished</option><option value="cancelled">Cancelled</option></select>
     <button class="attention-button" id="attention" disabled><span data-icon="attention"></span>Needs you</button>
   </section>
   <p class="banner" id="banner" role="status" hidden></p>
   <div class="update-note" id="update-note" hidden><p id="update-text" role="status"></p><button class="plain-button" id="reload">Reload</button></div>
+  <details class="orders" id="orders" hidden><summary>Standing orders</summary><pre id="orders-text"></pre></details>
   <main>
     <div class="view" id="now-panel" role="tabpanel" aria-labelledby="now-tab" tabindex="0" aria-description="What is happening now. Columns list the Tasks that need you, are working, are waiting, or finished recently. Select a task for details.">
       <div class="now-layout"><div class="now-board" id="now-board"></div><section class="now-column now-feed" aria-labelledby="feed-heading"><header class="now-head"><h2 id="feed-heading">Latest changes</h2></header><ol class="feed-list" id="feed-list"></ol><p class="now-empty" id="feed-empty">No changes yet.</p></section></div>
     </div>
-    <div class="view" id="graph-panel" role="tabpanel" aria-labelledby="graph-tab" tabindex="0" hidden aria-description="Read-only task graph. Arrows point from prerequisites to dependent tasks. Scroll, or drag, to explore. Below 50 percent zoom, cards show only their titles, and below 30 percent, no text. Select a task for details and named dependencies.">
+    <div class="view" id="graph-panel" role="tabpanel" aria-labelledby="graph-tab" tabindex="0" hidden aria-description="Read-only task graph. Arrows point from prerequisites to dependent tasks. Scroll, or drag, to explore. Below 50 percent zoom, cards show only their titles, and below 30 percent, no text. Click a task, or press Space on it, to peek at it; press Enter for its details. Press question mark for the keyboard map.">
       <div class="graph-space"><div class="graph-world" id="graph-world"></div></div>
     </div>
     <div class="minimap" id="minimap" aria-hidden="true" title="Minimap: click or drag to move the view. The Minimap button, or m in the graph, hides it." hidden><canvas></canvas></div>
+    <aside class="peek" id="peek" role="dialog" aria-labelledby="peek-title" hidden></aside>
     <div class="view" id="agents-panel" role="tabpanel" aria-labelledby="agents-tab" tabindex="0" hidden>
       <div class="agents-bar" hidden><p class="agents-summary" id="agents-summary"></p><div class="seg" role="group" aria-label="Sort Agents"><button data-sort="urgency" aria-pressed="true">Most urgent first</button><button data-sort="name" aria-pressed="false">By name</button></div></div>
       <div class="agent-list" id="agent-list"></div>
@@ -53,16 +55,18 @@
   </main>
   <footer class="footer">
     <div class="zoom-controls" id="zoom-controls" role="group" aria-label="Graph zoom">
-      <button id="zoom-out" aria-label="Zoom out"><span data-icon="minus"></span></button>
-      <button id="zoom-reset" aria-label="Reset to 100 percent">100%</button>
-      <button id="zoom-in" aria-label="Zoom in"><span data-icon="plus"></span></button>
-      <button id="zoom-fit" aria-label="Fit graph"><span data-icon="fit"></span>Fit</button>
+      <button id="zoom-out" aria-label="Zoom out" aria-keyshortcuts="-"><span data-icon="minus"></span></button>
+      <button id="zoom-reset" aria-label="Reset to 100 percent" aria-keyshortcuts="0">100%</button>
+      <button id="zoom-in" aria-label="Zoom in" aria-keyshortcuts="+"><span data-icon="plus"></span></button>
+      <button id="zoom-fit" aria-label="Fit graph" aria-keyshortcuts="f"><span data-icon="fit"></span>Fit</button>
     </div>
     <button class="toggle-button" id="archived" aria-pressed="false" title="Finished and cancelled Tasks"><span data-icon="archive"></span><span id="archived-label">Archived (0)</span></button>
-    <button class="toggle-button" id="minimap-toggle" aria-pressed="true" title="The minimap shows while the graph is larger than the panel. Key: m" hidden><span data-icon="map"></span>Minimap</button>
+    <button class="toggle-button" id="mark-seen" hidden><span class="new-dot" aria-hidden="true"></span>Mark all seen</button>
+    <button class="toggle-button" id="minimap-toggle" aria-pressed="true" aria-keyshortcuts="m" title="The minimap shows while the graph is larger than the panel. Key: m" hidden><span data-icon="map"></span>Minimap</button>
     <span class="footer-hint" id="footer-hint">Arrows show what comes next. Drag to pan.</span>
     <span id="result-count" role="status" aria-live="polite"></span>
     <button class="toggle-button" id="notify" aria-pressed="false" hidden><span data-icon="bell"></span>Notify me</button>
+    <button class="keys-button" id="keys-button" aria-keyshortcuts="?">Keyboard <kbd aria-hidden="true">?</kbd></button>
     <button class="preview-button" id="about-button"><span data-icon="info"></span><span class="preview-label">Local service · connecting</span><span class="preview-short" aria-hidden="true">Read-only</span><span class="sr-only">About this view</span></button>
   </footer>
 </div>
@@ -70,6 +74,13 @@
 <dialog class="about-panel" id="about-dialog" aria-labelledby="about-title">
   <div class="detail-top"><span class="detail-kicker">READ-ONLY SESSION</span><button class="icon-button" data-close="about-dialog" aria-label="Close information"><span data-icon="close"></span></button></div>
   <div class="detail-body"><h2 id="about-title">A look at the work.</h2><p>Now shows what needs you and what changed. Graph shows dependencies. Agents shows assignments. Task progress is reported by assignees; runtime observations are separate and unverified.</p><p>This view reads Session metadata. Selecting a question does not resolve it. File references can be displayed or copied; this view never opens them.</p><p id="source-info"></p></div>
+</dialog>
+<dialog class="about-panel" id="keys-dialog" aria-labelledby="keys-title">
+  <div class="detail-top"><h2 id="keys-title">Keyboard</h2><button class="icon-button" data-close="keys-dialog" aria-label="Close keyboard map"><span data-icon="close"></span></button></div>
+  <div class="detail-body keys"><p>These keys work while the focus is in the Graph or Agents tab, so typing elsewhere never triggers them. They only move around: no key changes anything.</p>
+    <section><h3>Graph and Agents</h3><dl><dt><kbd>g</kbd> <kbd>n</kbd></dt><dd>Now</dd><dt><kbd>g</kbd> <kbd>g</kbd></dt><dd>Graph</dd><dt><kbd>g</kbd> <kbd>a</kbd></dt><dd>Agents</dd><dt><kbd>/</kbd></dt><dd>Find an Agent or Task</dd><dt><kbd>u</kbd></dt><dd>Next Task that needs you</dd><dt><kbd>?</kbd></dt><dd>This map</dd></dl></section>
+    <section><h3>Graph</h3><dl><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next or previous Task</dd><dt><kbd>Space</kbd></dt><dd>Peek at the Task, or close the peek</dd><dt><kbd>Enter</kbd></dt><dd>Full details</dd><dt><kbd>Esc</kbd></dt><dd>Close the peek, then clear the highlight</dd><dt><kbd>f</kbd></dt><dd>Fit</dd><dt><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, zoom out, 100%</dd><dt><kbd>m</kbd></dt><dd>Minimap on or off</dd></dl></section>
+  </div>
 </dialog>
 <dialog class="about-panel" id="attention-dialog" aria-labelledby="attention-title"><div class="detail-top"><h2 id="attention-title">Needs you</h2><button class="icon-button" data-close="attention-dialog" aria-label="Close Needs you"><span data-icon="close"></span></button></div><div class="detail-body" id="attention-list"></div></dialog>
 <script src="/assets/app.js"></script>

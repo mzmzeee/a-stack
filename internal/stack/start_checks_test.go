@@ -197,7 +197,7 @@ func schema7Database(t *testing.T, extra string) (path, state string) {
 	if err := f.service.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
-	execFile(t, path, undoMigration8+extra)
+	execFile(t, path, undoMigration9+undoMigration8+extra)
 	return path, state
 }
 
@@ -244,7 +244,7 @@ func TestMigrationCopyIsReusedAfterAFailedStart(t *testing.T) {
 	if got := copies(path); len(got) != 2 || got[1] != ".pre-v7.2" {
 		t.Fatal("a changed database got no new copy:", got)
 	}
-	for _, want := range []string{"Migrated the state database from schema 7 to 8 in ", "The copy from before is " + path + ".pre-v7.2; an older a-stack cannot open the database now.", "#go-back-to-an-older-version"} {
+	for _, want := range []string{"Migrated the state database from schema 7 to 9 in ", "The copy from before is " + path + ".pre-v7.2; an older a-stack cannot open the database now.", "#go-back-to-an-older-version"} {
 		if !strings.Contains(service.Store.Migrated, want) {
 			t.Fatalf("migration line %q lacks %q", service.Store.Migrated, want)
 		}

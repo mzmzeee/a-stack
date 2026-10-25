@@ -103,7 +103,10 @@ CGO_ENABLED=1 go install github.com/mzmzeee/a-stack/cmd/a-stack@latest
 
 ## Package managers
 
-An AUR package (`a-stack-bin`), a Homebrew formula for Linux and macOS and a Scoop manifest for Windows are prepared in [`contrib/`](../contrib/README.md), but not published yet. They install the release binary and check it against the release's `SHA256SUMS`. If you install a-stack with a package manager, update it with that package manager: `a-stack update` cannot replace a binary in `/usr/bin`, and on Windows it refuses to replace a binary in a Scoop or WinGet folder and names `scoop update a-stack` or `winget upgrade a-stack` instead.
+- **Homebrew**, on macOS 13 or later and Linux: `brew install mzmzeee/tap/a-stack`. Update with `brew upgrade`. The service runs the binary by its path in the Homebrew Cellar, which changes with each version, so run `a-stack service install` again after an upgrade.
+- **Scoop**, on Windows: `scoop bucket add mzmzeee https://github.com/mzmzeee/scoop-bucket`, then `scoop install mzmzeee/a-stack`. Update with `scoop update a-stack`. Scoop cannot replace a running program, so stop the service first; see [On Windows with Task Scheduler](#on-windows-with-task-scheduler).
+
+Both install the release binary and check it against the release's `SHA256SUMS`. An AUR package (`a-stack-bin`) is prepared in [`contrib/`](../contrib/README.md) but not published yet. If you install a-stack with a package manager, update it with that package manager: `a-stack update` cannot replace a binary in `/usr/bin`, and on Windows it refuses to replace a binary in a Scoop or WinGet folder and names `scoop update a-stack` or `winget upgrade a-stack` instead.
 
 ## How releases are verified
 
@@ -202,7 +205,7 @@ During the restart, Agent commands fail with `storage_unavailable` and `retryabl
 
 When the new version has a new database schema, the first start migrates the database. Before that, it writes a private copy of the database, `state.db.pre-vN`, in the state directory (N is the old schema version). After the migration, `serve` writes one line to its output (the journal under systemd, the log file under launchd and Task Scheduler). It names the copy, says that an older a-stack cannot open the database now, and links to the next section.
 
-The migration needs free space in the state directory. For schema 8 (v0.1.6), plan for up to three times the size of `state.db`: one copy, and twice the size of the Task text and mail tables that it rebuilds, first in the WAL file and then in the database file. If less space is free, `serve` stops before it writes anything and says how much it needs. If a start fails after the copy, the next start of the unchanged database uses that copy again instead of writing another one. After the migration, the database file keeps the freed pages; to make it small again, make a backup and restore it (see [Backup and restore](foundation.md#backup-and-restore)).
+The migration needs free space in the state directory. For schema 8 (v0.1.6) and schema 9 (after v0.1.6), plan for up to three times the size of `state.db`: one copy, and twice the size of the tables that it rebuilds (Task texts and mail, or only mail for schema 9), first in the WAL file and then in the database file. If less space is free, `serve` stops before it writes anything and says how much it needs. If a start fails after the copy, the next start of the unchanged database uses that copy again instead of writing another one. After the migration, the database file keeps the freed pages; to make it small again, make a backup and restore it (see [Backup and restore](foundation.md#backup-and-restore)).
 
 ### Go back to an older version
 
@@ -218,14 +221,14 @@ To put the copy back, install the older version first with `a-stack update --ver
 - If launchd runs the service on macOS, run `launchctl bootout gui/$(id -u)/dev.a-stack`. launchd keeps starting an older a-stack that stops with exit code 4, so `kill TERM` is not enough.
 - If Task Scheduler runs the service on Windows, run `schtasks /Change /TN a-stack-SID /DISABLE` and then `schtasks /End /TN a-stack-SID`.
 
-Move the state directory aside, and put the copy and the Operator credential in a new state directory in the same place. `state.db.pre-v7` is the copy that v0.1.6 made of a v0.1.5 database; use the name that `serve` printed after the migration:
+Move the state directory aside, and put the copy and the Operator credential in a new state directory in the same place. `state.db.pre-v8` is the copy of a v0.1.6 database that a newer a-stack made before it moved it to schema 9 (`state.db.pre-v7` is the one that v0.1.6 made of a v0.1.5 database); use the name that `serve` printed after the migration:
 
 ```sh
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/a-stack"
 old_dir="$state_dir.before-restore-$(date +%Y%m%d-%H%M%S)"
 mv "$state_dir" "$old_dir"
 mkdir -m 700 "$state_dir"
-install -m 600 "$old_dir/state.db.pre-v7" "$state_dir/state.db"
+install -m 600 "$old_dir/state.db.pre-v8" "$state_dir/state.db"
 install -m 600 "$old_dir/operator.json" "$state_dir/operator.json"
 ```
 

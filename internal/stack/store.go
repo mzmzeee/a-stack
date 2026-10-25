@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const schemaVersion = 8
+const schemaVersion = 9
 const applicationID = 0x4153544b
 const migration1 = `
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -236,11 +236,12 @@ func copyOf(ctx context.Context, name string, version int, id string) bool {
 }
 
 // migrationSpace refuses a migration while the state directory has less free
-// space than it needs. The migration rebuilds the Task text and mail tables,
-// which hold most of the data: the new tables go into the WAL first, and the
-// checkpoint then grows the file by as much, so the migration needs up to
-// twice the database size, and the copy, unless reused, once more. When the
-// free space cannot be measured, the migration tries anyway.
+// space than it needs. The migrations rebuild the Task text and mail tables
+// (schema 8) or the mail table (schema 9), which hold most of the data: the
+// new tables go into the WAL first, and the checkpoint then grows the file by
+// as much, so the migration needs up to twice the database size, and the
+// copy, unless reused, once more. When the free space cannot be measured, the
+// migration tries anyway.
 func (s *Store) migrationSpace(size int64, withCopy bool) error {
 	need := 2 * uint64(size)
 	if withCopy {
@@ -310,6 +311,39 @@ ALTER TABLE mail_messages_v8 RENAME TO mail_messages;
 ALTER TABLE mail_mentions_v8 RENAME TO mail_mentions;
 CREATE INDEX mail_mentions_pending ON mail_mentions(notice_state,recipient_id,message_id);
 CREATE INDEX mail_mentions_membership ON mail_mentions(task_id,recipient_id,notice_state,message_id);
+CREATE TRIGGER mail_mentions_task BEFORE INSERT ON mail_mentions
+ WHEN NEW.task_id IS NOT (SELECT task_id FROM mail_messages WHERE id=NEW.message_id)
+ BEGIN SELECT RAISE(ABORT,'FOREIGN KEY constraint failed'); END;
+CREATE TRIGGER mail_mentions_task_change BEFORE UPDATE OF message_id,task_id ON mail_mentions
+ WHEN NEW.task_id IS NOT (SELECT task_id FROM mail_messages WHERE id=NEW.message_id)
+ BEGIN SELECT RAISE(ABORT,'FOREIGN KEY constraint failed'); END;
+`
+
+// migration9 adds the standing orders of a Workspace and lets the Operator
+// send Task mail.
+//
+// workspace_orders keeps plain text that the Operator writes and every Agent
+// of the Workspace reads. A Workspace without a row has no orders at revision
+// 1, so the first set expects revision 1. A rowid table keeps a text of up to
+// MaxOrdersBytes in its table page.
+//
+// mail_messages is rebuilt as migration6 rebuilt task_history: a message has
+// a sender_kind, and an Operator message has no sender_id, because the
+// Operator is no Agent. Agent mail keeps its sender. The triggers of
+// mail_mentions name mail_messages, so they go while the table is replaced.
+const migration9 = `
+CREATE TABLE workspace_orders(workspace_id TEXT PRIMARY KEY NOT NULL REFERENCES workspaces(id), body TEXT NOT NULL, revision INTEGER NOT NULL CHECK(revision>1), updated_at TEXT NOT NULL);
+DROP TRIGGER mail_mentions_task;
+DROP TRIGGER mail_mentions_task_change;
+CREATE TABLE mail_messages_v9(
+ id TEXT PRIMARY KEY NOT NULL, task_id TEXT NOT NULL REFERENCES tasks(id), sequence INTEGER NOT NULL CHECK(sequence>0),
+ sender_kind TEXT NOT NULL DEFAULT 'agent', sender_id TEXT REFERENCES agents(id), received_at TEXT NOT NULL, body TEXT NOT NULL,
+ UNIQUE(task_id,sequence),
+ CHECK((sender_kind='agent' AND sender_id IS NOT NULL) OR (sender_kind='operator' AND sender_id IS NULL))
+);
+INSERT INTO mail_messages_v9(id,task_id,sequence,sender_kind,sender_id,received_at,body) SELECT id,task_id,sequence,'agent',sender_id,received_at,body FROM mail_messages ORDER BY task_id,sequence;
+DROP TABLE mail_messages;
+ALTER TABLE mail_messages_v9 RENAME TO mail_messages;
 CREATE TRIGGER mail_mentions_task BEFORE INSERT ON mail_mentions
  WHEN NEW.task_id IS NOT (SELECT task_id FROM mail_messages WHERE id=NEW.message_id)
  BEGIN SELECT RAISE(ABORT,'FOREIGN KEY constraint failed'); END;
@@ -423,6 +457,14 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=8"); err != nil {
+			return storageError(err)
+		}
+	}
+	if version < 9 {
+		if _, err = tx.ExecContext(ctx, migration9); err != nil {
+			return storageError(err)
+		}
+		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=9"); err != nil {
 			return storageError(err)
 		}
 	}
@@ -574,7 +616,8 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	if err != nil {
 		return empty, err
 	}
-	if p.Kind == BrowserCapability {
+	// The answer to a Needs you question is the view's one write.
+	if p.Kind == BrowserCapability && op.Name != "task.answer" {
 		return empty, failure("forbidden", "browser credentials are read-only")
 	}
 	actor := string(p.Kind) + ":" + p.SubjectID
@@ -634,8 +677,13 @@ type StorageStatus struct {
 	// FreeBytes is the free space of the database's file system, measured at
 	// most diskCheckInterval ago. It is absent when it cannot be measured.
 	FreeBytes *uint64 `json:"free_bytes,omitempty"`
-	LowDisk   bool    `json:"low_disk,omitempty"`
-	Warning   string  `json:"warning,omitempty"`
+	// FreeInFileBytes is the size of the free pages inside the database file.
+	// SQLite reuses them but never gives them back to the file system; a
+	// backup and a restore do (Note says so when they are a quarter or more).
+	FreeInFileBytes int64  `json:"free_in_file_bytes"`
+	Note            string `json:"note,omitempty"`
+	LowDisk         bool   `json:"low_disk,omitempty"`
+	Warning         string `json:"warning,omitempty"`
 }
 
 func (s *Store) Status() (StorageStatus, error) {
@@ -649,6 +697,12 @@ func (s *Store) Status() (StorageStatus, error) {
 			return status, storageError(err)
 		}
 		*target = info.Size()
+	}
+	if err := s.db.QueryRow("SELECT freelist_count*page_size FROM pragma_freelist_count,pragma_page_size").Scan(&status.FreeInFileBytes); err != nil {
+		return status, storageError(err)
+	}
+	if status.FreeInFileBytes > 0 && status.FreeInFileBytes*4 >= status.DatabaseBytes {
+		status.Note = "a quarter or more of state.db is free pages, which SQLite reuses; to make the file smaller, write a backup with storage backup and restore it"
 	}
 	if free, err := s.disk.get(s.path); err == nil {
 		status.FreeBytes = &free
