@@ -212,7 +212,9 @@ button:disabled { cursor: default; opacity: .6; }
 .now-card.archived { opacity: .7; }
 .detail-archive { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 19px; }
 .detail-archive[hidden] { display: none; }
-.graph-world > .task-unit.unfocused { opacity: .42; }
+/* Focus fades the other cards to the canvas color with muted titles; their text keeps its contrast. */
+.graph-world > .task-unit.unfocused .task-card { background: var(--canvas); border-color: var(--line); box-shadow: none; }
+.graph-world > .task-unit.unfocused .task-title { color: var(--muted); }
 .graph-world > .task-unit.dimmed { opacity: .18; }
 .connection.unfocused { opacity: .22; }
 .connection.implied { stroke-dasharray: 6 5; }
@@ -297,3 +299,15 @@ button:disabled { cursor: default; opacity: .6; }
   .now-board { grid-template-columns: minmax(0, 1fr); }
   .now-list, .feed-list { max-height: 60vh; }
 }
+
+/* Status at a glance: a left border in the status color on every card, and a ring on Needs you. */
+.task-card { --status: var(--line); }
+.task-card[data-status="working"] { --status: var(--working); }
+.task-card[data-status="waiting"] { --status: var(--waiting); }
+.task-card[data-status="finished"] { --status: var(--finished); }
+.task-card[data-status="cancelled"] { --status: var(--strong-line); }
+.task-card[data-status="needs-you"] { --status: var(--attention); border-color: var(--attention); box-shadow: 0 0 0 3px var(--attention-bg), var(--shadow); }
+.task-card[data-status="needs-you"].selected { box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--attention-bg); }
+.task-unit.compact .task-card[data-status="needs-you"] { box-shadow: 0 0 0 3px var(--attention-bg); }
+.task-card[data-status], .graph-world > .task-unit.unfocused .task-card[data-status] { border-left: 3px solid var(--status); }
+.graph-world > .task-unit.unfocused .task-card[data-status] { border-left-color: var(--line); }

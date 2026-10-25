@@ -98,6 +98,8 @@ function status(n,t) {
   n.replaceChildren(iconNode(t.progress==='cancelled'?'idle':t.progress), el('span','status-label',labels[t.progress] || t.progress));
   if (t.needs_you) { const a=el('span','status blocked','Needs you');n.append(' · ',a); }
 }
+// Every card has a left border in its status color, so status still reads at a small zoom; Needs you has a ring.
+function statusMark(button,t) { const v=t.needs_you?'needs-you':t.progress;if(button.dataset.status!==v)button.dataset.status=v; }
 function makeCard(t) {
   const article=el('article','task-unit');article.dataset.task=t.id;
   const own=el('div','owners'), button=el('button','task-card');button.dataset.openTask=t.id;
@@ -113,7 +115,7 @@ function patchCard(c,t,graphCard=false) {
       const n=el('span','owner');n.append(iconNode('agent'),el('span','owner-name',name));return n;
     }));
   }
-  status(c.st,t);setText(c.title,t.title);setText(c.note,t.report_preview || 'No report yet.');
+  status(c.st,t);statusMark(c.button,t);setText(c.title,t.title);setText(c.note,t.report_preview || 'No report yet.');
   const hidden=graphCard?hiddenPrerequisites.get(t.id) || 0:0;
   const caption=[t.reference_count ? `${t.reference_count} file reference${t.reference_count===1?'':'s'}`:'',t.cancelled_prerequisite_count?`${t.cancelled_prerequisite_count} cancelled prerequisite${t.cancelled_prerequisite_count===1?'':'s'}`:'',hidden?`${hidden} archived prerequisite${hidden===1?'':'s'} hidden`:''].filter(Boolean).join(' · ');
   // In the graph, done Tasks without an open question are one-line blocks; the details still show everything.
@@ -123,7 +125,7 @@ function patchCard(c,t,graphCard=false) {
   c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.needs_you?' Needs you.':''} Assigned to ${names.join(' and ') || 'Unassigned'}. ${caption}`);
   const visible=matches(t);
   c.article.classList.toggle('archived',graphCard&&t.archived);
-  c.article.classList.toggle('unfocused',graphCard&&!!focusIds&&!focusIds.has(t.id));
+  c.article.classList.toggle('unfocused',graphCard&&!!focusIds&&!focusIds.has(t.id)&&!t.needs_you); // Needs you never fades
   c.article.classList.toggle('dimmed',graphCard&&!visible);
   c.article.inert=graphCard&&!visible;
   if (graphCard) c.article.setAttribute('aria-hidden',String(!visible));
@@ -309,7 +311,7 @@ function makeNowCard(t) {
 }
 function patchNowCard(c,t,byID) {
   const names=owners(t), blockers=model.dependencies.filter(e=>e.dependent_id===t.id).map(e=>byID.get(e.prerequisite_id)).filter(p=>p&&!done(p)).map(p=>p.title);
-  status(c.st,t);stamp(c.when,t.updated_at);setText(c.title,t.title);
+  status(c.st,t);statusMark(c.button,t);stamp(c.when,t.updated_at);setText(c.title,t.title);
   const ownKey=names.join('\n');if(c.own.dataset.key!==ownKey){c.own.dataset.key=ownKey;c.own.replaceChildren(iconNode('agent'),el('span','owner-name',names.join(', ') || 'Unassigned'));}
   setText(c.question,t.question_preview || '');c.question.hidden=!t.needs_you||!t.question_preview;
   setText(c.waits,blockers.length?'Waits for: '+blockers.join(', '):'');c.waits.hidden=t.progress!=='waiting'||!blockers.length;
