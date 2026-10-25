@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -21,6 +22,9 @@ import (
 var version string
 
 func main() {
+	if runtime.GOOS == "windows" {
+		removeOldBinaries()
+	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
