@@ -15,7 +15,7 @@ If the Operator asks you directly to use a-stack or to be the Orchestrator, and 
 
 1. Run `a-stack new --orchestrator 01-orchestrator --no-browser --json` in the project folder. It makes or reuses the folder's Workspace and Session, registers you, appoints you as the Orchestrator and prints `orchestrator_credential_file`, `workspace_id`, `session_id` and a `brief`. Running it again returns the same hand-off, so it is safe after a lost answer or in a new conversation.
 2. If it fails because the service is not running, run `a-stack service install` (a user service, no sudo), tell the Operator that you did, then run step 1 again.
-3. If it says the Session already has an Orchestrator, ask the Operator whether to use another Session (`a-stack new NAME --orchestrator 01-orchestrator --no-browser --json`) or to replace the Orchestrator.
+3. If it says the Session already has an Orchestrator, ask the Operator whether to use another Session or to replace the Orchestrator. For another Session in the same folder, use a new Session name and a new Agent name, because Agent names are unique in a project folder: `a-stack new NAME --orchestrator 01-orchestrator-NAME --no-browser --json`.
 4. Follow the brief: set up `me` below with the credential file, then read [references/orchestrator.md](references/orchestrator.md). The output has no view link; tell the Operator to open the view with `a-stack`.
 
 ## What you receive

@@ -307,13 +307,13 @@ cd ~/code/my-project
 a-stack new --orchestrator 01-orchestrator
 ```
 
-It makes the Session (or opens the open Session of this folder's name), registers `01-orchestrator` with a credential file in `~/.local/state/a-stack-agents/`, appoints it, opens the view and prints a brief:
+It makes the Session (or opens the open Session of this folder's name), registers `01-orchestrator` with a credential file in `~/.local/state/a-stack-agents/SESSION_ID/`, so each Session has its own, appoints it, opens the view and prints a brief:
 
 ```text
 Start your coding agent in this folder and give it this brief, with your goal:
 
 You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.
-Credential file: /home/you/.local/state/a-stack-agents/01-orchestrator.json
+Credential file: /home/you/.local/state/a-stack-agents/1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4/01-orchestrator.json
 Workspace: 8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ   Session: 1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
 Your name: 01-orchestrator   Your private folder: make one with mktemp -d
 Work in: /home/you/code/my-project
