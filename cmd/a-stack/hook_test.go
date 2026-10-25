@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -601,8 +602,22 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	off := id
 	off.noMailNudge = true
 	hookEvent(t, off, "PostToolUse", `,"session_id":"off"`)
-	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
-		t.Fatalf("cursor files: %v", entries)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherSum := sha256.Sum256([]byte("other"))
+	wantFiles := []string{hex.EncodeToString(otherSum[:16]) + ".json"}
+	if !posixModes {
+		// Windows locks a persistent file; Unix locks the directory itself.
+		wantFiles = append([]string{".lock"}, wantFiles...)
+	}
+	var files []string
+	for _, entry := range entries {
+		files = append(files, entry.Name())
+	}
+	if !slices.Equal(files, wantFiles) {
+		t.Fatalf("cursor files: %v, want %v", files, wantFiles)
 	}
 }
 

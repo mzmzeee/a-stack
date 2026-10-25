@@ -99,7 +99,7 @@ func TestServiceUnitEmbedMatchesRepository(t *testing.T) {
 		t.Fatal("the embedded unit differs from contrib/systemd/a-stack.service or lost its ExecStart line")
 	}
 	// The default paths keep the unit as it is.
-	if unit, err := renderUnit("/home/u/.local/bin/a-stack", "/home/u/.local/state/a-stack", "/home/u"); err != nil || unit != systemd.Unit {
+	if unit, err := renderUnit(filepath.Join("/home/u", ".local", "bin", "a-stack"), filepath.Join("/home/u", ".local", "state", "a-stack"), "/home/u"); err != nil || unit != systemd.Unit {
 		t.Fatalf("default unit changed: %v", err)
 	}
 }

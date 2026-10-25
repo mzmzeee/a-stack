@@ -91,7 +91,7 @@ func TestPickerSortFilterAndRows(t *testing.T) {
 	}
 	long := sessionRow{Name: strings.Repeat("n", 100), WorkspacePath: "/home/u/" + strings.Repeat("d", 100) + "/project", ChangedAt: now}
 	line = formatRow(long, false, "/home/u", now, 90)
-	if utf8.RuneCountInString(line) != 90 || !strings.Contains(line, "  …ddd") || !strings.Contains(line, "/project  open") || !strings.HasSuffix(line, " now") {
+	if utf8.RuneCountInString(line) != 90 || !strings.Contains(line, "  …ddd") || !strings.Contains(line, string(filepath.Separator)+"project  open") || !strings.HasSuffix(line, " now") {
 		t.Fatalf("long row %q", line)
 	}
 	if got := formatRow(long, false, "", now, 3); utf8.RuneCountInString(got) > 3 {
