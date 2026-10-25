@@ -179,7 +179,9 @@
   }
   @media (prefers-reduced-motion: no-preference) {
     .task-card { transition: border-color 100ms, box-shadow 100ms; }
-    .status.working svg { animation: spin 1.4s linear infinite; }
+    /* Three turns when a Task starts working, then still: an endless spin keeps the browser busy. */
+    .status.working svg { animation: spin 1.4s linear 3; }
+    .tab-hidden .status svg { animation-play-state: paused; }
   }
   @keyframes spin { to { transform: rotate(1turn); } }
 /* Live content keeps the approved card dimensions while reports change. */

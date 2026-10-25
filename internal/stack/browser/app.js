@@ -556,7 +556,7 @@ async function refresh() {
   finally{busy=false;controller=null;schedule();}
 }
 function schedule(){clearTimeout(timer);if(!document.hidden&&token)timer=setTimeout(refresh,Math.min(30000,2000*2**Math.min(failures,4)));}
-document.addEventListener('visibilitychange',()=>{clearTimeout(timer);if(document.hidden)controller?.abort();else refresh();});
+document.addEventListener('visibilitychange',()=>{document.documentElement.classList.toggle('tab-hidden',document.hidden);clearTimeout(timer);if(document.hidden)controller?.abort();else refresh();});
 setInterval(()=>{if(!document.hidden&&model){updateSource();updateRuntimeAges();updateNowAges();}},1000);
 render();
 if(token)refresh();else{updateSource('Read credential missing · run a-stack open');$('attention').disabled=true;}
