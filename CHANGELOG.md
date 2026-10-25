@@ -13,6 +13,14 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - Before a schema migration, `serve` writes a private copy of the database, `state.db.pre-vN`, with `VACUUM INTO`. It never replaces an earlier copy, and it does not migrate when it cannot write the copy.
 - The restore steps check the backup with `PRAGMA integrity_check` first.
 - When the service is not running, cannot be reached or its response is cut off, the CLI error has `retryable: true`, because the change may have been made. The message also says to ask the Operator to start the service, which is what an Agent must do.
+- `a-stack update` syncs the new binary to disk before it renames it into place, and syncs the folder after, so a power cut cannot leave an empty binary.
+- `a-stack update --version` with an older version warns that the older a-stack may not open the current database, and says how to go back.
+- The release notes say to run `a-stack update`.
+
+### Security
+
+- Releases are signed. The release workflow signs `SHA256SUMS` with an Ed25519 key and uploads the raw signature as `SHA256SUMS.sig`. `a-stack update` checks it with the public key in the binary before it trusts the checksums, and the install script checks it with OpenSSL 3 when it is installed. For v0.1.5 and later, a missing or wrong signature stops the update or the install, and nothing changes. Older releases have no signature; they install with a warning, only when you name their version.
+- Every release file, `install.sh` included, has a build provenance attestation. The install guide shows how to check a file with `gh attestation verify` and the signature with `openssl`.
 
 ## [0.1.4] - 2026-10-25
 
