@@ -43,6 +43,18 @@ a-stack task status --as agent --credential-file "$worker_a_credential" \
   --progress working --expected-revision 3 --operation-id task-start-work --json
 ```
 
+`task create` can link and assign the new Task in the same operation. Give `--after TASK_ID` once for each prerequisite and `--assign AGENT` once for each assignee. a-stack adds the dependencies and the assignments in the same transaction as the Task, or nothing when one of them is wrong, so a retry with the same operation ID is safe. A new Task has no dependents and nobody has read its revision yet, so these links need no expected revision, and no `session inspect` before them. The dependencies take the graph revision of the create. Each assignment is one Task revision with its own `task.assign` history entry, so the receipt's revision is 1 plus the number of assignees. The example above in one command:
+
+```sh
+a-stack task create --as agent --credential-file "$orchestrator_credential" \
+  --workspace "$workspace_id" --session "$session_id" --title "Build feature" \
+  --after "$design_task_id" --assign 02-worker --assign 03-worker \
+  --operation-id task-create-42 --json
+# data.revision is 3: the Task and its two assignments.
+```
+
+`--assign`, and `--agent` in every command that takes it except the hook commands, takes an Agent ID or the Agent's name. The CLI looks the name up with `agent list` in the Session and sends the ID. Names are unique in a Workspace; an unknown name fails before any change. A create without `--after` in a Session that has other open (Waiting or Working) Tasks prints one hint line on stderr, such as `a-stack: hint: the new Task has no prerequisites, and 3 other Task(s) are open; …`. stdout keeps only the receipt.
+
 Both assignees see the same Task ID, revision and status. `task show` reads the current details of one Task. `task list` shows all Tasks, also the Unassigned ones. Use the revision from the last response for the next change.
 
 If two writes use the same expected revision, one succeeds and the other gets a conflict with `current_revision` and `current_progress`. Think again about an out-of-date write before you send it again.
@@ -130,7 +142,7 @@ In the same transaction, a-stack rejects a duplicate dependency, a dependency fr
 
 `dependency history` lists the compact history of dependency changes. `task dependencies --task ID` lists the prerequisites of a Task and their current progress. Task details also show `cancelled_prerequisite_count`.
 
-Creating a Task or changing a dependency increases `graph_revision`. Other Task changes increase the Task revision and the Session `read_revision`, but not `graph_revision`. When a prerequisite is finished or cancelled, its dependent Tasks do not change, and they can still be finished.
+Creating a Task or changing a dependency increases `graph_revision`, by one for a create with any number of `--after` prerequisites. Other Task changes increase the Task revision and the Session `read_revision`, but not `graph_revision`. When a prerequisite is finished or cancelled, its dependent Tasks do not change, and they can still be finished.
 
 ## Closed Sessions
 

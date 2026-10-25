@@ -11,7 +11,7 @@ func isNotificationCommand(command string) bool {
 }
 func notificationRequest(ctx context.Context, client *stack.Client, command string, f lifecycleFlags) ([]byte, error) {
 	if f.workspace == "" || f.session == "" {
-		return nil, invalid("explicit --workspace and --session required")
+		return nil, missingContext
 	}
 	endpoint := "/v1/notifications/status"
 	if command == "notifications drain" {

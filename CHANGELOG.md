@@ -6,6 +6,11 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- `task create` links and assigns the new Task in the same operation: `--after TASK_ID` adds a prerequisite and `--assign AGENT` an assignee, each repeatable. One command replaces create, assign, `session inspect` and `dependency add`, and a retry with the same operation ID is safe; when one prerequisite or Agent is wrong, nothing is created. The links need no expected revision and take the graph revision of the create; each assignment is one Task revision with its own history entry. A create without `--after` in a Session with other open Tasks prints a one-line hint on stderr; stdout keeps only the receipt. The skill teaches the one-command form. See [Create and assign a Task](docs/tasks.md#create-and-assign-a-task).
+- `--agent` and `--assign` take an Agent's name as well as its ID, in every command but the hook commands. The CLI looks the name up with `agent list` in the Session and sends the ID.
+
 ## [0.1.6] - 2026-10-25
 
 Upgrading from v0.1.5: run `a-stack update`, then restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`). The first start copies the database to `state.db.pre-v7` (`state.db.pre-v6` from v0.1.4), moves it to schema 8 and prints one line that names the copy. It needs free space of up to three times the size of `state.db`; with less, it stops before it changes anything and says how much it needs. After the upgrade, v0.1.5 cannot open the database. To go back, run `a-stack update --version v0.1.5`, stop the service, and put `state.db.pre-v7` back as `state.db` in a new state directory in the same place, as in [Go back to an older version](docs/install.md#go-back-to-an-older-version); changes made after the upgrade are lost. The database file keeps the pages that the migration freed; a backup and a restore make it small again.

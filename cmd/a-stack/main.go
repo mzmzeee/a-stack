@@ -115,6 +115,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	// dependency.
 	var command []string
 	given := map[string]bool{}
+	repeated := false // --after more than once, which only task create takes
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if !strings.HasPrefix(a, "-") {
@@ -141,9 +142,10 @@ func execute(args []string, stdout, stderr io.Writer) error {
 			}
 			value = args[i]
 		}
-		if given[name] && name != "mention" {
+		if given[name] && name != "mention" && name != "after" && name != "assign" {
 			return invalid("--" + name + " is given more than once")
 		}
+		repeated = repeated || given[name] && name == "after"
 		given[name] = true
 		if fs.Set(name, value) != nil {
 			message := "invalid value " + strconv.Quote(short(value)) + " for --" + name
@@ -185,10 +187,13 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if err := validateCommandFlags(cmd, seen); err != nil {
 		return err
 	}
+	if repeated && cmd != "task create" {
+		return invalid("--after is given more than once")
+	}
 	if !herdrSupported && (isHerdrCommand(cmd) || seen["herdr-executable"]) {
 		return invalid("Herdr is not supported on Windows; a-stack works without it, and Task mail reaches Agents through mail check")
 	}
-	if err := checkIDs(seen, lifecycle, tasks); err != nil {
+	if err := checkIDs(cmd, seen, lifecycle, tasks); err != nil {
 		return err
 	}
 	if isTaskCommand(cmd) {
@@ -267,6 +272,19 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if err = fillContext(client.Credential, &lifecycle, cmd); err != nil {
 		return err
 	}
+	ref := stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}
+	if seen["agent"] {
+		if err = agentIDs(ctx, client, ref, "agent", &lifecycle.agent); err != nil {
+			return err
+		}
+	}
+	assignees := make([]*string, len(tasks.assign))
+	for i := range tasks.assign {
+		assignees[i] = &tasks.assign[i]
+	}
+	if err = agentIDs(ctx, client, ref, "assign", assignees...); err != nil {
+		return err
+	}
 	if cmd == "open" {
 		return openBrowser(ctx, client, stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, machine, noBrowser, stdout, stderr)
 	}
@@ -302,6 +320,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		data, err := taskRequest(ctx, client, cmd, lifecycle, tasks, seen)
 		if err != nil {
 			return err
+		}
+		if cmd == "task create" && len(lifecycle.afters) == 0 {
+			unlinkedHint(ctx, client, ref, data, stderr)
 		}
 		return writeData(stdout, data)
 	}

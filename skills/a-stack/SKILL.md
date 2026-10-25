@@ -7,7 +7,7 @@ description: Work as an Agent in an a-stack Session with the a-stack CLI (Tasks,
 
 a-stack is a local service and CLI that lets a human Operator watch a team of AI coding Agents. The Agents share a Task graph, one Task mail thread per Task and Needs you questions through the `a-stack` CLI, and the Operator follows them in a read-only browser view.
 
-If you are the Session's Orchestrator, also read [references/orchestrator.md](references/orchestrator.md). For every command, flag and error, read [references/commands.md](references/commands.md).
+If you are the Session's Orchestrator, also read [references/orchestrator.md](references/orchestrator.md). In short: create each Task with its prerequisites and assignees in one command, `task create --title ... --after PREREQUISITE_TASK_ID --assign 02-worker --assign 01-orchestrator`, so the Operator's graph shows the order of the work. For every command, flag and error, read [references/commands.md](references/commands.md).
 
 ## Set yourself up when nobody briefed you
 
