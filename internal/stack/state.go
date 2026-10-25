@@ -190,15 +190,24 @@ var ErrStateOwned = failure("conflict", "another a-stack serve is already runnin
 
 func (l *stateLock) close() { _ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN); _ = l.file.Close() }
 
+// Credential is a private credential file. An Agent credential also names its
+// Workspace, Session and Agent; these fields are not secret and give no access.
+// Files from before v0.1.5 have none of them.
 type Credential struct {
-	Kind       CapabilityKind `json:"kind"`
-	Token      string         `json:"token"`
-	Enrollment *Enrollment    `json:"enrollment,omitempty"`
+	Kind        CapabilityKind `json:"kind"`
+	Token       string         `json:"token"`
+	WorkspaceID string         `json:"workspace_id,omitempty"`
+	SessionID   string         `json:"session_id,omitempty"`
+	AgentName   string         `json:"agent_name,omitempty"`
+	Enrollment  *Enrollment    `json:"enrollment,omitempty"`
 }
 
 func validToken(token string) bool {
 	b, err := base64.RawURLEncoding.DecodeString(token)
 	return err == nil && len(b) == 32 && base64.RawURLEncoding.EncodeToString(b) == token
+}
+func validContext(c Credential) bool {
+	return (c.WorkspaceID == "" || validToken(c.WorkspaceID)) && (c.SessionID == "" || validToken(c.SessionID)) && (c.AgentName == "" || agentName.MatchString(c.AgentName))
 }
 func ReadCredential(path string) (Credential, error) {
 	data, err := privateRead(path)
@@ -206,7 +215,7 @@ func ReadCredential(path string) (Credential, error) {
 		return Credential{}, err
 	}
 	var c Credential
-	if err = decodeJSON(data, &c); err != nil || !validToken(c.Token) || !validKind(c.Kind) {
+	if err = decodeJSON(data, &c); err != nil || !validToken(c.Token) || !validKind(c.Kind) || !validContext(c) {
 		return Credential{}, failure("invalid_input", "invalid credential file")
 	}
 	return c, nil

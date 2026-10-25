@@ -73,7 +73,28 @@ func TestCLIEnrollmentAppointmentRebindAndLifecycle(t *testing.T) {
 	}
 	commandResult(t, workerArgs(workerFile, "session", "inspect"), 1)
 	commandResult(t, workerArgs(newFile, "session", "inspect"), 0)
-	commandResult(t, common("session", "inspect", "--workspace", workspace.ResourceID, "--session", other.ResourceID, "--as", "agent", "--credential-file", newFile), 1)
+	// The credential files name their context, and the token never shows.
+	for file, name := range map[string]string{orchFile: "01-orchestrator", workerFile: "02-worker", newFile: "02-worker"} {
+		saved, err := stack.ReadCredential(file)
+		if err != nil || saved.WorkspaceID != workspace.ResourceID || saved.SessionID != session.ResourceID || saved.AgentName != name {
+			t.Fatalf("credential context of %s", name)
+		}
+	}
+	saved, _ := stack.ReadCredential(newFile)
+	short, _ := commandResult(t, common("session", "inspect", "--as", "agent", "--credential-file", newFile), 0)
+	if bytes.Contains(short, []byte(saved.Token)) || !bytes.Contains(short, []byte(session.ResourceID)) {
+		t.Fatal("context from the credential file")
+	}
+	commandResult(t, common("session", "inspect", "--workspace", workspace.ResourceID, "--session", other.ResourceID, "--as", "agent", "--credential-file", newFile), 2)
+	// A file from before v0.1.5 has no context: explicit flags still work.
+	oldFile := filepath.Join(private, "worker-old.json")
+	oldData, _ := json.Marshal(map[string]any{"kind": "agent", "token": saved.Token})
+	if os.WriteFile(oldFile, oldData, 0600) != nil {
+		t.Fatal("old credential file")
+	}
+	commandResult(t, workerArgs(oldFile, "session", "inspect"), 0)
+	commandResult(t, common("session", "inspect", "--workspace", workspace.ResourceID, "--session", other.ResourceID, "--as", "agent", "--credential-file", oldFile), 1)
+	commandResult(t, common("task", "list", "--as", "agent", "--credential-file", oldFile), 2)
 	commandResult(t, withRef("session", "inspect", "--as", "agent"), 2)
 	// A different cwd/worktree never creates or selects another Workspace.
 	command := child(t, workerArgs(newFile, "agent", "list")...)

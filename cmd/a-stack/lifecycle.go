@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"strings"
 
@@ -161,7 +162,11 @@ func lifecycleRequest(ctx context.Context, client *stack.Client, command string,
 		}
 		r := stack.AgentBindingRequest{Context: ref, OperationID: f.operationID, AgentID: f.agent, ExpectedRevision: f.revision, Runtime: binding}
 		if command == "agent rebind" {
-			hash, err := stack.PrepareAgentCredential(f.newCredential, client.Discovery.DatabaseID, command, f.operationID, r)
+			name, err := agentName(ctx, client, ref, f.agent)
+			if err != nil {
+				return nil, err
+			}
+			hash, err := stack.PrepareRebindCredential(f.newCredential, client.Discovery.DatabaseID, r, name)
 			if err != nil {
 				return nil, err
 			}
@@ -174,4 +179,54 @@ func lifecycleRequest(ctx context.Context, client *stack.Client, command string,
 		return nil, invalid("unknown lifecycle command")
 	}
 	return client.Do(ctx, "POST", "/v1/"+strings.ReplaceAll(command, " ", "/"), body)
+}
+
+// agentName looks up an Agent's name for its new credential file. It returns ""
+// for an unknown ID, which the rebind itself then rejects.
+func agentName(ctx context.Context, client *stack.Client, ref stack.Context, id string) (string, error) {
+	after := ""
+	for {
+		data, err := client.Do(ctx, "POST", "/v1/agent/list", stack.ListRequest{Context: ref, Limit: 100, After: after})
+		if err != nil {
+			return "", err
+		}
+		var page struct {
+			Data struct {
+				Items []stack.Agent `json:"items"`
+				Next  string        `json:"next"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(data, &page) != nil {
+			return "", invalid("unexpected agent list response")
+		}
+		for _, agent := range page.Data.Items {
+			if agent.ID == id {
+				return agent.Name, nil
+			}
+		}
+		if page.Data.Next == "" {
+			return "", nil
+		}
+		after = page.Data.Next
+	}
+}
+
+// fillContext takes --workspace and --session from an Agent credential file
+// that names them. A flag that is given must name the same ID.
+func fillContext(c stack.Credential, f *lifecycleFlags, command string) error {
+	allowed := acceptedFlags(command)
+	for _, field := range []struct {
+		flag        *string
+		saved, name string
+	}{{&f.workspace, c.WorkspaceID, "workspace"}, {&f.session, c.SessionID, "session"}} {
+		if field.saved == "" || !strings.Contains(allowed, " "+field.name+" ") {
+			continue
+		}
+		if *field.flag == "" {
+			*field.flag = field.saved
+		} else if *field.flag != field.saved {
+			return invalid("--" + field.name + " does not match the one in the credential file")
+		}
+	}
+	return nil
 }
