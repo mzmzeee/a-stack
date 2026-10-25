@@ -283,23 +283,8 @@ func TestSpecReviewHTTPAndCapabilities(t *testing.T) {
 	if _, err := NewClient(dir, "", AgentCapability); err == nil {
 		t.Fatal("Agent mode fell back to Operator credential")
 	}
-	ctx := context.Background()
-	tx, err := s.Store.db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-	agent, err := IssueCapability(ctx, tx, AgentCapability, "review-agent", "review-session")
-	if err != nil {
-		t.Fatal(err)
-	}
-	browser, err := IssueCapability(ctx, tx, BrowserCapability, "review-browser", "review-session")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
+	agent := issueTest(t, s.Store, AgentCapability, "review-agent", "review-session")
+	browser := issueTest(t, s.Store, BrowserCapability, "review-browser", "review-session")
 	for _, tc := range []struct {
 		name, token, path string
 		want              int

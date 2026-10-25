@@ -190,7 +190,7 @@ func loadSession(ctx context.Context, tx *sql.Tx, id string) (Session, error) {
 		return s, failure("not_found", "Session not found")
 	}
 	if err != nil {
-		return s, storageError()
+		return s, storageError(err)
 	}
 	if holder.Valid {
 		s.OrchestratorID = &holder.String
@@ -217,7 +217,7 @@ func ReadSession(ctx context.Context, tx *sql.Tx, p Principal, ref Context) (Ses
 	if p.Kind == AgentCapability {
 		var member int
 		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM agents WHERE id=? AND session_id=? AND workspace_id=?", p.SubjectID, s.ID, s.WorkspaceID).Scan(&member); err != nil {
-			return s, storageError()
+			return s, storageError(err)
 		}
 		if member != 1 {
 			return s, failure("forbidden", "current Session registration required")
@@ -383,7 +383,7 @@ func agentInSession(ctx context.Context, tx *sql.Tx, id, session string) (Agent,
 		return a, failure("not_found", "Agent not found in Session")
 	}
 	if err != nil {
-		return a, storageError()
+		return a, storageError(err)
 	}
 	return a, nil
 }
@@ -406,7 +406,7 @@ func replayAgent(ctx context.Context, tx *sql.Tx, p Principal, r Receipt) error 
 		return failure("not_found", "Agent not found")
 	}
 	if err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	_, err = ReadSession(ctx, tx, p, ref)
 	return err
@@ -583,7 +583,7 @@ func (s *Store) ObserveAgent(ctx context.Context, token string, r AgentObserveRe
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	defer tx.Rollback()
 	p, err := authenticate(ctx, tx, token)
@@ -605,7 +605,7 @@ func (s *Store) ObserveAgent(ctx context.Context, token string, r AgentObserveRe
 	}
 	var runtimeID sql.NullString
 	if err = tx.QueryRowContext(ctx, "SELECT runtime_id FROM agents WHERE id=?", agent.ID).Scan(&runtimeID); err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	if !runtimeID.Valid || r.RuntimeID != runtimeID.String {
 		return empty, failure("conflict", "runtime binding changed or is unattached")
@@ -613,13 +613,13 @@ func (s *Store) ObserveAgent(ctx context.Context, token string, r AgentObserveRe
 	agent.RuntimeState = r.State
 	agent.ObservedAt = now()
 	if _, err = tx.ExecContext(ctx, "UPDATE agents SET runtime_state=?,observed_at=? WHERE id=?", r.State, agent.ObservedAt, agent.ID); err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	if err = bumpSessionRead(ctx, tx, r.SessionID); err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
-	if tx.Commit() != nil {
-		return empty, storageError()
+	if err = tx.Commit(); err != nil {
+		return empty, storageError(err)
 	}
 	return agent, nil
 }

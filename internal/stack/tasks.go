@@ -131,7 +131,7 @@ type TaskChange struct {
 	ReferenceID string   `json:"reference_id,omitempty"`
 }
 type TaskContent struct {
-	ID         string `json:"id"`
+	ID         string `json:"id,omitempty"` // empty for a text without a row; see createTexts
 	Kind       string `json:"kind"`
 	Body       string `json:"body"`
 	ActorID    string `json:"actor_id"`
@@ -198,7 +198,7 @@ func scanTask(row interface{ Scan(...any) error }) (Task, error) {
 		return t, failure("not_found", "Task not found in Session")
 	}
 	if err != nil {
-		return t, storageError()
+		return t, storageError(err)
 	}
 	return t, nil
 }
@@ -223,7 +223,7 @@ func RequireTaskAssignee(ctx context.Context, tx *sql.Tx, p Principal, t Task) e
 	}
 	var count int
 	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM task_assignees WHERE task_id=? AND agent_id=?", t.ID, p.SubjectID).Scan(&count); err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	if count != 1 {
 		return failure("forbidden", "current Task assignee required")
@@ -243,7 +243,7 @@ func replayTask(assigned bool) func(context.Context, *sql.Tx, Principal, Receipt
 		if err := tx.QueryRowContext(ctx, "SELECT session_id FROM tasks WHERE id=?", r.ResourceID).Scan(&sessionID); errors.Is(err, sql.ErrNoRows) {
 			return failure("not_found", "Task not found")
 		} else if err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		session, err := loadSession(ctx, tx, sessionID)
 		if err != nil {
@@ -273,6 +273,24 @@ func insertContent(ctx context.Context, tx *sql.Tx, p Principal, taskID, kind, b
 	id := opaqueID()
 	_, err := tx.ExecContext(ctx, "INSERT INTO task_content VALUES(?,?,?,?,?,?)", id, taskID, kind, body, p.SubjectID, now())
 	return id, err
+}
+
+// NotStarted is the reason of a Task that no assignee has started yet.
+const NotStarted = "Not started"
+
+// defaultText is the text of a Task that has no row for it: a new Task stores
+// no row for an empty description or for its starting reason. ok is false when
+// a missing row means that the Task has no such text.
+func defaultText(kind, progress string) (text string, ok bool) {
+	switch {
+	case kind == "description":
+		return "", true
+	case kind == "reason" && progress == "waiting":
+		// Only a new Task is Waiting without a reason: every later change to
+		// Waiting needs one.
+		return NotStarted, true
+	}
+	return "", false
 }
 func contentBody(ctx context.Context, tx *sql.Tx, id string) (string, error) {
 	if id == "" {
@@ -334,18 +352,20 @@ func (s *Store) CreateTask(ctx context.Context, token string, r TaskCreateReques
 		if err != nil {
 			return Receipt{}, err
 		}
-		description, err := insertContent(ctx, tx, p, id, "description", r.Description)
-		if err != nil {
-			return Receipt{}, err
+		// The starting reason and an empty description have no text row; see
+		// defaultText.
+		var texts []string
+		if r.Description != "" {
+			description, err := insertContent(ctx, tx, p, id, "description", r.Description)
+			if err != nil {
+				return Receipt{}, err
+			}
+			if _, err = tx.ExecContext(ctx, "UPDATE tasks SET description_ref=? WHERE id=?", description, id); err != nil {
+				return Receipt{}, err
+			}
+			texts = append(texts, description)
 		}
-		reason, err := insertContent(ctx, tx, p, id, "reason", "Not started")
-		if err != nil {
-			return Receipt{}, err
-		}
-		if _, err = tx.ExecContext(ctx, "UPDATE tasks SET description_ref=?,reason_ref=? WHERE id=?", description, reason, id); err != nil {
-			return Receipt{}, err
-		}
-		if err = recordTask(ctx, tx, p, id, "task.create", 1, TaskChange{Title: &r.Title, TicketRef: &r.TicketRef, TextIDs: []string{description, reason}, Progress: "waiting"}); err != nil {
+		if err = recordTask(ctx, tx, p, id, "task.create", 1, TaskChange{Title: &r.Title, TicketRef: &r.TicketRef, TextIDs: texts, Progress: "waiting"}); err != nil {
 			return Receipt{}, err
 		}
 		if err = bumpGraph(ctx, tx, r.SessionID); err != nil {
@@ -431,215 +451,11 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 		if err = taskRevision(r.ExpectedRevision, task); err != nil {
 			return Receipt{}, err
 		}
-		change := TaskChange{}
-		outcome := action
-		setText := func(kind, body string, current *string, max int, required bool) error {
-			field := kind
-			if kind == "result" {
-				field = "summary"
-			}
-			if err := validText(field, body, max, required); err != nil {
-				return err
-			}
-			old, err := contentBody(ctx, tx, *current)
-			if err != nil {
-				return err
-			}
-			if old == body && *current != "" {
-				return nil
-			}
-			id, err := insertContent(ctx, tx, p, task.ID, kind, body)
-			if err != nil {
-				return err
-			}
-			*current = id
-			change.TextIDs = append(change.TextIDs, id)
-			return nil
+		e := &taskEdit{ctx: ctx, tx: tx, p: p, r: r, action: action, task: task}
+		if err = taskActions[action](e); err != nil {
+			return Receipt{}, err
 		}
-		switch action {
-		case "edit":
-			if r.Title == nil && r.Description == nil && r.TicketRef == nil {
-				return Receipt{}, failure("invalid_input", "at least one definition field required")
-			}
-			if r.Title != nil {
-				if err = validText("title", *r.Title, 256, true); err != nil {
-					return Receipt{}, err
-				}
-				task.Title = *r.Title
-				change.Title = r.Title
-			}
-			if r.Description != nil {
-				if err = setText("description", *r.Description, &task.descriptionRef, MaxTaskTextBytes, false); err != nil {
-					return Receipt{}, err
-				}
-			}
-			if r.TicketRef != nil {
-				if err = checkTicket(ctx, tx, r.SessionID, task.ID, *r.TicketRef); err != nil {
-					return Receipt{}, err
-				}
-				task.TicketRef = *r.TicketRef
-				change.TicketRef = r.TicketRef
-			}
-		case "assign", "unassign":
-			if _, err = agentInSession(ctx, tx, r.AgentID, r.SessionID); err != nil {
-				return Receipt{}, err
-			}
-			var exists int
-			if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM task_assignees WHERE task_id=? AND agent_id=?", task.ID, r.AgentID).Scan(&exists); err != nil {
-				return Receipt{}, err
-			}
-			if (action == "assign" && exists != 0) || (action == "unassign" && exists == 0) {
-				return Receipt{}, failure("conflict", "Task assignment already has the requested state")
-			}
-			if action == "assign" {
-				_, err = tx.ExecContext(ctx, "INSERT INTO task_assignees VALUES(?,?,?,?,?)", task.ID, r.AgentID, p.SubjectID, now(), r.SessionID)
-			} else {
-				_, err = tx.ExecContext(ctx, "DELETE FROM task_assignees WHERE task_id=? AND agent_id=?", task.ID, r.AgentID)
-				if err == nil {
-					err = suppressTaskMentions(ctx, tx, task.ID, r.AgentID)
-				}
-			}
-			if err != nil {
-				return Receipt{}, err
-			}
-			change.AgentID = r.AgentID
-		case "status":
-			if task.Progress == "finished" || task.Progress == "cancelled" {
-				return Receipt{}, failure("conflict", "reopen the Task before another progress update")
-			}
-			switch r.Progress {
-			case "waiting":
-				if r.Summary != "" {
-					return Receipt{}, failure("invalid_input", "summary applies only to whole-Task completion")
-				}
-				err = setText("reason", r.Reason, &task.reasonRef, MaxTaskNoteBytes, true)
-			case "working":
-				if r.Summary != "" {
-					return Receipt{}, failure("invalid_input", "summary applies only to whole-Task completion")
-				}
-				err = setText("reason", r.Reason, &task.reasonRef, MaxTaskNoteBytes, false)
-			case "finished":
-				if r.Reason != "" {
-					return Receipt{}, failure("invalid_input", "completion uses a result summary")
-				}
-				err = setText("result", r.Summary, &task.resultRef, MaxTaskNoteBytes, true)
-				task.reasonRef = ""
-			case "cancelled":
-				if r.Summary != "" {
-					return Receipt{}, failure("invalid_input", "cancellation uses a reason")
-				}
-				err = setText("reason", r.Reason, &task.reasonRef, MaxTaskNoteBytes, true)
-			default:
-				return Receipt{}, failure("invalid_input", "unknown Task progress")
-			}
-			if err != nil {
-				return Receipt{}, err
-			}
-			task.Progress = r.Progress
-			change.Progress = r.Progress
-			if r.Progress == "finished" || r.Progress == "cancelled" {
-				task.EndedAt = now()
-			}
-		case "reopen":
-			if task.Progress != "finished" && task.Progress != "cancelled" {
-				return Receipt{}, failure("conflict", "only Finished or Cancelled Tasks can be reopened")
-			}
-			if err = setText("reason", r.Reason, &task.reasonRef, MaxTaskNoteBytes, true); err != nil {
-				return Receipt{}, err
-			}
-			task.Progress = "waiting"
-			change.Progress = "waiting"
-			task.ArchivedAt, task.EndedAt = "", ""
-		case "archive":
-			if task.Progress != "finished" && task.Progress != "cancelled" {
-				return Receipt{}, failure("conflict", "only Finished or Cancelled Tasks can be archived")
-			}
-			if task.ArchivedAt != "" {
-				return Receipt{}, failure("conflict", "Task is already archived")
-			}
-			task.ArchivedAt = now()
-		case "unarchive":
-			if task.ArchivedAt == "" {
-				return Receipt{}, failure("conflict", "Task was not archived with task archive")
-			}
-			task.ArchivedAt = ""
-		case "report":
-			if r.Report == nil {
-				return Receipt{}, failure("invalid_input", "report required")
-			}
-			if err = setText("report", *r.Report, &task.reportRef, MaxTaskTextBytes, false); err != nil {
-				return Receipt{}, err
-			}
-			task.ReportAt = now()
-		case "attention.set":
-			if err = validText("question", r.Question, MaxTaskNoteBytes, true); err != nil {
-				return Receipt{}, err
-			}
-			id := opaqueID()
-			_, err = tx.ExecContext(ctx, "INSERT INTO task_questions(id,task_id,question,asker_id,asked_at) VALUES(?,?,?,?,?)", id, task.ID, r.Question, p.SubjectID, now())
-			if err != nil {
-				return Receipt{}, err
-			}
-			change.QuestionID = id
-		case "attention.resolve":
-			if err = validText("note", r.Note, MaxTaskNoteBytes, true); err != nil {
-				return Receipt{}, err
-			}
-			question, err := openQuestion(ctx, tx, task.ID)
-			if err != nil {
-				return Receipt{}, err
-			}
-			if question == nil {
-				return Receipt{}, failure("conflict", "Task has no open Operator question")
-			}
-			_, err = tx.ExecContext(ctx, "UPDATE task_questions SET note=?,resolver_id=?,resolved_at=? WHERE id=?", r.Note, p.SubjectID, now(), question.ID)
-			if err != nil {
-				return Receipt{}, err
-			}
-			change.QuestionID = question.ID
-		case "reference.add":
-			if err = validText("location", r.Location, 2048, true); err != nil {
-				return Receipt{}, err
-			}
-			if err = validText("reference_revision", r.ReferenceRevision, 128, false); err != nil {
-				return Receipt{}, err
-			}
-			lower := strings.ToLower(strings.TrimSpace(r.Location))
-			for _, prefix := range []string{"javascript:", "data:", "vbscript:"} {
-				if strings.HasPrefix(lower, prefix) {
-					return Receipt{}, failure("invalid_input", "executable reference URLs are forbidden")
-				}
-			}
-			var exists int
-			if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM task_references WHERE task_id=? AND location=? AND revision=? AND removed_at IS NULL", task.ID, r.Location, r.ReferenceRevision).Scan(&exists); err != nil {
-				return Receipt{}, err
-			}
-			if exists != 0 {
-				return Receipt{}, failure("conflict", "reference already exists")
-			}
-			id := opaqueID()
-			_, err = tx.ExecContext(ctx, "INSERT INTO task_references(id,task_id,location,revision,added_by,added_at) VALUES(?,?,?,?,?,?)", id, task.ID, r.Location, r.ReferenceRevision, p.SubjectID, now())
-			if err != nil {
-				return Receipt{}, err
-			}
-			change.ReferenceID = id
-		case "reference.remove":
-			if !validToken(r.ReferenceID) {
-				return Receipt{}, failure("invalid_input", "Reference ID required")
-			}
-			result, err := tx.ExecContext(ctx, "UPDATE task_references SET removed_by=?,removed_at=? WHERE id=? AND task_id=? AND removed_at IS NULL", p.SubjectID, now(), r.ReferenceID, task.ID)
-			if err != nil {
-				return Receipt{}, err
-			}
-			n, err := result.RowsAffected()
-			if err != nil {
-				return Receipt{}, err
-			}
-			if n != 1 {
-				return Receipt{}, failure("not_found", "active reference not found in Task")
-			}
-			change.ReferenceID = r.ReferenceID
-		}
+		task = e.task
 		nullable := func(ref string) any {
 			if ref == "" {
 				return nil
@@ -656,14 +472,280 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 		if err != nil {
 			return Receipt{}, err
 		}
-		if err = recordTask(ctx, tx, p, task.ID, "task."+action, task.Revision+1, change); err != nil {
+		if err = recordTask(ctx, tx, p, task.ID, "task."+action, task.Revision+1, e.change); err != nil {
 			return Receipt{}, err
 		}
 		if err = bumpSessionRead(ctx, tx, r.SessionID); err != nil {
 			return Receipt{}, err
 		}
-		return Receipt{ResourceID: task.ID, Revision: task.Revision + 1, Outcome: outcome}, nil
+		return Receipt{ResourceID: task.ID, Revision: task.Revision + 1, Outcome: action}, nil
 	})
+}
+
+// taskEdit is one Task change while its action runs. The action changes task
+// and change; ChangeTask then writes the Task row and the history entry.
+type taskEdit struct {
+	ctx    context.Context
+	tx     *sql.Tx
+	p      Principal
+	r      TaskChangeRequest
+	action string
+	task   Task
+	change TaskChange
+}
+
+// taskActions has one function for each action that taskChangeFields accepts.
+var taskActions = map[string]func(*taskEdit) error{
+	"edit":              (*taskEdit).edit,
+	"assign":            (*taskEdit).assignment,
+	"unassign":          (*taskEdit).assignment,
+	"status":            (*taskEdit).status,
+	"reopen":            (*taskEdit).reopen,
+	"archive":           (*taskEdit).archive,
+	"unarchive":         (*taskEdit).unarchive,
+	"report":            (*taskEdit).report,
+	"attention.set":     (*taskEdit).ask,
+	"attention.resolve": (*taskEdit).resolve,
+	"reference.add":     (*taskEdit).addReference,
+	"reference.remove":  (*taskEdit).removeReference,
+}
+
+// setText stores body as a new text version of kind, unless it equals the
+// current text, and points current at it.
+func (e *taskEdit) setText(kind, body string, current *string, max int, required bool) error {
+	field := kind
+	if kind == "result" {
+		field = "summary"
+	}
+	if err := validText(field, body, max, required); err != nil {
+		return err
+	}
+	old, stored := defaultText(kind, e.task.Progress)
+	if *current != "" {
+		var err error
+		if old, err = contentBody(e.ctx, e.tx, *current); err != nil {
+			return err
+		}
+		stored = true
+	}
+	if stored && old == body {
+		return nil
+	}
+	id, err := insertContent(e.ctx, e.tx, e.p, e.task.ID, kind, body)
+	if err != nil {
+		return err
+	}
+	*current = id
+	e.change.TextIDs = append(e.change.TextIDs, id)
+	return nil
+}
+func (e *taskEdit) edit() error {
+	r := e.r
+	if r.Title == nil && r.Description == nil && r.TicketRef == nil {
+		return failure("invalid_input", "at least one definition field required")
+	}
+	if r.Title != nil {
+		if err := validText("title", *r.Title, 256, true); err != nil {
+			return err
+		}
+		e.task.Title = *r.Title
+		e.change.Title = r.Title
+	}
+	if r.Description != nil {
+		if err := e.setText("description", *r.Description, &e.task.descriptionRef, MaxTaskTextBytes, false); err != nil {
+			return err
+		}
+	}
+	if r.TicketRef != nil {
+		if err := checkTicket(e.ctx, e.tx, r.SessionID, e.task.ID, *r.TicketRef); err != nil {
+			return err
+		}
+		e.task.TicketRef = *r.TicketRef
+		e.change.TicketRef = r.TicketRef
+	}
+	return nil
+}
+func (e *taskEdit) assignment() error {
+	ctx, tx, r := e.ctx, e.tx, e.r
+	if _, err := agentInSession(ctx, tx, r.AgentID, r.SessionID); err != nil {
+		return err
+	}
+	var exists int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM task_assignees WHERE task_id=? AND agent_id=?", e.task.ID, r.AgentID).Scan(&exists); err != nil {
+		return err
+	}
+	if (e.action == "assign" && exists != 0) || (e.action == "unassign" && exists == 0) {
+		return failure("conflict", "Task assignment already has the requested state")
+	}
+	var err error
+	if e.action == "assign" {
+		_, err = tx.ExecContext(ctx, "INSERT INTO task_assignees VALUES(?,?,?,?,?)", e.task.ID, r.AgentID, e.p.SubjectID, now(), r.SessionID)
+	} else {
+		_, err = tx.ExecContext(ctx, "DELETE FROM task_assignees WHERE task_id=? AND agent_id=?", e.task.ID, r.AgentID)
+		if err == nil {
+			err = suppressTaskMentions(ctx, tx, e.task.ID, r.AgentID)
+		}
+	}
+	if err != nil {
+		return err
+	}
+	e.change.AgentID = r.AgentID
+	return nil
+}
+func (e *taskEdit) status() error {
+	r, task := e.r, &e.task
+	if task.Progress == "finished" || task.Progress == "cancelled" {
+		return failure("conflict", "reopen the Task before another progress update")
+	}
+	var err error
+	switch r.Progress {
+	case "waiting":
+		if r.Summary != "" {
+			return failure("invalid_input", "summary applies only to whole-Task completion")
+		}
+		err = e.setText("reason", r.Reason, &task.reasonRef, MaxTaskNoteBytes, true)
+	case "working":
+		if r.Summary != "" {
+			return failure("invalid_input", "summary applies only to whole-Task completion")
+		}
+		err = e.setText("reason", r.Reason, &task.reasonRef, MaxTaskNoteBytes, false)
+	case "finished":
+		if r.Reason != "" {
+			return failure("invalid_input", "completion uses a result summary")
+		}
+		err = e.setText("result", r.Summary, &task.resultRef, MaxTaskNoteBytes, true)
+		task.reasonRef = ""
+	case "cancelled":
+		if r.Summary != "" {
+			return failure("invalid_input", "cancellation uses a reason")
+		}
+		err = e.setText("reason", r.Reason, &task.reasonRef, MaxTaskNoteBytes, true)
+	default:
+		return failure("invalid_input", "unknown Task progress")
+	}
+	if err != nil {
+		return err
+	}
+	task.Progress = r.Progress
+	e.change.Progress = r.Progress
+	if r.Progress == "finished" || r.Progress == "cancelled" {
+		task.EndedAt = now()
+	}
+	return nil
+}
+func (e *taskEdit) reopen() error {
+	task := &e.task
+	if task.Progress != "finished" && task.Progress != "cancelled" {
+		return failure("conflict", "only Finished or Cancelled Tasks can be reopened")
+	}
+	if err := e.setText("reason", e.r.Reason, &task.reasonRef, MaxTaskNoteBytes, true); err != nil {
+		return err
+	}
+	task.Progress = "waiting"
+	e.change.Progress = "waiting"
+	task.ArchivedAt, task.EndedAt = "", ""
+	return nil
+}
+func (e *taskEdit) archive() error {
+	if e.task.Progress != "finished" && e.task.Progress != "cancelled" {
+		return failure("conflict", "only Finished or Cancelled Tasks can be archived")
+	}
+	if e.task.ArchivedAt != "" {
+		return failure("conflict", "Task is already archived")
+	}
+	e.task.ArchivedAt = now()
+	return nil
+}
+func (e *taskEdit) unarchive() error {
+	if e.task.ArchivedAt == "" {
+		return failure("conflict", "Task was not archived with task archive")
+	}
+	e.task.ArchivedAt = ""
+	return nil
+}
+func (e *taskEdit) report() error {
+	if e.r.Report == nil {
+		return failure("invalid_input", "report required")
+	}
+	if err := e.setText("report", *e.r.Report, &e.task.reportRef, MaxTaskTextBytes, false); err != nil {
+		return err
+	}
+	e.task.ReportAt = now()
+	return nil
+}
+func (e *taskEdit) ask() error {
+	if err := validText("question", e.r.Question, MaxTaskNoteBytes, true); err != nil {
+		return err
+	}
+	id := opaqueID()
+	if _, err := e.tx.ExecContext(e.ctx, "INSERT INTO task_questions(id,task_id,question,asker_id,asked_at) VALUES(?,?,?,?,?)", id, e.task.ID, e.r.Question, e.p.SubjectID, now()); err != nil {
+		return err
+	}
+	e.change.QuestionID = id
+	return nil
+}
+func (e *taskEdit) resolve() error {
+	if err := validText("note", e.r.Note, MaxTaskNoteBytes, true); err != nil {
+		return err
+	}
+	question, err := openQuestion(e.ctx, e.tx, e.task.ID)
+	if err != nil {
+		return err
+	}
+	if question == nil {
+		return failure("conflict", "Task has no open Operator question")
+	}
+	if _, err = e.tx.ExecContext(e.ctx, "UPDATE task_questions SET note=?,resolver_id=?,resolved_at=? WHERE id=?", e.r.Note, e.p.SubjectID, now(), question.ID); err != nil {
+		return err
+	}
+	e.change.QuestionID = question.ID
+	return nil
+}
+func (e *taskEdit) addReference() error {
+	r := e.r
+	if err := validText("location", r.Location, 2048, true); err != nil {
+		return err
+	}
+	if err := validText("reference_revision", r.ReferenceRevision, 128, false); err != nil {
+		return err
+	}
+	lower := strings.ToLower(strings.TrimSpace(r.Location))
+	for _, prefix := range []string{"javascript:", "data:", "vbscript:"} {
+		if strings.HasPrefix(lower, prefix) {
+			return failure("invalid_input", "executable reference URLs are forbidden")
+		}
+	}
+	var exists int
+	if err := e.tx.QueryRowContext(e.ctx, "SELECT count(*) FROM task_references WHERE task_id=? AND location=? AND revision=? AND removed_at IS NULL", e.task.ID, r.Location, r.ReferenceRevision).Scan(&exists); err != nil {
+		return err
+	}
+	if exists != 0 {
+		return failure("conflict", "reference already exists")
+	}
+	id := opaqueID()
+	if _, err := e.tx.ExecContext(e.ctx, "INSERT INTO task_references(id,task_id,location,revision,added_by,added_at) VALUES(?,?,?,?,?,?)", id, e.task.ID, r.Location, r.ReferenceRevision, e.p.SubjectID, now()); err != nil {
+		return err
+	}
+	e.change.ReferenceID = id
+	return nil
+}
+func (e *taskEdit) removeReference() error {
+	if !validToken(e.r.ReferenceID) {
+		return failure("invalid_input", "Reference ID required")
+	}
+	result, err := e.tx.ExecContext(e.ctx, "UPDATE task_references SET removed_by=?,removed_at=? WHERE id=? AND task_id=? AND removed_at IS NULL", e.p.SubjectID, now(), e.r.ReferenceID, e.task.ID)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return failure("not_found", "active reference not found in Task")
+	}
+	e.change.ReferenceID = e.r.ReferenceID
+	return nil
 }
 func openQuestion(ctx context.Context, tx *sql.Tx, id string) (*Question, error) {
 	var q Question

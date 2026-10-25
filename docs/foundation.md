@@ -41,7 +41,7 @@ a-stack trusts the local operating system account. File permissions and bearer c
 
 `service.json` holds the service's loopback URL, the database ID and an instance ID that changes on each start. The service replaces the file atomically. Clients send the instance ID in the `X-A-Stack-Instance` header. Because of this, an old discovery file cannot send requests to a different service that now uses the same port.
 
-On a normal shutdown, the service deletes its own discovery file. After an abrupt stop, clients report that the service is unavailable until you start `serve` again.
+On Ctrl-C, SIGTERM or SIGHUP, the service stops taking new requests and waits up to 10 seconds for open ones; a second signal ends it at once. On a normal shutdown, the service deletes its own discovery file. After an abrupt stop, clients report that the service is unavailable until you start `serve` again.
 
 Without `--listen`, `serve` first tries the port it used the last time it ran without `--listen`. It keeps that port in the private file `last-port.json` in the state directory. If the port is taken, the service picks a free port, records that one, and prints one line on stderr that names both ports. So after a restart, an open browser tab usually finds the service again at the same address. The new instance ID and the bearer checks still apply, and a browser credential still belongs to the database and its Session, not to the port.
 
@@ -101,7 +101,7 @@ The numbers are constants in `internal/stack/limits.go`.
 
 ## SQLite
 
-The service uses one serialized `database/sql` connection with WAL, `synchronous=FULL`, foreign keys and a busy timeout of 5,000 ms. Transactions use `BEGIN IMMEDIATE`. Each schema migration commits together with its `user_version` and `application_id` updates. The service rejects a newer, unsupported or foreign schema and does not reset it. SQLite does its own checkpoints and sidecar cleanup.
+The service uses one serialized `database/sql` connection with WAL, `synchronous=FULL`, foreign keys and a busy timeout of 5,000 ms. Transactions use `BEGIN IMMEDIATE`. Each schema migration commits together with its `user_version` and `application_id` updates. The service rejects a newer, unsupported or foreign schema and does not reset it. SQLite does its own checkpoints and sidecar cleanup. The WAL file is about 4 MB in normal use. After a burst of writes, such as a migration, it is cut back to 8 MiB (`journal_size_limit`) when SQLite starts it again after a checkpoint, instead of keeping its largest size until the service stops.
 
 A database with a newer schema comes from a newer a-stack, for example after an update to an older version. `serve` then stops with exit code 4. The message names the schema version it found and the newest one it supports. To get back, update a-stack to the newer version with `a-stack update`, or restore a backup made with this version.
 
@@ -116,8 +116,11 @@ Each schema version added one area:
 5. [Notice batches and bounded retry diagnostics](notifications.md).
 6. [Archived Tasks and Operator entries in the Task history](tasks.md#archived-tasks).
 7. [One-time view links and expiring view tokens](browser.md#keep-the-url-private). It deletes the older browser credentials.
+8. Task texts and [Task mail](mail.md#storage-for-notices) in rowid tables, which store long reports and mail bodies more compactly, and without the extra `(id, task_id)` index on mail. Schema 8 rebuilds these tables, which SQLite allows only with foreign keys off; the migration turns them off for its transaction and runs `PRAGMA foreign_key_check` before the commit. A database with a broken reference is not migrated, and `serve` stops with exit code 4.
 
-A storage error returns `storage_unavailable`. A failed commit never returns a successful receipt. If the connection drops during a commit, the outcome is unknown, so the caller must retry with the same operation ID. The CLI marks this case `retryable: true`: when the service is not running, cannot be reached, or the response was cut off.
+A migration that rebuilds tables leaves the old pages free inside the database file, so the file does not shrink at once: new Tasks and mail use the free pages before the file grows again. A backup is compact, so to get the smaller file at once, make a backup and [restore it](#backup-and-restore). With the 2,000-Task fixture of the [stress test](performance.md), the migration from schema 7 added 2 to 3 seconds to the start (3.4 to 4.2 seconds instead of 1.2 to 1.5 seconds in three runs); the file grew from 91.0 MB to 113.1 MB with 32.0 MB free, and a backup of it is 80.0 MB.
+
+A storage error returns `storage_unavailable`. The answer never says why, but the service writes one line to stderr (the journal under systemd) for each such error, for example `a-stack: storage_unavailable in task.status: SQLite error 13 (database or disk is full), extended code 13`. The line names the operation or Go function, and the Go error type, the SQLite result codes or the system error number. It never contains a body, an ID, a credential or SQL text. The same line is written at most once every 10 seconds, followed by the number of times it was held back, so a retry loop cannot fill the journal. A failed commit never returns a successful receipt. If the connection drops during a commit, the outcome is unknown, so the caller must retry with the same operation ID. The CLI marks this case `retryable: true`: when the service is not running, cannot be reached, or the response was cut off.
 
 `storage status` reports the current sizes of the main database, WAL and SHM files, and `free_bytes`, the free space of the file system that holds them. These sizes can change between two calls. The free space is measured at most 10 seconds earlier. Below 1 GiB, the status also has `low_disk: true` and a `warning`, and the [browser view](browser.md#refresh) footer shows a warning. When the free space cannot be measured, `free_bytes` is absent. a-stack never deletes retained data. The single connection and the backup operation run work one at a time. Add read concurrency only after a measurement shows the need.
 
@@ -157,6 +160,8 @@ install -m 600 "$state_dir/operator.json" "$restore_dir/operator.json"
 a-stack serve --state-dir "$restore_dir" --json
 ```
 
+A backup is compact: SQLite writes it without the free pages of the database file. The database never shrinks while it runs, because a-stack never deletes retained data and SQLite keeps freed pages for reuse. So restoring a backup is also the way to compact the database, for example after a migration that rebuilt tables.
+
 If the integrity check prints anything but `ok`, do not use that backup; take an older one. Without the `sqlite3` tool, `serve` still runs its own check: it stops with exit code 4 on a damaged copy. The same steps restore a `state.db.pre-vN` copy that `serve` made before a migration.
 
 In another terminal, run `a-stack health --state-dir "$restore_dir" --json` and make sure that the database ID is the original one. Keep the old state directory until you have checked the restored copy.
@@ -167,7 +172,7 @@ Never copy only a live main database file. Never mix a backup with old sidecar f
 
 Endpoints in `internal/stack` use these interfaces:
 
-- `IssueCapability(ctx, tx, kind, subjectID, sessionID)` issues a token inside the registration or rebind transaction. The server gets the `Principal` from the stored hash, never from an identity in the request. To revoke or rotate a credential, delete the old hash in the same transaction. The kind and Session scope do not replace the checks of current membership and roles.
+- The service writes the Operator credential file at the first start. The CLI makes Agent credentials: `agent register` and `agent rebind` send only the hash of the new token, and the service stores it in the registration or rebind transaction. The service makes a view token when a view link is redeemed (`issueViewToken`). The server gets the `Principal` from the stored hash, never from an identity in the request. To revoke or rotate a credential, delete the old hash in the same transaction. The kind and Session scope do not replace the checks of current membership and roles.
 - `Store.Mutate(ctx, token, Operation, authorizeReplay, apply)` authenticates again inside its transaction. An `Operation` has a name, a resource scope and a bounded JSON payload. Handlers serialize typed payloads with `json.Marshal`, including the expected revision and all parameters of the change. The digest includes the name and the scope. JSON objects with the same keys in a different order are not guaranteed to match.
 - `apply(ctx, tx, principal)` checks that the Session is open, and checks role, membership, references and the expected revision. It then writes the resource, the compact history and any mention references in the same transaction. It returns a `Receipt` with the resource ID, revision, a scalar outcome and an optional body reference ID. A receipt or transaction never contains external calls, body copies or snapshots.
 - `authorizeReplay(ctx, tx, principal, receipt)` is required. It checks current read access to the resource of the receipt. It must allow an authorized read after the Session is closed, and it must reject a revoked membership. The service calls it only when the digest matches, before it returns a saved outcome. A digest mismatch returns only `operation_conflict` and does not call the replay callback of the new command. A revoked token fails authentication before the receipt lookup. Browser credentials cannot call `Mutate`. For an Agent, `Mutate` checks the [write budget](#write-budget) after the replay lookup and charges it after the commit.

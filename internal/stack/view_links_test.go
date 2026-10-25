@@ -225,7 +225,7 @@ func TestMigration7DeletesOldBrowserCredentials(t *testing.T) {
 	service := serveTest(t, state, "127.0.0.1:0")
 	f.service = service
 	s := service.Store
-	if countTest(t, s, "PRAGMA user_version") != 7 || countTest(t, s, "SELECT count(*) FROM capabilities WHERE kind='browser'") != 0 || countTest(t, s, "SELECT count(*) FROM view_links") != 0 {
+	if countTest(t, s, "PRAGMA user_version") != schemaVersion || countTest(t, s, "SELECT count(*) FROM capabilities WHERE kind='browser'") != 0 || countTest(t, s, "SELECT count(*) FROM view_links") != 0 {
 		t.Fatal("migration 7 kept browser credentials")
 	}
 	for _, old := range []string{token, legacy} {

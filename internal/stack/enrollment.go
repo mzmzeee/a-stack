@@ -75,7 +75,7 @@ func prepareAgentCredential(path, databaseID, action, operationID string, reques
 			}
 		}
 	} else if err != nil {
-		return "", storageError()
+		return "", storageError(err)
 	}
 	credential, err := ReadCredential(path)
 	if err != nil {

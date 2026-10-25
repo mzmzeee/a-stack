@@ -67,18 +67,8 @@ func startTest(t *testing.T) (*Service, string, Credential) {
 }
 func issueTest(t *testing.T, s *Store, kind CapabilityKind, subject, session string) Credential {
 	t.Helper()
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-	c, err := IssueCapability(ctx, tx, kind, subject, session)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if tx.Commit() != nil {
-		t.Fatal("commit capability")
-	}
+	c := Credential{Kind: kind, Token: opaqueID()}
+	execTest(t, s, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id) VALUES(?,?,?,?)", tokenHash(c.Token), kind, subject, session)
 	return c
 }
 func execTest(t *testing.T, s *Store, query string, args ...any) {

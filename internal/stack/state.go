@@ -58,7 +58,7 @@ func statePath(path string) (string, error) {
 			break
 		}
 		if !os.IsNotExist(err) {
-			return "", storageError()
+			return "", storageError(err)
 		}
 		next := filepath.Dir(probe)
 		if next == probe {
@@ -84,14 +84,14 @@ func privateRead(path string) ([]byte, error) {
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	if err = checkPrivate(info, false); err != nil {
 		return nil, err
 	}
 	data, err := io.ReadAll(io.LimitReader(f, maxPrivateFile+1))
 	if err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	if len(data) > maxPrivateFile {
 		return nil, failure("invalid_input", "private file is too large")
@@ -101,7 +101,7 @@ func privateRead(path string) ([]byte, error) {
 func syncDir(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	defer f.Close()
 	if f.Sync() != nil {
@@ -112,11 +112,11 @@ func syncDir(path string) error {
 func writePrivate(path string, v any, replace bool) error {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".a-stack-*")
 	if err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	tmp := f.Name()
 	defer os.Remove(tmp)
@@ -136,7 +136,7 @@ func writePrivate(path string, v any, replace bool) error {
 		return failure("conflict", "private file already exists")
 	}
 	if err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	return syncDir(filepath.Dir(path))
 }
@@ -156,18 +156,18 @@ func lockState(path string) (*stateLock, error) {
 		return nil, err
 	}
 	if err = os.MkdirAll(dir, 0700); err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	info, err := os.Lstat(dir)
 	if err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	if err = checkPrivate(info, true); err != nil {
 		return nil, err
 	}
 	fd, err := syscall.Open(filepath.Join(dir, "service.lock"), syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
 	if err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	f := os.NewFile(uintptr(fd), "service.lock")
 	info, err = f.Stat()
@@ -183,7 +183,7 @@ func lockState(path string) (*stateLock, error) {
 		if errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, ErrStateOwned
 		}
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	return &stateLock{dir: dir, file: f}, nil
 }
@@ -262,13 +262,13 @@ func ensureDatabaseFile(dir string) (string, error) {
 	path := filepath.Join(dir, "state.db")
 	fd, err := syscall.Open(path, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
 	if err != nil {
-		return "", storageError()
+		return "", storageError(err)
 	}
 	f := os.NewFile(uintptr(fd), path)
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return "", storageError()
+		return "", storageError(err)
 	}
 	if err = checkPrivate(info, false); err != nil {
 		return "", err
@@ -279,7 +279,7 @@ func ensureDatabaseFile(dir string) (string, error) {
 			continue
 		}
 		if err != nil {
-			return "", storageError()
+			return "", storageError(err)
 		}
 		if err = checkPrivate(info, false); err != nil {
 			return "", err
