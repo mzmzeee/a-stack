@@ -43,9 +43,12 @@ const (
 )
 
 type MailMessage struct {
-	ID         string   `json:"id"`
-	TaskID     string   `json:"task_id"`
-	Sequence   int64    `json:"sequence"`
+	ID       string `json:"id"`
+	TaskID   string `json:"task_id"`
+	Sequence int64  `json:"sequence"`
+	// SenderKind is "operator" for the Operator's mail, which has no
+	// SenderID and the SenderName "Operator"; Agent mail leaves it out.
+	SenderKind string   `json:"sender_kind,omitempty"`
 	SenderID   string   `json:"sender_id"`
 	SenderName string   `json:"sender_name"`
 	ReceivedAt string   `json:"received_at"`
@@ -238,7 +241,7 @@ func (s *Store) SendMail(ctx context.Context, token string, r MailSendRequest) (
 			return Receipt{}, err
 		}
 		id, timestamp := opaqueID(), now()
-		_, err = tx.ExecContext(ctx, "INSERT INTO mail_messages VALUES(?,?,?,?,?,?)", id, r.TaskID, sequence, p.SubjectID, timestamp, r.Body)
+		_, err = tx.ExecContext(ctx, "INSERT INTO mail_messages(id,task_id,sequence,sender_id,received_at,body) VALUES(?,?,?,?,?,?)", id, r.TaskID, sequence, p.SubjectID, timestamp, r.Body)
 		if err != nil {
 			return Receipt{}, err
 		}
@@ -270,9 +273,14 @@ func suppressTaskMentions(ctx context.Context, tx *sql.Tx, task, recipient strin
 }
 func readMailMessage(ctx context.Context, tx *sql.Tx, task string, sequence int64) (MailMessage, error) {
 	message := MailMessage{MentionIDs: []string{}}
-	err := tx.QueryRowContext(ctx, "SELECT m.id,m.task_id,m.sequence,m.sender_id,COALESCE(a.name,''),m.received_at,m.body FROM mail_messages m LEFT JOIN agents a ON a.id=m.sender_id WHERE m.task_id=? AND m.sequence=?", task, sequence).Scan(&message.ID, &message.TaskID, &message.Sequence, &message.SenderID, &message.SenderName, &message.ReceivedAt, &message.Body)
+	err := tx.QueryRowContext(ctx, "SELECT m.id,m.task_id,m.sequence,m.sender_kind,COALESCE(m.sender_id,''),COALESCE(a.name,''),m.received_at,m.body FROM mail_messages m LEFT JOIN agents a ON a.id=m.sender_id WHERE m.task_id=? AND m.sequence=?", task, sequence).Scan(&message.ID, &message.TaskID, &message.Sequence, &message.SenderKind, &message.SenderID, &message.SenderName, &message.ReceivedAt, &message.Body)
 	if err != nil {
 		return message, err
+	}
+	if message.SenderKind == "operator" {
+		message.SenderName = "Operator"
+	} else {
+		message.SenderKind = ""
 	}
 	rows, err := tx.QueryContext(ctx, "SELECT recipient_id FROM mail_mentions WHERE message_id=? ORDER BY recipient_id", message.ID)
 	if err != nil {
