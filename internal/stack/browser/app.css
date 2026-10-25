@@ -434,3 +434,40 @@
   .port { fill: CanvasText; }
   .minimap, #minimap-toggle { display: none; }
 }
+
+/* The side peek: non-modal, so the graph stays usable beside it; a bottom sheet on phones. */
+.peek { position: absolute; top: 12px; right: 12px; bottom: 12px; z-index: 3; width: min(380px, calc(100% - 24px)); overflow: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--panel-shadow); }
+.peek .detail-top { padding: 10px 12px 0 20px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.peek-body { padding: 0 20px 20px; }
+.peek h2 { margin: 0; font-size: 18px; line-height: 25px; letter-spacing: -.3px; font-weight: 620; overflow-wrap: anywhere; }
+.peek-question { margin: 12px 0 0; padding: 8px 10px; border-radius: 6px; background: var(--attention-bg); font-size: 13px; line-height: 19px; overflow-wrap: anywhere; }
+.peek-report { margin: 14px 0; font-size: 13px; line-height: 20px; white-space: pre-wrap; overflow-wrap: anywhere; }
+main:has(#peek:not([hidden])) .minimap { right: 404px; }
+main:has(#peek:not([hidden])) #graph-panel { scroll-padding-right: 400px; }
+@media (max-width: 700px) {
+  .peek { position: fixed; top: auto; left: 8px; right: 8px; bottom: calc(var(--foot) + 8px); width: auto; max-height: 55dvh; }
+  main:has(#peek:not([hidden])) .minimap { display: none; }
+  main:has(#peek:not([hidden])) #graph-panel { scroll-padding: 0 0 55dvh; }
+}
+/* The keyboard map and its footer button. */
+kbd { display: inline-block; min-width: 20px; padding: 0 5px; border: 1px solid var(--strong-line); border-bottom-width: 2px; border-radius: 4px; background: var(--raised); color: var(--ink); font: 600 11.5px/17px ui-monospace, SFMono-Regular, Consolas, monospace; text-align: center; }
+.keys-button { display: flex; align-items: center; gap: 6px; min-height: 32px; margin-left: auto; padding: 0 2px; border: 0; background: transparent; color: var(--muted); font-size: 12px; white-space: nowrap; }
+.keys-button:hover { color: var(--ink); }
+.keys-button + .preview-button { margin-left: 0; }
+#keys-title { margin: 0; font-size: 16px; }
+.keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 28px; }
+.keys p { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 13px; line-height: 20px; }
+.keys h3 { margin: 18px 0 8px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
+.keys dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; font-size: 13px; align-items: center; }
+.keys dt { white-space: nowrap; }
+.keys dd { margin: 0; }
+@media (max-width: 700px) { .keys-button { display: none; } }
+/* "New since you looked": a 7px accent dot at the top right of a card, or left of a row's status icon. The words are
+   in the aria-label. Zoomed out, the dot grows with 1/zoom so it stays visible on the blocks. */
+.is-new { position: relative; }
+.is-new::after, .new-dot { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.is-new::after { position: absolute; top: 5px; right: 5px; }
+.task-row.is-new::after, .feed-item.is-new::after { top: 13px; right: auto; left: 0; }
+.graph-world.far .task-card.is-new::after { width: min(calc(7px / var(--z)), 90px); height: min(calc(7px / var(--z)), 90px); top: min(calc(4px / var(--z)), 40px); right: min(calc(4px / var(--z)), 40px); }
+@media (forced-colors: active) { .is-new::after, .new-dot { forced-color-adjust: none; background: Highlight; } }
+
