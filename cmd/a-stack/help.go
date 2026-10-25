@@ -298,8 +298,19 @@ var flagValues = map[string]string{
 	"cursor": "CURSOR", "cursor-file": "FILE", "after-task": "TOKEN", "task-limit": "N",
 }
 
+// hookFlagText is the text of shared flags that mean something else in the
+// hook commands.
+var hookFlagText = map[string]string{
+	"project":         "Use .claude and .codex in the current folder, not in your home folder",
+	"name":            "Agent name",
+	"credential-file": "The Agent's credential file",
+}
+
 func flagText(fs *flag.FlagSet, command, name string) string {
 	text := fs.Lookup(name).Usage
+	if hook, ok := hookFlagText[name]; ok && isHookCommand(command) {
+		text = hook
+	}
 	if name == "body" && command != "mail send" {
 		text = "Same as --" + textFlag(command, "")
 		if command == "task status" {

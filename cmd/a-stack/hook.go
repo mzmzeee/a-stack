@@ -87,20 +87,15 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	}
 	if in.Event == "SessionStart" {
 		if text, err := hookReminder(ctx, client, id); err == nil {
-			_, _ = io.WriteString(stdout, text)
+			hookContext(stdout, in.Event, text)
 		}
 		if !id.noMailNudge {
 			hookMailNudge(ctx, client, id, in) // reads up to the newest mail
 		}
 		return
 	}
-	// The Stop guard blocks one stop at most: when the agent stops again
-	// right after, stop_hook_active is true.
-	if in.Event == "Stop" && !id.noStopGuard && !in.StopHookActive {
-		if reason, err := hookStopGuard(ctx, client, id); err == nil && reason != "" {
-			_ = json.NewEncoder(stdout).Encode(map[string]string{"decision": "block", "reason": reason})
-			return // the agent goes on, so its state stays working
-		}
+	if in.Event == "Stop" && !id.noStopGuard && stopGuard(ctx, client, id, in, stdout) {
+		return // the agent goes on, so its state stays working
 	}
 	for _, e := range hookEvents {
 		if e.event == in.Event && e.state != "" && (e.matcher == "" || e.matcher == in.NotificationType) && id.runtimeID != "" {
@@ -109,9 +104,15 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	}
 	if (in.Event == "PostToolUse" || in.Event == "UserPromptSubmit") && !id.noMailNudge {
 		if text := hookMailNudge(ctx, client, id, in); text != "" {
-			_ = json.NewEncoder(stdout).Encode(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": in.Event, "additionalContext": text}})
+			hookContext(stdout, in.Event, text)
 		}
 	}
+}
+
+// hookContext prints text for the agent's context as JSON, which Claude Code
+// and Codex both read for SessionStart, UserPromptSubmit and PostToolUse.
+func hookContext(stdout io.Writer, event, text string) {
+	_ = json.NewEncoder(stdout).Encode(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": event, "additionalContext": text}})
 }
 
 // hookObserve records the runtime state. It reads the Agent first and writes
@@ -133,15 +134,9 @@ func hookObserve(ctx context.Context, client *stack.Client, id hookIdentity, sta
 // hookReminder is the SessionStart context, also after compaction: who the
 // Agent is, how to run a-stack as itself, its open Tasks, and to check mail.
 func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (string, error) {
-	data, err := client.Do(ctx, "POST", "/v1/session/inspect", id.ref)
+	session, err := inspectSession(ctx, client, id.ref)
 	if err != nil {
 		return "", err
-	}
-	var session struct {
-		Data stack.Session `json:"data"`
-	}
-	if json.Unmarshal(data, &session) != nil {
-		return "", invalid("invalid service response")
 	}
 	agents, err := listPages[stack.Agent](ctx, client, "/v1/agent/list", id.ref)
 	if err != nil {
@@ -165,15 +160,11 @@ func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (s
 		return "", err
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "a-stack: you are the Agent %s in the a-stack Session %q (Workspace %s, Session %s).", name, printable(session.Data.Name), id.ref.WorkspaceID, id.ref.SessionID)
-	if session.Data.Closed {
+	fmt.Fprintf(&b, "a-stack: you are the Agent %s in the a-stack Session %q (Workspace %s, Session %s).", name, printable(session.Name), id.ref.WorkspaceID, id.ref.SessionID)
+	if session.Closed {
 		b.WriteString(" The Session is closed.")
 	}
-	command := "a-stack"
-	if id.state != "" {
-		command += " --state-dir " + quotePath(id.state)
-	}
-	fmt.Fprintf(&b, "\nRun a-stack as yourself: %s --as agent --credential-file %s --workspace %s --session %s COMMAND\n", command, quotePath(id.credential), id.ref.WorkspaceID, id.ref.SessionID)
+	fmt.Fprintf(&b, "\nRun Task and mail commands as yourself, such as: %s task list\n", agentCommand(id))
 	open := 0
 	for _, t := range tasks {
 		if !mine[t.ID] || t.Progress == "finished" || t.Progress == "cancelled" {
@@ -194,6 +185,16 @@ func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (s
 	}
 	b.WriteString("Run mail check now, and follow the a-stack skill: Task mail at milestones, a report, then finish.\n")
 	return b.String(), nil
+}
+
+// agentCommand is the a-stack command line that runs Task and mail commands
+// as the hook's Agent.
+func agentCommand(id hookIdentity) string {
+	command := "a-stack"
+	if id.state != "" {
+		command += " --state-dir " + quotePath(id.state)
+	}
+	return command + " --as agent --credential-file " + quotePath(id.credential) + " --workspace " + id.ref.WorkspaceID + " --session " + id.ref.SessionID
 }
 
 // assignedTasks reads the Session's assignments and returns the Agent's Tasks.
@@ -352,7 +353,7 @@ func (h *hookInstall) run(ctx context.Context) error {
 	}
 	if !h.remove {
 		if id.runtimeID == "" {
-			text += "Without --runtime-id the hooks only print the reminder at session start; they record no runtime state.\n"
+			text += "Without --runtime-id the hooks record no runtime state; the reminder, Stop guard and mail nudge still work.\n"
 		}
 		if _, ok := files["codex"]; ok {
 			text += "Codex runs new hooks only after you trust them: run /hooks in Codex.\n"

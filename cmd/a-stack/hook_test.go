@@ -186,6 +186,18 @@ func jsonString(s string) string {
 	return string(b)
 }
 
+// hookContextText returns the context a hook printed for event, as JSON.
+func hookContextText(t *testing.T, out, event string) string {
+	t.Helper()
+	var o struct {
+		HookSpecificOutput struct{ HookEventName, AdditionalContext string } `json:"hookSpecificOutput"`
+	}
+	if json.Unmarshal([]byte(out), &o) != nil || o.HookSpecificOutput.HookEventName != event || !strings.HasSuffix(out, "}\n") {
+		t.Fatalf("%s output is not JSON context: %q", event, out)
+	}
+	return o.HookSpecificOutput.AdditionalContext
+}
+
 func runtimeState(t *testing.T, f *team) string {
 	t.Helper()
 	out, _, _ := f.run("", f.scoped("agent", "list", "--json")...)
@@ -215,7 +227,7 @@ func TestHookRecordsRuntimeStateAndPrintsTheReminder(t *testing.T) {
 	f.receipt(f.orchFile, f.scoped("task", "create", "--title", "Not mine", "--operation-id", "hook-not-mine")...)
 	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, runtimeID: "worker-runtime", worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}}
 
-	text := hookEvent(t, id, "SessionStart", `,"source":"compact"`)
+	text := hookContextText(t, hookEvent(t, id, "SessionStart", `,"source":"compact"`), "SessionStart")
 	for _, want := range []string{"a-stack: you are the Agent 02-worker in the a-stack Session \"Build\"", "--credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace, "Your open Tasks:\n- Build the parser (Task " + f.task + "): working, waits for the Operator's answer\n", "Run mail check now"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("reminder misses %q:\n%s", want, text)
@@ -296,8 +308,19 @@ func TestHookStopGuardBlocksOnceUntilTheTaskHasAReport(t *testing.T) {
 	hookEvent(t, id, "PostToolUse", "")
 	var block struct{ Decision, Reason string }
 	out := stop(false)
-	if json.Unmarshal([]byte(out), &block) != nil || block.Decision != "block" || !strings.Contains(block.Reason, `"Build the parser" (Task `+f.task+`)`) || !strings.Contains(block.Reason, "task report") || !strings.Contains(block.Reason, "waiting with a reason") {
+	r := strconv.FormatInt(rev, 10)
+	if json.Unmarshal([]byte(out), &block) != nil || block.Decision != "block" || !strings.Contains(block.Reason, `"Build the parser" (Task `+f.task+`)`) || strings.Contains(block.Reason, "Other Agents") {
 		t.Fatalf("no block: %q", out)
+	}
+	for _, want := range []string{
+		agentCommand(id) + " task report --task " + f.task + " --report '",
+		"' --expected-revision " + r + " --operation-id guard-" + f.task[:10] + "-" + r + "-report\n",
+		" task status --task " + f.task + " --progress finished --summary '",
+		" task status --task " + f.task + " --progress waiting --reason '",
+	} {
+		if !strings.Contains(block.Reason, want) {
+			t.Fatalf("the reason misses %q:\n%s", want, block.Reason)
+		}
 	}
 	if got := runtimeState(t, f); got != "working" {
 		t.Fatalf("a blocked stop recorded %s", got)
@@ -328,9 +351,107 @@ func TestHookStopGuardBlocksOnceUntilTheTaskHasAReport(t *testing.T) {
 	if out = stop(false); !strings.Contains(out, `"decision":"block"`) {
 		t.Fatalf("an old report let the agent stop: %q", out)
 	}
+	// A harness that does not send stop_hook_active: the hook's marker file
+	// lets the next stop pass, and the stop after that blocks again.
+	if out = hookEvent(t, id, "Stop", ""); out != "" {
+		t.Fatalf("blocked twice in a row without stop_hook_active: %q", out)
+	}
+	if out = hookEvent(t, id, "Stop", ""); !strings.Contains(out, `"decision":"block"`) {
+		t.Fatalf("a later stop passed: %q", out)
+	}
+	stop(true)
 	f.taskChange(f.workerFile, "guard-ask", rev, "attention", "set", "--question", "Which grammar?")
 	if out = stop(false); out != "" {
 		t.Fatalf("a Task that waits for the Operator blocked: %q", out)
+	}
+}
+
+// The guard blocks only the Agent that set the Task working: not a helper on
+// the same Task, and not an Orchestrator that watches it. It never blocks in
+// a closed Session.
+func TestHookStopGuardBlocksOnlyTheAgentThatSetTheTaskWorking(t *testing.T) {
+	f := newTeam(t)
+	hookHome(t)
+	peerFile := filepath.Join(filepath.Dir(f.workerFile), "peer.json")
+	peer := f.receipt(f.orchFile, f.scoped("agent", "register", "--name", "03-peer", "--new-credential-file", peerFile, "--operation-id", "owner-peer")...).ResourceID
+	rev := f.taskChange(f.orchFile, "owner-assign-peer", 2, "assign", "--agent", peer)
+	rev = f.taskChange(f.orchFile, "owner-assign-orch", rev, "assign", "--agent", f.orch)
+	rev = f.taskChange(f.workerFile, "owner-working", rev, "status", "--progress", "working")
+	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}
+	worker := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: ref, noMailNudge: true}
+	helper := hookIdentity{state: f.state, credential: peerFile, agent: peer, worktree: f.project, ref: ref, noMailNudge: true}
+	orch := hookIdentity{state: f.state, credential: f.orchFile, agent: f.orch, worktree: f.project, ref: ref, noMailNudge: true}
+	stop := func(id hookIdentity, session string) string {
+		return hookEvent(t, id, "Stop", `,"session_id":"`+session+`","stop_hook_active":false`)
+	}
+	if out := stop(helper, "s1"); out != "" {
+		t.Fatalf("a helper's stop blocked: %q", out)
+	}
+	if out := stop(orch, "s1"); out != "" {
+		t.Fatalf("the Orchestrator's stop blocked: %q", out)
+	}
+	if out := stop(worker, "s1"); !strings.Contains(out, "Other Agents share this Task") || !strings.Contains(out, "mail send --task "+f.task) {
+		t.Fatalf("the Agent that set the Task working: %q", out)
+	}
+	// The last action is no longer the status change: the history decides.
+	rev = f.taskChange(f.orchFile, "owner-edit", rev, "edit", "--title", "Build the parser")
+	if out := stop(worker, "s2"); !strings.Contains(out, `"decision":"block"`) {
+		t.Fatalf("after an edit: %q", out)
+	}
+	if out := stop(helper, "s2"); out != "" {
+		t.Fatalf("a helper's stop blocked after an edit: %q", out)
+	}
+	// The helper sets the Task working again, so now it is the helper's.
+	f.taskChange(peerFile, "owner-peer-working", rev, "status", "--progress", "working")
+	if out := stop(worker, "s3"); out != "" {
+		t.Fatalf("blocked after another Agent set the Task working: %q", out)
+	}
+	if out := stop(helper, "s3"); !strings.Contains(out, `"decision":"block"`) {
+		t.Fatalf("the helper set the Task working: %q", out)
+	}
+	f.receipt("", f.scoped("session", "close", "--expected-revision", "2", "--operation-id", "owner-close")...)
+	if out := stop(helper, "s4"); out != "" {
+		t.Fatalf("a closed Session blocked: %q", out)
+	}
+}
+
+// A first check that ends before it reaches the newest message goes on at the
+// next hook run, and does not report the rest of the old mail as new.
+func TestHookMailNudgeFirstCheckThatRunsOutReportsNoOldMail(t *testing.T) {
+	f := newTeam(t)
+	home := hookHome(t)
+	peerFile := filepath.Join(filepath.Dir(f.workerFile), "peer.json")
+	peer := f.receipt(f.orchFile, f.scoped("agent", "register", "--name", "03-peer", "--new-credential-file", peerFile, "--operation-id", "catch-peer")...).ResourceID
+	f.taskChange(f.orchFile, "catch-assign", 2, "assign", "--agent", peer)
+	for i := range 101 { // one page holds 100 messages
+		f.receipt(peerFile, f.scoped("mail", "send", "--task", f.task, "--body", "Old news", "--operation-id", "catch-old-"+strconv.Itoa(i))...)
+	}
+	catchUpPages = 1 // as if the 2 seconds ran out after the first page
+	t.Cleanup(func() { catchUpPages = 20 })
+	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}, noStopGuard: true}
+	sum := sha256.Sum256([]byte("abc"))
+	file := filepath.Join(hookCacheDir(filepath.Join(home, ".cache"), f.worker), hex.EncodeToString(sum[:16])+".json")
+	later := func() {
+		old := time.Now().Add(-mailNudgeEvery - time.Second)
+		if os.Chtimes(file, old, old) != nil {
+			t.Fatal("chtimes")
+		}
+	}
+	hookEvent(t, id, "SessionStart", "")
+	if _, err := os.Stat(file); err == nil {
+		t.Fatal("the cursor file exists before the first check read everything")
+	}
+	if out := hookEvent(t, id, "PostToolUse", ""); out != "" {
+		t.Fatalf("the rest of the first check nudged: %q", out)
+	}
+	later()
+	if out := hookEvent(t, id, "PostToolUse", ""); out != "" {
+		t.Fatalf("old mail nudged: %q", out)
+	}
+	f.receipt(peerFile, f.scoped("mail", "send", "--task", f.task, "--body", "New", "--operation-id", "catch-new")...)
+	later()
+	if out := hookEvent(t, id, "PostToolUse", ""); !strings.Contains(out, "New Task mail") {
+		t.Fatalf("new mail: %q", out)
 	}
 }
 
