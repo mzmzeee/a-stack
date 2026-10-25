@@ -270,7 +270,7 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 		"Workspace: " + row.WorkspaceID + "   Session: " + row.SessionID,
 		"Your name: " + h.orchestrator + "   Your private folder: make one with mktemp -d",
 		"Work in: " + h.cwd,
-		"Goal: <describe the goal>. Plan the Tasks, register one Agent per Task and brief each one.",
+		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register one Agent per Task and brief each one.",
 	}, "\n")
 	fields["orchestrator_id"], fields["orchestrator_credential_file"], fields["brief"] = receipt.Data.ResourceID, credential, brief
 	fields["register_operation_id"], fields["appoint_operation_id"] = registerID, appointID

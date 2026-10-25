@@ -2,6 +2,8 @@
 
 The Orchestrator coordinates the Session's team. It registers Agents, creates Tasks, assigns Agents and adds dependencies. Only the Operator appoints the Orchestrator, closes the Session and answers Needs you questions.
 
+The Operator follows the Session through its Task graph, so plan the work as a graph. Every piece of work is a Task, your own included, and every Task is linked to the Tasks it comes from and leads to. A graph of unlinked Tasks tells the Operator nothing about the order of the work.
+
 Set up `me` as [SKILL.md](../SKILL.md) shows, with your own credential. For each command's flags, see [commands.md](commands.md).
 
 ## 1. Register the Agents
@@ -31,9 +33,12 @@ me task assign --task T --agent YOUR_AGENT_ID --expected-revision 2 --operation-
 - `data.resource_id` of `task create` is the Task ID. A new Task is Waiting, with revision 1. Each receipt's `revision` is the Task's new revision: give it to your next change of that Task. Read the Task again only after a `conflict`.
 - Write the description so that the assignee can do the Task from it alone: the goal, the files, what done means.
 - `--ticket '#42'` links a Ticket. Each Ticket reference is unique in the Session.
+- Make Tasks for your own work too, such as merging, reviewing or releasing, and assign yourself.
 - Assign yourself to every Task you hand out (your own Agent ID is `orchestrator_id` in `me session inspect`). Only assignees can read and send a Task's mail, so without it the other Agents cannot reach you there, and you cannot reopen the Task.
 
-## 3. Add dependencies
+## 3. Link every Task
+
+Add a Task's dependencies right after you create it, in the same step. Do not leave them for later.
 
 ```sh
 me dependency add --from A --to B --expected-revision G --operation-id orch-dep-a-b-1
@@ -42,6 +47,8 @@ me dependency add --from A --to B --expected-revision G --operation-id orch-dep-
 - `--from A --to B` means that B depends on A.
 - `G` is the Session's `graph_revision`, not a Task revision. Read it with `me session inspect` after you create Tasks, because each `task create` increases it. The receipt of a dependency change has the new `graph_revision` in `revision`: give it to your next dependency change.
 - a-stack rejects a duplicate, a dependency of a Task on itself and a cycle.
+- Link what the work really depends on. For example: an audit or a research Task to each fix or build that it leads to, a build to its review, and every Task that goes into a release to the release Task.
+- Only a starting point, such as the first audit, has no prerequisite. Before you brief anyone, run `me task list` and look at `prerequisite_count`: a Task with 0 that is not a starting point is missing a link.
 - A dependency does not block anything. Say in B's description that B waits for A, so that its assignee sets Waiting until A is Finished.
 
 ## 4. Brief each Agent
@@ -83,6 +90,7 @@ When a Task shows `needs_you`, the Operator must answer. You cannot answer for t
 
 ## 6. Change the plan
 
+- When new work turns up, create a Task for it and link it at once, also when you do the work yourself. Work without a Task is invisible to the Operator.
 - Change the title, description or Ticket with `task edit`.
 - Move work with `task unassign` and `task assign`.
 - To reopen a Finished or Cancelled Task, assign yourself, then run `task reopen --reason`. Only an assignee can reopen.

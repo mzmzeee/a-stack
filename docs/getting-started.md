@@ -317,7 +317,7 @@ Credential file: /home/you/.local/state/a-stack-agents/01-orchestrator.json
 Workspace: 8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ   Session: 1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
 Your name: 01-orchestrator   Your private folder: make one with mktemp -d
 Work in: /home/you/code/my-project
-Goal: <describe the goal>. Plan the Tasks, register one Agent per Task and brief each one.
+Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register one Agent per Task and brief each one.
 ```
 
 Replace the goal line, and run `a-stack skill install` once if your coding agent does not have the skill yet. The command refuses, before it makes anything, when the credential file already exists, and it refuses a Session that already has an Orchestrator. The brief names the credential file only by its path.
@@ -384,7 +384,7 @@ Credential file: /home/you/.local/state/a-stack-agents/01-orchestrator.json
 Workspace: 8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ   Session: 1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
 Your name: 01-orchestrator   Your private folder: /tmp/work/01-orchestrator/
 Work in: /home/you/code/my-project
-Goal: add OAuth login. Plan the Tasks, register one Agent per Task and brief each one.
+Goal: add OAuth login. Plan the Tasks, link each one to the Tasks it depends on, register one Agent per Task and brief each one.
 ```
 
 The Orchestrator registers the other Agents with its own credential and writes their briefs, as the skill's orchestrator reference shows. Watch the work in the view; `a-stack` opens it again at any time. Answer a Needs you question in your conversation with the Agent that asks it. Never put a credential file's contents, or the part of the view URL after `#`, in a brief.
