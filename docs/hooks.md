@@ -15,7 +15,7 @@ a-stack hook install --credential-file /path/to/02-worker.json \
   --runtime-id RUNTIME_ID
 ```
 
-- A credential file written by v0.1.5 or later names its Workspace, Session and Agent, so `--workspace`, `--session` and `--name` can be left out: `a-stack hook install --credential-file FILE --runtime-id RUNTIME_ID` is enough. Flags that you give must match the file.
+- A credential file written by v0.1.5 or later names its Workspace, Session and Agent, so `--workspace`, `--session` and `--name` can be left out: `a-stack hook install --credential-file FILE --runtime-id RUNTIME_ID` is enough. A `--workspace` or `--session` that you give must match the file.
 - `--name` finds the Agent's ID with the service. Instead, `--agent ID` gives the ID and needs no running service.
 - `--runtime-id` is the instance ID of the Agent's runtime binding, as in `agent attach --runtime-id`. a-stack records runtime state only for an attached Agent with the same runtime ID. Without `--runtime-id` the hooks only print the reminder. To attach a new Agent first, see [Runtime bindings](lifecycle.md#runtime-bindings).
 - `--state-dir` goes into the hook command when you give it.
