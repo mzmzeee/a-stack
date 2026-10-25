@@ -188,6 +188,17 @@ These are two single wall-clock observations in UTC on the same machine, with no
 
 Two earlier corrected submissions had incomplete fixture metadata and are not part of this timing evidence. The first attempt, with invalid arguments, stayed `uncertain` across restarts and was never submitted again. In total, the fixture stored five bodies, five mention and batch references, and five batches: four submitted and one uncertain. The fixture was verified and closed, and its private credentials were removed.
 
+### Claude Code: partial fixture
+
+Claude Code is not in the table yet. On 2026-10-25 a real Claude Code 2.1.310 ran in an isolated Herdr 0.9.5 server (protocol 22) with Herdr's Claude integration hook, against a disposable a-stack service. No prompt was sent to it, so it used no credits. This showed:
+
+- Herdr's Claude hook reports the session at start (`agent_session` with source `herdr:claude` and the Claude session ID), so `herdr agent get` returns harness `claude`, the pane, the terminal and the session.
+- `a-stack herdr bind`, run with the pane's `HERDR_*` values, renamed the unnamed pane to `a-02-claude`, read `claude --version` as 2.1.310 and attached the Agent.
+- A mention for that Agent stayed `pending` with reason `unsupported_harness` and next attempt `-1`. The pane's screen did not change.
+- `a-stack herdr focus` checked the binding and focused the pane.
+
+Before Claude Code goes into the table, a fixture run like the Codex one must show three things with real turns: a notice sent while Claude is working is queued and leads to the Agent's own mail check, a notice sent while it is idle starts one own mail check, and a notice sent while a permission dialog is open does not answer the dialog. That needs several prompts and a signed-in Claude Code.
+
 ### Tests
 
 The normal and race tests use real SQLite, HTTP and the CLI, with a fake executable. They cover the endpoint, arguments and environment, batching, concurrent arrivals, the serialization of recipients, target changes, closure and removal, bounded errors, migration rollback, and a process that is killed after simulated input. Tests of the production checks reject unverified versions and kinds. A successful live fixture does not add a combination to the supported list automatically.
