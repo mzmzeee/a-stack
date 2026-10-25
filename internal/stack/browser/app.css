@@ -55,6 +55,9 @@
   .attention-button:hover:not(:disabled) { border-color: currentColor; }
   .attention-button:disabled { color: var(--muted); background: var(--raised); opacity: 1; }
   .banner { margin: 0 28px 12px; padding: 10px 14px; border: 1px solid var(--attention); border-radius: 8px; background: var(--attention-bg); color: var(--ink); font-size: 13px; line-height: 19px; font-weight: 550; flex-shrink: 0; }
+  .update-note { display: flex; align-items: center; gap: 12px; margin: 0 28px 12px; padding: 5px 6px 5px 14px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-bg); font-size: 13px; line-height: 19px; flex-shrink: 0; }
+  .update-note p { margin: 0 auto 0 0; }
+  .update-note button { min-height: 32px; padding: 4px 12px; }
   main.stale .view { filter: saturate(.3); }
   main { flex: 1; min-height: 0; position: relative; }
   .view { height: 100%; overflow: auto; overscroll-behavior: contain; scrollbar-color: var(--strong-line) transparent; }
@@ -81,7 +84,10 @@
   .status svg { width: 14px; height: 14px; }
   .status.working { color: var(--working); }
   .status.finished { color: var(--finished); }
-  .status.blocked { color: var(--attention); background: var(--attention-bg); border-radius: 4px; padding: 2px 6px; margin: -2px -6px; }
+  .status.blocked { color: var(--attention); background: var(--attention-bg); border-radius: 4px; padding: 2px 6px; margin: -2px -6px -2px 0; }
+  /* A Now card with Needs you is in the Needs you column, with a red ring and the question: the label would only
+     crowd the status line. */
+  .now-top .status.blocked { display: none; }
   .empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center; padding: 24px; }
   .empty h2 { font-size: 18px; margin: 0; }
   .empty p { margin: 0; color: var(--muted); }
@@ -146,7 +152,7 @@
     .appbar { gap: 16px; padding-inline: 20px; }
     .project-name { display: none; }
     .workspacebar { padding-inline: 20px; gap: 12px; }
-    .banner { margin-inline: 20px; }
+    .banner, .update-note { margin-inline: 20px; }
     .search { width: 210px; }
     .footer-hint { display: none; }
   }
@@ -159,7 +165,7 @@
     .theme-button { padding-inline: 8px; }
     .theme-label { display: none; }
     .workspacebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 18px 16px 14px; gap: 14px 10px; }
-    .banner { margin-inline: 16px; }
+    .banner, .update-note { margin-inline: 16px; }
     .workspace-title { width: auto; margin: 0; }
     h1 { font-size: 20px; }
     .workspace-subtitle { font-size: 12px; }
@@ -387,7 +393,7 @@
 }
 
 /* Semantic zoom. Below 50% (.far) each card is a block in its status color with only its title, kept at 12.5px on
-   screen; below 20% (.farther) only the blocks remain. Sizes scale with 1/zoom (--z), and every card keeps the
+   screen; below 30% (.farther) only the blocks remain. Sizes scale with 1/zoom (--z), and every card keeps the
    height the layout measured (--h), so a zoom step never runs a new layout. */
 .task-card { --tint: var(--surface); }
 .task-card[data-status="working"] { --tint: color-mix(in srgb, var(--working) 22%, var(--surface)); }
@@ -399,8 +405,10 @@
 .graph-world.far .task-card[data-status="needs-you"] { box-shadow: 0 0 0 calc(3px / var(--z)) color-mix(in srgb, var(--attention) 45%, transparent); }
 .graph-world.far .task-card.selected { box-shadow: 0 0 0 calc(2px / var(--z)) var(--accent); }
 .graph-world.far .task-card:focus-visible { outline-width: calc(2px / var(--z)); outline-offset: calc(2px / var(--z)); }
-.graph-world.far .task-card > :not(.task-title), .graph-world.far .port, .graph-world.far .compact .task-title, .graph-world.farther .task-title { display: none; }
+.graph-world.far .task-card > :not(.task-title), .graph-world.far .port, .graph-world.far .compact .task-title { display: none; }
 .graph-world.far .task-title { margin: 0; font-size: calc(12.5px / var(--z)); line-height: calc(16px / var(--z)); font-weight: 600; letter-spacing: 0; color: var(--ink); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines); overflow: hidden; }
+/* After the rule above, which sets display at the same specificity. */
+.graph-world.farther .task-title { display: none; }
 .graph-world.far > .task-unit.unfocused .task-card { background: var(--canvas); border-color: var(--line); }
 .graph-world.far > .task-unit.unfocused .task-title { color: var(--muted); }
 .graph-world.far .connection { stroke-width: calc(1.2px / var(--z)); }
@@ -421,5 +429,5 @@
   .connection { stroke: CanvasText; }
   .connection.active { stroke: Highlight; }
   .port { fill: CanvasText; }
-  .minimap { display: none; }
+  .minimap, #minimap-toggle { display: none; }
 }

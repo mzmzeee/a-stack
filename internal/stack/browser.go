@@ -22,14 +22,17 @@ var browserTemplate = template.Must(template.ParseFS(browserFiles, "browser/inde
 
 // browserAssetTags holds an ETag per embedded asset: a hash of its content, so
 // a browser revalidates and downloads the file again only after it changed.
-var browserAssetTags = func() map[string]string {
-	tags := map[string]string{}
-	for _, name := range []string{"browser/app.js", "browser/app.css"} {
+// browserAssets identifies the page and both assets. After a restart, an open
+// page compares it with the service's revision to offer a reload.
+var browserAssetTags, browserAssets = func() (map[string]string, string) {
+	tags, all := map[string]string{}, sha256.New()
+	for _, name := range []string{"browser/app.js", "browser/app.css", "browser/index.html"} {
 		b, _ := browserFiles.ReadFile(name)
 		sum := sha256.Sum256(b)
 		tags[name] = `"` + hex.EncodeToString(sum[:12]) + `"`
+		all.Write(sum[:])
 	}
-	return tags
+	return tags, hex.EncodeToString(all.Sum(nil)[:12])
 }()
 
 // ViewLinkAge is how long the one-time code of a view link works. ViewTokenAge
@@ -221,9 +224,10 @@ func (s *Service) browserAsset(w http.ResponseWriter, r *http.Request) bool {
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 	w.Header().Set("X-A-Stack-Instance", s.Discovery.InstanceID)
 	w.Header().Set("X-A-Stack-Version", s.Version)
+	w.Header().Set("X-A-Stack-Assets", browserAssets)
 	if page {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = browserTemplate.Execute(w, struct{ Instance, Version string }{s.Discovery.InstanceID, s.Version})
+		_ = browserTemplate.Execute(w, struct{ Instance, Version, Assets string }{s.Discovery.InstanceID, s.Version, browserAssets})
 	} else {
 		name, contentType := "browser/app.js", "text/javascript; charset=utf-8"
 		if path == "/assets/app.css" {

@@ -24,7 +24,8 @@ const icons = {
   edit: '<path d="M4 20h4L19 9l-4-4L4 16Z"/>',
   system: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8m-4-4v4"/>',
   bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4Z"/><path d="M10 21a2 2 0 0 0 4 0"/>',
-  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>'
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  map: '<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="6" height="5" rx="1"/>'
 };
 const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.info}</svg>`;
 document.querySelectorAll('[data-icon]').forEach(el => el.replaceWith(Object.assign(document.createElement('span'), { innerHTML: icon(el.dataset.icon) })));
@@ -37,6 +38,8 @@ const views = ['now','graph','agents'];
 const state = {view:'now',theme:'light',query:'',filter:'all',zoom:1,selected:null,focus:null,archived:false,allFinished:false};
 let graphTasks = [], graphEdges = [], hiddenEdges = [], focusIds = null;
 let model = null, etag = '', instance = document.querySelector('meta[name="a-stack-instance"]').content, version = document.querySelector('meta[name="a-stack-version"]').content;
+// The version and the asset files this page came with; after a restart the service may run others.
+const pageVersion = version, pageAssets = document.querySelector('meta[name="a-stack-assets"]').content;
 let timer, controller, failures = 0, busy = false, lastSuccess = 0, stale = false, answered = false, detailKey = '', detailEpoch = 0, returnFocus;
 let geometryKey = '', width = 1400, height = 670;
 const cards = new Map(), rows = new Map(), positions = new Map();
@@ -45,7 +48,7 @@ const context = {workspace_id:path[2],session_id:path[3]};
 const storageKey = 'a-stack-view:' + location.pathname;
 let token = '', notice = '';
 const linkUsed = 'This link has expired or was already used. Run a-stack, or a-stack open, to open a new one.';
-const accessEnded = 'This view lost access. Run a-stack, or a-stack open, to open a new link.';
+const accessEnded = 'This view lost access: its view token expired, was revoked, or is not in a restored database. Run a-stack to open the view again.';
 // A view link carries a one-time code in its fragment. The page trades it for a
 // view token and keeps that in the tab's session storage, so a reload works.
 async function readToken() {
@@ -110,7 +113,7 @@ function status(n,t) {
   if (n.dataset.key===key) return;
   n.dataset.key=key;n.className='status '+t.progress;
   n.replaceChildren(iconNode(t.progress==='cancelled'?'idle':t.progress), el('span','status-label',labels[t.progress] || t.progress));
-  if (t.needs_you) { const a=el('span','status blocked','Needs you');n.append(' · ',a); }
+  if (t.needs_you) n.append(el('span','sr-only',', '),el('span','status blocked','Needs you')); // the comma is for screen readers
 }
 // Every card has a left border in its status color, so status still reads at a small zoom; Needs you has a ring.
 function statusMark(button,t) { const v=t.needs_you?'needs-you':t.progress;if(button.dataset.status!==v)button.dataset.status=v; }
@@ -120,6 +123,10 @@ function mailCount(n,count) {
   n.dataset.count=v;n.replaceChildren(...(count?[iconNode('mail'),document.createTextNode(v)]:[]));
 }
 const mailText=t=>t.mail_count?` ${plural(t.mail_count,'Task mail message')}.`:'';
+// Screen reader labels: a sentence ends with one mark, so a question keeps its own; a list reads "A, B and C".
+const sentence=s=>/[.?!…]$/.test(s)?s:s+'.';
+const listing=a=>a.length<3?a.join(' and '):a.slice(0,-1).join(', ')+' and '+a.at(-1);
+const asked=t=>t.needs_you?' '+sentence(t.question_preview?'Needs you: '+t.question_preview:'Needs you'):'';
 function makeCard(t) {
   const article=el('article','task-unit');article.dataset.task=t.id;
   const own=el('div','owners'), button=el('button','task-card');button.dataset.openTask=t.id;
@@ -143,7 +150,7 @@ function patchCard(c,t) {
   const compact=compactTask(t), tip=compact?t.title:'';c.article.classList.toggle('compact',compact);if(c.button.title!==tip)c.button.title=tip; // a compact block may cut its title
   setText(c.foot,caption);
   c.button.classList.toggle('selected',state.selected===t.id||state.focus===t.id); // the focused Task keeps its outline
-  c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.needs_you?' Needs you.':''} Assigned to ${names.join(' and ') || 'Unassigned'}.${mailText(t)} ${caption}`);
+  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${t.needs_you?' Needs you.':''} Assigned to ${listing(names) || 'Unassigned'}.${mailText(t)}${caption?' '+sentence(caption):''}`);
   const visible=matches(t);
   c.article.classList.toggle('archived',!!t.archived);
   c.article.classList.toggle('unfocused',!!focusIds&&!focusIds.has(t.id)&&!t.needs_you); // Needs you never fades
@@ -292,8 +299,9 @@ function patchGraph() {
   }else drawEdges();
 }
 // The Agents tab: one card per Agent, the most urgent first or by name, Unassigned last. Needs you and Working
-// always show; Waiting shows its 4 newest, then "N more waiting"; finished and cancelled Tasks fold away. While a
-// search or a filter is set, every matching Task shows. Cards and rows are patched in place, so focus stays.
+// always show; Waiting shows its 4 newest, then "N more waiting", but all 5 of 5, since a fold of one row saves
+// nothing; finished and cancelled Tasks fold away. While a search or a filter is set, every matching Task shows.
+// Cards and rows are patched in place, so focus stays.
 const rank=t=>t.needs_you?0:t.progress==='working'?1:t.progress==='waiting'?2:3;
 const newest=(a,b)=>a.updated_at<b.updated_at?1:a.updated_at>b.updated_at?-1:a.id<b.id?-1:1;
 const chipKinds=[['needs','attention','needs you'],['working','working','working'],['waiting','waiting','waiting'],['done','finished','done']];
@@ -331,7 +339,7 @@ function patchRow(r,t,agent) {
   setText(r.others,others.length?'with '+others.slice(0,2).join(', ')+(others.length>2?` +${others.length-2}`:''):'');r.others.hidden=!others.length;
   mailCount(r.mail,t.mail_count);stamp(r.when,t.updated_at);
   r.b.classList.toggle('selected',state.selected===t.id);r.b.classList.toggle('archived',!!t.archived);
-  r.b.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.archived?' Archived.':''}${t.needs_you?' Needs you: '+(t.question_preview || '')+'.':''}${others.length?' With '+others.join(' and ')+'.':''}${mailText(t)} Changed ${age(t.updated_at)}.`);
+  r.b.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${t.archived?' Archived.':''}${asked(t)}${others.length?' With '+listing(others)+'.':''}${mailText(t)} Changed ${age(t.updated_at)}.`);
   return r.li;
 }
 function patchAgents() {
@@ -348,10 +356,10 @@ function patchAgents() {
     const ids=new Set(g.tasks.map(t=>t.id));for(const k of r.rows.keys())if(!ids.has(k))r.rows.delete(k);
     const row=t=>{let x=r.rows.get(t.id);if(!x){x=makeRow(t);r.rows.set(t.id,x);}return patchRow(x,t,me);};
     const shown=filtering?g.tasks.filter(matches):g.tasks, waiting=shown.filter(t=>rank(t)===2), doneTasks=shown.filter(t=>rank(t)===3);
-    const allWaiting=filtering||folds.has('w'+id), allDone=filtering||folds.has('d'+id);
+    const allWaiting=filtering||waiting.length<=5||folds.has('w'+id), allDone=filtering||folds.has('d'+id);
     placeAll(r.open,shown.filter(t=>rank(t)<2).concat(allWaiting?waiting:waiting.slice(0,4)).map(row));
     placeAll(r.doneList,allDone?doneTasks.map(row):[]);
-    r.moreWaiting.hidden=filtering||waiting.length<=4;r.moreDone.hidden=filtering||!doneTasks.length;
+    r.moreWaiting.hidden=filtering||waiting.length<=5;r.moreDone.hidden=filtering||!doneTasks.length;
     setText(r.moreWaiting.lastChild,allWaiting?'Show fewer waiting':`${waiting.length-4} more waiting`);r.moreWaiting.setAttribute('aria-expanded',String(allWaiting));
     setText(r.moreDone.lastChild,`${plural(doneTasks.length,'finished or cancelled Task')}`);r.moreDone.setAttribute('aria-expanded',String(allDone));
     r.open.hidden=!r.open.children.length;r.doneList.hidden=!r.doneList.children.length;
@@ -398,7 +406,7 @@ function patchNowCard(c,t,byID) {
   setText(c.waits,blockers.length?'Waits for: '+blockers.slice(0,3).join(', ')+(blockers.length>3?` +${blockers.length-3} more`:''):'');c.waits.hidden=t.progress!=='waiting'||!blockers.length;
   const report=firstLine(t.report_preview);setText(c.note,report || 'No report yet.');
   c.button.classList.toggle('selected',state.selected===t.id);c.button.classList.toggle('archived',!!t.archived);
-  c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.archived?' Archived.':''}${t.needs_you?' Needs you: '+(t.question_preview || '')+'.':''} Assigned to ${names.join(' and ') || 'Unassigned'}.${c.waits.hidden?'':' '+c.waits.textContent+'.'}${mailText(t)} Changed ${age(t.updated_at)}.`);
+  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${t.archived?' Archived.':''}${asked(t)} Assigned to ${listing(names) || 'Unassigned'}.${c.waits.hidden?'':' '+sentence(c.waits.textContent)}${mailText(t)} Changed ${age(t.updated_at)}.`);
 }
 // Moving a node keeps its focus where the browser supports moveBefore.
 function place(list,node,ref) { if(node.nextSibling===ref&&node.parentNode===list)return; try{if(list.moveBefore&&node.isConnected&&node.ownerDocument===list.ownerDocument){list.moveBefore(node,ref);return;}}catch{} list.insertBefore(node,ref); }
@@ -466,7 +474,7 @@ function render() {
   document.querySelectorAll('.theme-button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===state.theme)));
   document.querySelectorAll('[data-view]').forEach(b=>{const active=b.dataset.view===state.view;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});
   panel.hidden=state.view!=='graph';agentsPanel.hidden=state.view!=='agents';nowPanel.hidden=state.view!=='now';
-  $('zoom-controls').hidden=state.view!=='graph';$('archived').hidden=state.view==='now';minimap.hidden=true;
+  $('zoom-controls').hidden=$('minimap-toggle').hidden=state.view!=='graph';$('archived').hidden=state.view==='now';minimap.hidden=true;
   if(!model){
     // Nothing is known before the first snapshot, so no column may say that nothing needs you.
     const failed=!!notice||failures>0;
@@ -531,13 +539,13 @@ function updateBanner() {
 let lowDisk=false;
 function updateHint() {
   const hint=$('footer-hint');hint.classList.toggle('lost',lowDisk);
-  setText(hint,lowDisk?'Disk space is low. Run a-stack storage status.':state.view!=='graph'?'Select a task for its report and dependencies.':state.zoom<.2?'Overview: blocks in status colors. Zoom in for titles.':state.zoom<.5?'Titles only. Zoom past 50% for reports and Agents.':'Drag to pan. Select a task to see its neighbours.');
+  setText(hint,lowDisk?'Disk space is low. Run a-stack storage status.':state.view!=='graph'?'Select a task for its report and dependencies.':state.zoom<.3?'Overview: blocks in status colors. Zoom in for titles.':state.zoom<.5?'Titles only. Zoom past 50% for reports and Agents.':'Drag to pan. Select a task to see its neighbours.');
   updateBanner();
 }
 function updateSource(message) {
   const service=version?'Local service '+version:'Local service';
   // While polls succeed, "just now" keeps the footer still, so it causes no layout every second.
-  const text=message || (notice?'No access · run a-stack open':lastSuccess?`${stale?'Saved · stale':service} · checked ${!stale&&Date.now()-lastSuccess<60000?'just now':age(new Date(lastSuccess).toISOString())}`:service+' · connecting');
+  const text=message || (notice?'No access · run a-stack':lastSuccess?`${stale?'Saved · stale':service} · checked ${!stale&&Date.now()-lastSuccess<60000?'just now':age(new Date(lastSuccess).toISOString())}`:service+' · connecting');
   updateHint();
   setText(document.querySelector('.preview-label'),text);setText(document.querySelector('.preview-short'),stale?'Saved · stale':'Read-only');
   setText($('source-info'),`${text}${model?'. Snapshot captured '+model.snapshot.captured_at+' · revision '+model.snapshot.session.read_revision+'. Runtime observations have their own age and are unverified.':''}`);
@@ -549,7 +557,7 @@ const favicon=document.querySelector('link[rel="icon"]'), plainIcon=favicon.href
 const dotIcon=plainIcon.replace('%3C/svg%3E',"%3Ccircle cx='25' cy='7' r='6.5' fill='%23d93025' stroke='%23ffffff' stroke-width='2'/%3E%3C/svg%3E");
 function updateTitle() {
   const n=model?model.tasks.filter(t=>t.needs_you).length:0;
-  const title=(notice&&!model?'No access · ':staleShown()?'Stale · ':'')+(n?`(${n}) Needs you · `:'')+(model?model.snapshot.session.name+' – a-stack':'a-stack');
+  const title=(notice?'No access · ':staleShown()?'Stale · ':'')+(n?`(${n}) Needs you · `:'')+(model?model.snapshot.session.name+' – a-stack':'a-stack');
   if(document.title!==title)document.title=title;
   const href=n?dotIcon:plainIcon;if(favicon.getAttribute('href')!==href)favicon.setAttribute('href',href);
 }
@@ -574,20 +582,25 @@ function notifyNew() {
   try{const n=new Notification('Needs you · '+model.snapshot.session.name,{body:`${ids.size===1?'1 Task needs':ids.size+' Tasks need'} you. Open the a-stack tab to answer.`,tag:'a-stack-needs-you-'+context.session_id});n.onclick=()=>{window.focus();n.close();};}catch{}
 }
 // Semantic zoom: below 50% (far) the cards are blocks in their status color with only the title, at a constant size on
-// screen; below 20% (farther) only the blocks. CSS scales every size by 1/zoom (--z), so no new layout runs.
+// screen; below 30% (farther) only the blocks: a block is then too narrow for more than one cut word.
+// CSS scales every size by 1/zoom (--z), so no new layout runs.
 // --lines is the number of title lines that fit the smallest full card at this zoom. Both are set only while zoomed
 // out: every card inherits them, so a change restyles the cards on screen.
 function applyZoom() {
   const z=state.zoom;graph.style.transform=`scale(${z})`;graph.parentElement.style.width=width*z+'px';graph.parentElement.style.height=height*z+'px';setText($('zoom-reset'),(z<.1?(z*100).toFixed(1):Math.round(z*100))+'%');
   if(z<.5){graph.style.setProperty('--z',z);graph.style.setProperty('--lines',Math.max(1,Math.floor((130*z-8)/16)));}
-  graph.classList.toggle('far',z<.5);graph.classList.toggle('farther',z<.2);updateHint();redrawMinimap();
+  graph.classList.toggle('far',z<.5);graph.classList.toggle('farther',z<.3);updateHint();redrawMinimap();
 }
 // The minimap: one canvas at the bottom right of the graph, drawn from the positions and heights that the layout
 // cached, never from the DOM. Its base picture is drawn once per graph change; a scroll redraws only the box of
-// the visible part. It is hidden while the graph fits, and m in the graph hides or shows it. It is for the pointer
-// only: screen readers skip it and it never takes the focus.
+// the visible part. It is hidden while the graph fits. The Minimap button in the footer, or m in the graph, turns it
+// off or on, and the button shows which, also while the graph fits. The minimap itself is for the pointer only:
+// screen readers skip it and it never takes the focus.
 const minimap=$('minimap'), mapCanvas=minimap.firstElementChild, phone=matchMedia('(max-width: 700px)');
 let mapBase=null, mapOn=load('a-stack-minimap')!=='0', mapFrame=0;
+const mapButton=$('minimap-toggle');
+function setMinimap(on) { mapOn=on;save('a-stack-minimap',on?'1':'0');mapButton.setAttribute('aria-pressed',String(on));drawMinimap(); }
+mapButton.setAttribute('aria-pressed',String(mapOn));mapButton.onclick=()=>setMinimap(!mapOn);
 function buildMinimap() {
   const [cw,ch]=phone.matches?[140,91]:[200,130], r=devicePixelRatio || 1, c=document.createElement('canvas');c.width=cw*r;c.height=ch*r;
   const x=c.getContext('2d'), s=Math.min((cw-12)/width,(ch-12)/height), ox=(cw-width*s)/2, oy=(ch-height*s)/2;
@@ -627,7 +640,7 @@ minimap.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefau
 minimap.addEventListener('pointermove',e=>{if(mapDrag)mapJump(e);});
 for(const type of ['pointerup','pointercancel'])minimap.addEventListener(type,()=>{mapDrag=false;});
 minimap.addEventListener('mousedown',e=>e.preventDefault()); // keeps the focus where it is
-panel.addEventListener('keydown',e=>{if(e.key==='m'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){mapOn=!mapOn;save('a-stack-minimap',mapOn?'1':'0');drawMinimap();}});
+panel.addEventListener('keydown',e=>{if(e.key==='m'&&!e.repeat&&!e.isComposing&&!e.ctrlKey&&!e.metaKey&&!e.altKey)setMinimap(!mapOn);});
 function setZoom(value) {
   const old=state.zoom;state.zoom=Math.max(.0001,Math.min(1.5,value));
   const x=(panel.scrollLeft+panel.clientWidth/2)/old,y=(panel.scrollTop+panel.clientHeight/2)/old;applyZoom();panel.scrollLeft=x*state.zoom-panel.clientWidth/2;panel.scrollTop=y*state.zoom-panel.clientHeight/2;
@@ -794,14 +807,23 @@ async function refresh() {
         }
         lastSuccess=Date.now();stale=false;failures=0;lowDisk=manifest.low;updateSource();if(state.selected&&!document.hidden)loadDetail();break;
       }catch(error){
-        if(error.status===409&&attempt<2){const shell=await fetch(location.pathname,{cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});if(shell.ok){instance=shell.headers.get('X-A-Stack-Instance') || instance;version=shell.headers.get('X-A-Stack-Version') || version;}continue;}throw error;
+        if(error.status===409&&attempt<2){const shell=await fetch(location.pathname,{cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});if(shell.ok){instance=shell.headers.get('X-A-Stack-Instance') || instance;version=shell.headers.get('X-A-Stack-Version') || version;updated(shell.headers.get('X-A-Stack-Assets') || pageAssets);}continue;}throw error;
       }
     }
   }catch(error){if(error.name!=='AbortError'){stale=true;failures++;answered=!(error instanceof TypeError)&&error.status!==401&&error.status!==403;if(error.status===401||error.status===403){token='';try{sessionStorage.removeItem(storageKey);}catch{}noAccess(accessEnded);}else if(model)updateSource();else{render();updateSource('Local service unavailable · retrying');}}}
   finally{busy=false;controller=null;schedule();}
 }
 // A hidden tab polls every 30 s, so its title, icon and notification still learn about Needs you; a 304 costs little.
-function schedule(){clearTimeout(timer);if(token)timer=setTimeout(refresh,document.hidden?30000:Math.min(30000,2000*2**Math.min(failures,4)));}
+// While the service does not answer at all, a visible tab tries every 4 s, so it soon learns that the service is
+// back, or that this view lost access; an error answer backs off up to 30 s.
+function schedule(){clearTimeout(timer);if(token)timer=setTimeout(refresh,document.hidden?30000:Math.min(answered?30000:4000,2000*2**Math.min(failures,4)));}
+// After a restart, the service may run another version or other view files than this page: say so, with a Reload
+// button. A reload keeps the view token, which is in the tab's session storage.
+function updated(assets) {
+  const same=version===pageVersion&&assets===pageAssets;$('update-note').hidden=same;
+  if(!same)setText($('update-text'),`a-stack was updated${version!==pageVersion?' to '+version:''}. Reload to get the new view.`);
+}
+$('reload').onclick=()=>location.reload();
 document.addEventListener('visibilitychange',()=>{document.documentElement.classList.toggle('tab-hidden',document.hidden);if(document.hidden){if(!busy)schedule();}else{clearTimeout(timer);render();refresh();}});
 setInterval(()=>{if(!document.hidden&&model){updateSource();updateRuntimeAges();updateNowAges();}},1000);
 patchNotify();
