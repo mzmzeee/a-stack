@@ -11,9 +11,7 @@ Keep an eye on your AI coding agents.
 
 When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
 
-- **Any agent, one picture.** Claude Code, Codex and any agent that can run a command share the same Tasks, dependencies and mail. You see the whole team in one browser tab.
-- **Your data stays here.** One binary and one SQLite file, reachable only from `127.0.0.1`. No account, no cloud, no telemetry. View links work once, and releases are signed.
-- **Nothing is lost when a session ends.** Reports, Task mail and answered questions stay after an Agent compacts, crashes or hits its limit, so a new Agent can pick up where the last one stopped.
+Reports, Task mail and answered questions stay when an Agent compacts, crashes or hits its limit, so a new Agent can pick up where the last one stopped.
 
 Works with Claude Code and Codex (with hooks), [Herdr](https://herdr.dev) (optional, not on Windows) and any agent with a shell. Runs on Linux, macOS and Windows.
 
@@ -21,14 +19,14 @@ Works with Claude Code and Codex (with hooks), [Herdr](https://herdr.dev) (optio
 
 ## How it works
 
-1. You start the a-stack service and create a Session for the team.
+1. You, or your coding agent, create a Session for the team in your project folder.
 2. The Agents register themselves in the Session. One of them becomes the Orchestrator.
 3. The Orchestrator divides the work into Tasks, assigns Agents to them and sets which Tasks depend on other Tasks.
 4. The Agents update their Tasks, write reports and send Task mail to the other Agents on the same Task.
 5. When an Agent needs your input, it marks its Task as Needs you, with a question.
 6. You follow the work in a read-only browser view.
 
-The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It runs on Linux, macOS and Windows, keeps all data on your computer and accepts connections only on `127.0.0.1`.
+The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It keeps all data on your computer, accepts connections only on `127.0.0.1` and needs no account. View links work once, and releases are signed. Windows support is new and not yet tested on a real Windows machine.
 
 If your Agents run in [Herdr](https://herdr.dev), a-stack can also tell an Agent to check its mail when another Agent mentions it. This is optional.
 
@@ -83,18 +81,27 @@ To start a-stack at login and restart it after a crash, run `a-stack service ins
 
 ## Quick start
 
+Teach your coding agents to use a-stack. You do this once:
+
+```sh
+a-stack skill install
+```
+
+Then start your coding agent in your project folder and ask it to use a-stack as the Orchestrator, with your goal. For example: "Use a-stack and be the Orchestrator. Goal: add OAuth login." The agent makes a Session for the folder, plans the Tasks and registers the other Agents. It starts them itself, or gives you a short brief to paste into each one. If no a-stack service runs, the agent runs `a-stack service install` and tells you.
+
+To watch the team, run `a-stack` in the project folder:
+
 ```sh
 cd ~/code/my-project
-a-stack new          # first time: creates a Workspace and a Session and opens the view
-a-stack              # later: opens your last Session
+a-stack              # open the Session of this folder in your browser
 a-stack -r           # pick another Session
 ```
 
 ![The a-stack -r picker in a terminal: three Sessions with their folders, open or closed, Task counts and one needs you. Tab switches between this folder and all folders.](docs/images/picker.png)
 
-If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C or close the terminal. To keep it running, run `a-stack service install`. If the service already runs, for example as a [systemd, launchd or Task Scheduler service](docs/install.md#start-a-stack-automatically), they use it and return.
+If no service runs, `a-stack` starts one in this terminal. It stops when you press Ctrl-C or close the terminal. To keep it running, run `a-stack service install`.
 
-The Task graph is empty at first. `a-stack new --orchestrator 01-orchestrator` also registers and appoints an Orchestrator and prints a brief to give your coding agent. With the skill installed, you can instead ask your coding agent to be the Orchestrator, and it runs that command itself. To hand the Session to an Orchestrator agent that registers the other Agents and plans the Tasks, see [Hand your Session to an Orchestrator](docs/getting-started.md#hand-your-session-to-an-orchestrator). To try a whole team on throwaway state first, follow [Getting started](docs/getting-started.md).
+To brief the coding agent yourself, run `a-stack new --orchestrator 01-orchestrator` in the project folder. It makes the Session, registers and appoints the Orchestrator, opens the view and prints a brief to paste into your coding agent. See [Hand your Session to an Orchestrator](docs/getting-started.md#hand-your-session-to-an-orchestrator). To try a whole team on throwaway state first, follow [Getting started](docs/getting-started.md).
 
 ## Documentation
 

@@ -51,7 +51,7 @@ git commit -m "a-stack X.Y.Z"
 git push
 ```
 
-Users then run `brew install mzmzeee/tap/a-stack`. The formula is for Linux only, because v0.1.4 has no macOS archives. For the first release with macOS archives, add an `on_macos` block with `a-stack_darwin_amd64.tar.gz` and `a-stack_darwin_arm64.tar.gz` and their sums, and remove `depends_on :linux`. It installs only the binary; for the service, users run `a-stack service install` (see [Start a-stack automatically](../docs/install.md#start-a-stack-automatically)). The unit then names the binary's real path in the Homebrew Cellar, which changes with each version, so users run `a-stack service install` again after `brew upgrade`. Users update with `brew upgrade`, not `a-stack update`.
+Users then run `brew install mzmzeee/tap/a-stack`. The formula is for Linux only, because v0.1.4 has no macOS archives. For the first release with macOS archives, add an `on_macos` block with `a-stack_darwin_amd64.tar.gz` and `a-stack_darwin_arm64.tar.gz` and their sums, and remove `depends_on :linux`. It installs only the binary; for the service, users run `a-stack service install` (see [Start a-stack automatically](../docs/install.md#start-a-stack-automatically)). The service then runs the binary by its real path in the Homebrew Cellar, which changes with each version, so users run `a-stack service install` again after `brew upgrade`. Users update with `brew upgrade`, not `a-stack update`.
 
 ## Publish the Scoop bucket
 
