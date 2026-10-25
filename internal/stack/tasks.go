@@ -130,7 +130,7 @@ type TaskChange struct {
 	ReferenceID string   `json:"reference_id,omitempty"`
 }
 type TaskContent struct {
-	ID         string `json:"id"`
+	ID         string `json:"id,omitempty"` // empty for a text without a row; see createTexts
 	Kind       string `json:"kind"`
 	Body       string `json:"body"`
 	ActorID    string `json:"actor_id"`
@@ -266,6 +266,24 @@ func insertContent(ctx context.Context, tx *sql.Tx, p Principal, taskID, kind, b
 	_, err := tx.ExecContext(ctx, "INSERT INTO task_content VALUES(?,?,?,?,?,?)", id, taskID, kind, body, p.SubjectID, now())
 	return id, err
 }
+
+// NotStarted is the reason of a Task that no assignee has started yet.
+const NotStarted = "Not started"
+
+// defaultText is the text of a Task that has no row for it: a new Task stores
+// no row for an empty description or for its starting reason. ok is false when
+// a missing row means that the Task has no such text.
+func defaultText(kind, progress string) (text string, ok bool) {
+	switch {
+	case kind == "description":
+		return "", true
+	case kind == "reason" && progress == "waiting":
+		// Only a new Task is Waiting without a reason: every later change to
+		// Waiting needs one.
+		return NotStarted, true
+	}
+	return "", false
+}
 func contentBody(ctx context.Context, tx *sql.Tx, id string) (string, error) {
 	if id == "" {
 		return "", nil
@@ -326,18 +344,20 @@ func (s *Store) CreateTask(ctx context.Context, token string, r TaskCreateReques
 		if err != nil {
 			return Receipt{}, err
 		}
-		description, err := insertContent(ctx, tx, p, id, "description", r.Description)
-		if err != nil {
-			return Receipt{}, err
+		// The starting reason and an empty description have no text row; see
+		// defaultText.
+		var texts []string
+		if r.Description != "" {
+			description, err := insertContent(ctx, tx, p, id, "description", r.Description)
+			if err != nil {
+				return Receipt{}, err
+			}
+			if _, err = tx.ExecContext(ctx, "UPDATE tasks SET description_ref=? WHERE id=?", description, id); err != nil {
+				return Receipt{}, err
+			}
+			texts = append(texts, description)
 		}
-		reason, err := insertContent(ctx, tx, p, id, "reason", "Not started")
-		if err != nil {
-			return Receipt{}, err
-		}
-		if _, err = tx.ExecContext(ctx, "UPDATE tasks SET description_ref=?,reason_ref=? WHERE id=?", description, reason, id); err != nil {
-			return Receipt{}, err
-		}
-		if err = recordTask(ctx, tx, p, id, "task.create", 1, TaskChange{Title: &r.Title, TicketRef: &r.TicketRef, TextIDs: []string{description, reason}, Progress: "waiting"}); err != nil {
+		if err = recordTask(ctx, tx, p, id, "task.create", 1, TaskChange{Title: &r.Title, TicketRef: &r.TicketRef, TextIDs: texts, Progress: "waiting"}); err != nil {
 			return Receipt{}, err
 		}
 		if err = bumpGraph(ctx, tx, r.SessionID); err != nil {
@@ -429,11 +449,15 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 			if err := validText(body, max, required); err != nil {
 				return err
 			}
-			old, err := contentBody(ctx, tx, *current)
-			if err != nil {
-				return err
+			old, stored := defaultText(kind, task.Progress)
+			if *current != "" {
+				var err error
+				if old, err = contentBody(ctx, tx, *current); err != nil {
+					return err
+				}
+				stored = true
 			}
-			if old == body && *current != "" {
+			if stored && old == body {
 				return nil
 			}
 			id, err := insertContent(ctx, tx, p, task.ID, kind, body)

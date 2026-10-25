@@ -16,6 +16,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 ### Changed
 
 - Schema 7 adds an expiry to credentials and a table of unused view links. It deletes every existing browser credential, because their secrets are in browser histories. **After the upgrade, open views lose access once: run `a-stack` or `a-stack open` again.**
+- A new Task stores no text row for an empty description or for its starting reason `Not started`. Reads show the same texts as before; in the `task.create` history entry, these two texts have no `id`. In a test with 2,000 new Tasks, each took 1,059 bytes instead of 1,817 without a description, and 1,458 instead of 1,835 with a short one.
 - The Working status icon turns three times when a Task starts working, then stays still, and waits while the tab is hidden. An endless spin kept the browser busy: about 6.5% of a CPU core with 150 Tasks open.
 - `serve` runs SQLite `PRAGMA quick_check` before it says ready. On a damaged database it stops with exit code 4, names the database file and points to the restore steps. On a 940 MB database the check adds about 0.2 seconds to the start.
 - A state database with a newer or unknown schema also stops `serve` with exit code 4. The message names the schema version it found and the newest one it supports, and says how to get back: update a-stack, or restore a backup. The systemd unit now has `RestartPreventExitStatus=3 4`, so it does not restart in a loop. Download the unit again to get this.

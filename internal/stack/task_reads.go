@@ -160,8 +160,10 @@ func (s *Store) ShowTask(ctx context.Context, token string, r TaskReadRequest) (
 	for _, field := range []struct {
 		ref    string
 		target *string
-	}{{task.descriptionRef, &detail.Description}, {task.reportRef, &detail.Report}, {task.reasonRef, &detail.Reason}, {task.resultRef, &detail.Result}} {
+		kind   string
+	}{{task.descriptionRef, &detail.Description, "description"}, {task.reportRef, &detail.Report, "report"}, {task.reasonRef, &detail.Reason, "reason"}, {task.resultRef, &detail.Result, "result"}} {
 		if field.ref == "" {
+			*field.target, _ = defaultText(field.kind, task.Progress)
 			continue
 		}
 		body, err := contentBody(ctx, tx, field.ref)
@@ -373,6 +375,9 @@ func snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequest, id str
 			}
 			h.Texts = append(h.Texts, text)
 		}
+		if h.Action == "task.create" {
+			h.Texts = createTexts(h)
+		}
 		if h.Changes.QuestionID != "" {
 			var q Question
 			err = tx.QueryRowContext(ctx, "SELECT id,task_id,question,asker_id,asked_at,note,COALESCE(resolver_id,''),COALESCE(resolved_at,'') FROM task_questions WHERE id=? AND task_id=?", h.Changes.QuestionID, r.TaskID).Scan(&q.ID, &q.TaskID, &q.Question, &q.AskerID, &q.AskedAt, &q.Note, &q.ResolverID, &q.ResolvedAt)
@@ -395,6 +400,19 @@ func snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequest, id str
 		return h, err
 	}
 	return nil, failure("invalid_input", "unknown read item")
+}
+
+// createTexts adds the texts that a new Task does not store (see defaultText)
+// to its create entry, without an ID, in the order older entries list them.
+func createTexts(h TaskHistoryEntry) []TaskContent {
+	if len(h.Texts) == 2 {
+		return h.Texts
+	}
+	texts := []TaskContent{{Kind: "description", ActorID: h.ActorID, ReceivedAt: h.ReceivedAt}}
+	if len(h.Texts) == 1 {
+		texts[0] = h.Texts[0]
+	}
+	return append(texts, TaskContent{Kind: "reason", Body: NotStarted, ActorID: h.ActorID, ReceivedAt: h.ReceivedAt})
 }
 func readReference(ctx context.Context, tx *sql.Tx, task, id string) (FileReference, error) {
 	var ref FileReference
