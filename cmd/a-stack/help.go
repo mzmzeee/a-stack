@@ -22,17 +22,26 @@ var helpGroups = []helpGroup{
 		{"new", "new [NAME]", "Create a Session for this folder and open it"},
 		{"", "-r, --resume", "Pick a Session in the terminal and open it"},
 		{"open", "", "Open one Session in the browser by its IDs"},
+		{"status", "", "Count what needs you, works, waits and finished"},
+		{"watch", "", "Print each change and ring on a new Needs you"},
+		{"statusline", "", "Print a status line for Claude Code"},
 		{"view revoke", "", "End browser view access: one Session or --all"},
 	}},
 	{"Agent skill", []helpRow{
 		{"skill install", "", "Install the agent skill in ~/.claude and ~/.agents"},
 		{"skill uninstall", "", "Remove the agent skill from ~/.claude and ~/.agents"},
+		{"hook install", "", "Add a-stack hooks for one Agent to Claude Code and Codex"},
+		{"hook uninstall", "", "Remove this folder's a-stack hooks"},
+		{"hook", "", "Handle one hook event (run by the harness)"},
 	}},
 	{"Service", []helpRow{
 		{"serve", "", "Run the service in the foreground"},
 		{"health", "", "Check the running service"},
 		{"version", "", "Print the version"},
 		{"update", "", "Install the latest release in place of this binary"},
+		{"service install", "", "Keep the service running with systemd"},
+		{"service uninstall", "", "Stop the systemd service and remove its unit"},
+		{"service status", "", "Show the systemd service, linger and health"},
 		{"storage status", "", "Show database and WAL sizes"},
 		{"storage backup", "", "Write a checked backup of the database"},
 	}},
@@ -45,6 +54,8 @@ var helpGroups = []helpGroup{
 		{"session close", "", "Close a Session"},
 		{"session reopen", "", "Reopen a closed Session"},
 		{"session appoint", "", "Appoint the Orchestrator of a Session"},
+		{"session snapshot", "", "Show a Session's revisions and counts"},
+		{"session page", "", "Read one page of a Session collection"},
 		{"agent register", "", "Register an Agent and write its credential"},
 		{"agent list", "", "List the Agents of a Session"},
 		{"agent attach", "", "Bind a running instance to an Agent"},
@@ -74,13 +85,15 @@ var helpGroups = []helpGroup{
 		{"dependency add", "", "Make one Task depend on another"},
 		{"dependency remove", "", "Remove a dependency"},
 		{"dependency history", "", "List the changes of the Task graph"},
-		{"session snapshot", "", "Show a Session's revisions and counts"},
-		{"session page", "", "Read one page of a Session collection"},
 	}},
 	{"Task mail", []helpRow{
 		{"mail send", "", "Send Task mail to the other assignees"},
 		{"mail read", "", "Read the mail of one Task"},
 		{"mail check", "", "Check new mail on all your Tasks"},
+	}},
+	{"Herdr", []helpRow{
+		{"herdr bind", "", "Bind your Agent to its own Herdr pane"},
+		{"herdr focus", "", "Show an Agent's Herdr pane (Operator)"},
 	}},
 	{"Notices", []helpRow{
 		{"notifications status", "", "Show Herdr notice delivery"},
@@ -115,14 +128,14 @@ var requiredFlags = map[string]string{
 	"agent observe": "agent runtime-id runtime-state", "task assign": "agent", "task unassign": "agent",
 	"task create": "title", "task status": "progress", "task reference add": "location",
 	"task reference remove": "reference", "dependency add": "from to", "dependency remove": "from to",
-	"session page": "page-kind",
+	"session page": "page-kind", "herdr bind": "agent", "herdr focus": "agent",
 }
 
 func flagRequired(command, name string) bool {
 	if strings.Contains(alwaysRequired, " "+name+" ") || strings.Contains(" "+requiredFlags[command]+" ", " "+name+" ") {
 		return true
 	}
-	scoped := isTaskCommand(command) || isMailCommand(command) || isNotificationCommand(command) || strings.HasPrefix(command, "agent ") || strings.HasPrefix(command, "session ")
+	scoped := isTaskCommand(command) || isMailCommand(command) || isNotificationCommand(command) || strings.HasPrefix(command, "agent ") || strings.HasPrefix(command, "session ") || strings.HasPrefix(command, "herdr ")
 	switch name {
 	case "workspace":
 		return scoped && command != "session list"
@@ -157,7 +170,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string
@@ -169,7 +182,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 	default:
 		text = prefixHelp(command)
 		if text == "" {
-			return invalid("unknown command; use --help")
+			return invalid("no help for " + short(command) + didYouMean(command) + "; use --help")
 		}
 	}
 	_, err := io.WriteString(stdout, text)
@@ -272,7 +285,7 @@ func flagLabel(fs *flag.FlagSet, name string) string {
 var flagValues = map[string]string{
 	"state-dir": "DIR", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE",
 	"herdr-executable": "FILE", "workspace": "ID", "session": "ID", "operation-id": "ID", "path": "DIR",
-	"name": "NAME", "agent": "ID", "worktree": "DIR", "new-credential-file": "FILE", "runtime-id": "ID",
+	"name": "NAME", "orchestrator": "NAME", "agent": "ID", "worktree": "DIR", "new-credential-file": "FILE", "runtime-id": "ID",
 	"runtime-file": "FILE", "runtime-state": "STATE", "expected-revision": "N", "limit": "N", "after": "CURSOR",
 	"task": "ID", "title": "TEXT", "description": "TEXT", "ticket": "REF", "report": "TEXT", "progress": "STATE",
 	"reason": "TEXT", "summary": "TEXT", "question": "TEXT", "note": "TEXT", "location": "PATH",
@@ -283,6 +296,12 @@ var flagValues = map[string]string{
 
 func flagText(fs *flag.FlagSet, command, name string) string {
 	text := fs.Lookup(name).Usage
+	if name == "body" && command != "mail send" {
+		text = "Same as --" + textFlag(command, "")
+		if command == "task status" {
+			text += ", or --summary with --progress finished"
+		}
+	}
 	if flagRequired(command, name) {
 		text += " (required)"
 	}

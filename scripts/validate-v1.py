@@ -44,11 +44,13 @@ def private_json(path, value):
 
 def fake_herdr(config_path, args):
     config = json.loads(Path(config_path).read_text())
-    if args == ['--version']:
-        print('herdr 0.9.5')
+    if args == ['status', 'server', '--json']:
+        print(json.dumps({'status': 'running', 'running': True, 'version': '0.9.5', 'protocol': 22,
+                          'compatible': True, 'endpoint_compatible': True}))
         return 0
     if args[:2] == ['agent', 'get'] and len(args) == 3:
-        target_key = 'herdr_alias'
+        # The notifier asks by alias; herdr bind asks by its own pane.
+        target_key = 'pane_id' if args[2].startswith('w1:p') else 'herdr_alias'
     elif args[:2] == ['agent', 'prompt'] and len(args) == 4:
         target_key = 'pane_id'
     else:
@@ -155,12 +157,12 @@ class Run:
                 process.stdout.close()
         check(failure is None, failure)
 
-    def cli(self, *args, actor=None, expect=None, stdin=None, state=None, ambiguous=False):
+    def cli(self, *args, actor=None, expect=None, stdin=None, state=None, ambiguous=False, env=None):
         command = [str(self.binary), *map(str, args), '--state-dir', str(state or self.state), '--json']
         if actor:
             command += ['--as', actor.get('kind', 'agent'), '--credential-file', str(actor['file'])]
         self.calls += 1
-        result = subprocess.run(command, input=stdin, capture_output=True, timeout=35)
+        result = subprocess.run(command, input=stdin, capture_output=True, timeout=35, env=os.environ | env if env else None)
         if ambiguous and result.returncode:
             check(not result.stdout and json.loads(result.stderr)['error']['code'] == 'storage_unavailable', 'ambiguous call reported false success')
             return None
@@ -255,17 +257,26 @@ class Run:
                    'terminal_id': 'fake-terminal-' + suffix, 'native_session_id': 'fake-native-' + suffix, 'harness': 'codex', 'harness_version': '0.164.0'}
         path = self.root / ('binding-' + suffix + '.json')
         private_json(path, binding)
-        revision = next(a['revision'] for a in self.cli('agent', 'list', *self.context)['items'] if a['id'] == actor['id'])
-        args = ['agent', 'rebind' if rebind else 'attach', *self.context, '--agent', actor['id'], '--runtime-file', path, '--expected-revision', revision, '--operation-id', self.op()]
-        if rebind:
-            replacement = self.credentials / ('replacement-' + suffix + '.json')
-            self.cli(*args, '--new-credential-file', replacement)
-            actor['file'] = replacement
-        else:
-            self.cli(*args, actor=actor)
         self.config['targets'] = [b for b in self.config['targets'] if b['herdr_alias'] != binding['herdr_alias']]
         self.config['targets'].append(binding)
         self.set_fake()
+        revision = next(a['revision'] for a in self.cli('agent', 'list', *self.context)['items'] if a['id'] == actor['id'])
+        if rebind:
+            replacement = self.credentials / ('replacement-' + suffix + '.json')
+            self.cli('agent', 'rebind', *self.context, '--agent', actor['id'], '--runtime-file', path, '--expected-revision', revision,
+                     '--operation-id', self.op(), '--new-credential-file', replacement)
+            actor['file'] = replacement
+        else:
+            # The Agent binds itself from inside its (fake) Herdr pane.
+            harness = self.root / 'bin' / 'codex'
+            if not harness.exists():
+                harness.parent.mkdir(mode=0o700)
+                harness.write_text('#!/bin/sh\necho codex-cli 0.164.0\n')
+                harness.chmod(0o700)
+            env = {'HERDR_ENV': '1', 'HERDR_PANE_ID': binding['pane_id'], 'HERDR_SOCKET_PATH': binding['endpoint'], 'PATH': str(harness.parent) + os.pathsep + os.environ['PATH']}
+            receipt = self.cli('herdr', 'bind', *self.context, '--agent', actor['id'], '--herdr-executable', self.fake, '--expected-revision', revision,
+                               '--operation-id', self.op(), actor=actor, env=env)
+            check(receipt['outcome'] == 'attached', 'herdr bind did not attach')
         return binding
 
     def status(self, actor=None):

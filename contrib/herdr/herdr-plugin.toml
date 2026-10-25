@@ -1,0 +1,21 @@
+# a-stack plugin for Herdr: open the browser view of a Session and watch it
+# in a popup. Both commands only read. Set the Session once in
+# $HERDR_PLUGIN_CONFIG_DIR/a-stack.env, see README.md.
+id = "mzmzeee.a-stack"
+name = "a-stack"
+version = "0.1.5"
+min_herdr_version = "0.9.5"
+description = "Open the a-stack view of a Session, or watch it in a popup"
+platforms = ["linux"]
+
+[[actions]]
+id = "open-view"
+title = "Open a-stack view"
+contexts = ["workspace"]
+command = ["sh", "-c", ". \"$HERDR_PLUGIN_CONFIG_DIR/a-stack.env\" && exec a-stack open --workspace \"$A_STACK_WORKSPACE\" --session \"$A_STACK_SESSION\""]
+
+[[panes]]
+id = "watch"
+title = "a-stack watch"
+placement = "popup"
+command = ["sh", "-c", ". \"$HERDR_PLUGIN_CONFIG_DIR/a-stack.env\" && exec a-stack watch --session \"$A_STACK_SESSION\""]

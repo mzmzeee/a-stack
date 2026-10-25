@@ -155,9 +155,13 @@ func TestCLIMailInputIndependentCursorsRemovalAndRejoin(t *testing.T) {
 	if json.Unmarshal(checkData, &check) != nil || len(check.Tasks) != 1 || len(check.Tasks[0].Messages) != 1 {
 		t.Fatal("CLI check cursors")
 	}
+	var saved map[string]string
 	after, _ := os.ReadFile(cursorFile)
-	if !bytes.Equal(cursorData, after) {
-		t.Fatal("CLI rewrote caller cursor state")
+	if json.Unmarshal(after, &saved) != nil || len(saved) != 1 || saved[task.ResourceID] != check.Tasks[0].Cursor {
+		t.Fatal("CLI did not save the returned cursor")
+	}
+	if checkData = invoke(args(aFile, "mail", "check", "--cursor-file", cursorFile), 0); json.Unmarshal(checkData, &check) != nil || len(check.Tasks) != 0 || check.More {
+		t.Fatal("saved cursor showed old mail again")
 	}
 	command := child(t, args(bFile, "mail", "send", "--task", task.ResourceID, "--operation-id", "mail-cli-stdin", "--body-file", "-")...)
 	command.Stdin = strings.NewReader("Stdin body @02-worker\nsecond line")

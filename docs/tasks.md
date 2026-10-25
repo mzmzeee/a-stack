@@ -1,6 +1,6 @@
 # Tasks and the Task graph
 
-A Task belongs to one Session. Every Task command needs `--workspace ID --session ID`. Agent commands also need `--as agent --credential-file PRIVATE_FILE`. The current directory never changes the context. (Only the Operator commands `a-stack`, `a-stack -r` and `a-stack new` use it, to choose a Session to open. See [Workspaces, Sessions and Agents](lifecycle.md).) Before you use these commands, enroll the Operator, the Orchestrator and the other Agents as described in [Workspaces, Sessions and Agents](lifecycle.md).
+A Task belongs to one Session. Every Task command needs `--workspace ID --session ID`. Agent commands also need `--as agent --credential-file PRIVATE_FILE`, and can leave out the IDs when that file names them (see [Credential context](lifecycle.md#credential-context)). The current directory never changes the context. (Only the Operator commands `a-stack`, `a-stack -r` and `a-stack new` use it, to choose a Session to open. See [Workspaces, Sessions and Agents](lifecycle.md).) Before you use these commands, enroll the Operator, the Orchestrator and the other Agents as described in [Workspaces, Sessions and Agents](lifecycle.md).
 
 ## Who can do what
 
@@ -28,17 +28,17 @@ The Orchestrator must assign itself to a Task before it can do assignee actions 
 These examples use the IDs and private credentials from [Workspaces, Sessions and Agents](lifecycle.md). If you use a different state directory, add the same `--state-dir` to every command.
 
 ```sh
-./a-stack task create --as agent --credential-file "$orchestrator_credential" \
+a-stack task create --as agent --credential-file "$orchestrator_credential" \
   --workspace "$workspace_id" --session "$session_id" --title "Build feature" \
   --body-file work-description.txt --ticket '#42' --operation-id task-create-42 --json
 # Set task_id to data.resource_id. A new Task has revision 1.
-./a-stack task assign --as agent --credential-file "$orchestrator_credential" \
+a-stack task assign --as agent --credential-file "$orchestrator_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --agent "$worker_a_id" --expected-revision 1 --operation-id assign-worker-a --json
-./a-stack task assign --as agent --credential-file "$orchestrator_credential" \
+a-stack task assign --as agent --credential-file "$orchestrator_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --agent "$worker_b_id" --expected-revision 2 --operation-id assign-worker-b --json
-./a-stack task status --as agent --credential-file "$worker_a_credential" \
+a-stack task status --as agent --credential-file "$worker_a_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --progress working --expected-revision 3 --operation-id task-start-work --json
 ```
@@ -69,11 +69,11 @@ An archived Task is a Finished or Cancelled Task that the browser view hides by 
 3. `age`: the Task became Finished or Cancelled 24 hours ago or more.
 
 ```sh
-./a-stack task archive --as agent --credential-file "$orchestrator_credential" \
+a-stack task archive --as agent --credential-file "$orchestrator_credential" \
   --workspace "$workspace_id" --session "$session_id" --task "$task_id" \
   --expected-revision 6 --operation-id archive-side-work --json
 # The Operator runs the same command without --as and --credential-file.
-./a-stack task unarchive --workspace "$workspace_id" --session "$session_id" \
+a-stack task unarchive --workspace "$workspace_id" --session "$session_id" \
   --task "$task_id" --expected-revision 7 --operation-id unarchive-side-work --json
 ```
 
@@ -89,9 +89,9 @@ a-stack stores only the command, as `archived_at`, and the time the Task last be
 
 ## Text input and limits
 
-Instead of a text flag, you can give `--body-file FILE`. The file supplies this field:
+Instead of a text flag, you can give `--body TEXT` or `--body-file FILE`. They supply this field:
 
-| Command | Field from `--body-file` |
+| Command | Field from `--body` or `--body-file` |
 | --- | --- |
 | `task create`, `task edit` | Description |
 | `task report` | Report |
@@ -99,7 +99,7 @@ Instead of a text flag, you can give `--body-file FILE`. The file supplies this 
 | Other `task status`, `task reopen` | Reason |
 | `task attention set`, `task attention resolve` | Question or note |
 
-`--body-file -` reads stdin. You cannot give the text flag and a body file for the same field.
+`--body-file -` reads stdin. Give only one of the text flag, `--body` and `--body-file`. `task status` with `--progress waiting` or `cancelled` needs a reason, and with `--progress finished` a summary; without it, the error says which flag is missing, such as `--reason is required for --progress waiting`. A text error names its field, such as `title is required` or `reason exceeds 2048 bytes`.
 
 | Text | Limit |
 | --- | --- |

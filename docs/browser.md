@@ -7,9 +7,9 @@ The browser view shows one Session: its Task graph, its Agents and the details o
 Run `serve` in one terminal. Then open one Workspace and Session by its IDs, or use one of the [shorter commands](#open-the-last-session):
 
 ```sh
-./a-stack open --workspace WORKSPACE_ID --session SESSION_ID
+a-stack open --workspace WORKSPACE_ID --session SESSION_ID
 # Print the URL, but do not start xdg-open:
-./a-stack open --workspace WORKSPACE_ID --session SESSION_ID --no-browser --json
+a-stack open --workspace WORKSPACE_ID --session SESSION_ID --no-browser --json
 ```
 
 `open` accepts the usual `--state-dir`, `--credential-file` and `--as` flags. Only the Operator can open the view, also for a closed Session. With an Agent credential, `open` fails with `forbidden`, because the view reads the Task mail of every Task in its Session. The view reads the Session metadata and that Task mail. It cannot open another view, send or check mail, or use the write, storage or runtime endpoints.
@@ -28,7 +28,7 @@ a-stack new [NAME]   # make a Session for the current folder and open it
 
 They act as the Operator with `operator.json` in the state directory. They accept `--state-dir`, `--no-browser` and `--json`, but no credential flags. Each one opens the view the same way as `open`: a new one-time link, the same `xdg-open` launch and the same fixed message when the launch fails. Before the URL, it prints the name and folder of the Session that it opens. With `--json`, the `data` object also has `workspace_id`, `workspace_path`, `session_id`, `session_name` and `current_folder`.
 
-If no service answers for the state directory, the command starts the service in the foreground first, with the same checks and lock as `serve`. It prints a line with the service URL (with `--json`, the same ready line as `serve`), opens the view, and keeps the service running until Ctrl-C, SIGTERM or SIGHUP. SIGHUP comes when you close the terminal, so the service still shuts down cleanly and removes `service.json`. A hint or a failed step does not stop the service. The error goes to stderr. If another `serve` holds the state directory lock but does not answer yet, because it is still starting or hangs, the command says so and exits with 3. To use `--listen` or `--herdr-executable`, start `serve` yourself.
+If no service answers for the state directory, the command starts the service in the foreground first, with the same checks and lock as `serve`. It prints a line with the service URL and a line that says how to keep it running with `a-stack service install` (with `--json`, only the same ready line as `serve`), opens the view, and keeps the service running until Ctrl-C, SIGTERM or SIGHUP. SIGHUP comes when you close the terminal, so the service still shuts down cleanly and removes `service.json`. A hint or a failed step does not stop the service. The error goes to stderr. If another `serve` holds the state directory lock but does not answer yet, because it is still starting or hangs, the command says so and exits with 3. To use `--listen` or `--herdr-executable`, start `serve` yourself.
 
 ### How `a-stack` picks the Session
 
@@ -53,6 +53,8 @@ The picker uses raw terminal input and plain ANSI escapes, and it restores the t
 ### Make a Session with `a-stack new`
 
 `a-stack new` uses the Workspace whose folder is exactly the current folder, after it resolves symlinks. If there is none, it creates one. Then it creates a Session named NAME, or named after the folder. Then it opens the view.
+
+If that Workspace already has an open Session with the same name, `a-stack new` makes no second one. It says so and opens the existing Session (in JSON, `"existing_session":true` and no `session_operation_id`). To make another Session in the same folder, give it a new name: `a-stack new NAME`. A closed Session of the same name does not count; to open it, run `a-stack -r`.
 
 a-stack asks the caller to make the operation IDs. Here the CLI is the caller: it makes a random ID (`cli-` and 22 characters) for each change and prints it, in JSON as `workspace_operation_id` and `session_operation_id`. If the outcome of a change is unknown, the error names the command and the operation ID to send the same change again.
 

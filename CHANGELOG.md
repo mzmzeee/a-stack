@@ -6,12 +6,32 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-25
+
+Upgrading from v0.1.4: run `a-stack update`, then restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`). The first start copies the database to `state.db.pre-v6` and moves it to schema 7. Open browser views lose access once, because old view links are revoked: run `a-stack` to open a new one. If you set up the systemd unit by hand, run `a-stack service install` once to update it.
+
 ### Added
 
+- `a-stack new --orchestrator NAME` also registers that Agent, with a credential file in `a-stack-agents` next to the state directory, appoints it as the Orchestrator and prints a brief to paste into the coding agent. It checks the name and the credential file before it makes anything, and refuses a Session that already has an Orchestrator.
+- `a-stack status` prints one line per Session: how many Tasks need you, work, wait and finished. `a-stack watch` prints that once, then one line per change (new Tasks, status changes, Needs you, answers, reports) until Ctrl-C, and rings the terminal bell on a new Needs you. `--notify` also shows a desktop notice through `notify-send`, without the question unless you add `--notify-text`. Both use the Operator credential, only read, and show the current folder's Sessions, or `--session ID` or `--all`. Watch reads a Session's Tasks only when its read revision changed. See [Watch from the terminal](docs/watch.md).
+- `a-stack statusline` prints a line for Claude Code's status line, such as `a-stack OAuth login: 1 needs you · 2 working`, for the Workspace of the session's folder. It never prints a view URL, and prints nothing on any error. See [Claude Code status line](docs/watch.md#claude-code-status-line).
+- `a-stack hook install` adds hooks for one Agent to Claude Code (`settings.json`) and Codex (`hooks.json`), or with `--project` to the current folder. At session start, also after a compaction, the agent gets a reminder of its a-stack name, its open Tasks and to run `mail check`. Prompts and tool calls record the runtime state `working`, a permission request `blocked`, and a stop `idle`, when you give `--runtime-id`. The hook command names the credential file and the IDs explicitly; install takes them from a v0.1.5 credential file when you leave them out. Install keeps all other settings and hooks, and `a-stack hook uninstall` removes only a-stack's hooks for the folder. The hook exits 0 silently on any error and stops itself after 2 seconds, so it never stops the agent. See [Agent hooks](docs/hooks.md).
+- The install guide shows `go install github.com/mzmzeee/a-stack/cmd/a-stack@latest`, which needs a C compiler. `contrib/` has an AUR `PKGBUILD` for `a-stack-bin` and a Homebrew formula for Linux, both from the release archives and their checksums, with the steps to publish them. They are not published yet.
 - Each Agent has a write budget, so a runaway loop cannot fill the disk. A change costs the size of its request; an Agent can spend 8 MiB at once and 1 MiB more a minute. Past that, a change gets the new error code `rate_limited` (HTTP 429, retryable) with `retry_after_seconds`. A replay of a committed operation ID and the Operator are never limited. In a rerun of the review's reproduction (16 parallel `mail send` loops with 64 KiB bodies from one Agent for 20 seconds), the Agent stored 13,835 messages (925 MB) before and 132 messages (8 MB) now; another Agent could still send.
+- `a-stack service install` sets up the systemd user service in one step, so a-stack keeps running after you close the terminal. It writes `~/.config/systemd/user/a-stack.service` (or below `$XDG_CONFIG_HOME`) from the unit in the binary, with the real path of the running binary and the CLI's state directory, then runs `daemon-reload` and `enable --now` and waits until the service answers. It refuses while an `a-stack serve` outside systemd holds the state directory, says when it updated a different unit, and prints the `loginctl enable-linger` command when linger is off. `a-stack service status` shows the unit, enabled, active, binary, linger and health; `a-stack service uninstall` disables the service and removes the unit, and never touches the state directory.
+- When `a-stack`, `a-stack -r` or `a-stack new` start the service in the terminal, they say that closing the terminal stops a-stack and how to keep it running.
 - `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
 - `a-stack view revoke --workspace ID --session ID` ends browser view access to one Session, and `--all` to every Session. Open tabs say that they lost access at their next refresh. Only the Operator can run it.
 - A background browser tab now shows Needs you: it polls every 30 seconds, the tab title counts the requests (`(2) Needs you · Session – a-stack`) and the tab icon gets a red dot. An opt-in "Notify me" button shows a system notification when a Task newly needs you; it names the Session and the number of requests, never the question, and sends nothing to the service.
+- `a-stack herdr bind` lets an Agent that runs inside Herdr bind itself to its own pane, in place of a hand-written runtime file. It reads `HERDR_PANE_ID` and `HERDR_SOCKET_PATH`, asks Herdr for its pane's agent and native session, names an unnamed pane `a-<name>`, reads the harness version from `claude --version` or `codex --version`, and sends the usual `agent attach`. Without Herdr's integration it fails with the new error code `integration_missing` and names `herdr integration install claude` or `codex`. The agent skill has a short step for it.
+- `a-stack herdr focus --agent ID` shows a bound Agent's pane in the Operator's Herdr. The service checks the binding against Herdr first, as before a notice, then runs `herdr agent focus`, or `herdr tab focus` if that fails. Only the Operator can run it.
+- `contrib/herdr` holds a small Herdr plugin: the action "Open a-stack view" runs `a-stack open` for the Session named in its config file, and the popup pane `watch` runs `a-stack watch` for it. Install it with `herdr plugin install mzmzeee/a-stack/contrib/herdr`.
+- `--body TEXT` works on every command that takes one inline text (`task create`, `task edit`, `task status`, `task reopen`, `task report`, `task attention set` and `resolve`), like `--body-file`. The specific flags such as `--report` stay.
+- A mistyped command, help topic or flag gets a suggestion, such as `unknown command tsak list (did you mean task list?)`. A stray word gets `unexpected argument abc for task show (did you mean --task abc?)`.
+- `a-stack task` and other first words alone print the commands of the group, like `a-stack help task`, and exit with 0. With flags, they fail with `invalid_input` and list the words that can follow.
+- Getting started has a section "Hand your Session to an Orchestrator", with the commands the Operator runs after `a-stack new`. The README Quick start points to it.
+- `agent register` and `agent rebind` write the Workspace ID, the Session ID and the Agent name into the new credential file. These fields are not secret. With such a file, Agent commands can leave out `--workspace` and `--session`; a flag that is given must match the file. Older credential files keep working with explicit flags.
+- `mail check` has a top-level `more`, true when more mail is waiting than the response holds. Without `--cursor-file`, the output then has a `hint`.
 
 ### Changed
 
@@ -26,7 +46,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - Schema 7 adds an expiry to credentials and a table of unused view links. It deletes every existing browser credential, because their secrets are in browser histories. **After the upgrade, open views lose access once: run `a-stack` or `a-stack open` again.**
 - The Working status icon turns three times when a Task starts working, then stays still, and waits while the tab is hidden. An endless spin kept the browser busy: about 6.5% of a CPU core with 150 Tasks open.
 - `serve` runs SQLite `PRAGMA quick_check` before it says ready. On a damaged database it stops with exit code 4, names the database file and points to the restore steps. On a 940 MB database the check adds about 0.2 seconds to the start.
-- A state database with a newer or unknown schema also stops `serve` with exit code 4. The message names the schema version it found and the newest one it supports, and says how to get back: update a-stack, or restore a backup. The systemd unit now has `RestartPreventExitStatus=3 4`, so it does not restart in a loop. Download the unit again to get this.
+- A state database with a newer or unknown schema also stops `serve` with exit code 4. The message names the schema version it found and the newest one it supports, and says how to get back: update a-stack, or restore a backup. The systemd unit now has `RestartPreventExitStatus=3 4`, so it does not restart in a loop. Run `a-stack service install` to update the unit.
 - Before a schema migration, `serve` writes a private copy of the database, `state.db.pre-vN`, with `VACUUM INTO`. It never replaces an earlier copy, and it does not migrate when it cannot write the copy.
 - The restore steps check the backup with `PRAGMA integrity_check` first.
 - When the service is not running, cannot be reached or its response is cut off, the CLI error has `retryable: true`, because the change may have been made. The message also says to ask the Operator to start the service, which is what an Agent must do.
@@ -34,12 +54,25 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - `a-stack update --version` with an older version warns that the older a-stack may not open the current database, and says how to go back.
 - The release notes say to run `a-stack update`.
 - `scripts/build-release.sh` pins the versions of the Alpine packages it installs (`gcc`, `musl-dev`, `binutils`).
+- Mention notices accept a harness release in the minor line of a fixture-verified version, from that version up: Codex 0.164.x from 0.164.0, where only 0.164.0 was accepted. Herdr is accepted when its running server reports protocol 22 and a compatible CLI and endpoint (`herdr status server --json`), not only when the CLI prints `herdr 0.9.5`. A Herdr that is not running is now `herdr_unavailable`. Claude Code stays mail-only: a partial check with Claude Code 2.1.310 showed bind and focus work, and a mention parks as `unsupported_harness` until a full fixture run. See [Claude Code: partial fixture](docs/notifications.md#claude-code-partial-fixture).
+- With Herdr notices on, an Agent without a complete binding (`binding_incomplete`) or with an unsupported harness (`unsupported_harness`) is no longer checked again every 30 seconds. Its notices wait until its binding is attached or changed, or the service starts, and `notifications status` shows `next_attempt_unix_ms: -1`. Each check was a committed write: on the 2,000-Task fixture with 23 such Agents and no clients, the idle service wrote 3,809,280 bytes in 120 seconds before (the WAL grew from 94,792 to 473,832 bytes, 13.7 wakeups a second), and now writes 0 bytes (2.7 wakeups a second).
+- `invalid_input` errors name what is wrong: the flag that does not apply to the command, the unknown flag, the bad value (`invalid value "abc" for --expected-revision`), and the missing or bad text field (`--reason is required for --progress waiting`, `title is required`, `reason exceeds 2048 bytes`).
+- A bad operation ID gets `operation ID must be 8–128 letters, digits, _ or -`, also on `agent register`, instead of a generic or misleading message. The `--operation-id` help states the rule.
+- A mail with a mention that is not a current assignee names each such mention and lists the assignee names.
+- An ID flag (`--workspace`, `--session`, `--agent`, `--task`, `--from`, `--to`, `--reference`) with a value that cannot be an ID fails before the CLI contacts the service, for example `--agent takes an Agent ID; 01-orch looks like a name; see a-stack agent list`. The CLI still never looks a name up.
+- `a-stack new` opens the open Session of the same name in this folder's Workspace instead of making a second one. Another name still makes a new Session.
+- A flag given twice is rejected, except `--mention`. `version` and `--version` reject flags that do not apply to them. `help version` no longer lists credential flags.
+- The help lists `session snapshot` and `session page` with the Session commands.
+- `mail check --cursor-file FILE` now writes the file: it merges the returned cursors and the Task scan position into it, atomically and with mode 0600, and creates it if it is missing. The same command run again shows only new mail, and the output lists only the Tasks with new mail. Before, a plain `mail check` started at message 1 every time and stopped at 100 messages, so an Agent on a busy Task never saw its newest mail (in the review's reproduction with 105 messages, messages 100–105 never appeared), and every check put old mail back into its context. Now the second check reaches message 105, and a third shows nothing. Two checks with the same file at once leave a whole file; the last write wins. `--cursor-file -` still only reads.
+- The agent skill uses `mail check --cursor-file` in its work loop, and its `me` helper needs only the credential file. It no longer reads the Task before every change: it uses the revision of the Task it read or of its last receipt, and reads again only after a `conflict`, so the revision check catches changes by others again. One full work loop takes 8 commands instead of 11. The `rev` and `grev` helper scripts are gone.
 
 ### Fixed
 
 - Before its first snapshot, the browser view said "Nothing needs you" and showed an active Needs you button. It now says that it is loading.
 - A browser view that cannot reach the service shows a banner above the view after ten seconds, and "Stale" in the tab title, also when the first load fails. Before, only a small footer line said so, after thirty seconds.
 - When the service refuses `agent register` or `agent rebind` with an error that is not retryable, the CLI deletes the new credential file that the command wrote. A file that existed before is kept.
+- JSON output from the service ends in one newline, not two.
+- The docs say which commands take `--state-dir`, and use `a-stack` instead of `./a-stack` in examples.
 
 ### Security
 
@@ -163,7 +196,8 @@ The first release.
 - One static Linux binary for `amd64` and `arm64`, with SQLite built in. It accepts connections only on `127.0.0.1`.
 - An install script that checks the download against the release checksums.
 
-[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/mzmzeee/a-stack/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/mzmzeee/a-stack/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/mzmzeee/a-stack/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/mzmzeee/a-stack/compare/v0.1.1...v0.1.2

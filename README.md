@@ -11,6 +11,12 @@ Keep an eye on your AI coding agents.
 
 When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
 
+- **Any agent, one picture.** Claude Code, Codex and any agent that can run a command share the same Tasks, dependencies and mail. You see the whole team in one browser tab.
+- **Your data stays here.** One binary and one SQLite file, reachable only from `127.0.0.1`. No account, no cloud, no telemetry. View links work once, and releases are signed.
+- **Nothing is lost when a session ends.** Reports, Task mail and answered questions stay after an Agent compacts, crashes or hits its limit, so a new Agent can pick up where the last one stopped.
+
+Works with Claude Code and Codex (with hooks), [Herdr](https://herdr.dev) (optional) and any agent with a shell. Runs on Linux; macOS and Windows are coming.
+
 ![Demo in seven captioned steps, with a terminal above the browser view and an arrow on each change. 1, a-stack new creates a Session for an OAuth login and opens the Now tab. 2, the Orchestrator adds four Tasks, which wait in the Waiting column. 3, the Agents 02-backend and 03-frontend start work, and their Tasks move to Working. 4, 02-backend sends Task mail to @03-frontend, 03-frontend replies, and the Task details show both messages with the mention highlighted. 5, 02-backend asks "GitHub or Google first?", the Task moves to Needs you and the button says 1 needs you. 6, after the answer the Task is Working again. 7, a-stack -r picks another Session, which also has a question for you.](docs/images/demo.gif)
 
 ## How it works
@@ -63,11 +69,11 @@ Old work is archived so that it does not clutter the graph. a-stack archives a f
 curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | sh
 ```
 
-The script installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download or a build from source, see [Install](docs/install.md).
+The script installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download, `go install` (it needs a C compiler) or a build from source, see [Install](docs/install.md).
 
 To update, run `a-stack update` and restart the service. See [Update](docs/install.md#update).
 
-To start a-stack at boot and restart it after a crash, see [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
+To start a-stack at boot and restart it after a crash, run `a-stack service install`. See [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
 
 ## Quick start
 
@@ -80,9 +86,9 @@ a-stack -r           # pick another Session
 
 ![The a-stack -r picker in a terminal: three Sessions with their folders, open or closed, Task counts and one needs you. Tab switches between this folder and all folders.](docs/images/picker.png)
 
-If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C. If the service already runs, for example as a [systemd service](docs/install.md#start-a-stack-automatically), they use it and return.
+If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C or close the terminal. To keep it running, run `a-stack service install`. If the service already runs, for example as a [systemd service](docs/install.md#start-a-stack-automatically), they use it and return.
 
-The Task graph is empty at first. To register Agents and give them Tasks, follow [Getting started](docs/getting-started.md).
+The Task graph is empty at first. `a-stack new --orchestrator 01-orchestrator` also registers and appoints an Orchestrator and prints a brief to give your coding agent. To hand the Session to an Orchestrator agent that registers the other Agents and plans the Tasks, see [Hand your Session to an Orchestrator](docs/getting-started.md#hand-your-session-to-an-orchestrator). To try a whole team on throwaway state first, follow [Getting started](docs/getting-started.md).
 
 ## Documentation
 
@@ -91,6 +97,8 @@ The Task graph is empty at first. To register Agents and give them Tasks, follow
 - [Tasks and the Task graph](docs/tasks.md): create and assign Tasks, report progress, ask questions, add dependencies.
 - [Task mail](docs/mail.md): send and read messages, and mention Agents.
 - [Browser view](docs/browser.md): open the view and read what it shows.
+- [Watch from the terminal](docs/watch.md): `a-stack status`, `a-stack watch` and `a-stack statusline` show what needs you, with a bell, opt-in desktop notices and a Claude Code status line.
+- [Agent hooks](docs/hooks.md): `a-stack hook install` reminds Claude Code and Codex agents of their Tasks after a compaction and reports their runtime state.
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
 - [Agent skill](docs/agent-skill.md): run `a-stack skill install` to teach your coding agents to work in an a-stack Session.
@@ -100,7 +108,7 @@ To see all commands, run `a-stack --help`. To see the flags of one command, run 
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, and the checks.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and the checks.
 
 ## License
 
