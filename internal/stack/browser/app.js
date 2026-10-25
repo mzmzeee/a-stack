@@ -485,6 +485,7 @@ function render() {
   }
   setText(document.querySelector('.workspace-title h1'),model.snapshot.session.name);
   setText($('project-name'),model.snapshot.workspace_name || '');$('project-name').hidden=!model.snapshot.workspace_name; // the Workspace folder name, never its full path
+  const orders=model.snapshot.session.standing_orders?.body || '';setText($('orders-text'),orders);$('orders').hidden=!orders; // the Workspace's standing orders, read-only
   setText(document.querySelector('.workspace-subtitle'),`${plural(model.agents.length,'agent')} · ${plural(model.tasks.length,'task')}${model.snapshot.session.closed?' · Closed Session':''}`);
   const count=model.tasks.filter(matches).length, attention=model.tasks.filter(t=>t.needs_you);
   const attentionText=attention.length?`Needs you (${attention.length})`:'All clear';

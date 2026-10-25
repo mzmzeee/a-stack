@@ -305,6 +305,13 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		}
 		return writeData(stdout, data)
 	}
+	if isOrdersCommand(cmd) {
+		data, err := ordersRequest(ctx, client, cmd, lifecycle, tasks, seen)
+		if err != nil {
+			return err
+		}
+		return writeData(stdout, data)
+	}
 	if isLifecycleCommand(cmd) {
 		data, err := lifecycleRequest(ctx, client, cmd, lifecycle)
 		if err != nil {

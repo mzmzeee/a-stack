@@ -49,6 +49,9 @@ var helpGroups = []helpGroup{
 	{"Workspaces, Sessions and Agents", []helpRow{
 		{"workspace create", "", "Register a project folder as a Workspace"},
 		{"workspace list", "", "List Workspaces"},
+		{"workspace orders show", "", "Show a Workspace's standing orders"},
+		{"workspace orders set", "", "Set the standing orders that every Agent reads (Operator)"},
+		{"workspace orders clear", "", "Clear a Workspace's standing orders (Operator)"},
 		{"session create", "", "Create a Session in a Workspace"},
 		{"session list", "", "List the Sessions of a Workspace"},
 		{"session inspect", "", "Show one Session"},
@@ -128,6 +131,7 @@ var requiredFlags = map[string]string{
 	"open": "workspace session", "storage backup": "destination",
 	"workspace create": "path", "session create": "workspace name",
 	"session list": "workspace", "agent register": "name new-credential-file",
+	"workspace orders show": "workspace", "workspace orders set": "workspace", "workspace orders clear": "workspace",
 	"session appoint": "agent", "agent attach": "agent", "agent rebind": "agent new-credential-file",
 	"agent observe": "agent runtime-id runtime-state", "task assign": "agent", "task unassign": "agent",
 	"task create": "title", "task status": "progress", "task reference add": "location",
@@ -311,7 +315,9 @@ func flagText(fs *flag.FlagSet, command, name string) string {
 	if hook, ok := hookFlagText[name]; ok && isHookCommand(command) {
 		text = hook
 	}
-	if name == "body" && command != "mail send" {
+	if name == "body" && command == "workspace orders set" {
+		text = "The standing orders as text"
+	} else if name == "body" && command != "mail send" {
 		text = "Same as --" + textFlag(command, "")
 		if command == "task status" {
 			text += ", or --summary with --progress finished"

@@ -58,6 +58,9 @@
   .update-note { display: flex; align-items: center; gap: 12px; margin: 0 28px 12px; padding: 5px 6px 5px 14px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-bg); font-size: 13px; line-height: 19px; flex-shrink: 0; }
   .update-note p { margin: 0 auto 0 0; }
   .update-note button { min-height: 32px; padding: 4px 12px; }
+  .orders { margin: 0 28px 12px; color: var(--muted); font-size: 13px; flex-shrink: 0; }
+  .orders summary { width: max-content; cursor: pointer; }
+  .orders pre { margin: 8px 0 0; max-height: 160px; color: var(--ink); font-family: inherit; font-size: 13px; }
   main.stale .view { filter: saturate(.3); }
   main { flex: 1; min-height: 0; position: relative; }
   .view { height: 100%; overflow: auto; overscroll-behavior: contain; scrollbar-color: var(--strong-line) transparent; }
@@ -152,7 +155,7 @@
     .appbar { gap: 16px; padding-inline: 20px; }
     .project-name { display: none; }
     .workspacebar { padding-inline: 20px; gap: 12px; }
-    .banner, .update-note { margin-inline: 20px; }
+    .banner, .update-note, .orders { margin-inline: 20px; }
     .search { width: 210px; }
     .footer-hint { display: none; }
   }
@@ -165,7 +168,7 @@
     .theme-button { padding-inline: 8px; }
     .theme-label { display: none; }
     .workspacebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 18px 16px 14px; gap: 14px 10px; }
-    .banner, .update-note { margin-inline: 16px; }
+    .banner, .update-note, .orders { margin-inline: 16px; }
     .workspace-title { width: auto; margin: 0; }
     h1 { font-size: 20px; }
     .workspace-subtitle { font-size: 12px; }

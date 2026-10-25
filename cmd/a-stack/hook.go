@@ -186,6 +186,7 @@ func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (s
 		b.WriteString("You have no open Tasks.\n")
 	}
 	b.WriteString("Run mail check now, and follow the a-stack skill: Task mail at milestones, a report, then finish.\n")
+	b.WriteString(ordersReminder(session.StandingOrders, agentCommand(id)))
 	return b.String(), nil
 }
 
