@@ -87,18 +87,6 @@
   .empty p { margin: 0; color: var(--muted); }
   .plain-button { min-height: 36px; padding: 6px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
   .plain-button:hover { border-color: var(--strong-line); }
-  .agent-list { width: min(1330px, 100%); margin: 0 auto; padding: 8px 28px 36px; }
-  .agent-row { display: grid; grid-template-columns: 238px minmax(0, 1fr); gap: 28px; padding: 26px 0; }
-  .agent-row + .agent-row { border-top: 1px solid var(--line); }
-  .agent-heading { padding-top: 2px; min-width: 0; }
-  .agent-identity { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-  .agent-avatar { width: 32px; height: 32px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); font-size: 13px; font-weight: 650; }
-  .agent-name { margin: 0; font-size: 14px; line-height: 21px; font-weight: 600; overflow-wrap: anywhere; }
-  .agent-meta { font-size: 12px; color: var(--muted); margin-top: 1px; overflow-wrap: anywhere; }
-  .agent-state { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
-  .agent-state svg { width: 14px; height: 14px; }
-  .agent-tasks { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 24px 18px; }
-  .agent-tasks .task-unit { width: 272px; max-width: 100%; }
   .footer { display: flex; align-items: center; gap: 18px; min-height: 58px; padding: 9px 28px; border-top: 1px solid var(--line); background: var(--chrome); flex-shrink: 0; }
   .zoom-controls { display: flex; align-items: center; padding: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
   .zoom-controls button { display: flex; align-items: center; justify-content: center; height: 30px; min-width: 32px; padding: 0 8px; border: none; border-radius: 4px; background: transparent; color: var(--muted); font-size: 12px; }
@@ -160,8 +148,6 @@
     .workspacebar { padding-inline: 20px; gap: 12px; }
     .banner { margin-inline: 20px; }
     .search { width: 210px; }
-    .agent-row { grid-template-columns: 205px minmax(0, 1fr); gap: 24px; }
-    .agent-tasks .task-unit { width: 262px; }
     .footer-hint { display: none; }
   }
   @media (max-width: 700px) {
@@ -180,12 +166,6 @@
     .attention-button { order: 1; margin-left: 0; justify-self: end; }
     .search { order: 2; width: 100%; }
     .status-filter { order: 3; width: 132px; }
-    .agent-list { padding: 0 16px 24px; }
-    .agent-row { display: block; padding: 22px 0; }
-    .agent-heading { margin-bottom: 22px; }
-    .agent-identity { margin-bottom: 6px; }
-    .agent-tasks .task-unit { width: 100%; }
-    .agent-tasks { gap: 20px; }
     .footer { padding: 8px 14px; gap: 10px; min-height: 56px; flex-wrap: wrap; }
     .preview-button .preview-label { display: none; }
     .preview-short { display: inline; }
@@ -207,7 +187,6 @@
 .detail-text { white-space: pre-wrap; line-height: 24px; }
 .reference { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .reference code { min-width: 0; flex: 1; }
-.agent-identity > div { min-width: 0; }
 .workspace-title h1 { max-height: 58px; overflow: auto; }
 
 .task-caption:empty { display: none; }
@@ -319,10 +298,12 @@
 .task-card[data-status], .graph-world > .task-unit.unfocused .task-card[data-status] { border-left: 3px solid var(--status); }
 .graph-world > .task-unit.unfocused .task-card[data-status] { border-left-color: var(--line); }
 
-/* Render cost: cards out of view skip layout and paint; graph cards are laid out on their own. */
+/* Render cost: cards out of view skip layout and paint; graph cards are laid out on their own. Graph cards get
+   content-visibility only after the layout measured them (.cv), with that height (--uh). */
 .now-card { content-visibility: auto; contain-intrinsic-size: auto 150px; }
-.agent-tasks .task-unit { content-visibility: auto; contain-intrinsic-size: auto 190px; }
+.agent-row { content-visibility: auto; contain-intrinsic-size: auto 320px; }
 .graph-world > .task-unit { contain: layout style; }
+.graph-world.cv > .task-unit { content-visibility: auto; contain-intrinsic-size: 274px var(--uh); }
 
 /* Short or narrow windows: the page scrolls, so the view gets the height. Only the tabs stay at the top,
    and in the Graph tab the footer with the zoom controls stays at the bottom. */
@@ -340,4 +321,105 @@
 @media (max-width: 700px) {
   :root { --top: 49px; --foot: 100px; }
   .appbar { top: -59px; }
+}
+
+/* Task mail: an envelope and the count, at the right of the status line. Compact blocks leave it out. */
+.card-top { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
+.mail-count { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; color: var(--muted); font-size: 12px; line-height: 18px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mail-count svg { width: 14px; height: 14px; }
+.task-unit.compact .card-top { width: auto; }
+.task-unit.compact .mail-count { display: none; }
+.now-top .mail-count:not([hidden]) + .now-age { margin-left: 0; }
+
+/* The Agents tab: a grid of Agent cards with compact Task rows. */
+#agents-panel { padding: 0 28px 28px; }
+.agents-bar { display: flex; align-items: center; gap: 16px; margin: 0 0 14px; }
+.agents-summary { margin: 0 auto 0 0; color: var(--muted); font-size: 13px; }
+.seg { display: flex; flex: none; padding: 2px; gap: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); }
+.seg button { min-height: 30px; padding: 2px 10px; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--muted); font-size: 12.5px; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.agent-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr)); gap: 14px; align-items: start; }
+.agent-row { min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--chrome); }
+.agent-row.urgent { border-color: var(--attention); }
+.agent-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.agent-row.idle .agent-heading { border-bottom: 0; }
+.agent-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.agent-identity > div { min-width: 0; }
+.agent-avatar { width: 30px; height: 30px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; font-weight: 650; }
+.agent-name { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
+.agent-meta { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 6px; border-radius: 10px; background: var(--raised); color: var(--muted); font-size: 12px; font-weight: 600; line-height: 20px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chip svg { width: 13px; height: 13px; }
+.chip.needs { background: var(--attention-bg); color: var(--attention); }
+.chip.working { background: var(--working-bg); color: var(--working); }
+.chip.done { background: var(--finished-bg); color: var(--finished); }
+.task-rows { list-style: none; margin: 0; padding: 4px; }
+.task-rows.done { padding-top: 0; }
+.task-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: start; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; font-size: 13.5px; line-height: 19px; }
+.task-row:hover { background: var(--surface); }
+.task-row.selected { box-shadow: inset 0 0 0 1px var(--accent); }
+.task-row.archived { opacity: .7; }
+.row-status { padding-top: 1px; color: var(--waiting); }
+.row-status svg { width: 16px; height: 16px; }
+.row-status.working { color: var(--working); }
+.row-status.finished { color: var(--finished); }
+.row-status.needs-you { color: var(--attention); }
+.row-status.cancelled { color: var(--muted); }
+.row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.row-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 560; overflow-wrap: anywhere; }
+.task-rows.done .row-title { color: var(--muted); font-weight: 500; }
+.row-question { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding: 3px 6px; border-radius: 5px; background: var(--attention-bg); font-size: 12.5px; line-height: 17px; overflow-wrap: anywhere; }
+.row-meta { overflow: hidden; color: var(--muted); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.row-side { display: flex; align-items: center; gap: 8px; }
+.row-side .mail-count, .row-side .now-age { margin: 0; }
+.fold { display: flex; align-items: center; gap: 4px; width: 100%; padding: 8px 12px; border: 0; background: none; color: var(--muted); font-size: 12.5px; text-align: left; }
+.fold svg { width: 14px; height: 14px; }
+.fold[aria-expanded="true"] svg { transform: rotate(90deg); }
+.fold:hover { color: var(--ink); }
+.agent-empty { margin: 0; padding: 0 14px 12px 54px; color: var(--muted); font-size: 12.5px; }
+@media (max-width: 1100px) { #agents-panel { padding: 0 20px 24px; } }
+@media (max-width: 700px) {
+  #agents-panel { padding: 0 16px 20px; }
+  .agents-bar { flex-wrap: wrap; gap: 8px; }
+  .agents-summary { width: 100%; }
+}
+
+/* Semantic zoom. Below 50% (.far) each card is a block in its status color with only its title, kept at 12.5px on
+   screen; below 20% (.farther) only the blocks remain. Sizes scale with 1/zoom (--z), and every card keeps the
+   height the layout measured (--h), so a zoom step never runs a new layout. */
+.task-card { --tint: var(--surface); }
+.task-card[data-status="working"] { --tint: color-mix(in srgb, var(--working) 22%, var(--surface)); }
+.task-card[data-status="finished"] { --tint: var(--finished-bg); }
+.task-card[data-status="cancelled"] { --tint: var(--raised); }
+.task-card[data-status="needs-you"] { --tint: color-mix(in srgb, var(--attention) 22%, var(--surface)); }
+.graph-world.far .owners { visibility: hidden; }
+.graph-world.far .task-card { height: var(--h); overflow: hidden; padding: calc(4px / var(--z)) calc(6px / var(--z)); border-width: calc(1px / var(--z)); border-left-width: calc(4px / var(--z)); border-radius: calc(4px / var(--z)); border-color: var(--status); background: var(--tint); box-shadow: none; }
+.graph-world.far .task-card[data-status="needs-you"] { box-shadow: 0 0 0 calc(3px / var(--z)) color-mix(in srgb, var(--attention) 45%, transparent); }
+.graph-world.far .task-card.selected { box-shadow: 0 0 0 calc(2px / var(--z)) var(--accent); }
+.graph-world.far .task-card:focus-visible { outline-width: calc(2px / var(--z)); outline-offset: calc(2px / var(--z)); }
+.graph-world.far .task-card > :not(.task-title), .graph-world.far .port, .graph-world.far .compact .task-title, .graph-world.farther .task-title { display: none; }
+.graph-world.far .task-title { margin: 0; font-size: calc(12.5px / var(--z)); line-height: calc(16px / var(--z)); font-weight: 600; letter-spacing: 0; color: var(--ink); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines); overflow: hidden; }
+.graph-world.far > .task-unit.unfocused .task-card { background: var(--canvas); border-color: var(--line); }
+.graph-world.far > .task-unit.unfocused .task-title { color: var(--muted); }
+.graph-world.far .connection { stroke-width: calc(1.2px / var(--z)); }
+.graph-world.far .connection.active { stroke-width: calc(2px / var(--z)); }
+
+/* The minimap at the bottom right of the graph; only for the pointer, it never takes the focus. */
+.minimap { position: absolute; right: 16px; bottom: 16px; z-index: 2; width: 200px; height: 130px; border: 1px solid var(--line); border-radius: 8px; background: var(--chrome); box-shadow: var(--panel-shadow); cursor: pointer; touch-action: none; }
+.minimap canvas { display: block; width: 100%; height: 100%; border-radius: 8px; }
+@media (max-width: 700px) { .minimap { right: 10px; bottom: 10px; width: 140px; height: 91px; } }
+/* When the page scrolls, the minimap stays in the window, above the footer. */
+@media (max-height: 600px), (max-width: 700px) { .minimap { position: fixed; bottom: calc(var(--foot) + 10px); } }
+
+/* Forced colors drop backgrounds and shadows: keep the borders, give Needs you a double border, draw lines in the text color. */
+@media (forced-colors: active) {
+  .task-card[data-status="needs-you"] { border-style: double; border-width: 4px; }
+  .graph-world.far .task-card { border-color: CanvasText; }
+  .graph-world.far .task-card[data-status="needs-you"] { border-width: calc(4px / var(--z)); }
+  .connection { stroke: CanvasText; }
+  .connection.active { stroke: Highlight; }
+  .port { fill: CanvasText; }
+  .minimap { display: none; }
 }
