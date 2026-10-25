@@ -91,6 +91,10 @@ var helpGroups = []helpGroup{
 		{"mail read", "", "Read the mail of one Task"},
 		{"mail check", "", "Check new mail on all your Tasks"},
 	}},
+	{"Herdr", []helpRow{
+		{"herdr bind", "", "Bind your Agent to its own Herdr pane"},
+		{"herdr focus", "", "Show an Agent's Herdr pane (Operator)"},
+	}},
 	{"Notices", []helpRow{
 		{"notifications status", "", "Show Herdr notice delivery"},
 		{"notifications drain", "", "Send pending Herdr notices now"},
@@ -124,14 +128,14 @@ var requiredFlags = map[string]string{
 	"agent observe": "agent runtime-id runtime-state", "task assign": "agent", "task unassign": "agent",
 	"task create": "title", "task status": "progress", "task reference add": "location",
 	"task reference remove": "reference", "dependency add": "from to", "dependency remove": "from to",
-	"session page": "page-kind",
+	"session page": "page-kind", "herdr bind": "agent", "herdr focus": "agent",
 }
 
 func flagRequired(command, name string) bool {
 	if strings.Contains(alwaysRequired, " "+name+" ") || strings.Contains(" "+requiredFlags[command]+" ", " "+name+" ") {
 		return true
 	}
-	scoped := isTaskCommand(command) || isMailCommand(command) || isNotificationCommand(command) || strings.HasPrefix(command, "agent ") || strings.HasPrefix(command, "session ")
+	scoped := isTaskCommand(command) || isMailCommand(command) || isNotificationCommand(command) || strings.HasPrefix(command, "agent ") || strings.HasPrefix(command, "session ") || strings.HasPrefix(command, "herdr ")
 	switch name {
 	case "workspace":
 		return scoped && command != "session list"
@@ -166,7 +170,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string

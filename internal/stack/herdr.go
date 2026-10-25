@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -14,15 +15,42 @@ import (
 )
 
 const noticeText = "New a-stack Task mail mentions you. Run your own a-stack mail check with your registered Workspace, Session and Agent credential."
-const herdrVersion = "herdr 0.9.5"
+
+// herdrProtocol is the private API protocol of Herdr 0.9.5, which the native
+// fixtures used. a-stack accepts any Herdr whose running server reports this
+// protocol and a compatible CLI and endpoint, not one exact release string.
+const herdrProtocol = 22
 
 var herdrName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 
-// The dedicated native fixture proved working/idle input for this exact pair
-// with Herdr 0.9.5. Per-target metadata reports identity, not harness version;
-// enrollment declares the version. See docs/notifications.md for proof limits.
+// verifiedHarnesses holds, per harness, the version whose queued input a
+// native fixture verified with Herdr protocol 22 (docs/notifications.md).
+// Notices accept that minor line from that version up: codex >=0.164.0 <0.165.
+// Herdr metadata reports identity, not the harness version; herdr bind or the
+// runtime file declares it.
+var verifiedHarnesses = map[string]string{"codex": "0.164.0"}
+
+// versionParts parses a plain MAJOR.MINOR.PATCH version without prerelease.
+func versionParts(s string) ([3]int, bool) {
+	var v [3]int
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 {
+		return v, false
+	}
+	for i, part := range parts {
+		n, err := strconv.Atoi(part)
+		if err != nil || n < 0 || len(part) > 9 || (len(part) > 1 && part[0] == '0') || strings.ContainsAny(part, "+-") {
+			return v, false
+		}
+		v[i] = n
+	}
+	return v, true
+}
 func verifiedHarness(b RuntimeBinding) bool {
-	return b.Harness == "codex" && b.HarnessVersion == "0.164.0"
+	floor, ok := verifiedHarnesses[b.Harness]
+	v, valid := versionParts(b.HarnessVersion)
+	f, _ := versionParts(floor)
+	return ok && valid && v[0] == f[0] && v[1] == f[1] && v[2] >= f[2]
 }
 
 type herdrAdapter struct {
@@ -39,6 +67,7 @@ type herdrAgent struct {
 	Name       string `json:"name"`
 	PaneID     string `json:"pane_id"`
 	TerminalID string `json:"terminal_id"`
+	TabID      string `json:"tab_id"`
 	Agent      string `json:"agent"`
 	Status     string `json:"agent_status"`
 	Session    struct {
@@ -106,6 +135,42 @@ func (h *herdrAdapter) command(ctx context.Context, b RuntimeBinding, args ...st
 	}
 	return stdout.data, stderr.data, command.Process != nil, err
 }
+
+// compatible asks the running server at the recorded endpoint for its
+// protocol, instead of comparing the CLI's release string.
+func (h *herdrAdapter) compatible(ctx context.Context, b RuntimeBinding) string {
+	out, _, _, err := h.command(ctx, b, "status", "server", "--json")
+	var status struct {
+		Running            bool `json:"running"`
+		Protocol           int  `json:"protocol"`
+		Compatible         bool `json:"compatible"`
+		EndpointCompatible bool `json:"endpoint_compatible"`
+	}
+	if err != nil || !utf8.Valid(out) || json.Unmarshal(out, &status) != nil || !status.Running {
+		return "herdr_unavailable"
+	}
+	if status.Protocol != herdrProtocol || !status.Compatible || !status.EndpointCompatible {
+		return "unsupported_herdr"
+	}
+	return ""
+}
+
+// current checks a complete binding against Herdr's current metadata, as
+// before every notice. It returns a safe reason when they differ.
+func (h *herdrAdapter) current(ctx context.Context, b RuntimeBinding) (herdrAgent, string) {
+	if reason := h.compatible(ctx, b); reason != "" {
+		return herdrAgent{}, reason
+	}
+	out, _, _, err := h.command(ctx, b, "agent", "get", b.HerdrAlias)
+	if err != nil {
+		return herdrAgent{}, "runtime_unavailable"
+	}
+	var response herdrResponse
+	if !utf8.Valid(out) || json.Unmarshal(out, &response) != nil || !response.Result.Agent.matches(b) {
+		return herdrAgent{}, "identity_changed"
+	}
+	return response.Result.Agent, ""
+}
 func (h *herdrAdapter) verify(ctx context.Context, b RuntimeBinding) string {
 	if !completeHerdrBinding(b) {
 		return "binding_incomplete"
@@ -113,28 +178,18 @@ func (h *herdrAdapter) verify(ctx context.Context, b RuntimeBinding) string {
 	if !h.verified(b) {
 		return "unsupported_harness"
 	}
-	out, _, _, err := h.command(ctx, b, "--version")
-	if err != nil {
-		return "herdr_unavailable"
+	agent, reason := h.current(ctx, b)
+	if reason != "" {
+		return reason
 	}
-	if strings.TrimSpace(string(out)) != herdrVersion {
-		return "unsupported_herdr"
-	}
-	out, _, _, err = h.command(ctx, b, "agent", "get", b.HerdrAlias)
-	if err != nil {
-		return "runtime_unavailable"
-	}
-	var response herdrResponse
-	if !utf8.Valid(out) || json.Unmarshal(out, &response) != nil || !response.Result.Agent.matches(b) {
-		return "identity_changed"
-	}
-	switch response.Result.Agent.Status {
+	switch agent.Status {
 	case "working", "idle", "done":
 		return ""
 	default:
 		return "runtime_unavailable"
 	}
 }
+
 func (h *herdrAdapter) submit(ctx context.Context, b RuntimeBinding) (NoticeState, string) {
 	// Herdr 0.9.5 permits --timeout only with --wait. Normal queue submission
 	// uses neither; command's context bounds the process without an idle wait.

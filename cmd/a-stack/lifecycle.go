@@ -88,6 +88,10 @@ func acceptedFlags(command string) string {
 	switch command {
 	case "notifications status":
 		allowed += "workspace session agent limit after "
+	case "herdr focus":
+		allowed += "workspace session agent "
+	case "herdr bind":
+		allowed += "workspace session agent expected-revision operation-id herdr-executable "
 	case "notifications drain":
 		allowed += "workspace session limit "
 	case "view revoke":

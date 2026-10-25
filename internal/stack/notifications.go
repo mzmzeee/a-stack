@@ -126,6 +126,10 @@ func (s *Service) enableNotifications(h *herdrAdapter) error {
 	if s.notifier != nil {
 		return failure("conflict", "notifications already configured")
 	}
+	// A new binary can support a harness that the last one parked.
+	if _, err := s.Store.db.Exec("UPDATE notice_targets SET next_attempt=0 WHERE next_attempt<0"); err != nil {
+		return storageError()
+	}
 	s.notifier = newNotifier(s.Store, h)
 	s.Store.noticeWake = s.notifier.signal
 	s.notifier.run()
@@ -135,7 +139,7 @@ func (n *notifier) nextTarget(ctx context.Context, session string) (noticeTarget
 	var t noticeTarget
 	err := n.store.db.QueryRowContext(ctx, `SELECT a.id,a.session_id,a.revision,COALESCE(a.binding,'') FROM agents a JOIN sessions s ON s.id=a.session_id
  LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id
- WHERE s.closed=0 AND (?='' OR s.id=?) AND COALESCE(d.next_attempt,0)<=?
+ WHERE s.closed=0 AND (?='' OR s.id=?) AND COALESCE(d.next_attempt,0) BETWEEN 0 AND ?
  AND NOT EXISTS(SELECT 1 FROM notice_batches b WHERE b.session_id=s.id AND b.recipient_id=a.id AND b.state='submitting')
  AND EXISTS(SELECT 1 FROM mail_mentions m JOIN task_assignees x ON x.task_id=m.task_id AND x.agent_id=m.recipient_id
  WHERE m.recipient_id=a.id AND x.session_id=s.id AND m.notice_state='pending')
@@ -153,6 +157,12 @@ func currentNoticeTarget(ctx context.Context, tx *sql.Tx, t noticeTarget) (bool,
 	err := tx.QueryRowContext(ctx, "SELECT s.closed,a.revision,COALESCE(a.binding,'') FROM agents a JOIN sessions s ON s.id=a.session_id WHERE a.id=? AND s.id=?", t.agent, t.session).Scan(&closed, &revision, &binding)
 	return !closed, revision == t.revision && binding == t.bindingJSON, err
 }
+
+// noticeParked is next_attempt for a target that only a new binding or a
+// service start can fix: no timer retries it. BindAgent and enableNotifications
+// set next_attempt back to 0.
+const noticeParked = -1
+
 func recordNoticeTarget(ctx context.Context, tx *sql.Tx, t noticeTarget, reason string, success bool, clock time.Time) error {
 	_, same, err := currentNoticeTarget(ctx, tx, t)
 	if err != nil || !same {
@@ -169,7 +179,11 @@ func recordNoticeTarget(ctx context.Context, tx *sql.Tx, t noticeTarget, reason 
 		}
 	}
 	next := int64(0)
-	if !success {
+	if reason == "binding_incomplete" || reason == "unsupported_harness" {
+		// These depend only on the stored binding and this binary's table, so
+		// nextTarget skips the row until it changes: no idle retry writes.
+		next = noticeParked
+	} else if !success {
 		seconds := 5 << min(failures-1, 3)
 		next = clock.Add(time.Duration(min(seconds, 30)) * time.Second).UnixMilli()
 	}

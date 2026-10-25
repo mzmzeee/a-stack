@@ -51,12 +51,18 @@ func TestHerdrExecutableHelper(t *testing.T) {
 	}
 	_ = json.NewEncoder(f).Encode(fakeHerdrCall{Args: args, Env: os.Environ()})
 	f.Close()
-	if len(args) == 1 && args[0] == "--version" {
-		if config.Mode == "version" {
-			fmt.Println("herdr 9.9.9")
-		} else {
-			fmt.Println(herdrVersion)
+	if len(args) == 3 && args[0] == "status" && args[1] == "server" && args[2] == "--json" {
+		// The release string is not checked; the protocol and compatibility are.
+		status := map[string]any{"status": "running", "running": true, "version": "9.9.9", "protocol": herdrProtocol, "compatible": true, "endpoint_compatible": true, "socket": "must-not-be-retained"}
+		switch config.Mode {
+		case "version":
+			status["protocol"] = herdrProtocol + 1
+		case "incompatible":
+			status["endpoint_compatible"] = false
+		case "not_running":
+			status = map[string]any{"status": "not_running", "running": false, "protocol": nil}
 		}
+		_ = json.NewEncoder(os.Stdout).Encode(status)
 		os.Exit(0)
 	}
 	if len(args) >= 3 {
@@ -67,7 +73,7 @@ func TestHerdrExecutableHelper(t *testing.T) {
 			}
 		}
 	}
-	agent := map[string]any{"name": config.Binding.HerdrAlias, "pane_id": config.Binding.PaneID, "terminal_id": config.Binding.TerminalID, "agent": "codex", "agent_status": config.Status, "agent_session": map[string]any{"agent": "codex", "kind": "id", "source": "herdr:codex", "value": config.Binding.NativeSessionID}, "cwd": "must-not-be-retained", "terminal_title": "must-not-be-retained"}
+	agent := map[string]any{"name": config.Binding.HerdrAlias, "pane_id": config.Binding.PaneID, "terminal_id": config.Binding.TerminalID, "tab_id": "w1:t2", "agent": "codex", "agent_status": config.Status, "agent_session": map[string]any{"agent": "codex", "kind": "id", "source": "herdr:codex", "value": config.Binding.NativeSessionID}, "cwd": "must-not-be-retained", "terminal_title": "must-not-be-retained"}
 	if len(args) == 3 && args[0] == "agent" && args[1] == "get" {
 		switch config.Mode {
 		case "mismatch":
@@ -92,7 +98,28 @@ func TestHerdrExecutableHelper(t *testing.T) {
 			os.Exit(0)
 		case "get_wait":
 			fakeHerdrWait(dir, "get-started")
+		case "unnamed", "rename_taken":
+			delete(agent, "name")
 		}
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": map[string]any{"agent": agent}})
+		os.Exit(0)
+	}
+	// herdr focus: agent focus by pane, else tab focus by the reported tab.
+	if len(args) == 3 && args[1] == "focus" && (args[0] == "agent" && args[2] == config.Binding.PaneID || args[0] == "tab" && args[2] == "w1:t2") {
+		if config.Mode == "focus_fails" && args[0] == "agent" {
+			fmt.Fprintln(os.Stderr, `{"error":{"code":"internal","message":"private raw diagnostic"}}`)
+			os.Exit(1)
+		}
+		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": map[string]any{"agent": agent}})
+		os.Exit(0)
+	}
+	// herdr bind names its own unnamed pane; Herdr refuses a live name in use.
+	if len(args) == 4 && args[0] == "agent" && args[1] == "rename" && args[2] == config.Binding.PaneID && herdrName.MatchString(args[3]) {
+		if config.Mode == "rename_taken" {
+			fmt.Fprintln(os.Stderr, `{"error":{"code":"agent_name_taken","message":"private raw diagnostic"}}`)
+			os.Exit(1)
+		}
+		agent["name"] = args[3]
 		_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": map[string]any{"agent": agent}})
 		os.Exit(0)
 	}
@@ -354,7 +381,7 @@ func TestNotificationsPreinputBackoffAndUncertain(t *testing.T) {
 	}
 }
 func TestNotificationsUnavailableMetadataAndVersion(t *testing.T) {
-	for _, mode := range []string{"mismatch", "alias_reused", "pane_changed", "native_changed", "kind_changed", "missing", "malformed", "large", "version", "blocked-state", "unknown", "stopped", "unsupported", "incomplete", "absent"} {
+	for _, mode := range []string{"mismatch", "alias_reused", "pane_changed", "native_changed", "kind_changed", "missing", "malformed", "large", "version", "incompatible", "not_running", "blocked-state", "unknown", "stopped", "unsupported", "incomplete", "absent"} {
 		t.Run(mode, func(t *testing.T) {
 			f := noticeTestFixture(t)
 			f.config.Mode = mode
@@ -773,12 +800,15 @@ func TestNotificationsProductionHarnessSupportPredicate(t *testing.T) {
 		kind, version string
 		want          bool
 	}{
-		{"codex", "0.164.0", true}, {"codex", "0.164.1", false}, {"codex", "0.163.0", false}, {"codex", "0.164.0-dev", false}, {"codex", "", false}, {"pi", "0.164.0", false}, {"claude", "0.164.0", false}, {"Codex", "0.164.0", false}, {"unknown", "0.164.0", false},
+		// The verified minor line from the fixture version up, nothing else.
+		{"codex", "0.164.0", true}, {"codex", "0.164.1", true}, {"codex", "0.164.27", true}, {"codex", "0.165.0", false}, {"codex", "1.164.0", false},
+		{"codex", "0.163.9", false}, {"codex", "0.164.0-dev", false}, {"codex", "0.164", false}, {"codex", "0.164.01", false}, {"codex", "v0.164.0", false},
+		{"codex", "0.164.0.1", false}, {"codex", "", false}, {"pi", "0.164.0", false}, {"claude", "0.164.0", false}, {"Codex", "0.164.0", false}, {"unknown", "0.164.0", false},
 	} {
 		t.Run(test.kind+"/"+test.version, func(t *testing.T) {
 			binding := RuntimeBinding{Harness: test.kind, HarnessVersion: test.version}
 			if verifiedHarness(binding) != test.want || newHerdr("unused").verified(binding) != test.want {
-				t.Fatal("production support widened beyond verified exact pair")
+				t.Fatal("production support differs from the verified minor line")
 			}
 		})
 	}
@@ -787,7 +817,7 @@ func TestNotificationsProductionHarnessSupportPredicate(t *testing.T) {
 	if reason := f.n.adapter.verify(ctx, f.config.Binding); reason != "" {
 		t.Fatal("verified production combination rejected", reason)
 	}
-	for _, pair := range [][2]string{{"codex", "0.164.1"}, {"pi", "0.164.0"}, {"unknown", "0.164.0"}, {"codex", ""}} {
+	for _, pair := range [][2]string{{"codex", "0.165.0"}, {"pi", "0.164.0"}, {"unknown", "0.164.0"}, {"codex", ""}} {
 		binding := f.config.Binding
 		binding.Harness, binding.HarnessVersion = pair[0], pair[1]
 		before := len(f.calls(t))
@@ -799,5 +829,55 @@ func TestNotificationsProductionHarnessSupportPredicate(t *testing.T) {
 		if f.n.adapter.verify(ctx, binding) == "" {
 			t.Fatal("support predicate bypassed complete identity")
 		}
+	}
+}
+
+// An incomplete or unsupported binding waits for a new binding or a service
+// start, not for a timer: idle retries were committed writes every 30 s.
+func TestNotificationsParkedTargetWaitsForBinding(t *testing.T) {
+	for _, mode := range []string{"incomplete", "unsupported"} {
+		t.Run(mode, func(t *testing.T) {
+			f := noticeTestFixture(t)
+			clock := time.Now()
+			f.n.clock = func() time.Time { return clock }
+			if mode == "incomplete" {
+				execTest(t, f.service.Store, "UPDATE agents SET binding='{}' WHERE id=?", f.bID)
+			} else {
+				f.n.adapter.verified = func(RuntimeBinding) bool { return false }
+			}
+			f.send(t, f.a.Token, "Parked @03-worker")
+			if r := f.drain(t, 4); r.Pending != 1 || countTest(t, f.service.Store, "SELECT count(*) FROM notice_targets WHERE next_attempt=-1") != 1 {
+				t.Fatal("unfixable binding not parked", r)
+			}
+			changes := countTest(t, f.service.Store, "SELECT total_changes()")
+			clock = clock.Add(24 * time.Hour)
+			if r := f.drain(t, 4); r.Checked != 0 || len(f.calls(t)) != 0 || countTest(t, f.service.Store, "SELECT total_changes()") != changes {
+				t.Fatal("parked target retried or written on a timer", r)
+			}
+			status, err := f.service.notificationStatus(ctx, f.b.Token, NoticeRequest{Context: f.ref(0)})
+			if err != nil || status.Targets[0].NextAttempt != -1 {
+				t.Fatal("status hides the park", err)
+			}
+			if mode == "unsupported" {
+				// A service start, maybe with a newer support table, tries it again.
+				f.n.adapter.verified = func(RuntimeBinding) bool { return true }
+				if err = f.service.enableNotifications(newHerdr(filepath.Join(f.dir, "not-installed"))); err != nil {
+					t.Fatal(err)
+				}
+				f.service.notifier.stop()
+			} else {
+				binding := f.config.Binding
+				binding.InstanceID = "rebound-instance"
+				if _, err = f.service.Store.BindAgent(ctx, f.operator.Token, "rebind", AgentBindingRequest{Context: f.ref(0), OperationID: opaqueID(), AgentID: f.bID, ExpectedRevision: 2, Runtime: &binding, CredentialHash: tokenHash(opaqueID())}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if countTest(t, f.service.Store, "SELECT count(*) FROM notice_targets WHERE next_attempt=-1") != 0 {
+				t.Fatal("park kept after a new binding or a start")
+			}
+			if r := f.drain(t, 4); r.Submitted != 1 || f.prompts(t) != 1 {
+				t.Fatal("parked target not retried", r)
+			}
+		})
 	}
 }
