@@ -32,8 +32,9 @@ func schtasksSetup(t *testing.T) (f *fakeTasks, exe, state string) {
 		t.Fatal("binary")
 	}
 	f = &fakeTasks{replies: map[string]func() (string, error){}}
-	oldRun, oldExecutable, oldWait, oldOS, oldUser := runCommand, executable, serviceWait, serviceOS, taskUser
+	oldRun, oldExecutable, oldWait, oldOS, oldUser, oldName := runCommand, executable, serviceWait, serviceOS, taskUser, taskName
 	serviceOS = "windows"
+	taskName = func() (string, error) { return "a-stack-S-1-5-21-1234", nil }
 	taskUser = func() (string, error) { return `DESKTOP\me & you`, nil }
 	runCommand = func(name string, args ...string) (string, error) {
 		if name != "schtasks" {
@@ -69,13 +70,13 @@ func schtasksSetup(t *testing.T) (f *fakeTasks, exe, state string) {
 	}
 	executable, serviceWait = func() (string, error) { return exe, nil }, 2*time.Second
 	t.Cleanup(func() {
-		runCommand, executable, serviceWait, serviceOS, taskUser = oldRun, oldExecutable, oldWait, oldOS, oldUser
+		runCommand, executable, serviceWait, serviceOS, taskUser, taskName = oldRun, oldExecutable, oldWait, oldOS, oldUser, oldName
 	})
 	return f, exe, filepath.Join(root, "state dir")
 }
 
 func TestWindowsArgRoundTrip(t *testing.T) {
-	for _, s := range []string{`C:\Users\me\AppData\Local\a-stack`, `C:\my state\`, `D:\a "b"\c`, `x\\`, ""} {
+	for _, s := range []string{`C:\Users\me\AppData\Local\a-stack`, `C:\my state\`, `D:\a "b"\c`, `a\"b`, `a\\"b`, `x\\`, ""} {
 		if got := unquoteWindowsArg(windowsArg(s)); got != s {
 			t.Errorf("%q came back as %q (quoted %s)", s, got, windowsArg(s))
 		}
@@ -92,7 +93,7 @@ func TestTaskXML(t *testing.T) {
 	}
 	// The settings that keep it running: a repetition every minute that
 	// skips while serve runs, no time limit, no stop on battery, no admin.
-	for _, want := range []string{"<LogonTrigger>", "<UserId>DESKTOP\\me</UserId>", "<Interval>PT1M</Interval>", "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>", "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>", "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>", "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>", "<RunLevel>LeastPrivilege</RunLevel>", "<LogonType>InteractiveToken</LogonType>", "&lt;a&gt; &amp; b", `<Arguments>serve --state-dir &#34;C:\my state&#34;</Arguments>`} {
+	for _, want := range []string{"<LogonTrigger>", "<UserId>DESKTOP\\me</UserId>", "<Interval>PT1M</Interval>", "<MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>", "<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>", "<StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>", "<DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>", "<RunLevel>LeastPrivilege</RunLevel>", "<LogonType>InteractiveToken</LogonType>", `<Command>&#34;C:\Program Files\&lt;a&gt; &amp; b\a-stack.exe&#34;</Command>`, `<Arguments>serve --state-dir &#34;C:\my state&#34;</Arguments>`} {
 		if !strings.Contains(task, want) {
 			t.Errorf("the task lacks %s", want)
 		}
@@ -110,18 +111,18 @@ func TestTaskXML(t *testing.T) {
 
 func TestSchtasksInstallStatusUninstall(t *testing.T) {
 	f, exe, state := schtasksSetup(t)
-	f.replies["/Run /TN a-stack"] = func() (string, error) {
+	f.replies["/Run /TN a-stack-S-1-5-21-1234"] = func() (string, error) {
 		startTestService(t, state)
 		return "SUCCESS: Attempted to run the scheduled task \"a-stack\".", nil
 	}
 	out, _ := runService(t, 0, "install", "--state-dir", state)
-	if !slices.Equal(f.calls, []string{"/Query /TN a-stack /XML", "/Create /XML FILE /TN a-stack /F", "/Run /TN a-stack"}) {
+	if !slices.Equal(f.calls, []string{"/Query /TN a-stack-S-1-5-21-1234 /XML", "/Create /XML FILE /TN a-stack-S-1-5-21-1234 /F", "/Run /TN a-stack-S-1-5-21-1234"}) {
 		t.Fatalf("calls %v", f.calls)
 	}
 	if binary, dir, _ := taskCommand(f.task); binary != exe || dir != state || !strings.Contains(f.task, `<UserId>DESKTOP\me &amp; you</UserId>`) {
 		t.Fatalf("task:\n%s", f.task)
 	}
-	for _, line := range []string{"Created the Task Scheduler task a-stack.", "It runs " + exe + " serve --state-dir " + state + ".", "Task Scheduler runs a-stack at http://127.0.0.1:"} {
+	for _, line := range []string{"Created the Task Scheduler task a-stack-S-1-5-21-1234.", "It runs " + exe + " serve --state-dir " + state + ".", "Task Scheduler runs a-stack at http://127.0.0.1:"} {
 		if !strings.Contains(out, line) {
 			t.Fatalf("install output lacks %q:\n%s", line, out)
 		}
@@ -133,7 +134,7 @@ func TestSchtasksInstallStatusUninstall(t *testing.T) {
 		Data map[string]any `json:"data"`
 	}
 	out, _ = runService(t, 0, "install", "--state-dir", state, "--json")
-	if json.Unmarshal([]byte(out), &result) != nil || result.Data["unit_file_status"] != "unchanged" || result.Data["unit"] != "a-stack" || result.Data["unit_file"] != nil || result.Data["restart_hint"] != nil || !slices.Equal(f.calls, []string{"/Query /TN a-stack /XML"}) {
+	if json.Unmarshal([]byte(out), &result) != nil || result.Data["unit_file_status"] != "unchanged" || result.Data["unit"] != "a-stack-S-1-5-21-1234" || result.Data["unit_file"] != nil || result.Data["restart_hint"] != nil || !slices.Equal(f.calls, []string{"/Query /TN a-stack-S-1-5-21-1234 /XML"}) {
 		t.Fatalf("second install %v %s", f.calls, out)
 	}
 
@@ -141,23 +142,23 @@ func TestSchtasksInstallStatusUninstall(t *testing.T) {
 	f.task = strings.Replace(f.task, exe, `C:\old\a-stack.exe`, 1)
 	f.calls = nil
 	out, _ = runService(t, 0, "install", "--state-dir", state)
-	if !strings.Contains(out, "Updated the Task Scheduler task a-stack; it differed") || !strings.Contains(out, "To use the new one, run: ") || !slices.Equal(f.calls, []string{"/Query /TN a-stack /XML", "/Create /XML FILE /TN a-stack /F"}) {
+	if !strings.Contains(out, "Updated the Task Scheduler task a-stack-S-1-5-21-1234; it differed") || !strings.Contains(out, "To use the new one, run: ") || !slices.Equal(f.calls, []string{"/Query /TN a-stack-S-1-5-21-1234 /XML", "/Create /XML FILE /TN a-stack-S-1-5-21-1234 /F"}) {
 		t.Fatalf("update %v:\n%s", f.calls, out)
 	}
 
 	out, _ = runService(t, 0, "status", "--state-dir", state, "--json")
 	result.Data = nil
-	if json.Unmarshal([]byte(out), &result) != nil || result.Data["installed"] != true || result.Data["enabled"] != true || result.Data["binary"] != exe || result.Data["state_dir"] != state || result.Data["log"] != state+".log" || !strings.Contains(out, `"health":{"data":{"database_id"`) {
+	if json.Unmarshal([]byte(out), &result) != nil || result.Data["installed"] != true || result.Data["enabled"] != true || result.Data["binary"] != exe || result.Data["state_dir"] != state || result.Data["log"] != serviceLog(state) || !strings.Contains(out, `"health":{"data":{"database_id"`) {
 		t.Fatalf("status %s", out)
 	}
 	out, _ = runService(t, 0, "status", "--state-dir", state)
-	if !strings.Contains(out, "Task:      a-stack") || !strings.Contains(out, "Log:       "+state+".log") || !strings.Contains(out, "answers at http://127.0.0.1:") {
+	if !strings.Contains(out, "Task:      a-stack-S-1-5-21-1234") || !strings.Contains(out, "Log:       "+serviceLog(state)) || !strings.Contains(out, "answers at http://127.0.0.1:") {
 		t.Fatalf("status text:\n%s", out)
 	}
 
 	f.calls = nil
 	out, _ = runService(t, 0, "uninstall")
-	if f.task != "" || !slices.Equal(f.calls, []string{"/Query /TN a-stack /XML", "/End /TN a-stack", "/Delete /TN a-stack /F"}) || !strings.Contains(out, "Stopped and removed the task a-stack.") {
+	if f.task != "" || !slices.Equal(f.calls, []string{"/Query /TN a-stack-S-1-5-21-1234 /XML", "/End /TN a-stack-S-1-5-21-1234", "/Delete /TN a-stack-S-1-5-21-1234 /F"}) || !strings.Contains(out, "Stopped and removed the task a-stack-S-1-5-21-1234.") {
 		t.Fatalf("uninstall %v:\n%s", f.calls, out)
 	}
 	f.calls = nil
@@ -176,7 +177,7 @@ func TestSchtasksInstallRefusesAForegroundServe(t *testing.T) {
 	if !strings.Contains(errout, `"code":"conflict"`) || !strings.Contains(errout, "outside Task Scheduler; press Ctrl-C in its terminal first") {
 		t.Fatalf("stderr %s", errout)
 	}
-	if f.task != "" || !slices.Equal(f.calls, []string{"/Query /TN a-stack /XML"}) {
+	if f.task != "" || !slices.Equal(f.calls, []string{"/Query /TN a-stack-S-1-5-21-1234 /XML"}) {
 		t.Fatalf("install changed something: %v", f.calls)
 	}
 }
@@ -185,19 +186,47 @@ func TestSchtasksInstallFailures(t *testing.T) {
 	f, _, state := schtasksSetup(t)
 	serviceWait = 0
 	_, errout := runService(t, 1, "install", "--state-dir", state)
-	if !strings.Contains(errout, "does not answer; see schtasks /Query /TN a-stack /V /FO LIST and "+state+".log") {
+	if !strings.Contains(errout, "does not answer; see schtasks /Query /TN a-stack-S-1-5-21-1234 /V /FO LIST and "+serviceLog(state)) {
 		t.Fatalf("stderr %s", errout)
 	}
 	f.task = ""
-	f.replies["/Create /XML FILE /TN a-stack /F"] = func() (string, error) { return "ERROR: Access is denied.", errExit }
-	if _, errout = runService(t, 1, "install", "--state-dir", state); !strings.Contains(errout, "schtasks /Create /TN a-stack failed: ERROR: Access is denied.") {
+	f.replies["/Create /XML FILE /TN a-stack-S-1-5-21-1234 /F"] = func() (string, error) { return "ERROR: Access is denied.", errExit }
+	if _, errout = runService(t, 1, "install", "--state-dir", state); !strings.Contains(errout, "schtasks /Create /TN a-stack-S-1-5-21-1234 failed: ERROR: Access is denied.") {
 		t.Fatalf("stderr %s", errout)
 	}
 	// A new task that cannot run is removed again.
-	f.replies["/Create /XML FILE /TN a-stack /F"] = nil
-	f.replies["/Run /TN a-stack"] = func() (string, error) { return "ERROR: Access is denied.", errExit }
+	f.replies["/Create /XML FILE /TN a-stack-S-1-5-21-1234 /F"] = nil
+	f.replies["/Run /TN a-stack-S-1-5-21-1234"] = func() (string, error) { return "ERROR: Access is denied.", errExit }
 	f.task, f.calls = "", nil
-	if _, errout = runService(t, 1, "install", "--state-dir", state); !strings.Contains(errout, "schtasks /Run /TN a-stack failed") || f.task != "" || !slices.Contains(f.calls, "/Delete /TN a-stack /F") {
+	if _, errout = runService(t, 1, "install", "--state-dir", state); !strings.Contains(errout, "schtasks /Run /TN a-stack-S-1-5-21-1234 failed") || f.task != "" || !slices.Contains(f.calls, "/Delete /TN a-stack-S-1-5-21-1234 /F") {
 		t.Fatalf("stderr %s, calls %v", errout, f.calls)
+	}
+}
+
+func TestSchtasksAccountLookupFailure(t *testing.T) {
+	f, _, _ := schtasksSetup(t)
+	taskName = func() (string, error) { return "", errExit }
+	if _, err := unitName(); err == nil {
+		t.Fatal("account lookup failure was ignored")
+	}
+	if len(f.calls) != 0 {
+		t.Fatal("queried another account's task", f.calls)
+	}
+}
+
+func TestSchtasksPreservesScoopCurrentPath(t *testing.T) {
+	_, exe, _ := schtasksSetup(t)
+	root := filepath.Join(filepath.Dir(exe), "scoop", "apps", "a-stack")
+	if err := os.MkdirAll(root, 0700); err != nil {
+		t.Fatal(err)
+	}
+	current := filepath.Join(root, "current")
+	if err := os.Symlink(filepath.Dir(exe), current); err != nil {
+		t.Skip(err)
+	}
+	shimTarget := filepath.Join(current, filepath.Base(exe))
+	executable = func() (string, error) { return shimTarget, nil }
+	if got, err := serviceBinary(); err != nil || got != shimTarget {
+		t.Fatal(got, err)
 	}
 }

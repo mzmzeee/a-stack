@@ -27,31 +27,49 @@ var (
 // errorSharingViolation is ERROR_SHARING_VIOLATION, which syscall does not name.
 const errorSharingViolation syscall.Errno = 32
 
-// checkPrivate only checks the type: a file or folder made by an elevated
-// administrator belongs to the Administrators group, so an owner check would
-// lock the user out. A link or junction is neither a regular file nor a
-// folder here.
+// checkPrivate checks type; checkPrivateHandle checks the ACL on the open handle.
 func checkPrivate(info os.FileInfo, directory bool) error {
-	if (directory && !info.IsDir()) || (!directory && !info.Mode().IsRegular()) {
+	attributes, ok := info.Sys().(*syscall.Win32FileAttributeData)
+	if !ok || attributes.FileAttributes&syscall.FILE_ATTRIBUTE_REPARSE_POINT != 0 || (directory && !info.IsDir()) || (!directory && !info.Mode().IsRegular()) {
 		return failure("invalid_input", "state and credential paths must be plain files and folders, not links")
 	}
 	return nil
 }
 
 func createFile(path string, write bool, share uint32) (*os.File, error) {
-	p, err := syscall.UTF16PtrFromString(path)
-	if err != nil {
-		return nil, err
-	}
 	access, disposition := uint32(syscall.GENERIC_READ), uint32(syscall.OPEN_EXISTING)
 	if write {
 		access, disposition = syscall.GENERIC_READ|syscall.GENERIC_WRITE, syscall.OPEN_ALWAYS
+	}
+	return openWindowsFile(path, access, disposition, share)
+}
+
+func openPrivateAppend(path string) (*os.File, error) {
+	return openWindowsFile(path, syscall.GENERIC_READ|syscall.FILE_APPEND_DATA, syscall.OPEN_EXISTING, syscall.FILE_SHARE_READ|syscall.FILE_SHARE_WRITE|syscall.FILE_SHARE_DELETE)
+}
+
+func openWindowsFile(path string, access, disposition, share uint32) (*os.File, error) {
+	p, err := syscall.UTF16PtrFromString(path)
+	if err != nil {
+		return nil, err
 	}
 	h, err := syscall.CreateFile(p, access, share, nil, disposition, syscall.FILE_ATTRIBUTE_NORMAL|syscall.FILE_FLAG_OPEN_REPARSE_POINT, 0)
 	if err != nil {
 		return nil, err
 	}
-	return os.NewFile(uintptr(h), path), nil
+	f := os.NewFile(uintptr(h), path)
+	info, err := f.Stat()
+	if err == nil {
+		err = checkPrivate(info, false)
+	}
+	if err == nil {
+		err = checkPrivateHandle(f)
+	}
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
 }
 
 // openPrivate opens path without following a link: for reading, or with
@@ -91,7 +109,8 @@ func privateSDDL(sid string) string {
 }
 
 // MkdirPrivate creates dir and its missing parents. dir itself gets the
-// private access list; a folder that exists stays as it is.
+// private access list. An existing folder keeps its ACL and must pass the
+// same privacy check before it is used.
 func MkdirPrivate(dir string) error {
 	if err := os.MkdirAll(filepath.Dir(dir), 0700); err != nil {
 		return err
@@ -125,7 +144,7 @@ func MkdirPrivate(dir string) error {
 	sa := syscall.SecurityAttributes{SecurityDescriptor: descriptor}
 	sa.Length = uint32(unsafe.Sizeof(sa))
 	if err = syscall.CreateDirectory(p, &sa); errors.Is(err, syscall.ERROR_ALREADY_EXISTS) {
-		return nil
+		return checkPrivateDirectory(dir)
 	}
 	return err
 }

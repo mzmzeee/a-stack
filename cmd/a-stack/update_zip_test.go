@@ -106,3 +106,16 @@ func TestReplaceBinaryOnWindows(t *testing.T) {
 		t.Fatal("the temporary file stays")
 	}
 }
+
+func TestPackageUpdateCustomScoopRoot(t *testing.T) {
+	t.Setenv("SCOOP", `D:\tools`)
+	t.Setenv("SCOOP_GLOBAL", `D:\shared`)
+	for _, exe := range []string{`D:\tools\apps\a-stack\current\a-stack.exe`, `d:/SHARED/apps/a-stack/1.0/a-stack.exe`} {
+		if got := packageUpdate(exe); got != "scoop update a-stack" {
+			t.Fatal(exe, got)
+		}
+	}
+	if got := packageUpdate(`D:\tools-other\apps\a-stack\current\a-stack.exe`); got != "" {
+		t.Fatal(got)
+	}
+}

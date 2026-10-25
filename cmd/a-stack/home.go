@@ -95,7 +95,7 @@ var errStateBusy = &stack.Error{Code: "conflict", Message: "another a-stack serv
 
 func (h *home) setup() {
 	if wd, err := os.Getwd(); err == nil {
-		if canonical, err := filepath.EvalSymlinks(wd); err == nil {
+		if canonical, err := stack.ResolvePath(wd); err == nil {
 			wd = canonical
 		}
 		h.cwd = wd

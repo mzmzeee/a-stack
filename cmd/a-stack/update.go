@@ -101,6 +101,12 @@ func installHint(goos string) string {
 // WinGet installed on Windows, or "" for any other path.
 func packageUpdate(exe string) string {
 	p := strings.ToLower(strings.ReplaceAll(exe, "/", `\`))
+	for _, root := range []string{os.Getenv("SCOOP"), os.Getenv("SCOOP_GLOBAL")} {
+		root = strings.TrimRight(strings.ToLower(strings.ReplaceAll(root, "/", `\`)), `\`)
+		if root != "" && strings.HasPrefix(p, root+`\apps\`) {
+			return "scoop update a-stack"
+		}
+	}
 	switch {
 	case strings.Contains(p, `\scoop\apps\`):
 		return "scoop update a-stack"
@@ -414,8 +420,13 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	}
 
 	exe, err := executable()
+	if err == nil && runtime.GOOS == "windows" {
+		if manager := packageUpdate(exe); manager != "" {
+			return &stack.Error{Code: "forbidden", Message: "a package manager installed " + exe + "; update it with: " + manager}
+		}
+	}
 	if err == nil {
-		exe, err = filepath.EvalSymlinks(exe)
+		exe, err = stack.ResolvePath(exe)
 	}
 	if err != nil {
 		return updateFailed("cannot find the running a-stack binary")
@@ -469,7 +480,7 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 		return updateFailed("the downloaded a-stack " + target + " does not run on this system; nothing changed")
 	}
 	if err = replaceBinary(tmp.Name(), exe, runtime.GOOS == "windows"); err != nil {
-		return updateFailed("cannot replace " + exe + "; nothing changed")
+		return updateFailed("cannot replace " + exe + ": " + err.Error())
 	}
 	if err = syncDir(dir); err != nil {
 		return updateFailed("replaced " + exe + " with a-stack " + target + ", but cannot sync " + dir + " to disk")
@@ -522,7 +533,9 @@ func replaceBinary(tmp, exe string, windows bool) error {
 		return err
 	}
 	if err := stack.Rename(tmp, exe); err != nil {
-		_ = stack.Rename(old, exe)
+		if restoreErr := stack.Rename(old, exe); restoreErr != nil {
+			return errors.Join(err, errors.New("rollback failed; restore "+old+" to "+exe), restoreErr)
+		}
 		return err
 	}
 	return nil

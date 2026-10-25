@@ -52,8 +52,10 @@ The script does these steps:
 1. It finds the archive for your processor, `a-stack_windows_amd64.zip` or `a-stack_windows_arm64.zip`.
 2. It downloads the archive and the release's `SHA256SUMS` file.
 3. It compares the SHA-256 checksum. If it is not correct, it stops and installs nothing. It does not check the signature of `SHA256SUMS`, because PowerShell cannot check an Ed25519 signature; to check it, see [How releases are verified](#how-releases-are-verified). `a-stack update` checks the signature of every later update.
-4. It installs `a-stack.exe` in `%LOCALAPPDATA%\Programs\a-stack`, without administrator rights. If a-stack runs from there, the old binary moves aside to `a-stack.exe.old`, which the next start of a-stack removes.
+4. It runs the downloaded executable’s `version` command and checks its exit status before replacing any existing binary. It installs `a-stack.exe` in `%LOCALAPPDATA%\Programs\a-stack`, without administrator rights. If a-stack runs from there, the old binary moves aside to `a-stack.exe.old`, which the next start of a-stack removes.
 5. It adds this folder to your user `PATH`. Open a new terminal to use it.
+
+If Windows or the installer stops between moving the old executable aside and placing the new one, restore `a-stack.exe.old` to `a-stack.exe`, or run the installer again. A running older copy may instead have a numbered `.old` name beside it.
 
 The script takes the same variables as `install.sh`, `A_STACK_VERSION` and `A_STACK_INSTALL_DIR`, and also `A_STACK_NO_PATH=1`, which leaves your `PATH` as it is:
 
@@ -188,7 +190,7 @@ Your data stays in the state directory when you update. The service needs a rest
    - If you started `a-stack serve` by hand, press Ctrl-C in its terminal and run `a-stack serve` again.
    - If systemd runs the service, run `systemctl --user restart a-stack`.
    - If launchd runs the service on macOS, run `launchctl kickstart -k gui/$(id -u)/dev.a-stack`.
-   - If Task Scheduler runs the service on Windows, run `schtasks /End /TN a-stack` and then `schtasks /Run /TN a-stack`.
+   - Replace `a-stack-SID` below with the task name from `a-stack service status`. If Task Scheduler runs the service on Windows, run `schtasks /End /TN a-stack-SID` and, once Task Scheduler shows it has stopped, `schtasks /Run /TN a-stack-SID`.
 
 4. If the open browser tab does not find the service again, open the view again. This command opens your last Session:
 
@@ -214,7 +216,7 @@ To put the copy back, install the older version first with `a-stack update --ver
 - If you started `a-stack serve` by hand, press Ctrl-C in its terminal.
 - If systemd runs the service, run `systemctl --user stop a-stack`.
 - If launchd runs the service on macOS, run `launchctl bootout gui/$(id -u)/dev.a-stack`. launchd keeps starting an older a-stack that stops with exit code 4, so `kill TERM` is not enough.
-- If Task Scheduler runs the service on Windows, run `schtasks /Change /TN a-stack /DISABLE` and then `schtasks /End /TN a-stack`.
+- If Task Scheduler runs the service on Windows, run `schtasks /Change /TN a-stack-SID /DISABLE` and then `schtasks /End /TN a-stack-SID`.
 
 Move the state directory aside, and put the copy and the Operator credential in a new state directory in the same place. `state.db.pre-v7` is the copy that v0.1.6 made of a v0.1.5 database; use the name that `serve` printed after the migration:
 
@@ -229,7 +231,7 @@ install -m 600 "$old_dir/operator.json" "$state_dir/operator.json"
 
 On Windows, the state directory is `%LOCALAPPDATA%\a-stack`; move it aside and copy the two files in the same way.
 
-Start the service again: run `a-stack serve`, or `systemctl --user start a-stack`, or `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.a-stack.plist`, or `schtasks /Change /TN a-stack /ENABLE` and then `schtasks /Run /TN a-stack`. The CLI, the Agents and the agent hooks find the service as before, because the state directory is the same. Keep the old folder until you have checked the restored database, as in [Backup and restore](foundation.md#backup-and-restore).
+Start the service again: run `a-stack serve`, or `systemctl --user start a-stack`, or `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.a-stack.plist`, or `schtasks /Change /TN a-stack-SID /ENABLE` and then `schtasks /Run /TN a-stack-SID`. The CLI, the Agents and the agent hooks find the service as before, because the state directory is the same. Keep the old folder until you have checked the restored database, as in [Backup and restore](foundation.md#backup-and-restore).
 
 ## Start a-stack automatically
 
@@ -296,13 +298,15 @@ After `kill TERM`, the service exits with 0, so launchd does not start it again 
 
 ### On Windows with Task Scheduler
 
-On Windows, `a-stack service install` sets up a Task Scheduler task named `a-stack`. Task Scheduler starts it when you log in, and starts it again within a minute after it stops. The task runs only while you are logged in, with your normal rights, also on battery, and without a time limit. It does these steps:
+On Windows, `a-stack service install` sets up a Task Scheduler task named `a-stack-SID`, where `SID` is your Windows account SID. Task Scheduler starts it when you log in, and starts it again within a minute after it stops. The task runs only while you are logged in, with your normal rights, also on battery, and without a time limit. It does these steps:
 
 1. It creates the task with `schtasks /Create`. If the task exists and differs, it replaces the task and says `Updated`. If the service runs already, it prints the commands that restart it.
-2. If the service does not run, it starts the task with `schtasks /Run /TN a-stack`. If that fails and the task is new, it deletes the task again.
-3. It waits until the service answers, and prints its URL. If the service does not answer, read the log and the output of `schtasks /Query /TN a-stack /V /FO LIST`.
+2. If the service does not run, it starts the task with `schtasks /Run /TN a-stack-SID`. If that fails and the task is new, it deletes the task again.
+3. It waits until the service answers, and prints its URL. If the service does not answer, read the log and the output of `schtasks /Query /TN a-stack-SID /V /FO LIST`.
 
-The service started by Task Scheduler has no terminal. It leaves its console window and writes its output, such as the ready line with the URL, to a log file next to the state directory: `%LOCALAPPDATA%\a-stack.log` for the default state directory. At each start, it empties the log when the log is larger than 1 MiB. A console window can show for a moment when the task starts.
+The service started by Task Scheduler has no terminal. It leaves its console window and writes its output, such as the ready line with the URL, to `service.log` inside the private state directory: `%LOCALAPPDATA%\a-stack\service.log` for the default state directory. At each start, it empties the log when the log is larger than 1 MiB. A console window can show for a moment when the task starts.
+
+Each Windows account has its own task name; no shared `a-stack` task is overwritten or removed. Scoop installations keep the stable `current` path in the task so an upgrade does not leave it pointing to a removed version.
 
 The task names the state directory with `--state-dir`.
 
@@ -312,12 +316,25 @@ Task Scheduler cannot skip exit codes 3 (another `a-stack serve` owns the state 
 
 `a-stack service uninstall` stops the task and deletes it. It never touches the log.
 
-To control the service by hand:
+To control the service by hand, replace `a-stack-SID` with the task name printed by `a-stack service status`. The commands work in PowerShell and cmd.exe. For a restart, end the task, wait until Task Scheduler shows it has stopped, then run it:
 
-```powershell
-schtasks /End /TN a-stack; schtasks /Run /TN a-stack   # restart
-schtasks /Change /TN a-stack /DISABLE; schtasks /End /TN a-stack   # stop and keep it stopped
-schtasks /Change /TN a-stack /ENABLE; schtasks /Run /TN a-stack    # start again
+```text
+schtasks /End /TN a-stack-SID
+schtasks /Run /TN a-stack-SID
+```
+
+To stop it and keep it stopped:
+
+```text
+schtasks /Change /TN a-stack-SID /DISABLE
+schtasks /End /TN a-stack-SID
+```
+
+To start it again:
+
+```text
+schtasks /Change /TN a-stack-SID /ENABLE
+schtasks /Run /TN a-stack-SID
 ```
 
 `schtasks /End` alone stops the service only until the task starts it again, within a minute.
@@ -400,7 +417,7 @@ The empty `ExecStart=` line clears the command from the unit. The quotes keep a 
 
 a-stack is built for Windows 10 or later, on x64 and Arm. These things differ from Linux and macOS:
 
-- The state directory is `%LOCALAPPDATA%\a-stack`, or `%XDG_STATE_HOME%\a-stack` when `XDG_STATE_HOME` is set. a-stack creates it, and the folders of Agent credentials, with an access list that only your account, SYSTEM and the Administrators group can use, and that does not take the rights of the parent folder. Files inside get the same access. A folder that exists already keeps its access list. Windows has no file modes, so a-stack does not check the modes of files as it does on Linux and macOS.
+- The state directory is `%LOCALAPPDATA%\a-stack`, or `%XDG_STATE_HOME%\a-stack` when `XDG_STATE_HOME` is set. `a-stack serve` creates state, and `a-stack new --orchestrator` creates its credential folder, with an access list that only your account, SYSTEM and the Administrators group can use, and that does not take the rights of the parent folder. Files inside get the same access. Existing state, credential and backup folders keep their access lists, but a-stack refuses owners or access grants outside your account, SYSTEM and Administrators. Credential folders for `agent register` must exist first. Windows checks access lists instead of Unix file modes. UNC and device state paths are refused, including a state path whose existing ancestor resolves to a network share.
 - A second `a-stack serve` for the same state directory stops with `conflict`, as on Linux: the running service keeps `service.lock` open, and Windows does not let another process open it.
 - The service runs from Task Scheduler; see [On Windows with Task Scheduler](#on-windows-with-task-scheduler).
 - `a-stack` opens the view in your default browser.
@@ -408,7 +425,7 @@ a-stack is built for Windows 10 or later, on x64 and Arm. These things differ fr
 - Herdr does not run on Windows, so the `herdr` commands and `--herdr-executable` stop with an error that says so. Agents get Task mail with `mail check`.
 - `a-stack watch --notify` shows no desktop notices on Windows yet; it says so and works without them.
 
-Windows support is new. The CI runs the tests on Windows x64 and starts the release binaries on Windows x64 and Arm, but these things were not yet tried on a real Windows machine: the access list of a state directory that you name with `--state-dir`, the view picker in the terminals, the Task Scheduler task across a logon and after a crash, `a-stack update` over a running service, Windows Defender and SmartScreen with the unsigned binary, and the hooks with Claude Code and Codex. Please [open an issue](https://github.com/mzmzeee/a-stack/issues) when something does not work.
+Windows support is new. CI is configured to run the tests on Windows x64 and start the release binaries on Windows x64 and Arm, but these things were not yet tried on a real Windows machine: the access list of a state directory that you name with `--state-dir`, the view picker in the terminals, the Task Scheduler task across a logon and after a crash, `a-stack update` over a running service, Windows Defender and SmartScreen with the unsigned binary, and the hooks with Claude Code and Codex. Please [open an issue](https://github.com/mzmzeee/a-stack/issues) when something does not work.
 
 ## Requirements
 
@@ -437,7 +454,7 @@ If you set up the systemd user service, the launchd agent or the Task Scheduler 
 a-stack service uninstall
 ```
 
-On macOS, also remove the log if you do not need it: `rm ~/Library/Logs/a-stack.log`. On Windows, the log is `%LOCALAPPDATA%\a-stack.log`.
+On macOS, also remove the log if you do not need it: `rm ~/Library/Logs/a-stack.log`. On Windows, the log is `%LOCALAPPDATA%\a-stack\service.log`.
 
 If you added a drop-in, remove it too: `rm -rf ~/.config/systemd/user/a-stack.service.d`. Without `a-stack service`, run these commands:
 

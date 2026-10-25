@@ -22,8 +22,8 @@ var ctx = context.Background()
 
 func privateTestDir(t *testing.T) string {
 	t.Helper()
-	dir := t.TempDir()
-	if err := os.Chmod(dir, 0700); err != nil {
+	dir := filepath.Join(t.TempDir(), "private")
+	if err := MkdirPrivate(dir); err != nil {
 		t.Fatal(err)
 	}
 	return dir

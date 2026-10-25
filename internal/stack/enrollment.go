@@ -36,12 +36,9 @@ func prepareAgentCredential(path, databaseID, action, operationID string, reques
 	if !filepath.IsAbs(path) || !validToken(databaseID) {
 		return "", failure("invalid_input", "new credential file must be an absolute file name")
 	}
-	parent, err := os.Lstat(filepath.Dir(path))
+	err := checkPrivateDirectory(filepath.Dir(path))
 	if err != nil {
 		return "", failure("invalid_input", "create a private credential directory first")
-	}
-	if err = checkPrivate(parent, true); err != nil {
-		return "", err
 	}
 	b, err := json.Marshal(struct {
 		Action  string

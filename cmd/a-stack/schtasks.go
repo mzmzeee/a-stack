@@ -18,7 +18,7 @@ import (
 // runs, the new run is skipped (IgnoreNew), so a serve that stopped starts
 // again within a minute. It never times out and keeps running on battery.
 // serve sees that Windows made a console just for it, closes it and writes
-// its output to the log next to the state directory (see detachConsole).
+// its output to the log inside the private state directory (see detachConsole).
 
 // taskUser is the account the task runs as. Tests replace it.
 var taskUser = func() (string, error) {
@@ -36,8 +36,8 @@ func schtasksFailed(step, out string) error {
 }
 
 // serviceLog is the file that a serve run by the task writes its output to:
-// next to the state directory, %LOCALAPPDATA%\a-stack.log by default.
-func serviceLog(state string) string { return filepath.Clean(state) + ".log" }
+// inside the state directory, %LOCALAPPDATA%\a-stack\service.log by default.
+func serviceLog(state string) string { return filepath.Join(state, "service.log") }
 
 // windowsArg quotes s as one argument of a Windows command line.
 func windowsArg(s string) string {
@@ -52,7 +52,7 @@ func windowsArg(s string) string {
 		case '\\':
 			slashes++
 		case '"':
-			b.WriteString(strings.Repeat(`\`, 2*slashes+1))
+			b.WriteString(strings.Repeat(`\`, slashes+1))
 			slashes = 0
 		default:
 			slashes = 0
@@ -145,7 +145,7 @@ const taskTemplate = `<?xml version="1.0" encoding="UTF-16"?>
 
 // renderTask is the task that runs exe serve --state-dir state as account.
 func renderTask(account, exe, state string) (string, error) {
-	values := []string{account, exe, "serve --state-dir " + windowsArg(state)}
+	values := []string{account, windowsArg(exe), "serve --state-dir " + windowsArg(state)}
 	for i, v := range values {
 		if strings.ContainsFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 			return "", invalid("cannot write a value with control characters into the task: " + printable(v))
@@ -189,7 +189,7 @@ func taskCommand(content string) (binary, state string, enabled bool) {
 	if rest, ok := strings.CutPrefix(task.Exec.Arguments, "serve --state-dir "); ok {
 		state = unquoteWindowsArg(rest)
 	}
-	return task.Exec.Command, state, task.Enabled != "false"
+	return unquoteWindowsArg(task.Exec.Command), state, task.Enabled != "false"
 }
 
 // queryTask returns the task's XML, or ok false when there is no task.

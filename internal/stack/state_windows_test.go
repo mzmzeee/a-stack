@@ -68,22 +68,24 @@ func TestMkdirPrivateACL(t *testing.T) {
 		t.Fatal("a second MkdirPrivate:", err)
 	}
 	sid := currentSID(t)
-	if got := daclOf(t, dir); got != privateSDDL(sid) {
-		t.Fatalf("state folder access list %s, want %s", got, privateSDDL(sid))
+	if got := daclOf(t, dir); !strings.Contains(strings.SplitN(got, "(", 2)[0], "P") {
+		t.Fatalf("state folder DACL is not protected: %s", got)
 	}
 	file := filepath.Join(dir, "operator.json")
 	if err := writePrivate(file, Credential{Kind: OperatorCapability, Token: opaqueID()}, false); err != nil {
 		t.Fatal(err)
 	}
-	got := daclOf(t, file)
-	aces := regexp.MustCompile(`\(([^)]*)\)`).FindAllStringSubmatch(got, -1)
-	if len(aces) != 3 {
-		t.Fatalf("credential file access list %s, want 3 entries", got)
-	}
-	for _, ace := range aces {
-		fields := strings.Split(ace[1], ";")
-		if trustee := fields[len(fields)-1]; fields[0] != "A" || fields[2] != "FA" || trustee != "SY" && trustee != "BA" && trustee != sid {
-			t.Fatalf("credential file access list %s has the entry %s", got, ace[0])
+	for _, path := range []string{dir, file} {
+		got := daclOf(t, path)
+		aces := regexp.MustCompile(`\(([^)]*)\)`).FindAllStringSubmatch(got, -1)
+		if len(aces) != 3 {
+			t.Fatalf("credential file access list %s, want 3 entries", got)
+		}
+		for _, ace := range aces {
+			fields := strings.Split(ace[1], ";")
+			if trustee := fields[len(fields)-1]; fields[0] != "A" || fields[2] != "FA" || trustee != "SY" && trustee != "BA" && trustee != sid {
+				t.Fatalf("credential file access list %s has the entry %s", got, ace[0])
+			}
 		}
 	}
 	if _, err := ReadCredential(file); err != nil {
@@ -158,5 +160,79 @@ func TestPrivateReadSkipsLinks(t *testing.T) {
 	}
 	if _, err := privateRead(link); err == nil {
 		t.Fatal("privateRead followed a link")
+	}
+}
+
+// Existing directories must be checked without silently changing their ACL.
+func TestRejectSharedWindowsPaths(t *testing.T) {
+	dir := privateTestDir(t)
+	file := filepath.Join(dir, "credential.json")
+	if err := os.WriteFile(file, []byte("secret"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	setACL := func(path, text string) {
+		t.Helper()
+		sddl, _ := syscall.UTF16PtrFromString(text)
+		var descriptor uintptr
+		if r, _, e := procConvertStringSD.Call(uintptr(unsafe.Pointer(sddl)), 1, uintptr(unsafe.Pointer(&descriptor)), 0); r == 0 {
+			t.Fatal(e)
+		}
+		defer syscall.LocalFree(syscall.Handle(descriptor))
+		p, _ := syscall.UTF16PtrFromString(path)
+		if r, _, e := advapi32.NewProc("SetFileSecurityW").Call(uintptr(unsafe.Pointer(p)), 0x80000004, descriptor); r == 0 {
+			t.Fatal(e)
+		}
+	}
+	setACL(file, "D:P(A;;FA;;;WD)")
+	if _, err := privateRead(file); err == nil {
+		t.Fatal("read a shared credential")
+	}
+	setACL(dir, "D:P(A;OICI;FA;;;WD)")
+	if err := MkdirPrivate(dir); err == nil {
+		t.Fatal("accepted a shared existing folder")
+	}
+	if err := checkPrivateDirectory(dir); err == nil {
+		t.Fatal("accepted a shared credential/backup directory")
+	}
+	setACL(dir, privateSDDL(currentSID(t)))
+	if err := checkPrivateDirectory(dir); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWindowsLocalStatePaths(t *testing.T) {
+	for _, path := range []string{`\\server\share\state`, `\\?\C:\state`, `\\.\C:\state`, `//server/share/state`, `C:state`, `\state`} {
+		if _, err := statePath(path); err == nil {
+			t.Errorf("accepted %q", path)
+		}
+	}
+}
+
+// Go treats deduplicated reparse files as regular and some reparse folders
+// retain ModeDir. Privacy checks must use the native attribute as well.
+type reparseFileInfo struct{ os.FileInfo }
+
+func (reparseFileInfo) Sys() any {
+	return &syscall.Win32FileAttributeData{FileAttributes: syscall.FILE_ATTRIBUTE_REPARSE_POINT}
+}
+func TestPrivateRejectsReparseAttributes(t *testing.T) {
+	dir := privateTestDir(t)
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkPrivate(reparseFileInfo{info}, true); err == nil {
+		t.Fatal("accepted a reparse directory")
+	}
+	file := filepath.Join(dir, "file")
+	if err := os.WriteFile(file, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err = os.Stat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkPrivate(reparseFileInfo{info}, false); err == nil {
+		t.Fatal("accepted a regular reparse file")
 	}
 }

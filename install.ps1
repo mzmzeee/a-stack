@@ -66,6 +66,9 @@ function Install-AStack {
 			throw "a-stack install: $archive has no a-stack.exe"
 		}
 
+		$installed = Get-AStackVersion $new
+		if (-not $installed) { throw "a-stack install: downloaded binary does not run; existing installation is unchanged" }
+
 		# An existing binary is always replaced, also when it has the same
 		# version. Windows cannot replace a running a-stack.exe, but it can
 		# rename it: it moves aside to a-stack.exe.old, which the next start
@@ -90,8 +93,6 @@ function Install-AStack {
 		} else {
 			Move-Item -LiteralPath $new -Destination $target
 		}
-		$installed = Get-AStackVersion $target
-		if (-not $installed) { throw "a-stack install: $target does not run" }
 		if (-not $previous) {
 			Write-Host "Installed a-stack $installed to $target"
 		} elseif ($previous -eq $installed) {
@@ -100,9 +101,11 @@ function Install-AStack {
 			Write-Host "Updated a-stack $previous -> $installed in $target"
 			# Through cmd, so that PowerShell 5.1 does not turn the error
 			# output of schtasks into an exception.
-			& cmd.exe /c 'schtasks /Query /TN a-stack >nul 2>&1'
+			$task = 'a-stack-' + [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+			& cmd.exe /c "schtasks /Query /TN $task >nul 2>&1"
 			if ($LASTEXITCODE -eq 0) {
-				Write-Host 'Restart the service: schtasks /End /TN a-stack; schtasks /Run /TN a-stack'
+				Write-Host "Stop the service: schtasks /End /TN $task"
+				Write-Host "After it stops, run: schtasks /Run /TN $task"
 			} else {
 				Write-Host 'If a-stack serve is running, stop it with Ctrl-C and start it again.'
 			}
@@ -125,6 +128,7 @@ function Install-AStack {
 function Get-AStackVersion([string]$exe) {
 	try {
 		$out = & $exe version 2>$null
+		if ($LASTEXITCODE -ne 0) { return '' }
 		return ($out | ConvertFrom-Json).data.version
 	} catch {
 		return ''

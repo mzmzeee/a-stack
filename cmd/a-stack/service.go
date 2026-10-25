@@ -31,6 +31,7 @@ var (
 	}
 	serviceWait = 10 * time.Second
 	serviceOS   = runtime.GOOS
+	taskName    = stack.WindowsTaskName
 )
 
 // defaultExecStart is the command of the embedded unit. install replaces it
@@ -47,11 +48,14 @@ func systemctl(args ...string) (string, error) {
 
 var plainUnit = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 
-// unitName is a-stack. A_STACK_SERVICE_UNIT changes it only to try service
-// install next to a real a-stack.service; it is not documented.
+// unitName is a-stack, or a per-user task name on Windows. A_STACK_SERVICE_UNIT
+// changes it only to test beside a real service; it is not documented.
 func unitName() (string, error) {
 	name := os.Getenv("A_STACK_SERVICE_UNIT")
 	if name == "" {
+		if serviceOS == "windows" {
+			return taskName()
+		}
 		return "a-stack", nil
 	}
 	if !plainUnit.MatchString(name) {
@@ -255,7 +259,11 @@ func serviceCommand(command, state string, machine bool, stdout io.Writer) error
 func serviceBinary() (string, error) {
 	exe, err := executable()
 	if err == nil {
-		exe, err = filepath.EvalSymlinks(exe)
+		original := exe
+		exe, err = stack.ResolvePath(exe)
+		if err == nil && serviceOS == "windows" && packageUpdate(original) == "scoop update a-stack" {
+			exe = original
+		}
 	}
 	if err != nil {
 		return "", &stack.Error{Code: "integration_unavailable", Message: "cannot find the running a-stack binary"}

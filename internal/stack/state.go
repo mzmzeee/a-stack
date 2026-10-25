@@ -20,6 +20,53 @@ import (
 
 const maxPrivateFile = 4096
 
+// OpenServiceLog validates the directory and the opened file before truncating
+// a large log. The Windows console uses this before the service starts.
+func OpenServiceLog(dir string) (*os.File, error) {
+	if _, err := statePath(dir); err != nil {
+		return nil, err
+	}
+	if err := MkdirPrivate(dir); err != nil {
+		return nil, err
+	}
+	if err := checkPrivateDirectory(dir); err != nil {
+		return nil, err
+	}
+	f, err := openPrivate(filepath.Join(dir, "service.log"), true)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err == nil {
+		err = checkPrivate(info, false)
+	}
+	if err == nil && info.Size() > 1<<20 {
+		err = f.Truncate(0)
+	}
+	closeErr := f.Close()
+	if err != nil {
+		return nil, err
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	// Reopen with append-only writes so concurrent startup attempts cannot
+	// overwrite each other's output. Both opens reject links and unsafe ACLs.
+	f, err = openPrivateAppend(filepath.Join(dir, "service.log"))
+	if err != nil {
+		return nil, err
+	}
+	info, err = f.Stat()
+	if err == nil {
+		err = checkPrivate(info, false)
+	}
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
+}
+
 func opaqueID() string {
 	var b [32]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -41,15 +88,18 @@ func DefaultStateDir() (string, error) {
 	return filepath.Join(root, "a-stack"), nil
 }
 func statePath(path string) (string, error) {
-	if !filepath.IsAbs(path) {
-		return "", failure("invalid_input", "state directory must be absolute")
+	if !filepath.IsAbs(path) || !localStatePath(path) {
+		return "", failure("invalid_input", "state directory must be an absolute local filesystem path")
 	}
 	path = filepath.Clean(path)
 	// Resolve existing ancestors too: a symlink must not bypass the checkout guard.
 	probe := path
 	for {
-		resolved, err := filepath.EvalSymlinks(probe)
+		resolved, err := ResolvePath(probe)
 		if err == nil {
+			if !localStatePath(resolved) {
+				return "", failure("invalid_input", "state directory must be on a local filesystem")
+			}
 			for p := resolved; ; p = filepath.Dir(p) {
 				if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
 					return "", failure("invalid_input", "application state and generated credentials must be outside project checkouts")
@@ -154,11 +204,7 @@ func lockState(path string) (*stateLock, error) {
 	if err = MkdirPrivate(dir); err != nil {
 		return nil, storageError(err)
 	}
-	info, err := os.Lstat(dir)
-	if err != nil {
-		return nil, storageError(err)
-	}
-	if err = checkPrivate(info, true); err != nil {
+	if err = checkPrivateDirectory(dir); err != nil {
 		return nil, err
 	}
 	f, err := lockFile(filepath.Join(dir, "service.lock"))
@@ -180,12 +226,17 @@ const LaunchdLabel = "dev.a-stack"
 // restart) to the service that a-stack service install set up: the systemd
 // user unit on Linux, the launchd agent on macOS, the Task Scheduler task on
 // Windows. On Windows, the task starts a stopped serve again within a
-// minute; restart is two commands for PowerShell. On macOS, stop sends
+// minute; stop disables the task too, and restart gives instructions for both
+// cmd.exe and PowerShell. On macOS, stop sends
 // SIGTERM; serve then exits with 0, and launchd starts it again only after
 // a failure.
 func ServiceCommand(verb string) string {
 	if runtime.GOOS == "windows" {
-		return map[string]string{"start": "schtasks /Run /TN a-stack", "stop": "schtasks /End /TN a-stack", "restart": "schtasks /End /TN a-stack; schtasks /Run /TN a-stack"}[verb]
+		name, err := WindowsTaskName()
+		if err != nil {
+			return "a-stack service status"
+		}
+		return windowsServiceCommand(verb, name)
 	}
 	if runtime.GOOS == "darwin" {
 		action := map[string]string{"start": "kickstart", "stop": "kill TERM", "restart": "kickstart -k"}[verb]
@@ -275,14 +326,23 @@ func ensureDatabaseFile(dir string) (string, error) {
 		return "", err
 	}
 	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
-		info, err = os.Lstat(path + suffix)
+		_, err = os.Lstat(path + suffix)
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
 			return "", storageError(err)
 		}
-		if err = checkPrivate(info, false); err != nil {
+		sidecar, openErr := openPrivate(path+suffix, false)
+		if openErr != nil {
+			return "", storageError(openErr)
+		}
+		info, err = sidecar.Stat()
+		if err == nil {
+			err = checkPrivate(info, false)
+		}
+		sidecar.Close()
+		if err != nil {
 			return "", err
 		}
 	}

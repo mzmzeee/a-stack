@@ -669,18 +669,15 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 		return empty, failure("invalid_input", "backup destination must be a new absolute filename")
 	}
 	parent := filepath.Dir(destination)
-	info, err := os.Lstat(parent)
+	err := checkPrivateDirectory(parent)
 	if err != nil {
 		return empty, failure("invalid_input", "create a private backup directory first")
 	}
-	if err = checkPrivate(info, true); err != nil {
-		return empty, err
-	}
-	resolvedParent, err := filepath.EvalSymlinks(parent)
+	resolvedParent, err := ResolvePath(parent)
 	if err != nil {
 		return empty, storageError(err)
 	}
-	resolvedState, err := filepath.EvalSymlinks(filepath.Dir(s.path))
+	resolvedState, err := ResolvePath(filepath.Dir(s.path))
 	if err != nil {
 		return empty, storageError(err)
 	}
@@ -733,7 +730,7 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	if err = syncDir(parent); err != nil {
 		return empty, err
 	}
-	info, err = f.Stat()
+	info, err := f.Stat()
 	if err != nil {
 		return empty, storageError(err)
 	}

@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
@@ -107,7 +106,7 @@ type scopedSession struct {
 
 func (w *watcher) setup() {
 	if wd, err := os.Getwd(); err == nil {
-		if canonical, err := filepath.EvalSymlinks(wd); err == nil {
+		if canonical, err := stack.ResolvePath(wd); err == nil {
 			wd = canonical
 		}
 		w.cwd = wd
@@ -455,7 +454,7 @@ func statusLine(state string, stdin io.Reader, stdout io.Writer) {
 	if dir == "" {
 		dir = in.Cwd
 	}
-	if canonical, err := filepath.EvalSymlinks(dir); err == nil {
+	if canonical, err := stack.ResolvePath(dir); err == nil {
 		dir = canonical
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

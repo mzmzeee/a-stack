@@ -153,7 +153,7 @@ func canonicalDirectory(path string) (string, error) {
 	if !filepath.IsAbs(path) || !utf8.ValidString(path) || len(path) > 1024 {
 		return "", failure("invalid_input", "project/worktree path must be an absolute directory path of at most 1024 bytes")
 	}
-	canonical, err := filepath.EvalSymlinks(path)
+	canonical, err := ResolvePath(path)
 	if err != nil {
 		return "", failure("invalid_input", "project/worktree directory does not exist")
 	}

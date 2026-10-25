@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"unsafe"
+
+	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
 var (
@@ -21,16 +23,11 @@ func detachConsole(state string) *os.File {
 	if n, _, _ := procGetConsoleProcessList.Call(uintptr(unsafe.Pointer(&pids[0])), uintptr(len(pids))); n != 1 {
 		return nil
 	}
-	file := serviceLog(state)
-	flags := os.O_WRONLY | os.O_CREATE | os.O_APPEND
-	if info, err := os.Stat(file); err == nil && info.Size() > 1<<20 {
-		flags |= os.O_TRUNC
-	}
-	f, err := os.OpenFile(file, flags, 0o600)
-	_, _, _ = procFreeConsole.Call()
+	f, err := stack.OpenServiceLog(state)
 	if err != nil {
 		return nil
 	}
+	_, _, _ = procFreeConsole.Call()
 	os.Stderr = f
 	return f
 }

@@ -75,7 +75,7 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 		return
 	}
 	cwd := in.Cwd
-	if canonical, err := filepath.EvalSymlinks(cwd); err == nil {
+	if canonical, err := stack.ResolvePath(cwd); err == nil {
 		cwd = canonical
 	}
 	if id.worktree != "" && !within(cwd, id.worktree) {
@@ -352,7 +352,7 @@ func (h *hookInstall) run(ctx context.Context) error {
 	if !filepath.IsAbs(id.worktree) {
 		return invalid("--worktree must be absolute")
 	}
-	if canonical, err := filepath.EvalSymlinks(id.worktree); err == nil {
+	if canonical, err := stack.ResolvePath(id.worktree); err == nil {
 		id.worktree = canonical
 	}
 	command := ""
@@ -497,7 +497,7 @@ func isOurs(command, worktree string) bool {
 // command is set, adds them again. It keeps every other key and hook, and
 // writes nothing when nothing changes.
 func mergeHooks(file, harness, worktree, command string) (bool, error) {
-	if target, err := filepath.EvalSymlinks(file); err == nil {
+	if target, err := stack.ResolvePath(file); err == nil {
 		file = target // a settings file kept in a dotfiles folder stays a link
 	}
 	fail := func(message string) error {

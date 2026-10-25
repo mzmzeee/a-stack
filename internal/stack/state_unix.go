@@ -99,3 +99,19 @@ func diskFree(path string) (uint64, error) {
 	}
 	return uint64(st.Bavail) * uint64(st.Bsize), nil
 }
+
+func checkPrivateDirectory(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	return checkPrivate(info, true)
+}
+
+func openPrivateAppend(path string) (*os.File, error) {
+	fd, err := syscall.Open(path, syscall.O_WRONLY|syscall.O_APPEND|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, err
+	}
+	return os.NewFile(uintptr(fd), path), nil
+}
