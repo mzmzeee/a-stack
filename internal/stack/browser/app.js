@@ -18,7 +18,8 @@ const icons = {
   fit: '<path d="M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5"/>',
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
-  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.2"/>'
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.2"/>',
+  bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4Z"/><path d="M10 21a2 2 0 0 0 4 0"/>'
 };
 const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.info}</svg>`;
 document.querySelectorAll('[data-icon]').forEach(el => el.replaceWith(Object.assign(document.createElement('span'), { innerHTML: icon(el.dataset.icon) })));
@@ -421,6 +422,36 @@ function updateSource(message) {
   setText(document.querySelector('.preview-label'),text);setText(document.querySelector('.preview-short'),stale?'Saved · stale':'Read-only');
   setText($('source-info'),`${text}${model?'. Snapshot captured '+model.snapshot.captured_at+' · revision '+model.snapshot.session.read_revision+'. Runtime observations have their own age and are unverified.':''}`);
   $('about-button').setAttribute('aria-label',text+'. About this read-only view');
+  updateTitle();
+}
+// The tab title and icon count the Needs you requests, so a background tab shows them.
+const favicon=document.querySelector('link[rel="icon"]'), plainIcon=favicon.href;
+const dotIcon=plainIcon.replace('%3C/svg%3E',"%3Ccircle cx='25' cy='7' r='6.5' fill='%23d93025' stroke='%23ffffff' stroke-width='2'/%3E%3C/svg%3E");
+function updateTitle() {
+  const n=model?model.tasks.filter(t=>t.needs_you).length:0;
+  const title=(stale?'Stale · ':'')+(n?`(${n}) Needs you · `:'')+(model?model.snapshot.session.name+' – a-stack':'a-stack');
+  if(document.title!==title)document.title=title;
+  const href=n?dotIcon:plainIcon;if(favicon.getAttribute('href')!==href)favicon.setAttribute('href',href);
+}
+// Notify me is off by default and kept per browser. A notification names the Session and the number of
+// requests, never a question. It is local to the browser: nothing is sent to the service.
+const canNotify='Notification' in window;
+let notify=canNotify&&load('a-stack-notify')==='1', needIDs=null;
+function patchNotify() {
+  const b=$('notify');b.hidden=!canNotify;if(!canNotify)return;
+  const on=notify&&Notification.permission==='granted', blocked=Notification.permission==='denied';
+  b.setAttribute('aria-pressed',String(on));b.disabled=blocked;
+  b.title=blocked?'Notifications are blocked for this page in the browser settings':on?'Notifications are on: a Task that newly needs you shows one':'Show a notification when a Task newly needs you';
+}
+$('notify').onclick=async()=>{
+  if(notify&&Notification.permission==='granted')notify=false;
+  else{try{if(Notification.permission==='default')await Notification.requestPermission();}catch{}notify=Notification.permission==='granted';}
+  save('a-stack-notify',notify?'1':'0');patchNotify();
+};
+function notifyNew() {
+  const ids=new Set(model.tasks.filter(t=>t.needs_you).map(t=>t.id)), fresh=needIDs?[...ids].some(id=>!needIDs.has(id)):false;needIDs=ids;
+  if(!fresh||!notify||Notification.permission!=='granted'||!document.hidden&&document.hasFocus())return;
+  try{const n=new Notification('Needs you · '+model.snapshot.session.name,{body:`${ids.size===1?'1 Task needs':ids.size+' Tasks need'} you. Open the a-stack tab to answer.`,tag:'a-stack-needs-you-'+context.session_id});n.onclick=()=>{window.focus();n.close();};}catch{}
 }
 function applyZoom() {graph.style.transform=`scale(${state.zoom})`;graph.parentElement.style.width=width*state.zoom+'px';graph.parentElement.style.height=height*state.zoom+'px';setText($('zoom-reset'),(state.zoom<.1?(state.zoom*100).toFixed(1):Math.round(state.zoom*100))+'%');}
 function setZoom(value) {
@@ -553,7 +584,7 @@ async function pages(kind,revision,task_id,signal) {
   return items;
 }
 async function refresh() {
-  if(document.hidden||busy||!token)return;busy=true;controller=new AbortController();
+  if(busy||!token)return;busy=true;controller=new AbortController();
   try{
     for(let attempt=0;attempt<3;attempt++) {
       try{
@@ -562,9 +593,9 @@ async function refresh() {
           const revision=manifest.data.session.read_revision;
           const [tasks,agents,assignments,dependencies]=await Promise.all(['tasks','agents','assignments','dependencies'].map(k=>pages(k,revision,null,controller.signal)));
           for(const [key,items]of Object.entries({tasks,agents,assignments,dependencies}))if(items.length!==manifest.data.counts[key])throw new Error('Incomplete collection');
-          model={snapshot:manifest.data,tasks:tasks.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0),agents:agents.sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0),assignments,dependencies:dependencies.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)};etag=manifest.etag || '';render();
+          model={snapshot:manifest.data,tasks:tasks.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0),agents:agents.sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0),assignments,dependencies:dependencies.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)};etag=manifest.etag || '';render();notifyNew();
         }
-        lastSuccess=Date.now();stale=false;failures=0;lowDisk=manifest.low;updateSource();if(state.selected)loadDetail();break;
+        lastSuccess=Date.now();stale=false;failures=0;lowDisk=manifest.low;updateSource();if(state.selected&&!document.hidden)loadDetail();break;
       }catch(error){
         if(error.status===409&&attempt<2){const shell=await fetch(location.pathname,{cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});if(shell.ok){instance=shell.headers.get('X-A-Stack-Instance') || instance;version=shell.headers.get('X-A-Stack-Version') || version;}continue;}throw error;
       }
@@ -572,9 +603,11 @@ async function refresh() {
   }catch(error){if(error.name!=='AbortError'){stale=true;failures++;answered=!(error instanceof TypeError)&&error.status!==401&&error.status!==403;if(error.status===401||error.status===403){token='';try{sessionStorage.removeItem(storageKey);}catch{}noAccess(accessEnded);}else updateSource(model?undefined:'Local service unavailable · retrying');}}
   finally{busy=false;controller=null;schedule();}
 }
-function schedule(){clearTimeout(timer);if(!document.hidden&&token)timer=setTimeout(refresh,Math.min(30000,2000*2**Math.min(failures,4)));}
-document.addEventListener('visibilitychange',()=>{document.documentElement.classList.toggle('tab-hidden',document.hidden);clearTimeout(timer);if(document.hidden)controller?.abort();else refresh();});
+// A hidden tab polls every 30 s, so its title, icon and notification still learn about Needs you; a 304 costs little.
+function schedule(){clearTimeout(timer);if(token)timer=setTimeout(refresh,document.hidden?30000:Math.min(30000,2000*2**Math.min(failures,4)));}
+document.addEventListener('visibilitychange',()=>{document.documentElement.classList.toggle('tab-hidden',document.hidden);if(document.hidden){if(!busy)schedule();}else{clearTimeout(timer);render();refresh();}});
 setInterval(()=>{if(!document.hidden&&model){updateSource();updateRuntimeAges();updateNowAges();}},1000);
+patchNotify();
 render();
 connect();
 

@@ -11,6 +11,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - Each Agent has a write budget, so a runaway loop cannot fill the disk. A change costs the size of its request; an Agent can spend 8 MiB at once and 1 MiB more a minute. Past that, a change gets the new error code `rate_limited` (HTTP 429, retryable) with `retry_after_seconds`. A replay of a committed operation ID and the Operator are never limited. In a rerun of the review's reproduction (16 parallel `mail send` loops with 64 KiB bodies from one Agent for 20 seconds), the Agent stored 13,835 messages (925 MB) before and 132 messages (8 MB) now; another Agent could still send.
 - `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
 - `a-stack view revoke --workspace ID --session ID` ends browser view access to one Session, and `--all` to every Session. Open tabs say that they lost access at their next refresh. Only the Operator can run it.
+- A background browser tab now shows Needs you: it polls every 30 seconds, the tab title counts the requests (`(2) Needs you · Session – a-stack`) and the tab icon gets a red dot. An opt-in "Notify me" button shows a system notification when a Task newly needs you; it names the Session and the number of requests, never the question, and sends nothing to the service.
 
 ### Changed
 

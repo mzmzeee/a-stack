@@ -158,7 +158,13 @@ When the snapshot has changed, the page loads all pages of Tasks, Agents, assign
 - If the service instance changes, the page fetches the public page again to read the new instance ID, and tries again.
 - If an error occurs, the page keeps the last complete model and marks it as saved and stale.
 - The backoff starts at four seconds and grows to thirty seconds.
-- When the page is hidden, polling stops and the current collection is cancelled. When the page is visible again, polling continues.
+- When the page is hidden, for example in a background tab, it polls every 30 seconds. Browsers can slow this down to once a minute in a tab that has been hidden for a long time. When the page is visible again, it polls at once.
+
+### Needs you in a background tab
+
+The tab title counts the open Needs you requests, such as `(2) Needs you · OAuth login – a-stack`, and the tab icon gets a red dot. Without requests, the title is the Session name and `a-stack`. Both update while the tab is hidden, at each poll.
+
+"Notify me" in the footer turns on system notifications. It is off by default. The first time, the browser asks for permission; if notifications are blocked for the page, the button is disabled and says so. The choice is kept in the browser's local storage. When a Task newly needs you and the tab is hidden or not focused, the page shows one notification with the Session name and the number of open requests. It never shows a question or a Task title. A click on it brings the tab forward. Notifications are made by the browser, so the service stores and sends nothing for them.
 
 The footer shows the version of the local service and the time of the last successful check with it. If the page has been stale for more than thirty seconds, the footer says why. If the service still answered the last request, it says that the service is busy: Task changes keep restarting the collection, and the page shows the last complete view. If the service did not answer, the footer says that the service is unreachable and that you can run `a-stack` again. That is needed only when the service came back on another port. When less than 1 GiB of disk space is free for the a-stack state, the footer says that disk space is low and to run `a-stack storage status`, also on narrow screens. The snapshot answer carries this as the header `X-A-Stack-Low-Disk: 1`, also when it is a 304, so the view needs no extra request. The About panel shows when the snapshot was captured, and its revision. A poll with no changes does not change the report or runtime times.
 

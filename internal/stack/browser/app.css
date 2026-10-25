@@ -223,10 +223,10 @@ button:disabled { cursor: default; opacity: .6; }
 .task-unit.compact .task-title { margin: 0; min-width: 0; font-size: 14px; font-weight: 560; line-height: 20px; letter-spacing: -.1px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .task-unit.compact .status { flex: none; margin-top: 1px; }
 .task-unit.compact .status-label, .task-unit.compact .task-note, .task-unit.compact .task-caption { display: none; }
-.archive-toggle { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.archive-toggle svg { width: 15px; height: 15px; }
-.archive-toggle:hover { color: var(--ink); border-color: var(--strong-line); }
-.archive-toggle[aria-pressed="true"] { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+.toggle-button { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.toggle-button svg { width: 15px; height: 15px; }
+.toggle-button:hover { color: var(--ink); border-color: var(--strong-line); }
+.toggle-button[aria-pressed="true"] { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
 
 /* Task mail in the details: closed until the Operator opens it; bodies are plain text. */
 .mail-toggle { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 0; border: 0; background: none; font-size: 13px; font-weight: 650; text-align: left; }
