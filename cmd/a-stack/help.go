@@ -306,7 +306,12 @@ func flagText(fs *flag.FlagSet, command, name string) string {
 			text += ", or --summary with --progress finished"
 		}
 	}
-	if flagRequired(command, name) {
+	switch {
+	case !flagRequired(command, name):
+	case name == "workspace" || name == "session":
+		// fillContext takes them from an Agent credential file.
+		text += " (required unless the credential file names it)"
+	default:
 		text += " (required)"
 	}
 	return text
