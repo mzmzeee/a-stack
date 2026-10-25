@@ -459,3 +459,12 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; border: 1px solid 
 .keys dt { white-space: nowrap; }
 .keys dd { margin: 0; }
 @media (max-width: 700px) { .keys-button { display: none; } }
+/* "New since you looked": a 7px accent dot at the top right of a card, or left of a row's status icon. The words are
+   in the aria-label. Zoomed out, the dot grows with 1/zoom so it stays visible on the blocks. */
+.is-new { position: relative; }
+.is-new::after, .new-dot { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); }
+.is-new::after { position: absolute; top: 5px; right: 5px; }
+.task-row.is-new::after, .feed-item.is-new::after { top: 13px; right: auto; left: 0; }
+.graph-world.far .task-card.is-new::after { width: min(calc(7px / var(--z)), 90px); height: min(calc(7px / var(--z)), 90px); top: min(calc(4px / var(--z)), 40px); right: min(calc(4px / var(--z)), 40px); }
+@media (forced-colors: active) { .is-new::after, .new-dot { forced-color-adjust: none; background: Highlight; } }
+

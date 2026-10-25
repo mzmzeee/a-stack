@@ -42,6 +42,12 @@ func TestBrowserAssetsStayReadOnly(t *testing.T) {
 	if strings.Contains(page, "aria-modal") || !strings.Contains(js, "peekTitle.setAttribute('aria-live','polite')") {
 		t.Error("the peek must be non-modal with a polite live title")
 	}
+	// "New since you looked" is kept per Session path and saved when the tab is hidden or closed.
+	for _, want := range []string{"const seenKey='a-stack-seen:'+location.pathname", "addEventListener('pagehide',markSeen)", "if(document.hidden){markSeen();"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js lacks %s", want)
+		}
+	}
 	// Single-key shortcuts work only with the focus in the Graph (with its peek) or the Agents tab (WCAG 2.1.4).
 	if !strings.Contains(js, "const where=panel.contains(e.target)||peekBox.contains(e.target)?'graph':agentsPanel.contains(e.target)?'agents':''") || !strings.Contains(js, "if(!where||e.target.closest('input, select, textarea'))return;") {
 		t.Error("the key handler must stay limited to the Graph and Agents tabs")
