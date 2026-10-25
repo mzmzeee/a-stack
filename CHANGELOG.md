@@ -16,6 +16,11 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - `a-stack update` syncs the new binary to disk before it renames it into place, and syncs the folder after, so a power cut cannot leave an empty binary.
 - `a-stack update --version` with an older version warns that the older a-stack may not open the current database, and says how to go back.
 - The release notes say to run `a-stack update`.
+- `scripts/build-release.sh` pins the versions of the Alpine packages it installs (`gcc`, `musl-dev`, `binutils`).
+
+### Fixed
+
+- When the service refuses `agent register` or `agent rebind` with an error that is not retryable, the CLI deletes the new credential file that the command wrote. A file that existed before is kept.
 
 ### Security
 
