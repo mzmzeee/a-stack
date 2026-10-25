@@ -32,7 +32,7 @@ var helpGroups = []helpGroup{
 	{"Agent skill", []helpRow{
 		{"skill install", "", "Install the agent skill in ~/.claude and ~/.agents"},
 		{"skill uninstall", "", "Remove the agent skill from ~/.claude and ~/.agents"},
-		{"hook install", "", "Add a-stack hooks for one Agent to Claude Code and Codex, or Pi"},
+		{"hook install", "", "Add a-stack hooks for one Agent to Claude Code and Codex, or Pi or OpenCode"},
 		{"hook uninstall", "", "Remove this folder's a-stack hooks"},
 		{"hook", "", "Handle one hook event (run by the harness)"},
 	}},

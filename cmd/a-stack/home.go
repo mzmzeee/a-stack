@@ -341,12 +341,21 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 }
 
 func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row sessionRow, id, credential string, fields map[string]any, before []string) error {
+	// The hand-off does not know which harness gets the brief, so it does not
+	// install the hooks itself: the brief names the command, and the agent
+	// adds its harness.
+	install := "a-stack hook install"
+	if def, err := stack.DefaultStateDir(); err != nil || filepath.Clean(def) != filepath.Clean(h.state) {
+		install += " --state-dir " + shellQuote(h.state)
+	}
+	install += " --credential-file " + shellQuote(credential)
 	brief := strings.Join([]string{
 		"You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.",
 		"Credential file: " + credential,
 		"Workspace: " + row.WorkspaceID + "   Session: " + row.SessionID,
 		"Your name: " + h.orchestrator + "   Your private folder: make one with mktemp -d",
 		"Work in: " + h.cwd,
+		"Hooks: in that folder, run " + install + " --claude (or --codex, --pi or --opencode for your harness) once. They work from the next start or resume of your session.",
 		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register an Agent for each Task that you hand out and brief each Agent.",
 	}, "\n")
 	if session, err := inspectSession(ctx, client, stack.Context{WorkspaceID: row.WorkspaceID, SessionID: row.SessionID}); err == nil && session.StandingOrders != nil {
@@ -357,7 +366,7 @@ func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row 
 		// Often a coding agent runs this, so no view secret enters its context.
 		fields["hint"] = "Open the view with: a-stack"
 	}
-	after := []string{"Start your coding agent in this folder and give it this brief, with your goal:", "", brief, ""}
+	after := []string{"Run the hook install line of the brief for your coding agent first, so its hooks work from its first session. Then start the agent in this folder and give it this brief, with your goal:", "", brief, ""}
 	if !skillInstalled(h.homeDir) {
 		after = append(after, "Install the agent skill first, if your agent does not have it: a-stack skill install")
 	}

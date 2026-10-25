@@ -19,10 +19,11 @@ Notices are turned on for a harness only after a native fixture showed how it qu
 | Harness | Accepted versions | Verified with |
 | --- | --- | --- |
 | Codex | 0.164.0 up to, not including, 0.165 | native Codex 0.164.0, 2026-10-24 ([fixture](#native-codex-fixture)) |
+| Pi | 1.4.0 up to, not including, 1.5 | native Pi 1.4.0, 2026-10-25 ([fixture](#native-pi-fixture)) |
 
 Herdr is accepted when its running server reports private protocol 22, the protocol of Herdr 0.9.5 that the fixtures used, and says that the CLI and the endpoint are compatible (`herdr status server --json`). a-stack does not compare the Herdr release string.
 
-All other harnesses, versions outside these lines and other Herdr protocols stay mail-only. That includes Claude Code and Pi, which `herdr bind` can bind, until a native fixture verifies them. In Pi, `/new`, `/resume` and `/fork` change the session file, so Herdr's metadata no longer matches the binding, as with a new Claude Code session ID. A Codex 0.165 needs a new fixture run before it gets notices. A test-only fixture service allows one exact disposable binding, for isolated checks. Production delivery always needs the complete identity checks below.
+All other harnesses, versions outside these lines and other Herdr protocols stay mail-only. That includes Claude Code and OpenCode, which `herdr bind` can bind, until a native fixture verifies them. In Pi, `/new`, `/resume` and `/fork` change the session file, so Herdr's metadata no longer matches the binding and notices stop until the Operator rebinds the Agent, as with a new Claude Code session ID. A Codex 0.165 or a Pi 1.5 needs a new fixture run before it gets notices. A test-only fixture service allows one exact disposable binding, for isolated checks. Production delivery always needs the complete identity checks below.
 
 The Codex fixture had Herdr client and server 0.9.5 with protocol 22, and the actual native `/status` (gpt-6.1-sol, OpenAI, xhigh, Full Access) through the existing oc/YOLO launcher.
 
@@ -36,13 +37,13 @@ a-stack herdr bind --as agent --credential-file "$credential_dir/worker.json" \
   --expected-revision 1 --operation-id worker-bind-1 --json
 ```
 
-`herdr bind` needs Herdr's integration for the harness, because only the integration reports the harness's native session to Herdr. Install it once with `herdr integration install claude`, `herdr integration install codex` or `herdr integration install pi`, then start the harness again in its pane.
+`herdr bind` needs Herdr's integration for the harness, because only the integration reports the harness's native session to Herdr. Install it once with `herdr integration install claude`, `herdr integration install codex`, `herdr integration install pi` or `herdr integration install opencode`, then start the harness again in its pane.
 
 The command does these steps:
 
 1. It reads `HERDR_ENV`, `HERDR_PANE_ID` and `HERDR_SOCKET_PATH`, which Herdr sets in each pane. Outside a Herdr pane it fails with `invalid_input`.
 2. It checks the Herdr server, like a notice does, and runs `herdr agent get` for its own pane.
-3. The pane must hold Claude Code, Codex or Pi, with a native session that Herdr's integration reported. For Claude Code and Codex that is the session ID. Herdr's Pi integration reports the absolute path of Pi's session file, and a-stack keeps that path as the native session. Otherwise it fails with `integration_missing`, and the message names the `herdr integration install` command.
+3. The pane must hold Claude Code, Codex, Pi or OpenCode, with a native session that Herdr's integration reported. For Claude Code, Codex and OpenCode that is the session ID. Herdr's Pi integration reports the absolute path of Pi's session file, and a-stack keeps that path as the native session. Otherwise it fails with `integration_missing`, and the message names the `herdr integration install` command.
 4. If the pane's agent has no Herdr name yet, it names it `a-` plus the lowercase a-stack name, cut to 32 characters, with `herdr agent rename`. It renames only its own pane. If Herdr refuses the name, it fails with `conflict`.
 5. It runs the harness's own `--version`, such as `codex --version`, and keeps the first `MAJOR.MINOR.PATCH`.
 6. It sends the same request as `agent attach`, with the instance ID `herdr:` plus the terminal ID. The binding never goes to a file, and the receipt does not show it.
@@ -187,6 +188,16 @@ Neither the first work step nor the end of the timer started a check without a n
 These are two single wall-clock observations in UTC on the same machine, with no percentile and no service level. The message `received_at` is set inside the send transaction, before the commit. The claim time is also set inside its transaction. The submission record time comes after Herdr's response. The helper time is when the model ran the notice helper after it saw the notice, not the exact time that the input arrived. The times include scheduling and model handling, and the mail CLI time includes the subprocess and HTTP work. None of them is a pure notification latency after the commit.
 
 Two earlier corrected submissions had incomplete fixture metadata and are not part of this timing evidence. The first attempt, with invalid arguments, stayed `uncertain` across restarts and was never submitted again. In total, the fixture stored five bodies, five mention and batch references, and five batches: four submitted and one uncertain. The fixture was verified and closed, and its private credentials were removed.
+
+### Native Pi fixture
+
+On 2026-10-25 a real Pi 1.4.0 TUI ran in a pane of an isolated Herdr 0.9.5 server (protocol 22) with Herdr's Pi integration, against a disposable a-stack service with notices on. Pi used pi-ai's scripted `faux` model, so no account was needed: the script ran `a-stack herdr bind` when asked to, and its own `mail check` when the a-stack notice came in as a user message. The Agent bound itself from inside the pane; Herdr reported the session as kind `path`, and `pi --version` gave 1.4.0. Then three mentions:
+
+- Idle: the notice was submitted, and Pi's next turn ran the Agent's own mail check, which returned the new mention.
+- Working: during a 20-second work step, the notice was submitted and Pi queued it like a message typed with Enter. The work step finished; then the notice started one own mail check, which returned the mention.
+- Dialog open: an extension dialog was open, and Herdr reported the pane as `blocked`. a-stack kept the notice `pending` (`runtime_unavailable`) and sent no input, so the dialog stayed open with its first choice still selected. After the dialog was answered in the pane, the next retry submitted the notice, and it started one own mail check.
+
+The scripted model ran a mail check only after a notice, so this fixture shows how Pi takes queued input, not how a real model reacts to the notice text. Pi, like OpenCode in the same setup, dropped input typed in the first seconds after it started; a bound Agent has run its own `herdr bind` by then.
 
 ### Claude Code: partial fixture
 

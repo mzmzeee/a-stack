@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mzmzeee/a-stack/contrib/opencode"
 	"github.com/mzmzeee/a-stack/contrib/pi"
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
@@ -25,6 +26,8 @@ func hookHome(t *testing.T) string {
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("PI_CODING_AGENT_DIR", "")
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("USERPROFILE", home)                           // the home folder on Windows
 	t.Setenv("XDG_CACHE_HOME", "")                          // use the platform cache below the test home
 	t.Setenv("LOCALAPPDATA", filepath.Join(home, ".cache")) // and on Windows there
@@ -92,7 +95,7 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 	if ours != want {
 		t.Fatalf("hook command\n got %s\nwant %s", ours, want)
 	}
-	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "PermissionRequest", "Notification"} {
+	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "PermissionRequest", "Notification", "SubagentStart", "SubagentStop"} {
 		if c := commands(s, event); len(c) != 1 || c[0] != want {
 			t.Fatalf("%s: %v", event, c)
 		}
@@ -134,7 +137,7 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 		t.Fatalf("uninstall: %q", out)
 	}
 	s = readSettings(t, claude)
-	if c := commands(s, "Stop"); len(c) != 2 || c[0] != "say done" || len(s.Hooks) != 7 || len(commands(s, "PreToolUse")) != 1 {
+	if c := commands(s, "Stop"); len(c) != 2 || c[0] != "say done" || len(s.Hooks) != 9 || len(commands(s, "PreToolUse")) != 1 {
 		t.Fatalf("uninstall removed other hooks: %+v", s.Hooks)
 	}
 	if data, _ := os.ReadFile(codex); string(data) != "{}\n" {
@@ -238,6 +241,63 @@ func TestHookInstallPiWritesTheExtension(t *testing.T) {
 	}
 }
 
+// --opencode writes the hook list and the plugin into OpenCode's config
+// folder, below XDG_CONFIG_HOME or OPENCODE_CONFIG_DIR, and nothing else.
+func TestHookInstallOpenCodeWritesThePlugin(t *testing.T) {
+	f := newTeam(t)
+	home := hookHome(t)
+	t.Chdir(f.project)
+	config := filepath.Join(home, ".config", "opencode")
+	list, plugin := filepath.Join(config, "a-stack-hooks.json"), filepath.Join(config, "plugins", "a-stack.js")
+	install := []string{"hook", "install", "--opencode", "--credential-file", f.workerFile, "--runtime-id", "oc-1"}
+	out, errout, code := f.run("", install...)
+	if code != 0 || out != "Installed the a-stack hooks for "+f.project+" in:\n  "+list+"\n  "+plugin+"\nOpenCode loads the plugin when it starts; restart a running OpenCode.\n" {
+		t.Fatalf("install --opencode: %d %q %s", code, out, errout)
+	}
+	s := readSettings(t, list)
+	if _, ok := s.Hooks["Notification"]; ok || len(s.Hooks) != 5 || !strings.HasSuffix(commands(s, "Stop")[0], " --runtime-id 'oc-1' --worktree "+quotePath(f.project)) {
+		t.Fatalf("OpenCode hook list: %+v", s.Hooks)
+	}
+	if data, err := os.ReadFile(plugin); err != nil || string(data) != opencode.Plugin || !strings.HasPrefix(string(data), opencode.Header) {
+		t.Fatalf("plugin: %v", err)
+	}
+	for _, other := range []string{".claude", ".codex", ".pi"} {
+		if _, err := os.Stat(filepath.Join(home, other)); !os.IsNotExist(err) {
+			t.Fatalf("--opencode wrote %s", other)
+		}
+	}
+	if out = runSkill(t, "hook", "uninstall", "--opencode"); out != "Removed the a-stack hooks for "+f.project+" from:\n  "+list+"\n  "+plugin+"\n" {
+		t.Fatalf("uninstall: %q", out)
+	}
+	if entries, err := os.ReadDir(config); err != nil || len(entries) != 1 || entries[0].Name() != "plugins" {
+		t.Fatalf("left in the config folder: %v %v", entries, err)
+	}
+	// XDG_CONFIG_HOME moves both files, OPENCODE_CONFIG_DIR wins over it.
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
+	if _, errout, code = f.run("", install...); code != 0 {
+		t.Fatalf("XDG_CONFIG_HOME: %s", errout)
+	}
+	if _, err := os.Stat(filepath.Join(home, "xdg", "opencode", "plugins", "a-stack.js")); err != nil {
+		t.Fatal("XDG_CONFIG_HOME: no plugin")
+	}
+	custom := filepath.Join(home, "oc")
+	t.Setenv("OPENCODE_CONFIG_DIR", custom)
+	if os.MkdirAll(filepath.Join(custom, "plugins"), 0o700) != nil || os.WriteFile(filepath.Join(custom, "plugins", "a-stack.js"), []byte("// mine\n"), 0o600) != nil {
+		t.Fatal("fixture")
+	}
+	if _, errout, code = f.run("", install...); code != 1 || !strings.Contains(errout, "not the a-stack OpenCode plugin") {
+		t.Fatalf("a foreign a-stack.js: %d %s", code, errout)
+	}
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
+	t.Setenv("XDG_CONFIG_HOME", "relative")
+	if _, errout, code = f.run("", install...); code != 2 || !strings.Contains(errout, "XDG_CONFIG_HOME must be absolute") {
+		t.Fatalf("relative XDG_CONFIG_HOME: %d %s", code, errout)
+	}
+	if _, errout, code = f.run("", append(install, "--project")...); code != 2 || !strings.Contains(errout, "--opencode has no --project") {
+		t.Fatalf("--project --opencode: %d %s", code, errout)
+	}
+}
+
 func hookEvent(t *testing.T, id hookIdentity, event string, extra string) string {
 	t.Helper()
 	var out bytes.Buffer
@@ -334,6 +394,64 @@ func TestHookRecordsRuntimeStateAndPrintsTheReminder(t *testing.T) {
 	runHook(id, strings.NewReader("not json"), &out)
 	if out.Len() != 0 {
 		t.Fatal("bad input printed")
+	}
+}
+
+// A Claude Code subagent's hook input names the parent's session and the
+// subagent's own folder, with agent_id. The subagent events reach the Agent
+// whose hooks are installed for exactly that folder, such as a worktree made
+// for the subagent, and never the Agent of a folder above it, or of the
+// parent's own folder.
+func TestHookSubagentEventsReachOnlyTheirOwnAgent(t *testing.T) {
+	f := newTeam(t)
+	hookHome(t)
+	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}
+	worktree := filepath.Join(f.project, ".claude", "worktrees", "agent-a1")
+	if os.MkdirAll(worktree, 0o700) != nil {
+		t.Fatal("fixture")
+	}
+	orch := hookIdentity{state: f.state, credential: f.orchFile, agent: f.orch, worktree: f.project, ref: ref, noMailNudge: true}
+	worker := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: worktree, ref: ref, noMailNudge: true}
+	event := func(id hookIdentity, session, agentID, cwd, event, extra string) string {
+		t.Helper()
+		var out bytes.Buffer
+		input := `{"session_id":"` + session + `","cwd":` + jsonString(cwd) + `,"hook_event_name":"` + event + `"`
+		if agentID != "" {
+			input += `,"agent_id":"` + agentID + `","agent_type":"general-purpose"`
+		}
+		runHook(id, strings.NewReader(input+extra+`}`), &out)
+		return out.String()
+	}
+	// The parent session runs in the project folder: the Orchestrator's hooks.
+	if text := hookContextText(t, event(orch, "parent", "", f.project, "SessionStart", ""), "SessionStart"); !strings.Contains(text, "you are the Agent 01-orchestrator") {
+		t.Fatalf("parent reminder: %s", text)
+	}
+	// A subagent in its own worktree gets the worker's reminder only.
+	if out := event(orch, "parent", "a1", worktree, "SubagentStart", ""); out != "" {
+		t.Fatalf("the Orchestrator's hooks answered a subagent below its folder: %q", out)
+	}
+	if text := hookContextText(t, event(worker, "parent", "a1", worktree, "SubagentStart", ""), "SubagentStart"); !strings.Contains(text, "you are the Agent 02-worker") {
+		t.Fatalf("subagent reminder: %s", text)
+	}
+	// SubagentStop runs the worker's Stop guard, once per stop_hook_active.
+	f.taskChange(f.workerFile, "sub-working", 2, "status", "--progress", "working")
+	if out := event(worker, "parent", "a1", worktree, "SubagentStop", `,"stop_hook_active":false`); !strings.Contains(out, `"decision":"block"`) || !strings.Contains(out, f.task) {
+		t.Fatalf("SubagentStop passed: %q", out)
+	}
+	if out := event(worker, "parent", "a1", worktree, "SubagentStop", `,"stop_hook_active":true`); out != "" {
+		t.Fatalf("blocked twice: %q", out)
+	}
+	// The parent's own Stop is not the worker's: outside its folder.
+	if out := event(worker, "parent", "", f.project, "Stop", ""); out != "" {
+		t.Fatalf("the parent's stop reached the worker: %q", out)
+	}
+	// A subagent in the parent's folder is not the parent's Agent.
+	if out := event(orch, "parent", "a2", f.project, "SubagentStart", ""); out != "" {
+		t.Fatalf("a subagent in the parent's folder got the parent's reminder: %q", out)
+	}
+	// Nor is one whose session never ran there itself, below the folder.
+	if out := event(orch, "other", "a3", filepath.Join(f.project, ".claude"), "SubagentStart", ""); out != "" {
+		t.Fatalf("a subagent below the folder got the reminder: %q", out)
 	}
 }
 
@@ -614,7 +732,9 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	}
 	var files []string
 	for _, entry := range entries {
-		files = append(files, entry.Name())
+		if !strings.HasSuffix(entry.Name(), ".main") { // see ownSubagent
+			files = append(files, entry.Name())
+		}
 	}
 	if !slices.Equal(files, wantFiles) {
 		t.Fatalf("cursor files: %v, want %v", files, wantFiles)

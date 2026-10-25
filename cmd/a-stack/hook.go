@@ -12,11 +12,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mzmzeee/a-stack/contrib/opencode"
 	"github.com/mzmzeee/a-stack/contrib/pi"
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-// `a-stack hook` runs as a Claude Code, Codex or Pi hook for one Agent. The hook
+// `a-stack hook` runs as a Claude Code, Codex, Pi or OpenCode hook for one Agent. The hook
 // configuration that `hook install` writes names the Agent explicitly:
 // credential file, Workspace, Session and Agent ID, never the environment.
 
@@ -29,12 +30,13 @@ func isHookRun(args []string) bool {
 	return len(args) > 0 && args[0] == "hook" && (len(args) == 1 || strings.HasPrefix(args[1], "-"))
 }
 
-type hookFlags struct{ claude, codex, pi, noStopGuard, noMailNudge bool }
+type hookFlags struct{ claude, codex, pi, opencode, noStopGuard, noMailNudge bool }
 
 func (f *hookFlags) register(fs *flag.FlagSet) {
 	fs.BoolVar(&f.claude, "claude", false, "Only Claude Code (default: Claude Code and Codex)")
 	fs.BoolVar(&f.codex, "codex", false, "Only Codex (default: Claude Code and Codex)")
 	fs.BoolVar(&f.pi, "pi", false, "Pi, with the a-stack extension; not in the default")
+	fs.BoolVar(&f.opencode, "opencode", false, "OpenCode, with the a-stack plugin; not in the default")
 	fs.BoolVar(&f.noStopGuard, "no-stop-guard", false, "Let the agent stop with a working Task that has no report")
 	fs.BoolVar(&f.noMailNudge, "no-mail-nudge", false, "Do not tell the agent about new Task mail after tool calls")
 }
@@ -43,19 +45,26 @@ func (f *hookFlags) register(fs *flag.FlagSet) {
 const hookTimeout, hookTimeoutSeconds = 2 * time.Second, 5
 
 // hookEvents maps each event that install registers to the runtime state it
-// records; SessionStart prints the reminder instead.
-var hookEvents = []struct{ event, matcher, state string }{
-	{"SessionStart", "", ""},
-	{"UserPromptSubmit", "", "working"},
-	{"PostToolUse", "", "working"},
-	{"PermissionRequest", "", "blocked"},
-	{"Notification", "elicitation_dialog", "blocked"}, // Claude Code only
-	{"Stop", "", "idle"},
+// records; SessionStart and SubagentStart print the reminder instead. Only
+// Claude Code gets the events marked claude.
+var hookEvents = []struct {
+	event, matcher, state string
+	claude                bool
+}{
+	{"SessionStart", "", "", false},
+	{"UserPromptSubmit", "", "working", false},
+	{"PostToolUse", "", "working", false},
+	{"PermissionRequest", "", "blocked", false},
+	{"Notification", "elicitation_dialog", "blocked", true},
+	{"Stop", "", "idle", false},
+	{"SubagentStart", "", "", true},
+	{"SubagentStop", "", "idle", true},
 }
 
 type hookInput struct {
 	Event            string `json:"hook_event_name"`
 	SessionID        string `json:"session_id"`
+	AgentID          string `json:"agent_id"` // set by Claude Code in a subagent
 	Cwd              string `json:"cwd"`
 	NotificationType string `json:"notification_type"`
 	StopHookActive   bool   `json:"stop_hook_active"`
@@ -78,7 +87,7 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	if canonical, err := stack.ResolvePath(cwd); err == nil {
 		cwd = canonical
 	}
-	if id.worktree != "" && !within(cwd, id.worktree) {
+	if id.worktree != "" && !within(cwd, id.worktree) || !ownSubagent(id, &in, cwd) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), hookTimeout)
@@ -87,7 +96,7 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	if err != nil {
 		return
 	}
-	if in.Event == "SessionStart" {
+	if in.Event == "SessionStart" || in.Event == "SubagentStart" {
 		if text, err := hookReminder(ctx, client, id); err == nil {
 			hookContext(stdout, in.Event, text)
 		}
@@ -96,7 +105,7 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 		}
 		return
 	}
-	if in.Event == "Stop" && !id.noStopGuard && stopGuard(ctx, client, id, in, stdout) {
+	if (in.Event == "Stop" || in.Event == "SubagentStop") && !id.noStopGuard && stopGuard(ctx, client, id, in, stdout) {
 		return // the agent goes on, so its state stays working
 	}
 	for _, e := range hookEvents {
@@ -109,6 +118,39 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 			hookContext(stdout, in.Event, text)
 		}
 	}
+}
+
+// ownSubagent reports whether a hook event belongs to the hook's Agent. A
+// Claude Code subagent's events name the parent's session and carry the
+// subagent's own folder and agent_id. They belong to the Agent only when the
+// subagent works in exactly the Agent's folder, such as a worktree made for
+// it, and the parent session never ran in that folder: a subagent in its
+// parent's folder, or below it, is not the Agent. A main session's event in
+// the folder leaves a marker for that check. For a subagent, the event's
+// session becomes session and agent ID, so it gets its own cursor file and
+// Stop guard marker.
+func ownSubagent(id hookIdentity, in *hookInput, cwd string) bool {
+	here := id.worktree != "" && filepath.Clean(cwd) == filepath.Clean(id.worktree)
+	if in.AgentID == "" {
+		if marker, ok := hookCacheFile(id.agent, in.SessionID, ".main"); ok && here {
+			if _, err := os.Stat(marker); err != nil {
+				_ = os.WriteFile(marker, nil, 0o600)
+			}
+		}
+		return true
+	}
+	if !here {
+		return false
+	}
+	marker, ok := hookCacheFile(id.agent, in.SessionID, ".main")
+	if !ok {
+		return false
+	}
+	if _, err := os.Stat(marker); err == nil {
+		return false
+	}
+	in.SessionID += "/" + in.AgentID
+	return true
 }
 
 // hookContext prints text for the agent's context as JSON, which Claude Code
@@ -249,13 +291,17 @@ func quotePath(path string) string { return shellQuote(filepath.ToSlash(path)) }
 
 // hookSettings returns the settings files to change: Claude Code's
 // settings.json (settings.local.json in a project, so it is not committed),
-// Codex's hooks.json, and with --pi the hook list of the Pi extension.
+// Codex's hooks.json, and with --pi or --opencode the hook list of the Pi
+// extension or the OpenCode plugin.
 func hookSettings(f hookFlags, project bool) (map[string]string, error) {
 	files := map[string]string{}
-	both := !f.claude && !f.codex && !f.pi
+	both := !f.claude && !f.codex && !f.pi && !f.opencode
 	if project {
 		if f.pi {
 			return nil, invalid("--pi has no --project: Pi loads a project's extensions only in a trusted project, and the hook list would put a credential path in it; install the Pi hooks without --project")
+		}
+		if f.opencode {
+			return nil, invalid("--opencode has no --project: the hook list would put a credential path in the project's .opencode folder; install the OpenCode hooks without --project")
 		}
 		dir, err := os.Getwd()
 		if err != nil {
@@ -273,6 +319,13 @@ func hookSettings(f hookFlags, project bool) (map[string]string, error) {
 	if err != nil {
 		return nil, invalid("cannot find home directory")
 	}
+	config := filepath.Join(home, ".config") // OpenCode's, also on macOS and Windows
+	if v := os.Getenv("XDG_CONFIG_HOME"); v != "" && f.opencode {
+		if !filepath.IsAbs(v) {
+			return nil, invalid("XDG_CONFIG_HOME must be absolute")
+		}
+		config = v
+	}
 	for _, h := range []struct {
 		harness, variable, dir, name string
 		on                           bool
@@ -280,11 +333,15 @@ func hookSettings(f hookFlags, project bool) (map[string]string, error) {
 		{"claude", "CLAUDE_CONFIG_DIR", ".claude", "settings.json", both || f.claude},
 		{"codex", "CODEX_HOME", ".codex", "hooks.json", both || f.codex},
 		{"pi", "PI_CODING_AGENT_DIR", filepath.Join(".pi", "agent"), "a-stack-hooks.json", f.pi},
+		{"opencode", "OPENCODE_CONFIG_DIR", filepath.Join(config, "opencode"), "a-stack-hooks.json", f.opencode},
 	} {
 		if !h.on {
 			continue
 		}
-		dir := filepath.Join(home, h.dir)
+		dir := h.dir
+		if !filepath.IsAbs(dir) {
+			dir = filepath.Join(home, dir)
+		}
 		if v := os.Getenv(h.variable); v != "" {
 			if !filepath.IsAbs(v) {
 				return nil, invalid(h.variable + " must be absolute")
@@ -296,24 +353,32 @@ func hookSettings(f hookFlags, project bool) (map[string]string, error) {
 	return files, nil
 }
 
-// piExtension writes Pi's a-stack extension next to its hook list. On
-// uninstall, once the list has no hooks left, it removes the extension and
-// the empty list. It returns the extension's path and whether it changed it.
-// It never touches another file of that name.
-func piExtension(list string, remove bool) (string, bool, error) {
-	file := filepath.Join(filepath.Dir(list), "extensions", "a-stack.ts")
+// shims are the files, built into the binary, that run the hooks in a
+// harness without command hooks, next to the hook list they read.
+var shims = map[string]struct{ path, content, header, name string }{
+	"pi":       {filepath.Join("extensions", "a-stack.ts"), pi.Extension, pi.Header, "Pi extension"},
+	"opencode": {filepath.Join("plugins", "a-stack.js"), opencode.Plugin, opencode.Header, "OpenCode plugin"},
+}
+
+// writeShim writes a harness's shim next to its hook list. On uninstall,
+// once the list has no hooks left, it removes the shim and the empty list.
+// It returns the shim's path and whether it changed it. It never touches
+// another file of that name.
+func writeShim(harness, list string, remove bool) (string, bool, error) {
+	shim := shims[harness]
+	file := filepath.Join(filepath.Dir(list), shim.path)
 	old, err := os.ReadFile(file)
-	if err != nil && !os.IsNotExist(err) || err == nil && !strings.HasPrefix(string(old), pi.Header) {
+	if err != nil && !os.IsNotExist(err) || err == nil && !strings.HasPrefix(string(old), shim.header) {
 		if remove {
 			return file, false, nil
 		}
-		return file, false, &stack.Error{Code: "storage_unavailable", Message: "cannot change " + file + ": it is not the a-stack Pi extension; move it first"}
+		return file, false, &stack.Error{Code: "storage_unavailable", Message: "cannot change " + file + ": it is not the a-stack " + shim.name + "; move it first"}
 	}
 	if !remove {
-		if string(old) == pi.Extension {
+		if string(old) == shim.content {
 			return file, false, nil
 		}
-		if err = writeAtomic(file, []byte(pi.Extension), 0o644); err != nil {
+		if err = writeAtomic(file, []byte(shim.content), 0o644); err != nil {
 			return file, false, &stack.Error{Code: "storage_unavailable", Message: "cannot change " + file + ": " + err.Error()}
 		}
 		return file, true, nil
@@ -368,7 +433,7 @@ func (h *hookInstall) run(ctx context.Context) error {
 		return err
 	}
 	done := []string{}
-	for _, harness := range []string{"claude", "codex", "pi"} {
+	for _, harness := range []string{"claude", "codex", "pi", "opencode"} {
 		file, ok := files[harness]
 		if !ok {
 			continue
@@ -380,8 +445,8 @@ func (h *hookInstall) run(ctx context.Context) error {
 		if changed {
 			done = append(done, file)
 		}
-		if harness == "pi" {
-			if file, changed, err = piExtension(file, h.remove); err != nil {
+		if _, ok := shims[harness]; ok {
+			if file, changed, err = writeShim(harness, file, h.remove); err != nil {
 				return err
 			}
 			if changed {
@@ -412,6 +477,9 @@ func (h *hookInstall) run(ctx context.Context) error {
 		if _, ok := files["pi"]; ok {
 			text += "Pi loads the extension when it starts; in a running Pi, run /reload.\n"
 		}
+		if _, ok := files["opencode"]; ok {
+			text += "OpenCode loads the plugin when it starts; restart a running OpenCode.\n"
+		}
 	}
 	_, err = io.WriteString(h.stdout, text)
 	return err
@@ -431,8 +499,26 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 	if credential.Kind != stack.AgentCapability {
 		return "", invalid("the credential file is not an Agent credential")
 	}
-	// A credential file from v0.1.5 on names its Workspace, Session and Agent.
+	// The service is asked only when the flags and the file leave a gap.
+	var client *stack.Client
+	connect := func() error {
+		if client == nil {
+			client, err = stack.NewClient(id.state, id.credential, stack.AgentCapability)
+		}
+		return err
+	}
+	// A credential file from v0.1.5 on names its Workspace, Session and Agent;
+	// for an older one the service names the Workspace and Session.
 	ref := lifecycleFlags{workspace: id.ref.WorkspaceID, session: id.ref.SessionID}
+	if (credential.WorkspaceID == "" || credential.SessionID == "") && (ref.workspace == "" || ref.session == "") {
+		if err = connect(); err != nil {
+			return "", err
+		}
+		if err = loadContext(ctx, client, ref, "hook install"); err != nil {
+			return "", err
+		}
+		credential = client.Credential
+	}
 	if err = fillContext(credential, &ref, "hook install"); err != nil {
 		return "", err
 	}
@@ -443,12 +529,20 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 	if !stack.ValidID(id.ref.WorkspaceID) || !stack.ValidID(id.ref.SessionID) {
 		return "", invalid("--workspace and --session required; this credential file does not name them")
 	}
+	if id.agent == "" && h.name == "" && client != nil {
+		// A file from before v0.1.5 does not name its Agent either; the
+		// service knows whose credential it is.
+		session, err := inspectSession(ctx, client, id.ref)
+		if err != nil {
+			return "", err
+		}
+		id.agent = session.YourAgentID
+	}
 	if (id.agent == "") == (h.name == "") {
 		return "", invalid("choose --agent ID or --name NAME")
 	}
 	if h.name != "" {
-		client, err := stack.NewClient(id.state, id.credential, stack.AgentCapability)
-		if err != nil {
+		if err = connect(); err != nil {
 			return "", err
 		}
 		agents, err := listPages[stack.Agent](ctx, client, "/v1/agent/list", id.ref)
@@ -541,8 +635,8 @@ func mergeHooks(file, harness, worktree, command string) (bool, error) {
 	}
 	if command != "" {
 		for _, e := range hookEvents {
-			if e.event == "Notification" && harness != "claude" {
-				continue // Codex and the Pi extension have no Notification event
+			if e.claude && harness != "claude" {
+				continue // Codex, the Pi extension and the OpenCode plugin have no such event
 			}
 			group := map[string]any{"hooks": []map[string]any{{"type": "command", "command": command, "timeout": hookTimeoutSeconds}}}
 			if e.matcher != "" {

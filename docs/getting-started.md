@@ -310,17 +310,20 @@ a-stack new --orchestrator 01-orchestrator
 It makes the Session (or opens the open Session of this folder's name), registers `01-orchestrator` with a credential file in `~/.local/state/a-stack-agents/SESSION_ID/`, so each Session has its own, appoints it, opens the view and prints a brief:
 
 ```text
-Start your coding agent in this folder and give it this brief, with your goal:
+Run the hook install line of the brief for your coding agent first, so its hooks work from its first session. Then start the agent in this folder and give it this brief, with your goal:
 
 You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.
 Credential file: /home/you/.local/state/a-stack-agents/1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4/01-orchestrator.json
 Workspace: 8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ   Session: 1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
 Your name: 01-orchestrator   Your private folder: make one with mktemp -d
 Work in: /home/you/code/my-project
+Hooks: in that folder, run a-stack hook install --credential-file '/home/you/.local/state/a-stack-agents/1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4/01-orchestrator.json' --claude (or --codex, --pi or --opencode for your harness) once. They work from the next start or resume of your session.
 Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register an Agent for each Task that you hand out and brief each Agent.
 ```
 
 Replace the goal line, and run `a-stack skill install` once if your coding agent does not have the skill yet. The brief names the credential file only by its path.
+
+The hand-off does not install the [hooks](hooks.md) itself, because it cannot tell which coding agent gets the brief, and the hooks go into that agent's own settings. Run the `Hooks:` line with the flag of your agent before you start it. A coding agent reads its hooks when a session starts, so an agent that runs the line itself gets them from its next start or resume; Claude Code 2.1.310 did not run hooks added during a session, neither for the session nor for its subagents. Codex runs new hooks only after you trust them with `/hooks`.
 
 You can also skip the brief: start your coding agent in the project folder and ask it to use a-stack, or to be the Orchestrator. An agent with the skill runs `a-stack new --orchestrator 01-orchestrator --no-browser --json` itself and reads the IDs from its output, so it does not ask you for them. With `--json` or `--no-browser`, the Orchestrator hand-off makes no view link and launches no browser, so no view secret reaches the agent. Open the view yourself with `a-stack`.
 

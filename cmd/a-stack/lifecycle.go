@@ -71,9 +71,9 @@ func acceptedFlags(command string) string {
 	} else if command == "hook" {
 		return " state-dir credential-file workspace session agent runtime-id no-stop-guard no-mail-nudge worktree help "
 	} else if command == "hook install" {
-		return " claude codex pi project state-dir credential-file workspace session agent name runtime-id no-stop-guard no-mail-nudge worktree json help "
+		return " claude codex pi opencode project state-dir credential-file workspace session agent name runtime-id no-stop-guard no-mail-nudge worktree json help "
 	} else if command == "hook uninstall" {
-		return " claude codex pi project worktree json help "
+		return " claude codex pi opencode project worktree json help "
 	} else if command == "service install" || command == "service status" {
 		return " state-dir json help "
 	} else if command == "service uninstall" {

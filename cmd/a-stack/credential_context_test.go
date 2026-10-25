@@ -74,3 +74,20 @@ func TestLegacyCredentialFileWithAnOldService(t *testing.T) {
 		t.Fatalf("asked the service without need: %d calls", calls)
 	}
 }
+
+// hook install takes the Workspace, Session and Agent of a credential file
+// from before v0.1.5 from the service too, and the hook command names them.
+func TestHookInstallLegacyCredentialFileGetsItsContextFromTheService(t *testing.T) {
+	f := newTeam(t)
+	home := hookHome(t)
+	legacy := legacyCopy(t, f.workerFile)
+	t.Chdir(f.project)
+	out, errout, code := f.run("", "hook", "install", "--claude", "--credential-file", legacy)
+	if code != 0 {
+		t.Fatalf("install: exit %d %s %s", code, out, errout)
+	}
+	c := commands(readSettings(t, filepath.Join(home, ".claude", "settings.json")), "Stop")
+	if len(c) != 1 || !strings.Contains(c[0], " --workspace "+f.workspace+" --session "+f.session+" --agent "+f.worker+" ") {
+		t.Fatalf("hook command: %v", c)
+	}
+}

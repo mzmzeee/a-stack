@@ -12,7 +12,7 @@ func bindFixture(t *testing.T, harnessOutput string) (*noticeFixture, func(strin
 	t.Helper()
 	f := noticeTestFixture(t)
 	bin := t.TempDir()
-	for _, harness := range []string{"codex", "pi"} {
+	for _, harness := range []string{"codex", "pi", "opencode"} {
 		if err := os.WriteFile(filepath.Join(bin, harness), []byte("#!/bin/sh\necho '"+harnessOutput+"'\n"), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -46,8 +46,8 @@ func TestHerdrBindReadsOwnPane(t *testing.T) {
 }
 
 // Herdr reports a Pi pane's session as the path of its session file. Bind
-// keeps the path as the native session; notices stay off until a native Pi
-// fixture verifies them.
+// keeps the path as the native session, and a Pi 1.4 pane passes the notice
+// check, as the native Pi fixture verified.
 func TestHerdrBindReadsPiPane(t *testing.T) {
 	f, env := bindFixture(t, "1.4.0")
 	f.config.Mode = "pi"
@@ -64,8 +64,11 @@ func TestHerdrBindReadsPiPane(t *testing.T) {
 		t.Fatal("the bound Pi pane does not match its binding:", reason)
 	}
 	f.n.adapter.verified = verifiedHarness
-	if reason := f.n.adapter.verify(ctx, *binding); reason != "unsupported_harness" {
-		t.Fatal("Pi notices are not verified yet:", reason)
+	if reason := f.n.adapter.verify(ctx, *binding); reason != "" {
+		t.Fatal("the bound Pi 1.4 pane fails the notice check:", reason)
+	}
+	if state, reason := f.n.adapter.submit(ctx, *binding); state != NoticeSubmitted {
+		t.Fatal("a notice to the bound Pi pane was not submitted:", reason)
 	}
 	for _, mode := range []string{"pi_id", "pi_relative"} {
 		f.config.Mode = mode
@@ -75,6 +78,29 @@ func TestHerdrBindReadsPiPane(t *testing.T) {
 		if _, reason := f.n.adapter.current(ctx, *binding); reason != "identity_changed" {
 			t.Fatal(mode, "matched the binding:", reason)
 		}
+	}
+}
+
+// Herdr's OpenCode integration reports the OpenCode session ID, like Claude
+// Code and Codex. Notices stay off until a native OpenCode fixture.
+func TestHerdrBindReadsOpenCodePane(t *testing.T) {
+	f, env := bindFixture(t, "1.19.4")
+	f.config.Mode = "opencode"
+	f.config.Binding.NativeSessionID = "ses_e8b290839ffeqqdrmQcQ7mRxGG"
+	f.write(t)
+	binding, err := HerdrBind(ctx, f.n.adapter.executable, "03-worker", env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding.Harness != "opencode" || binding.HarnessVersion != "1.19.4" || binding.NativeSessionID != f.config.Binding.NativeSessionID {
+		t.Fatalf("OpenCode binding %+v", *binding)
+	}
+	if _, reason := f.n.adapter.current(ctx, *binding); reason != "" {
+		t.Fatal("the bound OpenCode pane does not match its binding:", reason)
+	}
+	f.n.adapter.verified = verifiedHarness
+	if reason := f.n.adapter.verify(ctx, *binding); reason != "unsupported_harness" {
+		t.Fatal("OpenCode notices are not verified:", reason)
 	}
 }
 
