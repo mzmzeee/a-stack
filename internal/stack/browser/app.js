@@ -62,10 +62,11 @@ function noAccess(text) {
   setText(document.querySelector('.workspace-subtitle'),text);
   updateSource();
 }
+// A new link in the same tab replaces the view token and clears an old notice.
 async function connect() {
   clearTimeout(timer);controller?.abort();failures=0;notice='';etag='';
   token=await readToken();
-  if(token)refresh();else{stale=true;$('attention').disabled=true;noAccess(notice || 'Open this view with a-stack, or a-stack open.');}
+  if(token){if(model)render();refresh();}else{stale=true;$('attention').disabled=true;noAccess(notice || 'Open this view with a-stack, or a-stack open.');}
 }
 // The theme survives browser restarts; until one is picked, follow the system.
 function savedTheme() {
