@@ -302,6 +302,10 @@ func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row 
 		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register one Agent per Task and brief each one.",
 	}, "\n")
 	fields["orchestrator_id"], fields["orchestrator_credential_file"], fields["brief"] = id, credential, brief
+	if h.noBrowser {
+		// Often a coding agent runs this, so no view secret enters its context.
+		fields["hint"] = "Open the view with: a-stack"
+	}
 	after := []string{"Start your coding agent in this folder and give it this brief, with your goal:", "", brief, ""}
 	if !skillInstalled(h.homeDir) {
 		after = append(after, "Install the agent skill first, if your agent does not have it: a-stack skill install")
@@ -396,8 +400,14 @@ func (h *home) openWith(ctx context.Context, client *stack.Client, r sessionRow,
 	if r.Closed {
 		state = " closed"
 	}
-	before = append(before, fmt.Sprintf("Opening the%s Session %q in %s.", state, printable(r.Name), where))
-	return openView(ctx, client, stack.Context{WorkspaceID: r.WorkspaceID, SessionID: r.SessionID}, viewNotes{fields: fields, before: before, after: after}, h.machine, h.noBrowser, h.stdout, h.stderr)
+	notes := viewNotes{fields: fields, after: after, noView: h.orchestrator != "" && h.noBrowser}
+	if notes.noView {
+		before = append(before, fmt.Sprintf("The%s Session %q is in %s. Open the view with: a-stack", state, printable(r.Name), where))
+	} else {
+		before = append(before, fmt.Sprintf("Opening the%s Session %q in %s.", state, printable(r.Name), where))
+	}
+	notes.before = before
+	return openView(ctx, client, stack.Context{WorkspaceID: r.WorkspaceID, SessionID: r.SessionID}, notes, h.machine, h.noBrowser, h.stdout, h.stderr)
 }
 
 // sessions lists the Sessions of every Workspace, newest change first. The

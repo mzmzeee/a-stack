@@ -349,6 +349,10 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	if again.Data.OrchestratorID != got.OrchestratorID || !again.Data.Existing || again.Data.Brief != got.Brief {
 		t.Fatalf("hand-off again %+v", again.Data)
 	}
+	// With --no-browser an agent may be the caller: no view link, so no view secret.
+	if got.URL != "" || strings.Contains(stdout.String(), `"url"`) || !strings.Contains(got.Hint, "a-stack") {
+		t.Fatalf("hand-off made a view link: %+v", got)
+	}
 	// Again in another Session: the credential file exists, so nothing is made.
 	stdout.Reset()
 	stderr.Reset()
