@@ -13,6 +13,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - When `a-stack`, `a-stack -r` or `a-stack new` start the service in the terminal, they say that closing the terminal stops a-stack and how to keep it running.
 - `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
 - `a-stack view revoke --workspace ID --session ID` ends browser view access to one Session, and `--all` to every Session. Open tabs say that they lost access at their next refresh. Only the Operator can run it.
+- `--body TEXT` works on every command that takes one inline text (`task create`, `task edit`, `task status`, `task reopen`, `task report`, `task attention set` and `resolve`), like `--body-file`. The specific flags such as `--report` stay.
+- A mistyped command, help topic or flag gets a suggestion, such as `unknown command tsak list (did you mean task list?)`. A stray word gets `unexpected argument abc for task show (did you mean --task abc?)`.
+- `a-stack task` and other first words alone print the commands of the group, like `a-stack help task`, and exit with 0. With flags, they fail with `invalid_input` and list the words that can follow.
+- Getting started has a section "Hand your Session to an Orchestrator", with the commands the Operator runs after `a-stack new`. The README Quick start points to it.
 
 ### Changed
 
@@ -27,10 +31,19 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - `a-stack update --version` with an older version warns that the older a-stack may not open the current database, and says how to go back.
 - The release notes say to run `a-stack update`.
 - `scripts/build-release.sh` pins the versions of the Alpine packages it installs (`gcc`, `musl-dev`, `binutils`).
+- `invalid_input` errors name what is wrong: the flag that does not apply to the command, the unknown flag, the bad value (`invalid value "abc" for --expected-revision`), and the missing or bad text field (`--reason is required for --progress waiting`, `title is required`, `reason exceeds 2048 bytes`).
+- A bad operation ID gets `operation ID must be 8–128 letters, digits, _ or -`, also on `agent register`, instead of a generic or misleading message. The `--operation-id` help states the rule.
+- A mail with a mention that is not a current assignee names each such mention and lists the assignee names.
+- An ID flag (`--workspace`, `--session`, `--agent`, `--task`, `--from`, `--to`, `--reference`) with a value that cannot be an ID fails before the CLI contacts the service, for example `--agent takes an Agent ID; 01-orch looks like a name; see a-stack agent list`. The CLI still never looks a name up.
+- `a-stack new` opens the open Session of the same name in this folder's Workspace instead of making a second one. Another name still makes a new Session.
+- A flag given twice is rejected, except `--mention`. `version` and `--version` reject flags that do not apply to them. `help version` no longer lists credential flags.
+- The help lists `session snapshot` and `session page` with the Session commands.
 
 ### Fixed
 
 - When the service refuses `agent register` or `agent rebind` with an error that is not retryable, the CLI deletes the new credential file that the command wrote. A file that existed before is kept.
+- JSON output from the service ends in one newline, not two.
+- The docs say which commands take `--state-dir`, and use `a-stack` instead of `./a-stack` in examples.
 
 ### Security
 

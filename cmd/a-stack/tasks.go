@@ -23,8 +23,8 @@ func isTaskCommand(command string) bool {
 }
 
 type taskFlags struct {
-	task, title, description, ticket, report, progress, reason, summary, question, note, location, referenceRevision, reference, from, to, bodyFile, pageKind string
-	readRevision, knownRevision                                                                                                                               int64
+	task, title, description, ticket, report, progress, reason, summary, question, note, location, referenceRevision, reference, from, to, body, bodyFile, pageKind string
+	readRevision, knownRevision                                                                                                                                     int64
 }
 
 func (f *taskFlags) register(fs *flag.FlagSet) {
@@ -43,6 +43,7 @@ func (f *taskFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.reference, "reference", "", "Reference ID")
 	fs.StringVar(&f.from, "from", "", "Prerequisite Task ID")
 	fs.StringVar(&f.to, "to", "", "Dependent Task ID")
+	fs.StringVar(&f.body, "body", "", "Mail text")
 	fs.StringVar(&f.bodyFile, "body-file", "", "Read the text from this file, or - for stdin")
 	fs.StringVar(&f.pageKind, "page-kind", "", "tasks, agents, dependencies, assignments, references, history or graph_history")
 	fs.Int64Var(&f.readRevision, "read-revision", 0, "Read at this Session read revision")
@@ -51,7 +52,7 @@ func (f *taskFlags) register(fs *flag.FlagSet) {
 func taskAllowedFlags(command string) string {
 	switch command {
 	case "task create":
-		return "operation-id title description body-file ticket"
+		return "operation-id title description body body-file ticket"
 	case "task list":
 		return "limit after read-revision"
 	case "task show":
@@ -59,21 +60,21 @@ func taskAllowedFlags(command string) string {
 	case "task history", "task assignees", "task references", "task dependencies":
 		return "task limit after read-revision"
 	case "task edit":
-		return "task operation-id expected-revision title description body-file ticket"
+		return "task operation-id expected-revision title description body body-file ticket"
 	case "task assign", "task unassign":
 		return "task operation-id expected-revision agent"
 	case "task status":
-		return "task operation-id expected-revision progress reason summary body-file"
+		return "task operation-id expected-revision progress reason summary body body-file"
 	case "task reopen":
-		return "task operation-id expected-revision reason body-file"
+		return "task operation-id expected-revision reason body body-file"
 	case "task archive", "task unarchive":
 		return "task operation-id expected-revision"
 	case "task report":
-		return "task operation-id expected-revision report body-file"
+		return "task operation-id expected-revision report body body-file"
 	case "task attention set":
-		return "task operation-id expected-revision question body-file"
+		return "task operation-id expected-revision question body body-file"
 	case "task attention resolve":
-		return "task operation-id expected-revision note body-file"
+		return "task operation-id expected-revision note body body-file"
 	case "task reference add":
 		return "task operation-id expected-revision location reference-revision"
 	case "task reference remove":
@@ -88,6 +89,58 @@ func taskAllowedFlags(command string) string {
 		return "page-kind task limit after read-revision"
 	}
 	return ""
+}
+
+// textFlag names the flag of a command's one inline text. --body and
+// --body-file can give the same text.
+func textFlag(command, progress string) string {
+	switch command {
+	case "task create", "task edit":
+		return "description"
+	case "task report":
+		return "report"
+	case "task reopen":
+		return "reason"
+	case "task status":
+		if progress == "finished" {
+			return "summary"
+		}
+		return "reason"
+	case "task attention set":
+		return "question"
+	case "task attention resolve":
+		return "note"
+	}
+	return ""
+}
+
+// readText puts the text of --body or --body-file into the command's text
+// flag, and checks the text that the chosen progress needs. It runs before
+// the CLI connects to the service.
+func (f *taskFlags) readText(command string, seen map[string]bool) error {
+	texts := map[string]*string{"description": &f.description, "report": &f.report, "reason": &f.reason, "summary": &f.summary, "question": &f.question, "note": &f.note}
+	field := textFlag(command, f.progress)
+	if seen["body"] || seen["body-file"] {
+		if field == "" || seen[field] || seen["body"] && seen["body-file"] {
+			return invalid("choose one of --" + field + ", --body and --body-file")
+		}
+		text := f.body
+		if seen["body-file"] {
+			var err error
+			if text, err = bodyText(f.bodyFile); err != nil {
+				return err
+			}
+		}
+		seen[field] = true
+		*texts[field] = text
+	}
+	switch f.progress {
+	case "waiting", "cancelled", "finished":
+		if command == "task status" && strings.TrimSpace(*texts[field]) == "" {
+			return invalid("--" + field + " is required for --progress " + f.progress)
+		}
+	}
+	return nil
 }
 func bodyText(path string) (string, error) {
 	var reader io.Reader = os.Stdin
@@ -108,48 +161,6 @@ func bodyText(path string) (string, error) {
 func taskRequest(ctx context.Context, client *stack.Client, command string, l lifecycleFlags, f taskFlags, seen map[string]bool) ([]byte, error) {
 	if l.workspace == "" || l.session == "" {
 		return nil, invalid("explicit --workspace and --session required")
-	}
-	if seen["body-file"] {
-		field := ""
-		switch command {
-		case "task create", "task edit":
-			field = "description"
-		case "task report":
-			field = "report"
-		case "task reopen":
-			field = "reason"
-		case "task status":
-			field = "reason"
-			if f.progress == "finished" {
-				field = "summary"
-			}
-		case "task attention set":
-			field = "question"
-		case "task attention resolve":
-			field = "note"
-		}
-		if field == "" || seen[field] {
-			return nil, invalid("choose body text or --body-file")
-		}
-		text, err := bodyText(f.bodyFile)
-		if err != nil {
-			return nil, err
-		}
-		seen[field] = true
-		switch field {
-		case "description":
-			f.description = text
-		case "report":
-			f.report = text
-		case "reason":
-			f.reason = text
-		case "summary":
-			f.summary = text
-		case "question":
-			f.question = text
-		case "note":
-			f.note = text
-		}
 	}
 	ref := stack.Context{WorkspaceID: l.workspace, SessionID: l.session}
 	path := "/v1/" + strings.ReplaceAll(command, " ", "/")

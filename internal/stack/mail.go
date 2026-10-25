@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"sort"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 )
@@ -90,7 +91,7 @@ func mentionBoundary(r rune) bool {
 	return unicode.IsSpace(r) || unicode.Is(unicode.Ps, r) || unicode.Is(unicode.Pi, r) || r == '<'
 }
 func mentionNames(body string, explicit []string) ([]string, error) {
-	if err := validText(body, MaxMailBodyBytes, true); err != nil {
+	if err := validText("body", body, MaxMailBodyBytes, true); err != nil {
 		return nil, err
 	}
 	names := map[string]bool{}
@@ -153,19 +154,53 @@ func mentionNames(body string, explicit []string) ([]string, error) {
 }
 func resolveMentions(ctx context.Context, tx *sql.Tx, task string, names []string) ([]string, error) {
 	ids := make([]string, 0, len(names))
+	var bad []string
 	for _, name := range names {
 		var id string
 		err := tx.QueryRowContext(ctx, "SELECT a.id FROM task_assignees m JOIN agents a ON a.id=m.agent_id WHERE m.task_id=? AND a.name=?", task, name).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, failure("invalid_input", "mention target must be a current Task assignee")
+			bad = append(bad, "@"+name)
+			continue
 		}
 		if err != nil {
 			return nil, err
 		}
 		ids = append(ids, id)
 	}
+	if len(bad) > 0 {
+		return nil, mentionError(ctx, tx, task, bad)
+	}
 	sort.Strings(ids)
 	return ids, nil
+}
+
+// mentionError names the mentions that are not current assignees and lists
+// up to 20 assignee names, so the sender can fix the mail in one try.
+func mentionError(ctx context.Context, tx *sql.Tx, task string, bad []string) error {
+	rows, err := tx.QueryContext(ctx, "SELECT a.name FROM task_assignees m JOIN agents a ON a.id=m.agent_id WHERE m.task_id=? ORDER BY a.name LIMIT 21", task)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	var names []string
+	for rows.Next() {
+		var name string
+		if err = rows.Scan(&name); err != nil {
+			return err
+		}
+		names = append(names, name)
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	if len(names) > 20 {
+		names = append(names[:20], "…")
+	}
+	verb := " is not a current assignee"
+	if len(bad) > 1 {
+		verb = " are not current assignees"
+	}
+	return failure("invalid_input", "mention target must be a current Task assignee: "+strings.Join(bad, ", ")+verb+" of this Task; assignees: "+strings.Join(names, ", ")+"; write other names without @")
 }
 func (s *Store) SendMail(ctx context.Context, token string, r MailSendRequest) (Receipt, error) {
 	names, prepareErr := mentionNames(r.Body, r.Mentions)

@@ -159,7 +159,7 @@ func (h *home) resumeSession(ctx context.Context, client *stack.Client) error {
 }
 
 // create reuses the Workspace of exactly this folder or makes it, then makes a
-// Session. The CLI is the caller that generates the operation IDs, and it
+// Session, unless an open Session of that name exists there. The CLI is the caller that generates the operation IDs, and it
 // prints them so that a change with an unknown outcome can be sent again.
 func (h *home) create(ctx context.Context, client *stack.Client) error {
 	if h.cwd == "" {
@@ -175,8 +175,28 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 			row.WorkspaceID = w.ID
 		}
 	}
+	row.Name = h.name
+	if row.Name == "" {
+		row.Name = filepath.Base(h.cwd)
+	}
 	fields := map[string]any{}
 	before := []string{}
+	if row.WorkspaceID != "" {
+		// A second `a-stack new` opens the open Session of the same name
+		// instead of making a twin. Another name makes a new Session.
+		sessions, err := listPages[stack.Session](ctx, client, "/v1/session/list", stack.Context{WorkspaceID: row.WorkspaceID})
+		if err != nil {
+			return err
+		}
+		for _, s := range sessions {
+			if !s.Closed && s.Name == row.Name {
+				row.SessionID = s.ID
+				fields["existing_session"] = true
+				before = append(before, fmt.Sprintf("The Session %q already exists in this folder. To make another one, run: a-stack new NAME", printable(row.Name)))
+				return h.openWith(ctx, client, row, fields, before, nil)
+			}
+		}
+	}
 	if row.WorkspaceID == "" {
 		id := operationID()
 		receipt, err := mutate(ctx, client, "/v1/workspace/create", stack.WorkspaceCreateRequest{OperationID: id, Path: h.cwd}, "workspace create from this folder", id)
@@ -186,10 +206,6 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 		row.WorkspaceID = receipt.ResourceID
 		fields["workspace_operation_id"] = id
 		before = append(before, fmt.Sprintf("Created the Workspace %s (operation ID %s).", printable(shortenHome(h.cwd, h.homeDir)), id))
-	}
-	row.Name = h.name
-	if row.Name == "" {
-		row.Name = filepath.Base(h.cwd)
 	}
 	id := operationID()
 	receipt, err := mutate(ctx, client, "/v1/session/create", stack.SessionCreateRequest{OperationID: id, WorkspaceID: row.WorkspaceID, Name: row.Name}, "session create --workspace "+row.WorkspaceID+" with the same name", id)

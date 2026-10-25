@@ -67,7 +67,7 @@ When only the Operator can decide, ask one clear question with `me task attentio
 
 ## Rules
 
-- Every change needs `--operation-id` with 8 to 128 letters, digits, `_` or `-`. A shorter ID fails with a generic `invalid_input` message. Use a new, unique ID for each change, such as `02-worker-mail-03`. Reuse an ID only to retry the same unchanged command after a lost response.
+- Every change needs `--operation-id` with 8 to 128 letters, digits, `_` or `-`. Use a new, unique ID for each change, such as `02-worker-mail-03`. Reuse an ID only to retry the same unchanged command after a lost response.
 - Every Task change needs `--expected-revision` with the Task's current `revision`. On `conflict`, read the Task again, decide whether the change still applies, and send it with the new revision and a NEW operation ID.
 - Each `@name` in a mail body must be a current assignee of that Task, or the whole send fails with `mention target must be a current Task assignee`. Check the names with `me task assignees --task T`, and write other names without `@`. Only assignees can read a Task's mail, so the Orchestrator reads it only when it is assigned.
 - Refer to a credential file only by its path. Never print, paste, log or commit its contents, or the part of a browser URL after `#`.

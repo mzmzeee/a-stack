@@ -25,6 +25,7 @@ type shortcutResult struct {
 	OtherOpenSessions  *int   `json:"other_open_sessions"`
 	WorkspaceOperation string `json:"workspace_operation_id"`
 	SessionOperation   string `json:"session_operation_id"`
+	ExistingSession    bool   `json:"existing_session"`
 }
 
 // shortcut runs an Operator shortcut in this process, with a fake opener.
@@ -78,6 +79,15 @@ func TestCLIShortcutsWithRunningService(t *testing.T) {
 	second, _, _ := shortcut(t, "new", "Second build", "--state-dir", dir, "--json", "--no-browser")
 	if second.WorkspaceID != first.WorkspaceID || second.WorkspaceOperation != "" || second.SessionName != "Second build" || second.SessionID == first.SessionID {
 		t.Fatalf("new did not reuse the Workspace: %+v", second)
+	}
+	// The same name again opens the open Session of that name.
+	again, _, _ := shortcut(t, "new", "--state-dir", dir, "--json", "--no-browser")
+	if again.SessionID != first.SessionID || !again.ExistingSession || again.SessionOperation != "" || first.ExistingSession {
+		t.Fatalf("new made a second Session of the same name: %+v", again)
+	}
+	_, out, _ = shortcut(t, "new", "Second build", "--state-dir", dir, "--no-browser")
+	if !strings.HasPrefix(out, "The Session \"Second build\" already exists in this folder. To make another one, run: a-stack new NAME\nOpening the Session \"Second build\"") {
+		t.Fatalf("plain new of an existing name %q", out)
 	}
 	t.Chdir(beta)
 	_, out, _ = shortcut(t, "new", "--state-dir", dir, "--no-browser")
