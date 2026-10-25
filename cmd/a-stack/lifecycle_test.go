@@ -93,7 +93,8 @@ func TestCLIEnrollmentAppointmentRebindAndLifecycle(t *testing.T) {
 		t.Fatal("context from the credential file")
 	}
 	commandResult(t, common("session", "inspect", "--workspace", workspace.ResourceID, "--session", other.ResourceID, "--as", "agent", "--credential-file", newFile), 2)
-	// A file from before v0.1.5 has no context: explicit flags still work.
+	// A file from before v0.1.5 has no context: explicit flags still work, and
+	// without them the CLI asks the service (see credential_context_test.go).
 	oldFile := filepath.Join(private, "worker-old.json")
 	oldData, _ := json.Marshal(map[string]any{"kind": "agent", "token": saved.Token})
 	if os.WriteFile(oldFile, oldData, 0600) != nil {
@@ -101,7 +102,7 @@ func TestCLIEnrollmentAppointmentRebindAndLifecycle(t *testing.T) {
 	}
 	commandResult(t, workerArgs(oldFile, "session", "inspect"), 0)
 	commandResult(t, common("session", "inspect", "--workspace", workspace.ResourceID, "--session", other.ResourceID, "--as", "agent", "--credential-file", oldFile), 1)
-	commandResult(t, common("task", "list", "--as", "agent", "--credential-file", oldFile), 2)
+	commandResult(t, common("task", "list", "--as", "agent", "--credential-file", oldFile), 0)
 	commandResult(t, withRef("session", "inspect", "--as", "agent"), 2)
 	// A different cwd/worktree never creates or selects another Workspace.
 	command := child(t, workerArgs(newFile, "agent", "list")...)

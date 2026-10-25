@@ -117,30 +117,22 @@ Good to know: each Agent gets, in private, only what it needs. That is its own c
 
 ## 5. Plan the work (Orchestrator)
 
-The Orchestrator creates Task A and two Tasks that depend on it, B and C. It assigns Agents `02-worker` and `03-worker` to Task A.
+The Orchestrator creates Task A and assigns Agents `02-worker` and `03-worker` to it. Then it creates two Tasks that depend on A, B and C. Each `task create` links and assigns the new Task in the same step: `--after` names a prerequisite and `--assign` an Agent, by name or ID.
 
 ```bash
 task_a="$(as_agent "$orchestrator_credential" task create --title 'A: shared implementation' \
-  --description 'Implement the shared change' --operation-id demo-task-a | field data.resource_id)"
+  --description 'Implement the shared change' --assign 02-worker --assign 03-worker \
+  --operation-id demo-task-a | field data.resource_id)"
 task_b="$(as_agent "$orchestrator_credential" task create --title 'B: review' \
-  --operation-id demo-task-b | field data.resource_id)"
+  --after "$task_a" --operation-id demo-task-b | field data.resource_id)"
 task_c="$(as_agent "$orchestrator_credential" task create --title 'C: document' \
-  --operation-id demo-task-c | field data.resource_id)"
-revision="$(as_agent "$orchestrator_credential" task assign --task "$task_a" --agent "$worker_a_id" \
-  --expected-revision 1 --operation-id demo-assign-a | field data.revision)"
-as_agent "$orchestrator_credential" task assign --task "$task_a" --agent "$worker_b_id" \
-  --expected-revision "$revision" --operation-id demo-assign-b
-graph="$(as_agent "$orchestrator_credential" session inspect | field data.graph_revision)"
-graph="$(as_agent "$orchestrator_credential" dependency add --from "$task_a" --to "$task_b" \
-  --expected-revision "$graph" --operation-id demo-edge-ab | field data.revision)"
-as_agent "$orchestrator_credential" dependency add --from "$task_a" --to "$task_c" \
-  --expected-revision "$graph" --operation-id demo-edge-ac
+  --after "$task_a" --operation-id demo-task-c | field data.resource_id)"
 as_agent "$worker_a_credential" task list
 ```
 
 The list shows the three Tasks with `"progress":"waiting"`. Tasks B and C have no assignee, so they have `"unassigned":true`.
 
-Good to know: a dependency A → B means that B depends on A. Task changes need the Task's `revision`, and dependency changes need the Session's `graph_revision`. A new Task has revision 1, and the receipt of each change has the new revision in `data.revision`, so the next change can use it without reading the Task again. If someone else changed the Task in between, the change fails with `conflict`, and you read it again. For all Task commands, see [Tasks and the Task graph](tasks.md).
+Good to know: a dependency A → B means that B depends on A. `task create` needs no revision for its links, because nobody else has seen the new Task yet. Later Task changes need the Task's `revision`, and `dependency add` and `dependency remove` need the Session's `graph_revision`. A new Task has revision 1, and the receipt of each change has the new revision in `data.revision`, so the next change can use it without reading the Task again. If someone else changed the Task in between, the change fails with `conflict`, and you read it again. For all Task commands, see [Tasks and the Task graph](tasks.md).
 
 ## 6. Watch the Session in your browser (Operator)
 

@@ -247,8 +247,12 @@ func commandHelp(fs *flag.FlagSet, command string) string {
 	accepted := acceptedFlags(command)
 	var own, common strings.Builder
 	for _, name := range strings.Fields(accepted) {
+		label := flagLabel(fs, name)
+		if command == "task create" && name == "after" {
+			label = "--after ID" // a prerequisite, not a cursor
+		}
 		if !strings.Contains(commonFlags, " "+name+" ") {
-			own.WriteString(column(flagLabel(fs, name), flagText(fs, command, name)))
+			own.WriteString(column(label, flagText(fs, command, name)))
 		}
 	}
 	for _, name := range strings.Fields(commonFlags) {
@@ -296,7 +300,7 @@ var flagValues = map[string]string{
 	"reason": "TEXT", "summary": "TEXT", "question": "TEXT", "note": "TEXT", "location": "PATH",
 	"reference-revision": "REV", "reference": "ID", "from": "ID", "to": "ID", "body-file": "FILE",
 	"page-kind": "KIND", "read-revision": "N", "known-revision": "N", "body": "TEXT", "mention": "NAME",
-	"cursor": "CURSOR", "cursor-file": "FILE", "after-task": "TOKEN", "task-limit": "N",
+	"cursor": "CURSOR", "cursor-file": "FILE", "after-task": "TOKEN", "task-limit": "N", "assign": "AGENT",
 }
 
 // hookFlagText is the text of shared flags that mean something else in the
@@ -305,12 +309,16 @@ var hookFlagText = map[string]string{
 	"project":         "Use .claude and .codex in the current folder, not in your home folder",
 	"name":            "Agent name",
 	"credential-file": "The Agent's credential file",
+	"agent":           "Agent ID",
 }
 
 func flagText(fs *flag.FlagSet, command, name string) string {
 	text := fs.Lookup(name).Usage
 	if hook, ok := hookFlagText[name]; ok && isHookCommand(command) {
 		text = hook
+	}
+	if command == "task create" && name == "after" {
+		text = "Prerequisite Task ID; repeat for more"
 	}
 	if name == "body" && command != "mail send" {
 		text = "Same as --" + textFlag(command, "")
@@ -329,8 +337,8 @@ func flagText(fs *flag.FlagSet, command, name string) string {
 	switch {
 	case !flagRequired(command, name):
 	case name == "workspace" || name == "session":
-		// fillContext takes them from an Agent credential file.
-		text += " (required unless the credential file names it)"
+		// With an Agent credential, loadContext and fillContext find them.
+		text += " (required with the Operator credential)"
 	default:
 		text += " (required)"
 	}

@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -25,6 +27,7 @@ func isTaskCommand(command string) bool {
 type taskFlags struct {
 	task, title, description, ticket, report, progress, reason, summary, question, note, location, referenceRevision, reference, from, to, body, bodyFile, pageKind string
 	readRevision, knownRevision                                                                                                                                     int64
+	assign                                                                                                                                                          []string
 }
 
 func (f *taskFlags) register(fs *flag.FlagSet) {
@@ -48,11 +51,15 @@ func (f *taskFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.pageKind, "page-kind", "", "tasks, agents, dependencies, assignments, references, history or graph_history")
 	fs.Int64Var(&f.readRevision, "read-revision", 0, "Read at this Session read revision")
 	fs.Int64Var(&f.knownRevision, "known-revision", 0, "Return unchanged when this is still the revision")
+	fs.Func("assign", "Agent ID or name to assign; repeat for more", func(value string) error {
+		f.assign = append(f.assign, value)
+		return nil
+	})
 }
 func taskAllowedFlags(command string) string {
 	switch command {
 	case "task create":
-		return "operation-id title description body body-file ticket"
+		return "operation-id title description body body-file ticket after assign"
 	case "task list":
 		return "limit after read-revision"
 	case "task show":
@@ -162,14 +169,14 @@ func bodyText(path string) (string, error) {
 }
 func taskRequest(ctx context.Context, client *stack.Client, command string, l lifecycleFlags, f taskFlags, seen map[string]bool) ([]byte, error) {
 	if l.workspace == "" || l.session == "" {
-		return nil, invalid("explicit --workspace and --session required")
+		return nil, missingContext
 	}
 	ref := stack.Context{WorkspaceID: l.workspace, SessionID: l.session}
 	path := "/v1/" + strings.ReplaceAll(command, " ", "/")
 	var body any
 	switch command {
 	case "task create":
-		body = stack.TaskCreateRequest{Context: ref, OperationID: l.operationID, Title: f.title, Description: f.description, TicketRef: f.ticket}
+		body = stack.TaskCreateRequest{Context: ref, OperationID: l.operationID, Title: f.title, Description: f.description, TicketRef: f.ticket, PrerequisiteIDs: l.afters, AgentIDs: f.assign}
 	case "task show":
 		body = stack.TaskReadRequest{Context: ref, TaskID: f.task, ReadRevision: f.readRevision}
 	case "task list", "task history", "task assignees", "task references", "task dependencies", "session page", "dependency history":
@@ -214,4 +221,30 @@ func taskRequest(ctx context.Context, client *stack.Client, command string, l li
 		body = r
 	}
 	return client.Do(ctx, "POST", path, body)
+}
+
+// unlinkedHint prints one line on stderr when task create made a Task without
+// prerequisites while the Session has other open Tasks: a forgotten --after
+// leaves the Operator's graph without lines. The data on stdout stays the
+// receipt. A failed read prints nothing.
+func unlinkedHint(ctx context.Context, client *stack.Client, ref stack.Context, created []byte, stderr io.Writer) {
+	var receipt struct {
+		Data stack.Receipt `json:"data"`
+	}
+	if json.Unmarshal(created, &receipt) != nil {
+		return
+	}
+	tasks, err := listPages[stack.Task](ctx, client, "/v1/task/list", ref)
+	if err != nil {
+		return
+	}
+	open := 0
+	for _, task := range tasks {
+		if task.ID != receipt.Data.ResourceID && (task.Progress == "waiting" || task.Progress == "working") {
+			open++
+		}
+	}
+	if open > 0 {
+		fmt.Fprintf(stderr, "a-stack: hint: the new Task has no prerequisites, and %d other Task(s) are open; give --after TASK_ID when it waits for one, or link it with dependency add\n", open)
+	}
 }
