@@ -247,6 +247,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err = fillContext(client.Credential, &lifecycle, cmd); err != nil {
+		return err
+	}
 	if cmd == "open" {
 		return openBrowser(ctx, client, stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, machine, noBrowser, stdout, stderr)
 	}

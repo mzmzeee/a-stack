@@ -21,6 +21,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - A mistyped command, help topic or flag gets a suggestion, such as `unknown command tsak list (did you mean task list?)`. A stray word gets `unexpected argument abc for task show (did you mean --task abc?)`.
 - `a-stack task` and other first words alone print the commands of the group, like `a-stack help task`, and exit with 0. With flags, they fail with `invalid_input` and list the words that can follow.
 - Getting started has a section "Hand your Session to an Orchestrator", with the commands the Operator runs after `a-stack new`. The README Quick start points to it.
+- `agent register` and `agent rebind` write the Workspace ID, the Session ID and the Agent name into the new credential file. These fields are not secret. With such a file, Agent commands can leave out `--workspace` and `--session`; a flag that is given must match the file. Older credential files keep working with explicit flags.
+- `mail check` has a top-level `more`, true when more mail is waiting than the response holds. Without `--cursor-file`, the output then has a `hint`.
 
 ### Changed
 
@@ -42,6 +44,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - `a-stack new` opens the open Session of the same name in this folder's Workspace instead of making a second one. Another name still makes a new Session.
 - A flag given twice is rejected, except `--mention`. `version` and `--version` reject flags that do not apply to them. `help version` no longer lists credential flags.
 - The help lists `session snapshot` and `session page` with the Session commands.
+- `mail check --cursor-file FILE` now writes the file: it merges the returned cursors and the Task scan position into it, atomically and with mode 0600, and creates it if it is missing. The same command run again shows only new mail, and the output lists only the Tasks with new mail. Before, a plain `mail check` started at message 1 every time and stopped at 100 messages, so an Agent on a busy Task never saw its newest mail (in the review's reproduction with 105 messages, messages 100–105 never appeared), and every check put old mail back into its context. Now the second check reaches message 105, and a third shows nothing. Two checks with the same file at once leave a whole file; the last write wins. `--cursor-file -` still only reads.
+- The agent skill uses `mail check --cursor-file` in its work loop, and its `me` helper needs only the credential file. It no longer reads the Task before every change: it uses the revision of the Task it read or of its last receipt, and reads again only after a `conflict`, so the revision check catches changes by others again. One full work loop takes 8 commands instead of 11. The `rev` and `grev` helper scripts are gone.
 
 ### Fixed
 
