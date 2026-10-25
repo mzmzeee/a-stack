@@ -4,7 +4,7 @@ The Orchestrator coordinates the Session's team. It registers Agents, creates Ta
 
 The Operator follows the Session through its Task graph, so plan the work as a graph. Every piece of work is a Task, your own included, and every Task is linked to the Tasks it comes from and leads to. A graph of unlinked Tasks tells the Operator nothing about the order of the work.
 
-Set up `me` as [SKILL.md](../SKILL.md) shows, with your own credential. For each command's flags, see [commands.md](commands.md).
+Set up `me` as [SKILL.md](../SKILL.md) shows, with your own credential. If nobody gave you one, make it yourself with `a-stack new --orchestrator 01-orchestrator --no-browser --json` (see SKILL.md); do not ask the Operator for IDs. For each command's flags, see [commands.md](commands.md).
 
 ## 1. Register the Agents
 
@@ -65,6 +65,8 @@ Give each Agent only what it needs, in private:
 - The repository or worktree to work in, when the Task changes files.
 
 Keep the Operator credential, other Agents' credentials and the browser URL out of every brief.
+
+Give each brief to its Agent yourself when you can, for example when you start the Agent. When the Agent is a coding agent that the Operator runs, such as an open Claude Code or Codex window, give the Operator one short brief per Agent to paste there. Do the rest yourself: register the Agents, create and link the Tasks, and write the briefs.
 
 A brief can be this short:
 

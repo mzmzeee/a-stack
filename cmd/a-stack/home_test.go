@@ -342,7 +342,22 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	if code := run([]string{"session", "inspect", "--as", "agent", "--credential-file", got.Credential, "--state-dir", dir}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), `"orchestrator_id":"`+got.OrchestratorID+`"`) {
 		t.Fatalf("inspect as the Orchestrator: %s %s", stdout.String(), stderr.String())
 	}
-	// Again: the credential file exists, so nothing is made.
+	// The same hand-off again returns it, for example to an agent that lost it.
+	var again struct {
+		Data struct {
+			OrchestratorID string `json:"orchestrator_id"`
+			Existing       bool   `json:"existing_orchestrator"`
+			Brief          string `json:"brief"`
+		} `json:"data"`
+	}
+	stdout.Reset()
+	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 0 || json.Unmarshal(stdout.Bytes(), &again) != nil {
+		t.Fatalf("hand-off again: exit %d %s %s", code, stdout.String(), stderr.String())
+	}
+	if again.Data.OrchestratorID != got.OrchestratorID || !again.Data.Existing || again.Data.Brief != got.Brief {
+		t.Fatalf("hand-off again %+v", again.Data)
+	}
+	// Again in another Session: the credential file exists, so nothing is made.
 	stdout.Reset()
 	stderr.Reset()
 	if code := run([]string{"new", "other", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "already exists") {
@@ -355,5 +370,10 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, "a-stack-agents", "02-orch.json")); !os.IsNotExist(err) {
 		t.Fatal("a refused hand-off left a credential file")
+	}
+	// Without a service, the hand-off does not start one in the foreground.
+	stderr.Reset()
+	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", filepath.Join(root, "idle"), "--json", "--no-browser"}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "a-stack service install") {
+		t.Fatalf("hand-off without a service: exit %d %s", code, stderr.String())
 	}
 }

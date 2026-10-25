@@ -45,6 +45,14 @@ func (h *home) run(ctx context.Context) error {
 			answer = err
 		}
 	}
+	// A coding agent runs the hand-off as often as a person does. A service in
+	// the foreground would hang the agent's shell and stop with it.
+	if h.orchestrator != "" {
+		if answer != nil {
+			return answer
+		}
+		return errNoServiceForHandOff
+	}
 	err = serveForeground(ctx, h.state, "", "", func(ctx context.Context, service *stack.Service) error {
 		var err error
 		if h.machine {
@@ -79,6 +87,8 @@ func (h *home) run(ctx context.Context) error {
 // closeHint follows the ready line when a shortcut starts the service in
 // the foreground.
 const closeHint = "Closing this terminal stops a-stack. To keep it running, run: a-stack service install"
+
+var errNoServiceForHandOff = &stack.Error{Code: "storage_unavailable", Retryable: true, Message: "the a-stack service is not running, and an Orchestrator needs one that keeps running; run a-stack service install (or a-stack serve in another terminal), then run the same command again"}
 
 // errStateBusy exits with 3, like stack.ErrStateOwned.
 var errStateBusy = &stack.Error{Code: "conflict", Message: "another a-stack serve owns this state directory but does not answer yet; wait a moment or stop it (Ctrl-C in its terminal, or " + stack.ServiceCommand("stop") + ")"}
@@ -172,9 +182,6 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 		if !orchestratorName.MatchString(h.orchestrator) {
 			return invalid("--orchestrator takes an Agent name: up to 64 letters, digits, _ or -, starting with a letter or digit")
 		}
-		if _, err := os.Lstat(h.orchestratorFile()); err == nil {
-			return invalid(h.orchestratorFile() + " already exists; choose another --orchestrator name")
-		}
 	}
 	workspaces, err := listPages[stack.Workspace](ctx, client, "/v1/workspace/list", stack.Context{})
 	if err != nil {
@@ -206,6 +213,12 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 				before = append(before, fmt.Sprintf("The Session %q already exists in this folder. To make another one, run: a-stack new NAME", printable(row.Name)))
 				return h.handOff(ctx, client, row, fields, before)
 			}
+		}
+	}
+	// Refuse before anything is made.
+	if h.orchestrator != "" {
+		if _, err := os.Lstat(h.orchestratorFile()); err == nil {
+			return errOrchestratorFile(h.orchestratorFile())
 		}
 	}
 	if row.WorkspaceID == "" {
@@ -242,10 +255,20 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 	if err != nil {
 		return err
 	}
+	credential := h.orchestratorFile()
 	if session.OrchestratorID != nil {
+		// The same hand-off again, for example from an agent that lost it:
+		// the Orchestrator's own credential file proves it, and nothing is made.
+		if h.ownsOrchestrator(ctx, credential, ref, *session.OrchestratorID) {
+			fields["existing_orchestrator"] = true
+			before = append(before, fmt.Sprintf("%s is already the Orchestrator of this Session.", printable(h.orchestrator)))
+			return h.briefOrchestrator(ctx, client, row, *session.OrchestratorID, credential, fields, before)
+		}
 		return invalid("this Session already has an Orchestrator; to replace it, see a-stack help session appoint")
 	}
-	credential := h.orchestratorFile()
+	if _, err := os.Lstat(credential); err == nil {
+		return errOrchestratorFile(credential)
+	}
 	if err := os.MkdirAll(filepath.Dir(credential), 0o700); err != nil {
 		return invalid("cannot make the folder " + filepath.Dir(credential))
 	}
@@ -264,6 +287,12 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 	if _, err := lifecycleRequest(ctx, client, "session appoint", lifecycleFlags{workspace: row.WorkspaceID, session: row.SessionID, operationID: appointID, revision: session.Revision, agent: receipt.Data.ResourceID}); err != nil {
 		return err
 	}
+	fields["register_operation_id"], fields["appoint_operation_id"] = registerID, appointID
+	before = append(before, fmt.Sprintf("Registered %s and appointed it as the Orchestrator (operation IDs %s, %s).", printable(h.orchestrator), registerID, appointID))
+	return h.briefOrchestrator(ctx, client, row, receipt.Data.ResourceID, credential, fields, before)
+}
+
+func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row sessionRow, id, credential string, fields map[string]any, before []string) error {
 	brief := strings.Join([]string{
 		"You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.",
 		"Credential file: " + credential,
@@ -272,14 +301,31 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 		"Work in: " + h.cwd,
 		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register one Agent per Task and brief each one.",
 	}, "\n")
-	fields["orchestrator_id"], fields["orchestrator_credential_file"], fields["brief"] = receipt.Data.ResourceID, credential, brief
-	fields["register_operation_id"], fields["appoint_operation_id"] = registerID, appointID
-	before = append(before, fmt.Sprintf("Registered %s and appointed it as the Orchestrator (operation IDs %s, %s).", printable(h.orchestrator), registerID, appointID))
+	fields["orchestrator_id"], fields["orchestrator_credential_file"], fields["brief"] = id, credential, brief
 	after := []string{"Start your coding agent in this folder and give it this brief, with your goal:", "", brief, ""}
 	if !skillInstalled(h.homeDir) {
 		after = append(after, "Install the agent skill first, if your agent does not have it: a-stack skill install")
 	}
 	return h.openWith(ctx, client, row, fields, before, after)
+}
+
+// ownsOrchestrator reports whether the credential file at path belongs to the
+// Orchestrator id of the Session ref.
+func (h *home) ownsOrchestrator(ctx context.Context, path string, ref stack.Context, id string) bool {
+	c, err := stack.ReadCredential(path)
+	if err != nil || c.Kind != stack.AgentCapability || c.WorkspaceID != ref.WorkspaceID || c.SessionID != ref.SessionID || c.AgentName != h.orchestrator {
+		return false
+	}
+	own, err := stack.NewClient(h.state, path, stack.AgentCapability)
+	if err != nil {
+		return false
+	}
+	session, err := inspectSession(ctx, own, ref)
+	return err == nil && session.OrchestratorID != nil && *session.OrchestratorID == id
+}
+
+func errOrchestratorFile(path string) error {
+	return invalid(path + " already exists; choose another --orchestrator name")
 }
 
 // orchestratorName is the service's Agent name rule.

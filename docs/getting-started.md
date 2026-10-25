@@ -320,7 +320,11 @@ Work in: /home/you/code/my-project
 Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register one Agent per Task and brief each one.
 ```
 
-Replace the goal line, and run `a-stack skill install` once if your coding agent does not have the skill yet. The command refuses, before it makes anything, when the credential file already exists, and it refuses a Session that already has an Orchestrator. The brief names the credential file only by its path.
+Replace the goal line, and run `a-stack skill install` once if your coding agent does not have the skill yet. The brief names the credential file only by its path.
+
+You can also skip the brief: start your coding agent in the project folder and ask it to use a-stack, or to be the Orchestrator. An agent with the skill runs `a-stack new --orchestrator 01-orchestrator --no-browser --json` itself and reads the IDs from its output, so it does not ask you for them.
+
+Running the same command again returns the same hand-off, with `existing_orchestrator` in the JSON output, and makes nothing. It refuses a credential file that belongs to another Session, and a Session that already has another Orchestrator. It never starts the service in the foreground: if no service runs, it says to run `a-stack service install`.
 
 ### The same steps by hand
 
