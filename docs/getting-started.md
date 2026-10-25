@@ -298,7 +298,33 @@ If a `conflict` shows that the revision changed, your change is out of date. Rea
 
 ## Hand your Session to an Orchestrator
 
-The guide above uses throwaway state. For your own project, `a-stack new` makes the Workspace and the Session, and the view starts empty. Then you, the Operator, register one Agent, appoint it as the Orchestrator and brief it. The Orchestrator registers the other Agents and plans the Tasks. These commands use the default state directory, like `a-stack new`.
+The guide above uses throwaway state. For your own project, `a-stack new` makes the Workspace and the Session, and the view starts empty. Then you, the Operator, register one Agent, appoint it as the Orchestrator and brief it. The Orchestrator registers the other Agents and plans the Tasks.
+
+One command does all of this:
+
+```sh
+cd ~/code/my-project
+a-stack new --orchestrator 01-orchestrator
+```
+
+It makes the Session (or opens the open Session of this folder's name), registers `01-orchestrator` with a credential file in `~/.local/state/a-stack-agents/`, appoints it, opens the view and prints a brief:
+
+```text
+Start your coding agent in this folder and give it this brief, with your goal:
+
+You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.
+Credential file: /home/you/.local/state/a-stack-agents/01-orchestrator.json
+Workspace: 8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ   Session: 1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
+Your name: 01-orchestrator   Your private folder: make one with mktemp -d
+Work in: /home/you/code/my-project
+Goal: <describe the goal>. Plan the Tasks, register one Agent per Task and brief each one.
+```
+
+Replace the goal line, and run `a-stack skill install` once if your coding agent does not have the skill yet. The command refuses, before it makes anything, when the credential file already exists, and it refuses a Session that already has an Orchestrator. The brief names the credential file only by its path.
+
+### The same steps by hand
+
+These commands use the default state directory, like `a-stack new`.
 
 Find the IDs of the Session. In the project folder, `a-stack -r --json` lists your Sessions; yours has `"current_folder":true`:
 

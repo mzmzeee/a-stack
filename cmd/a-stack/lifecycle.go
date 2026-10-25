@@ -71,7 +71,7 @@ func acceptedFlags(command string) string {
 	if command == "" {
 		allowed += "no-browser resume r "
 	} else if command == "new" {
-		allowed += "no-browser "
+		allowed += "no-browser orchestrator "
 	} else if command == "serve" {
 		allowed += "listen herdr-executable "
 	} else {

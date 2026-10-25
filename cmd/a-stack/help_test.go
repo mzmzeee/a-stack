@@ -122,7 +122,7 @@ func TestHelpJSONStaysCompatible(t *testing.T) {
 	if len(help.Data.Commands) != len(old)+8 || strings.Join(help.Data.Commands[:len(old)], ",") != strings.Join(old, ",") || strings.Join(help.Data.Commands[len(old):], ",") != "new,skill install,skill uninstall,update,view revoke,service install,service uninstall,service status" {
 		t.Fatalf("commands changed: %v", help.Data.Commands)
 	}
-	added := map[string]bool{"-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true, "--all": true}
+	added := map[string]bool{"-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true, "--all": true, "--orchestrator": true}
 	before := []string{}
 	for _, f := range help.Data.Flags {
 		if !added[f] {

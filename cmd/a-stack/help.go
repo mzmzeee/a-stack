@@ -275,7 +275,7 @@ func flagLabel(fs *flag.FlagSet, name string) string {
 var flagValues = map[string]string{
 	"state-dir": "DIR", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE",
 	"herdr-executable": "FILE", "workspace": "ID", "session": "ID", "operation-id": "ID", "path": "DIR",
-	"name": "NAME", "agent": "ID", "worktree": "DIR", "new-credential-file": "FILE", "runtime-id": "ID",
+	"name": "NAME", "orchestrator": "NAME", "agent": "ID", "worktree": "DIR", "new-credential-file": "FILE", "runtime-id": "ID",
 	"runtime-file": "FILE", "runtime-state": "STATE", "expected-revision": "N", "limit": "N", "after": "CURSOR",
 	"task": "ID", "title": "TEXT", "description": "TEXT", "ticket": "REF", "report": "TEXT", "progress": "STATE",
 	"reason": "TEXT", "summary": "TEXT", "question": "TEXT", "note": "TEXT", "location": "PATH",

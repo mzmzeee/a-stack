@@ -72,7 +72,7 @@ func buildVersion() string {
 func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	var state, credential, kind, listen, destination, herdrExecutable string
+	var state, credential, kind, listen, destination, herdrExecutable, orchestrator string
 	var machine, help, noBrowser, resume, project, refresh, check, all bool
 	var release versionFlag
 	fs.StringVar(&state, "state-dir", "", "State directory (default ~/.local/state/a-stack)")
@@ -92,6 +92,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&check, "check", false, "Only print the current and the latest version")
 	fs.BoolVar(&all, "all", false, "Revoke the views of every Session")
 	fs.StringVar(&herdrExecutable, "herdr-executable", "", "Turn on Herdr mention notices with this herdr binary")
+	fs.StringVar(&orchestrator, "orchestrator", "", "Also register an Agent with this name and appoint it as the Orchestrator")
 	var lifecycle lifecycleFlags
 	lifecycle.register(fs)
 	var tasks taskFlags
@@ -205,7 +206,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 	ctx := context.Background()
 	if cmd == "" || cmd == "new" {
-		h := home{state: state, mode: cmd, name: sessionName, resume: resume, machine: machine, noBrowser: noBrowser, stdout: stdout, stderr: stderr}
+		h := home{state: state, mode: cmd, name: sessionName, orchestrator: orchestrator, resume: resume, machine: machine, noBrowser: noBrowser, stdout: stdout, stderr: stderr}
 		return h.run(ctx)
 	}
 	if cmd == "serve" {
