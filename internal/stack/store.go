@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
 )
 
 const schemaVersion = 8
@@ -54,11 +54,30 @@ type Store struct {
 // as the migrations, are never cached.
 const stmtCacheSize = 128
 
+// JournalSizeLimit is the size that SQLite cuts the WAL file back to when it
+// starts the WAL again after a checkpoint. A burst, such as a migration or a
+// mail flood, can grow the WAL far past the about 4 MB that the default
+// automatic checkpoint (every 1,000 pages) leaves; without a limit the file
+// keeps that size until the service stops. Twice the normal size means that
+// ordinary use never cuts and grows the file again.
+const JournalSizeLimit = 8 << 20
+
+// driverName is go-sqlite3 with JournalSizeLimit set on each new connection;
+// the driver has no DSN parameter for it.
+const driverName = "sqlite3-a-stack"
+
+func init() {
+	sql.Register(driverName, &sqlite3.SQLiteDriver{ConnectHook: func(c *sqlite3.SQLiteConn) error {
+		_, err := c.Exec("PRAGMA journal_size_limit="+strconv.Itoa(JournalSizeLimit), nil)
+		return err
+	}})
+}
+
 func openStore(ctx context.Context, path string) (*Store, error) {
 	u := url.URL{Scheme: "file", Path: path}
 	// The driver keeps up to stmtCacheSize single-statement queries prepared on
 	// the one connection, so hot queries are not compiled again on every call.
-	db, err := sql.Open("sqlite3", u.String()+"?_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate&_stmt_cache_size="+strconv.Itoa(stmtCacheSize))
+	db, err := sql.Open(driverName, u.String()+"?_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate&_stmt_cache_size="+strconv.Itoa(stmtCacheSize))
 	if err != nil {
 		return nil, storageError(err)
 	}

@@ -101,7 +101,7 @@ The numbers are constants in `internal/stack/limits.go`.
 
 ## SQLite
 
-The service uses one serialized `database/sql` connection with WAL, `synchronous=FULL`, foreign keys and a busy timeout of 5,000 ms. Transactions use `BEGIN IMMEDIATE`. Each schema migration commits together with its `user_version` and `application_id` updates. The service rejects a newer, unsupported or foreign schema and does not reset it. SQLite does its own checkpoints and sidecar cleanup.
+The service uses one serialized `database/sql` connection with WAL, `synchronous=FULL`, foreign keys and a busy timeout of 5,000 ms. Transactions use `BEGIN IMMEDIATE`. Each schema migration commits together with its `user_version` and `application_id` updates. The service rejects a newer, unsupported or foreign schema and does not reset it. SQLite does its own checkpoints and sidecar cleanup. The WAL file is about 4 MB in normal use. After a burst of writes, such as a migration, it is cut back to 8 MiB (`journal_size_limit`) when SQLite starts it again after a checkpoint, instead of keeping its largest size until the service stops.
 
 A database with a newer schema comes from a newer a-stack, for example after an update to an older version. `serve` then stops with exit code 4. The message names the schema version it found and the newest one it supports. To get back, update a-stack to the newer version with `a-stack update`, or restore a backup made with this version.
 
@@ -159,6 +159,8 @@ install -m 600 "$backup_dir/a-stack.sqlite" "$restore_dir/state.db"
 install -m 600 "$state_dir/operator.json" "$restore_dir/operator.json"
 ./a-stack serve --state-dir "$restore_dir" --json
 ```
+
+A backup is compact: SQLite writes it without the free pages of the database file. The database never shrinks while it runs, because a-stack never deletes retained data and SQLite keeps freed pages for reuse. So restoring a backup is also the way to compact the database, for example after a migration that rebuilt tables.
 
 If the integrity check prints anything but `ok`, do not use that backup; take an older one. Without the `sqlite3` tool, `serve` still runs its own check: it stops with exit code 4 on a damaged copy. The same steps restore a `state.db.pre-vN` copy that `serve` made before a migration.
 
