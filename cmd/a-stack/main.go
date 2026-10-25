@@ -82,7 +82,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	var state, credential, kind, listen, destination, herdrExecutable, orchestrator string
 	var machine, help, noBrowser, resume, project, refresh, check, all bool
 	var release versionFlag
-	fs.StringVar(&state, "state-dir", "", "State directory (default ~/.local/state/a-stack)")
+	fs.StringVar(&state, "state-dir", "", "State directory (default "+stateDirDefault+")")
 	fs.StringVar(&credential, "credential-file", "", "Credential file (default: operator.json)")
 	fs.StringVar(&kind, "as", "", "Credential kind: operator, agent or browser")
 	fs.StringVar(&listen, "listen", "", "Loopback address (default: the last port, else a free one)")

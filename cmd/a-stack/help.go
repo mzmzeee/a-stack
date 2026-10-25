@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"flag"
 	"io"
+	"runtime"
 	"strings"
 )
 
@@ -39,8 +40,8 @@ var helpGroups = []helpGroup{
 		{"health", "", "Check the running service"},
 		{"version", "", "Print the version"},
 		{"update", "", "Install the latest release in place of this binary"},
-		{"service install", "", "Keep the service running with systemd or launchd"},
-		{"service uninstall", "", "Stop the service and remove its unit or plist"},
+		{"service install", "", "Keep the service running at login and after a crash"},
+		{"service uninstall", "", "Stop the service and remove its unit, plist or task"},
 		{"service status", "", "Show the service, its state and health"},
 		{"storage status", "", "Show database and WAL sizes"},
 		{"storage backup", "", "Write a checked backup of the database"},
@@ -100,6 +101,9 @@ var helpGroups = []helpGroup{
 		{"notifications drain", "", "Send pending Herdr notices now"},
 	}},
 }
+
+// stateDirDefault is the default state directory as the help names it.
+var stateDirDefault = map[bool]string{false: "~/.local/state/a-stack", true: `%LOCALAPPDATA%\a-stack`}[runtime.GOOS == "windows"]
 
 const helpTail = `Common flags:
   --state-dir DIR          State directory (default ~/.local/state/a-stack)
@@ -205,7 +209,7 @@ func topHelp() string {
 			b.WriteString(column(rowName(r), r.text))
 		}
 	}
-	b.WriteString("\n" + helpTail)
+	b.WriteString("\n" + strings.Replace(helpTail, "~/.local/state/a-stack", stateDirDefault, 1))
 	return b.String()
 }
 
