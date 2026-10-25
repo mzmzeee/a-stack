@@ -321,7 +321,7 @@
 
 /* Render cost: cards out of view skip layout and paint; graph cards are laid out on their own. */
 .now-card { content-visibility: auto; contain-intrinsic-size: auto 150px; }
-.agent-row { content-visibility: auto; contain-intrinsic-size: auto 320px; }
+.agent-tasks .task-unit { content-visibility: auto; contain-intrinsic-size: auto 190px; }
 .graph-world > .task-unit { contain: layout style; }
 
 /* Short or narrow windows: the page scrolls, so the view gets the height. Only the tabs stay at the top,
