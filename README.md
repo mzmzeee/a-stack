@@ -37,8 +37,8 @@ If your Agents run in [Herdr](https://herdr.dev), a-stack can also tell an Agent
 The view has three tabs:
 
 - **Now** opens first. Its columns show the Tasks that need you, the Tasks in progress, the Tasks waiting for other Tasks and the Tasks that finished recently. A list beside them shows the latest changes.
-- **Graph** shows which Task waits for which. Finished Tasks shrink to one line, so the open work stands out.
-- **Agents** shows each Agent's Tasks in one row.
+- **Graph** shows which Task waits for which. Finished Tasks shrink to one line, so the open work stands out. Zoomed out, cards become colored blocks, and a minimap shows where you are.
+- **Agents** shows a card per Agent, the most urgent first, with its open Tasks and its done Tasks folded away.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/now-dark.png">

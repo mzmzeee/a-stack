@@ -23,7 +23,8 @@ const icons = {
   file: '<path d="m20 11-8.5 8.5a5 5 0 0 1-7-7L13 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L14 7"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16Z"/>',
   system: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8m-4-4v4"/>',
-  bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4Z"/><path d="M10 21a2 2 0 0 0 4 0"/>'
+  bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4Z"/><path d="M10 21a2 2 0 0 0 4 0"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>'
 };
 const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.info}</svg>`;
 document.querySelectorAll('[data-icon]').forEach(el => el.replaceWith(Object.assign(document.createElement('span'), { innerHTML: icon(el.dataset.icon) })));
@@ -113,36 +114,41 @@ function status(n,t) {
 }
 // Every card has a left border in its status color, so status still reads at a small zoom; Needs you has a ring.
 function statusMark(button,t) { const v=t.needs_you?'needs-you':t.progress;if(button.dataset.status!==v)button.dataset.status=v; }
+// The number of messages in the Task's mail, as an envelope and a count; hidden without mail.
+function mailCount(n,count) {
+  const v=String(count || 0);n.hidden=!count;if(n.dataset.count===v)return;
+  n.dataset.count=v;n.replaceChildren(...(count?[iconNode('mail'),document.createTextNode(v)]:[]));
+}
+const mailText=t=>t.mail_count?` ${plural(t.mail_count,'Task mail message')}.`:'';
 function makeCard(t) {
   const article=el('article','task-unit');article.dataset.task=t.id;
   const own=el('div','owners'), button=el('button','task-card');button.dataset.openTask=t.id;
-  const st=el('span','status'),title=el('span','task-title'),note=el('span','task-note'),foot=el('span','task-caption');
-  button.append(st,title,note,foot);article.append(own,button);
+  const top=el('span','card-top'),st=el('span','status'),mail=el('span','mail-count'),title=el('span','task-title'),note=el('span','task-note'),foot=el('span','task-caption');
+  top.append(st,mail);button.append(top,title,note,foot);article.append(own,button);
   button.addEventListener('click',()=>openTask(t.id,button));
-  return {article,own,button,st,title,note,foot};
+  return {article,own,button,st,mail,title,note,foot};
 }
-function patchCard(c,t,graphCard=false) {
+// A card in the graph. Only the graph uses these cards; Now and Agents have their own.
+function patchCard(c,t) {
   const names=owners(t), ownKey=names.join('\n');
   if(c.own.dataset.key!==ownKey) {
     c.own.dataset.key=ownKey;c.own.replaceChildren(...(names.length?names:['Unassigned']).map(name=>{
       const n=el('span','owner');n.append(iconNode('agent'),el('span','owner-name',name));return n;
     }));
   }
-  status(c.st,t);statusMark(c.button,t);setText(c.title,t.title);setText(c.note,t.report_preview || 'No report yet.');
-  const hidden=graphCard?hiddenPrerequisites.get(t.id) || 0:0;
+  status(c.st,t);statusMark(c.button,t);setText(c.title,t.title);setText(c.note,t.report_preview || 'No report yet.');mailCount(c.mail,t.mail_count);
+  const hidden=hiddenPrerequisites.get(t.id) || 0;
   const caption=[t.reference_count ? `${t.reference_count} file reference${t.reference_count===1?'':'s'}`:'',t.cancelled_prerequisite_count?`${t.cancelled_prerequisite_count} cancelled prerequisite${t.cancelled_prerequisite_count===1?'':'s'}`:'',hidden?`${hidden} archived prerequisite${hidden===1?'':'s'} hidden`:''].filter(Boolean).join(' · ');
   // In the graph, done Tasks without an open question are one-line blocks; the details still show everything.
-  const compact=graphCard&&compactTask(t), tip=compact?t.title:'';c.article.classList.toggle('compact',compact);if(c.button.title!==tip)c.button.title=tip; // a compact block may cut its title
+  const compact=compactTask(t), tip=compact?t.title:'';c.article.classList.toggle('compact',compact);if(c.button.title!==tip)c.button.title=tip; // a compact block may cut its title
   setText(c.foot,caption);
-  c.button.classList.toggle('selected',state.selected===t.id||graphCard&&state.focus===t.id); // the focused Task keeps its outline
-  c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.needs_you?' Needs you.':''} Assigned to ${names.join(' and ') || 'Unassigned'}. ${caption}`);
+  c.button.classList.toggle('selected',state.selected===t.id||state.focus===t.id); // the focused Task keeps its outline
+  c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.needs_you?' Needs you.':''} Assigned to ${names.join(' and ') || 'Unassigned'}.${mailText(t)} ${caption}`);
   const visible=matches(t);
-  c.article.classList.toggle('archived',graphCard&&t.archived);
-  c.article.classList.toggle('unfocused',graphCard&&!!focusIds&&!focusIds.has(t.id)&&!t.needs_you); // Needs you never fades
-  c.article.classList.toggle('dimmed',graphCard&&!visible);
-  c.article.inert=graphCard&&!visible;
-  if (graphCard) c.article.setAttribute('aria-hidden',String(!visible));
-  else c.article.hidden=!visible;
+  c.article.classList.toggle('archived',!!t.archived);
+  c.article.classList.toggle('unfocused',!!focusIds&&!focusIds.has(t.id)&&!t.needs_you); // Needs you never fades
+  c.article.classList.toggle('dimmed',!visible);
+  c.article.inert=!visible;c.article.setAttribute('aria-hidden',String(!visible));
 }
 const edgesSVG = document.createElementNS(svgNS,'svg');edgesSVG.classList.add('connections');edgesSVG.setAttribute('aria-hidden','true');
 edgesSVG.innerHTML='<defs><marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1l5 3-5 3" fill="none" stroke="var(--edge)" stroke-width="1.5"/></marker><marker id="arrow-active" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="4.5" markerHeight="4.5" orient="auto"><path d="M1 1l5 3-5 3" fill="none" stroke="var(--accent)" stroke-width="1.6"/></marker></defs><g></g>';
@@ -178,7 +184,7 @@ function reduceEdges(tasks,deps) {
 // barycenter sweeps. Each Task is centered on the ports of its prerequisites and pushed down to keep the row gap, so a
 // straight chain runs level. Tasks without a drawn line go in rows below or columns to the right, whichever Fits larger.
 const cardWidth=274, columnGap=112, padX=28, padY=24, groupGap=96;
-let ports=new Map(); // the port height of each card, measured once per layout
+let ports=new Map(), unitSizes=new Map(); // the port height and the height of each card, measured once per layout
 function layout() {
   const wasHidden=panel.hidden; if(wasHidden){panel.hidden=false;panel.style.visibility='hidden';}
   const tasks=graphTasks, byID=new Map(tasks.map(t=>[t.id,t])), rank=new Map(tasks.map(t=>[t.id,0]));
@@ -198,8 +204,10 @@ function layout() {
   const order=new Map(), spread=l=>l.forEach((id,i)=>order.set(id,(i+.5)/l.length));cols.forEach(spread);
   const sweep=(l,near)=>{const c=new Map(l.map(id=>{const n=near.get(id);return [id,n.length?n.reduce((s,x)=>s+order.get(x),0)/n.length:order.get(id)];}));l.sort((a,b)=>c.get(a)-c.get(b));spread(l);};
   for(let i=1;i<cols.length;i++)sweep(cols[i],prev);for(let i=cols.length-2;i>=0;i--)sweep(cols[i],next);for(let i=1;i<cols.length;i++)sweep(cols[i],prev);
-  const sizes=new Map(), compact=new Set();ports=new Map();
-  for(const t of tasks){const c=cards.get(t.id);sizes.set(t.id,c.article.offsetHeight);ports.set(t.id,c.button.offsetTop+c.button.offsetHeight/2);if(c.article.classList.contains('compact'))compact.add(t.id);}
+  // Measure the full cards: a card that content-visibility skips, or a zoomed-out block, has another height, and
+  // measuring 2,000 skipped cards one by one takes seconds. The sizes are written with the positions, after all reads.
+  const sizes=new Map(), bodies=new Map(), compact=new Set();ports=new Map();unitSizes=sizes;graph.classList.remove('cv','far','farther');
+  for(const t of tasks){const c=cards.get(t.id);sizes.set(t.id,c.article.offsetHeight);bodies.set(t.id,c.button.offsetHeight);ports.set(t.id,c.button.offsetTop+c.button.offsetHeight/2);if(c.article.classList.contains('compact'))compact.add(t.id);}
   const gap=(a,b)=>compact.has(a)&&compact.has(b)?16:28, step=cardWidth+columnGap, pos=new Map();
   let h=0;
   cols.forEach((col,k)=>{
@@ -225,13 +233,15 @@ function layout() {
   for(const [id,p] of extra)pos.set(id,p);
   const [W,H]=box(extra);
   positions.clear();
-  for(const [id,p] of pos){const x=padX+p.x,y=padY+p.y;positions.set(id,{x,y});const n=cards.get(id).article;n.style.left=x+'px';n.style.top=y+'px';}
+  for(const [id,p] of pos){const x=padX+p.x,y=padY+p.y;positions.set(id,{x,y});const s=cards.get(id).article.style;s.left=x+'px';s.top=y+'px';s.setProperty('--uh',sizes.get(id)+'px');s.setProperty('--h',bodies.get(id)+'px');}
   // Tab order follows the layout: column by column, top to bottom. A focused card keeps the focus.
   const focused=document.activeElement;let ref=edgesSVG.nextSibling;
   for(const [id] of [...positions].sort((a,b)=>a[1].x-b[1].x||a[1].y-b[1].y)){const n=cards.get(id).article;if(n===ref)ref=n.nextSibling;else place(graph,n,ref);}
   if(focused&&focused!==document.activeElement&&focused.isConnected)focused.focus({preventScroll:true});
   width=W+2*padX;height=H+2*padY; // tight around the Task units, so Fit fits the cards
-  graph.style.width=width+'px';graph.style.height=height+'px';applyZoom();drawEdges();
+  graph.style.width=width+'px';graph.style.height=height+'px';
+  // Now cards out of view skip layout and paint, sized by the height just measured (--uh).
+  graph.classList.add('cv');mapBase=null;applyZoom();drawEdges();
   if(wasHidden){panel.hidden=true;panel.style.visibility='';}
 }
 // A line leaves the output port at the right edge of the card body and ends 2px before the next card, as a cubic curve
@@ -268,39 +278,95 @@ function connection(e,d) {
 function measure(name,run) {performance.clearMarks(name+'-start');performance.clearMarks(name+'-end');performance.clearMeasures(name);performance.mark(name+'-start');run();performance.mark(name+'-end');performance.measure(name,name+'-start',name+'-end');}
 function patchGraph() {
   if(state.focus&&!graphTasks.some(t=>t.id===state.focus))state.focus=null;
-  focusIds=state.focus?focusSet():null;
+  focusIds=state.focus?focusSet():null;mapBase=null; // statuses and filters color the minimap
   const ids=new Set(graphTasks.map(t=>t.id));
   for(const [id,c] of cards)if(!ids.has(id)){c.article.remove();cards.delete(id);}
   // Archived prerequisites that the graph hides, named in the caption of the Tasks that need them.
   hiddenPrerequisites=new Map();
   for(const e of model.dependencies)if(!ids.has(e.prerequisite_id)&&ids.has(e.dependent_id))hiddenPrerequisites.set(e.dependent_id,(hiddenPrerequisites.get(e.dependent_id) || 0)+1);
-  for(const t of graphTasks) {let c=cards.get(t.id);if(!c){c=makeCard(t);cards.set(t.id,c);graph.append(c.article);}patchCard(c,t,true);}
+  for(const t of graphTasks) {let c=cards.get(t.id);if(!c){c=makeCard(t);cards.set(t.id,c);graph.append(c.article);}patchCard(c,t);}
   const key=JSON.stringify([graphTasks.map(t=>[t.id,t.title,owners(t),compactTask(t),t.needs_you,t.reference_count,t.cancelled_prerequisite_count,hiddenPrerequisites.get(t.id) || 0]),model.dependencies.map(e=>[e.prerequisite_id,e.dependent_id])]);
   if(geometryKey!==key){
     geometryKey=key;
     measure('a-stack-layout',()=>{measure('a-stack-reduce',()=>{({kept:graphEdges,hidden:hiddenEdges}=reduceEdges(graphTasks,model.dependencies));});layout();});
   }else drawEdges();
-  const archived=model.tasks.filter(t=>t.archived).length;setText($('archived-label'),`Archived (${archived})`);$('archived').setAttribute('aria-pressed',String(state.archived));
-  $('archived').setAttribute('aria-label',`${state.archived?'Hide':'Show'} ${plural(archived,'archived Task')} in the graph`);
+}
+// The Agents tab: one card per Agent, the most urgent first or by name, Unassigned last. Needs you and Working
+// always show; Waiting shows its 4 newest, then "N more waiting"; finished and cancelled Tasks fold away. While a
+// search or a filter is set, every matching Task shows. Cards and rows are patched in place, so focus stays.
+const rank=t=>t.needs_you?0:t.progress==='working'?1:t.progress==='waiting'?2:3;
+const newest=(a,b)=>a.updated_at<b.updated_at?1:a.updated_at>b.updated_at?-1:a.id<b.id?-1:1;
+const chipKinds=[['needs','attention','needs you'],['working','working','working'],['waiting','waiting','waiting'],['done','finished','done']];
+const folds=new Set(); // the open folds, only in memory: 'w' or 'd' and the Agent ID
+state.agentSort=load('a-stack-agent-sort')==='name'?'name':'urgency';
+function agentGroups() {
+  index();
+  const groups=[...model.agents,{id:'unassigned',name:'Unassigned'}].map(a=>{
+    const all=a.id==='unassigned'?model.tasks.filter(t=>t.unassigned):(agentTasks.get(a.id) || []).map(id=>taskByID.get(id)).filter(Boolean);
+    const tasks=all.filter(t=>state.archived||!t.archived).sort((x,y)=>rank(x)-rank(y)||newest(x,y)), counts=[0,0,0,0];
+    for(const t of tasks)counts[rank(t)]++;
+    return {a,tasks,counts,hidden:all.length-tasks.length,ask:tasks.filter(t=>t.needs_you).map(t=>t.updated_at).sort()[0] || ''};
+  }).filter(g=>g.a.id!=='unassigned'||g.tasks.length);
+  // Most urgent: Needs you first, the oldest question first; then the most Working, then the most Waiting.
+  const key=g=>[g.a.id==='unassigned'?1:0,...(state.agentSort==='urgency'?[g.counts[0]?0:1,g.ask,-g.counts[1],-g.counts[2]]:[])];
+  return groups.sort((x,y)=>{const a=key(x),b=key(y);for(let i=0;i<a.length;i++)if(a[i]!==b[i])return a[i]<b[i]?-1:1;return x.a.name<y.a.name?-1:x.a.name>y.a.name?1:0;});
+}
+function makeAgentCard(id) {
+  const section=el('section','agent-row'),heading=el('header','agent-heading'),identity=el('div','agent-identity'),avatar=el('span','agent-avatar'),names=el('div'),name=el('h2','agent-name'),meta=el('div','agent-meta'),chips=el('div','chips');
+  const open=el('ul','task-rows'),moreWaiting=el('button','fold'),moreDone=el('button','fold'),doneList=el('ul','task-rows done'),empty=el('p','agent-empty');
+  avatar.setAttribute('aria-hidden','true');identity.append(avatar,names);names.append(name,meta);heading.append(identity,chips);section.append(heading,open,moreWaiting,moreDone,doneList,empty);
+  for(const [button,kind] of [[moreWaiting,'w'],[moreDone,'d']]){button.append(iconNode('chevron'),el('span'));button.onclick=()=>{const k=kind+id;if(!folds.delete(k))folds.add(k);patchAgents();};}
+  return {section,name,avatar,meta,chips,open,moreWaiting,moreDone,doneList,empty,rows:new Map()};
+}
+function makeRow(t) {
+  const li=el('li'),b=el('button','task-row'),st=el('span','row-status'),main=el('span','row-main'),title=el('span','row-title'),question=el('span','row-question'),others=el('span','row-meta'),side=el('span','row-side'),mail=el('span','mail-count'),when=el('time','now-age');
+  main.append(title,question,others);side.append(mail,when);b.append(st,main,side);li.append(b);b.dataset.openTask=t.id;b.addEventListener('click',()=>openTask(t.id,b));
+  return {li,b,st,title,question,others,mail,when};
+}
+function patchRow(r,t,agent) {
+  const kind=t.needs_you?'needs-you':t.progress;
+  if(r.st.dataset.key!==kind){r.st.dataset.key=kind;r.st.className='row-status '+kind;r.st.replaceChildren(iconNode(t.needs_you?'attention':t.progress==='cancelled'?'idle':t.progress));}
+  const others=owners(t).filter(n=>n!==agent);
+  setText(r.title,t.title);setText(r.question,t.needs_you?t.question_preview || '':'');r.question.hidden=!r.question.textContent;
+  setText(r.others,others.length?'with '+others.slice(0,2).join(', ')+(others.length>2?` +${others.length-2}`:''):'');r.others.hidden=!others.length;
+  mailCount(r.mail,t.mail_count);stamp(r.when,t.updated_at);
+  r.b.classList.toggle('selected',state.selected===t.id);r.b.classList.toggle('archived',!!t.archived);
+  r.b.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.archived?' Archived.':''}${t.needs_you?' Needs you: '+(t.question_preview || '')+'.':''}${others.length?' With '+others.join(' and ')+'.':''}${mailText(t)} Changed ${age(t.updated_at)}.`);
+  return r.li;
 }
 function patchAgents() {
-  const all=[...model.agents,{id:'unassigned',name:'Unassigned'}], live=new Set();
-  for(const a of all) {
-    index();const mine=new Set(agentTasks.get(a.id)), assigned=a.id==='unassigned'?model.tasks.filter(t=>t.unassigned):model.tasks.filter(t=>mine.has(t.id));
-    if(a.id==='unassigned'&&!assigned.length)continue;
-    live.add(a.id);let r=rows.get(a.id);
-    if(!r){
-      const section=el('section','agent-row'),heading=el('div','agent-heading'),identity=el('div','agent-identity'),avatar=el('span','agent-avatar'),names=el('div'),name=el('h2','agent-name'),meta=el('div','agent-meta'),runtime=el('div','agent-state'),tasks=el('div','agent-tasks'),empty=el('p','agent-meta','No assigned Tasks.');
-      identity.append(avatar,names);names.append(name,meta);heading.append(identity,runtime);section.append(heading,tasks);tasks.append(empty);$('agent-list').append(section);r={section,name,avatar,meta,runtime,tasks,empty,cards:new Map()};rows.set(a.id,r);
-    }
-    setText(r.name,a.name);setText(r.avatar,a.name.slice(0,2));setText(r.meta,a.id==='unassigned'?'No assignee':a.id===model.snapshot.session.orchestrator_id?'Orchestrator':'Registered Agent');
-    setText(r.runtime,a.id==='unassigned'?'':runtimeText(a));
-    const assignedIDs=new Set(assigned.map(t=>t.id));for(const [id,c]of r.cards)if(!assignedIDs.has(id)){c.article.remove();r.cards.delete(id);}
-    for(const t of assigned){let c=r.cards.get(t.id);if(!c){c=makeCard(t);r.cards.set(t.id,c);r.tasks.append(c.article);}patchCard(c,t);}
-    const count=assigned.filter(matches).length;r.empty.hidden=assigned.length>0;r.section.hidden=(state.query||state.filter!=='all')&&!count;
+  const focused=document.activeElement, filtering=!!state.query.trim()||state.filter!=='all', groups=agentGroups(), live=new Set();
+  let needs=0,working=0,idle=0;
+  for(const g of groups) {
+    const id=g.a.id, me=id==='unassigned'?'':g.a.name, [n,w,wait]=g.counts;live.add(id);
+    if(id!=='unassigned'){if(n)needs++;if(w)working++;if(!n&&!w&&!wait)idle++;}
+    let r=rows.get(id);if(!r){r=makeAgentCard(id);rows.set(id,r);}
+    setText(r.name,g.a.name);setText(r.avatar,g.a.name.slice(0,2));setText(r.meta,id==='unassigned'?'No assignee':agentMeta(g.a));
+    r.section.classList.toggle('urgent',n>0);r.section.classList.toggle('idle',!n&&!w&&!wait);
+    const chipKey=g.counts.join();
+    if(r.chips.dataset.key!==chipKey){r.chips.dataset.key=chipKey;r.chips.replaceChildren(...chipKinds.flatMap(([kind,name,word],i)=>{if(!g.counts[i])return [];const c=el('span','chip '+kind);c.append(iconNode(name),document.createTextNode(`${g.counts[i]} ${word}`));return [c];}));}
+    const ids=new Set(g.tasks.map(t=>t.id));for(const k of r.rows.keys())if(!ids.has(k))r.rows.delete(k);
+    const row=t=>{let x=r.rows.get(t.id);if(!x){x=makeRow(t);r.rows.set(t.id,x);}return patchRow(x,t,me);};
+    const shown=filtering?g.tasks.filter(matches):g.tasks, waiting=shown.filter(t=>rank(t)===2), doneTasks=shown.filter(t=>rank(t)===3);
+    const allWaiting=filtering||folds.has('w'+id), allDone=filtering||folds.has('d'+id);
+    placeAll(r.open,shown.filter(t=>rank(t)<2).concat(allWaiting?waiting:waiting.slice(0,4)).map(row));
+    placeAll(r.doneList,allDone?doneTasks.map(row):[]);
+    r.moreWaiting.hidden=filtering||waiting.length<=4;r.moreDone.hidden=filtering||!doneTasks.length;
+    setText(r.moreWaiting.lastChild,allWaiting?'Show fewer waiting':`${waiting.length-4} more waiting`);r.moreWaiting.setAttribute('aria-expanded',String(allWaiting));
+    setText(r.moreDone.lastChild,`${plural(doneTasks.length,'finished or cancelled Task')}`);r.moreDone.setAttribute('aria-expanded',String(allDone));
+    r.open.hidden=!r.open.children.length;r.doneList.hidden=!r.doneList.children.length;
+    setText(r.empty,g.tasks.length?'':g.hidden?`${plural(g.hidden,'archived Task')} hidden.`:'No Tasks.');r.empty.hidden=!!g.tasks.length;
+    r.section.hidden=filtering&&!shown.length;
   }
   for(const [id,r] of rows)if(!live.has(id)){r.section.remove();rows.delete(id);}
+  placeAll($('agent-list'),groups.map(g=>rows.get(g.a.id).section));
+  const agents=model.agents.length;
+  setText($('agents-summary'),agents?`${plural(agents,'Agent')}: ${needs} with Needs you, ${working} working, ${idle} with nothing open`:'');
+  document.querySelector('.agents-bar').hidden=!agents;
+  for(const b of document.querySelectorAll('[data-sort]'))b.setAttribute('aria-pressed',String(b.dataset.sort===state.agentSort));
+  if(focused&&focused!==document.activeElement&&focused.isConnected)focused.focus({preventScroll:true});
 }
+for(const b of document.querySelectorAll('[data-sort]'))b.addEventListener('click',()=>{state.agentSort=b.dataset.sort;save('a-stack-agent-sort',state.agentSort);if(model)patchAgents();});
 // The Now board: one card per Task, moved between columns in place, so focus and scroll positions survive polls.
 const columns=[
   {key:'attention',title:'Needs you',empty:'Nothing needs you.'},
@@ -319,26 +385,26 @@ const column=t=>t.needs_you?'attention':t.progress==='working'?'working':t.progr
 const firstLine=text=>(text || '').split('\n').find(l=>l.trim())?.trim() || '';
 function stamp(n,at) { if(n.dataset.at!==at){n.dataset.at=at;n.dateTime=at;} setText(n,at?age(at):''); }
 function makeNowCard(t) {
-  const button=el('button','task-card now-card'),top=el('span','now-top'),st=el('span','status'),when=el('time','now-age'),title=el('span','task-title'),own=el('span','now-owners'),question=el('span','now-question'),waits=el('span','now-waits'),note=el('span','task-note');
-  top.append(st,when);button.append(top,title,own,question,waits,note);button.dataset.openTask=t.id;
+  const button=el('button','task-card now-card'),top=el('span','now-top'),st=el('span','status'),mail=el('span','mail-count'),when=el('time','now-age'),title=el('span','task-title'),own=el('span','now-owners'),question=el('span','now-question'),waits=el('span','now-waits'),note=el('span','task-note');
+  top.append(st,mail,when);button.append(top,title,own,question,waits,note);button.dataset.openTask=t.id;
   button.addEventListener('click',()=>openTask(t.id,button));
-  return {button,st,when,title,own,question,waits,note};
+  return {button,st,mail,when,title,own,question,waits,note};
 }
 function patchNowCard(c,t,byID) {
   const names=owners(t), blockers=(prerequisites.get(t.id) || []).map(e=>byID.get(e.prerequisite_id)).filter(p=>p&&!done(p)).map(p=>p.title);
-  status(c.st,t);statusMark(c.button,t);stamp(c.when,t.updated_at);setText(c.title,t.title);
+  status(c.st,t);statusMark(c.button,t);mailCount(c.mail,t.mail_count);stamp(c.when,t.updated_at);setText(c.title,t.title);
   const ownKey=names.join('\n');if(c.own.dataset.key!==ownKey){c.own.dataset.key=ownKey;c.own.replaceChildren(iconNode('agent'),el('span','owner-name',names.join(', ') || 'Unassigned'));}
   setText(c.question,t.question_preview || '');c.question.hidden=!t.needs_you||!t.question_preview;
   setText(c.waits,blockers.length?'Waits for: '+blockers.slice(0,3).join(', ')+(blockers.length>3?` +${blockers.length-3} more`:''):'');c.waits.hidden=t.progress!=='waiting'||!blockers.length;
   const report=firstLine(t.report_preview);setText(c.note,report || 'No report yet.');
   c.button.classList.toggle('selected',state.selected===t.id);c.button.classList.toggle('archived',!!t.archived);
-  c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.archived?' Archived.':''}${t.needs_you?' Needs you: '+(t.question_preview || '')+'.':''} Assigned to ${names.join(' and ') || 'Unassigned'}.${c.waits.hidden?'':' '+c.waits.textContent+'.'} Changed ${age(t.updated_at)}.`);
+  c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.archived?' Archived.':''}${t.needs_you?' Needs you: '+(t.question_preview || '')+'.':''} Assigned to ${names.join(' and ') || 'Unassigned'}.${c.waits.hidden?'':' '+c.waits.textContent+'.'}${mailText(t)} Changed ${age(t.updated_at)}.`);
 }
 // Moving a node keeps its focus where the browser supports moveBefore.
 function place(list,node,ref) { if(node.nextSibling===ref&&node.parentNode===list)return; try{if(list.moveBefore&&node.isConnected&&node.ownerDocument===list.ownerDocument){list.moveBefore(node,ref);return;}}catch{} list.insertBefore(node,ref); }
 function placeAll(list,nodes) { nodes.forEach((n,i)=>place(list,n,list.children[i] || null)); while(list.children.length>nodes.length)list.lastChild.remove(); }
 function patchNow() {
-  const focused=document.activeElement, byID=new Map(model.tasks.map(t=>[t.id,t])), newest=(a,b)=>a.updated_at<b.updated_at?1:a.updated_at>b.updated_at?-1:a.id<b.id?-1:1;
+  const focused=document.activeElement, byID=new Map(model.tasks.map(t=>[t.id,t]));
   for(const [id] of nowCards)if(!byID.has(id))nowCards.delete(id);
   const archivedAll=model.tasks.filter(t=>t.archived).sort(newest), archivedShown=archivedAll.filter(matches);
   for(const col of columns) {
@@ -393,14 +459,14 @@ function patchFeed(byID) {
   }));
   $('feed-empty').hidden=shown.length>0;
 }
-// Ages tick every second only where they show: the Now board and the open Task mail.
-function updateNowAges() { for(const root of [state.view==='now'&&nowPanel,dialog.open&&dialog,$('attention-dialog').open&&$('attention-dialog')])if(root)for(const n of root.querySelectorAll('time[data-at]'))setText(n,age(n.dataset.at)); }
+// Ages tick every second only where they show: the Now and Agents tabs and the open Task mail.
+function updateNowAges() { for(const root of [state.view==='now'&&nowPanel,state.view==='agents'&&agentsPanel,dialog.open&&dialog,$('attention-dialog').open&&$('attention-dialog')])if(root)for(const n of root.querySelectorAll('time[data-at]'))setText(n,age(n.dataset.at)); }
 function render() {
   if(state.theme==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=state.theme;
   document.querySelectorAll('.theme-button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===state.theme)));
   document.querySelectorAll('[data-view]').forEach(b=>{const active=b.dataset.view===state.view;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});
   panel.hidden=state.view!=='graph';agentsPanel.hidden=state.view!=='agents';nowPanel.hidden=state.view!=='now';
-  for(const id of ['zoom-controls','archived'])$(id).hidden=state.view!=='graph';
+  $('zoom-controls').hidden=state.view!=='graph';$('archived').hidden=state.view==='now';minimap.hidden=true;
   if(!model){
     // Nothing is known before the first snapshot, so no column may say that nothing needs you.
     const failed=!!notice||failures>0;
@@ -433,6 +499,10 @@ function render() {
   updateHint();
   if(state.selected){if(model.tasks.some(t=>t.id===state.selected))loadDetail();else $('task-dialog').close();}
   if($('attention-dialog').open)renderAttention();
+  // The Archived toggle works in the Graph and Agents tabs.
+  const archived=model.tasks.filter(t=>t.archived).length;setText($('archived-label'),`Archived (${archived})`);$('archived').setAttribute('aria-pressed',String(state.archived));
+  $('archived').setAttribute('aria-label',`${state.archived?'Hide':'Show'} ${plural(archived,'archived Task')} in the Graph and Agents tabs`);
+  if(state.view==='graph')redrawMinimap();
   updateSource();
 }
 // Only the visible view is patched. The others are patched when they show, if their inputs changed since.
@@ -443,8 +513,9 @@ function patchView(view) {
   patched[view]=inputs;patchers[view]();
 }
 function age(timestamp) {const seconds=Math.max(0,Math.floor((Date.now()-new Date(timestamp).getTime())/1000));return seconds<60?`${seconds}s ago`:seconds<3600?`${Math.floor(seconds/60)}m ago`:seconds<86400?`${Math.floor(seconds/3600)}h ago`:`${Math.floor(seconds/86400)}d ago`;}
-function runtimeText(a) { return `Runtime: ${a.runtime_attached?(a.runtime_state || 'unknown'):'unbound'} · unverified${a.observed_at?' · '+age(a.observed_at):''}`; }
-function updateRuntimeAges() { if(model&&state.view==='agents')for(const a of model.agents){const r=rows.get(a.id);if(r)setText(r.runtime,runtimeText(a));} }
+// The runtime state is what the service last observed, so it says "unverified" and its age.
+function agentMeta(a) { return `${a.id===model.snapshot.session.orchestrator_id?'Orchestrator':'Agent'} · runtime ${a.runtime_attached?(a.runtime_state || 'unknown'):'unbound'} · unverified${a.observed_at?' · '+age(a.observed_at):''}`; }
+function updateRuntimeAges() { if(model&&state.view==='agents')for(const a of model.agents){const r=rows.get(a.id);if(r)setText(r.meta,agentMeta(a));} }
 function plural(n,word) { return `${n} ${word}${n===1?'':'s'}`; }
 // Saved data older than 10 s, or no data at all, gets a banner above the view and "Stale" in the tab title.
 // If the service still answers, it is busy (Task changes keep restarting the collection);
@@ -460,7 +531,7 @@ function updateBanner() {
 let lowDisk=false;
 function updateHint() {
   const hint=$('footer-hint');hint.classList.toggle('lost',lowDisk);
-  setText(hint,lowDisk?'Disk space is low. Run a-stack storage status.':state.view==='graph'?'Drag to pan. Select a task to see its neighbours.':'Select a task for its report and dependencies.');
+  setText(hint,lowDisk?'Disk space is low. Run a-stack storage status.':state.view!=='graph'?'Select a task for its report and dependencies.':state.zoom<.2?'Overview: blocks in status colors. Zoom in for titles.':state.zoom<.5?'Titles only. Zoom past 50% for reports and Agents.':'Drag to pan. Select a task to see its neighbours.');
   updateBanner();
 }
 function updateSource(message) {
@@ -502,7 +573,61 @@ function notifyNew() {
   if(!fresh||!notify||Notification.permission!=='granted'||!document.hidden&&document.hasFocus())return;
   try{const n=new Notification('Needs you · '+model.snapshot.session.name,{body:`${ids.size===1?'1 Task needs':ids.size+' Tasks need'} you. Open the a-stack tab to answer.`,tag:'a-stack-needs-you-'+context.session_id});n.onclick=()=>{window.focus();n.close();};}catch{}
 }
-function applyZoom() {graph.style.transform=`scale(${state.zoom})`;graph.parentElement.style.width=width*state.zoom+'px';graph.parentElement.style.height=height*state.zoom+'px';setText($('zoom-reset'),(state.zoom<.1?(state.zoom*100).toFixed(1):Math.round(state.zoom*100))+'%');}
+// Semantic zoom: below 50% (far) the cards are blocks in their status color with only the title, at a constant size on
+// screen; below 20% (farther) only the blocks. CSS scales every size by 1/zoom (--z), so no new layout runs.
+// --lines is the number of title lines that fit the smallest full card at this zoom. Both are set only while zoomed
+// out: every card inherits them, so a change restyles the cards on screen.
+function applyZoom() {
+  const z=state.zoom;graph.style.transform=`scale(${z})`;graph.parentElement.style.width=width*z+'px';graph.parentElement.style.height=height*z+'px';setText($('zoom-reset'),(z<.1?(z*100).toFixed(1):Math.round(z*100))+'%');
+  if(z<.5){graph.style.setProperty('--z',z);graph.style.setProperty('--lines',Math.max(1,Math.floor((130*z-8)/16)));}
+  graph.classList.toggle('far',z<.5);graph.classList.toggle('farther',z<.2);updateHint();redrawMinimap();
+}
+// The minimap: one canvas at the bottom right of the graph, drawn from the positions and heights that the layout
+// cached, never from the DOM. Its base picture is drawn once per graph change; a scroll redraws only the box of
+// the visible part. It is hidden while the graph fits, and m in the graph hides or shows it. It is for the pointer
+// only: screen readers skip it and it never takes the focus.
+const minimap=$('minimap'), mapCanvas=minimap.firstElementChild, phone=matchMedia('(max-width: 700px)');
+let mapBase=null, mapOn=load('a-stack-minimap')!=='0', mapFrame=0;
+function buildMinimap() {
+  const [cw,ch]=phone.matches?[140,91]:[200,130], r=devicePixelRatio || 1, c=document.createElement('canvas');c.width=cw*r;c.height=ch*r;
+  const x=c.getContext('2d'), s=Math.min((cw-12)/width,(ch-12)/height), ox=(cw-width*s)/2, oy=(ch-height*s)/2;
+  // Canvas needs plain colors: the browser resolves each light-dark() token on the minimap itself.
+  const color=name=>{minimap.style.color=`var(--${name})`;return getComputedStyle(minimap).color;};
+  const col={needs:color('attention'),working:color('working'),waiting:color('waiting'),finished:color('finished'),cancelled:color('strong-line'),back:color('chrome'),view:color('accent')};minimap.style.color='';
+  x.scale(r,r);x.fillStyle=col.back;x.fillRect(0,0,cw,ch);
+  for(const t of graphTasks){const p=positions.get(t.id);if(!p)continue;x.globalAlpha=!matches(t)?.15:t.needs_you?1:done(t)?.45:.8;x.fillStyle=col[t.needs_you?'needs':t.progress];x.fillRect(ox+p.x*s,oy+p.y*s,Math.max(1.5,cardWidth*s),Math.max(1.5,(unitSizes.get(t.id) || 0)*s));}
+  // A ring around Needs you, so one question shows among 2,000 blocks.
+  x.globalAlpha=1;x.strokeStyle=col.needs;x.lineWidth=1.5;
+  for(const t of graphTasks){const p=positions.get(t.id);if(p&&t.needs_you)x.strokeRect(ox+p.x*s-3,oy+p.y*s-3,cardWidth*s+6,(unitSizes.get(t.id) || 0)*s+6);}
+  mapBase={c,s,ox,oy,cw,ch,view:col.view};
+}
+function drawMinimap() {
+  const z=state.zoom, show=mapOn&&!!model&&state.view==='graph'&&graph.parentElement.style.visibility!=='hidden'&&(width*z>panel.clientWidth+1||height*z>panel.clientHeight+1);
+  minimap.hidden=!show;if(!show)return;
+  if(!mapBase)buildMinimap();
+  const {c,s,ox,oy,cw,ch}=mapBase, r=devicePixelRatio || 1, x=mapCanvas.getContext('2d');
+  if(mapCanvas.width!==c.width||mapCanvas.height!==c.height){mapCanvas.width=c.width;mapCanvas.height=c.height;}
+  x.setTransform(1,0,0,1,0,0);x.drawImage(c,0,0);x.setTransform(r,0,0,r,0,0);
+  // The graph is centered while it is smaller than the panel, so subtract that margin.
+  const left=(panel.scrollLeft-Math.max(0,(panel.clientWidth-width*z)/2))/z, top=(panel.scrollTop-Math.max(0,(panel.clientHeight-height*z)/2))/z;
+  const x1=Math.max(1,ox+left*s), y1=Math.max(1,oy+top*s), x2=Math.min(cw-1,ox+(left+panel.clientWidth/z)*s), y2=Math.min(ch-1,oy+(top+panel.clientHeight/z)*s);
+  x.strokeStyle=mapBase.view;x.lineWidth=1.5;x.strokeRect(x1,y1,Math.max(2,x2-x1),Math.max(2,y2-y1));
+}
+const redrawMinimap=()=>{if(!mapFrame)mapFrame=requestAnimationFrame(()=>{mapFrame=0;drawMinimap();});};
+const resetMinimap=()=>{mapBase=null;redrawMinimap();};
+panel.addEventListener('scroll',redrawMinimap,{passive:true});window.addEventListener('resize',redrawMinimap);
+phone.addEventListener('change',resetMinimap);matchMedia('(prefers-color-scheme: dark)').addEventListener('change',resetMinimap);
+// A click or a drag on the minimap centers the view there.
+function mapJump(e) {
+  if(!mapBase)return;const b=mapCanvas.getBoundingClientRect(), gx=((e.clientX-b.left)*mapBase.cw/b.width-mapBase.ox)/mapBase.s, gy=((e.clientY-b.top)*mapBase.ch/b.height-mapBase.oy)/mapBase.s;
+  panel.scrollLeft=gx*state.zoom+Math.max(0,(panel.clientWidth-width*state.zoom)/2)-panel.clientWidth/2;panel.scrollTop=gy*state.zoom+Math.max(0,(panel.clientHeight-height*state.zoom)/2)-panel.clientHeight/2;
+}
+let mapDrag=false;
+minimap.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefault();mapDrag=true;minimap.setPointerCapture(e.pointerId);mapJump(e);});
+minimap.addEventListener('pointermove',e=>{if(mapDrag)mapJump(e);});
+for(const type of ['pointerup','pointercancel'])minimap.addEventListener(type,()=>{mapDrag=false;});
+minimap.addEventListener('mousedown',e=>e.preventDefault()); // keeps the focus where it is
+panel.addEventListener('keydown',e=>{if(e.key==='m'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){mapOn=!mapOn;save('a-stack-minimap',mapOn?'1':'0');drawMinimap();}});
 function setZoom(value) {
   const old=state.zoom;state.zoom=Math.max(.0001,Math.min(1.5,value));
   const x=(panel.scrollLeft+panel.clientWidth/2)/old,y=(panel.scrollTop+panel.clientHeight/2)/old;applyZoom();panel.scrollLeft=x*state.zoom-panel.clientWidth/2;panel.scrollTop=y*state.zoom-panel.clientHeight/2;
@@ -511,9 +636,9 @@ for(const b of document.querySelectorAll('[data-view]')) {
   b.addEventListener('click',()=>{state.view=b.dataset.view;save('a-stack-view',state.view);render();});
   b.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const i=views.indexOf(state.view),v=e.key==='Home'?views[0]:e.key==='End'?views.at(-1):views[(i+(e.key==='ArrowRight'?1:views.length-1))%views.length];$(v+'-tab').click();$(v+'-tab').focus();});
 }
-for(const b of document.querySelectorAll('.theme-button'))b.addEventListener('click',()=>{state.theme=b.dataset.theme;save('a-stack-theme',state.theme);render();});
+for(const b of document.querySelectorAll('.theme-button'))b.addEventListener('click',()=>{state.theme=b.dataset.theme;save('a-stack-theme',state.theme);mapBase=null;render();});
 $('search').addEventListener('input',e=>{state.query=e.target.value;render();});
-$('search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const root={now:nowPanel,graph,agents:agentsPanel}[state.view];const c=[...root.querySelectorAll('.task-card')].find(b=>!b.closest('[hidden]')&&!b.closest('[inert]'));if(c)c.focus();}});
+$('search').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();const root={now:nowPanel,graph,agents:agentsPanel}[state.view];const c=[...root.querySelectorAll('.task-card, .task-row')].find(b=>!b.closest('[hidden]')&&!b.closest('[inert]'));if(c)c.focus();}});
 $('status-filter').addEventListener('change',e=>{state.filter=e.target.value;render();});
 $('clear-filters').addEventListener('click',()=>{state.query='';state.filter='all';$('search').value='';$('status-filter').value='all';render();$('search').focus();});
 $('zoom-out').onclick=()=>setZoom(state.zoom/1.2);$('zoom-in').onclick=()=>setZoom(state.zoom*1.2);$('zoom-reset').onclick=()=>setZoom(1);
