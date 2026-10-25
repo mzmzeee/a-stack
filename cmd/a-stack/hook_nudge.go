@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
@@ -36,14 +35,11 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 	if os.MkdirAll(dir, 0o700) != nil {
 		return ""
 	}
-	lock, err := os.Open(dir)
-	if err != nil {
-		return ""
-	}
-	defer lock.Close()
-	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+	release, ok := tryLock(dir)
+	if !ok {
 		return "" // another hook run of this Agent checks right now
 	}
+	defer release()
 	sum := sha256.Sum256([]byte(in.SessionID))
 	file := filepath.Join(dir, hex.EncodeToString(sum[:16])+".json")
 	info, err := os.Stat(file)
