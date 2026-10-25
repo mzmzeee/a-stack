@@ -36,13 +36,37 @@ let geometryKey = '', width = 1400, height = 670;
 const cards = new Map(), rows = new Map(), positions = new Map();
 const path = location.pathname.split('/');
 const context = {workspace_id:path[2],session_id:path[3]};
-const storageKey = 'a-stack-read:' + location.pathname;
-let token = '';
-function readToken() {
-  const fragment = location.hash.slice(1);
+const storageKey = 'a-stack-view:' + location.pathname;
+let token = '', notice = '';
+const linkUsed = 'This link has expired or was already used. Run a-stack, or a-stack open, to open a new one.';
+const accessEnded = 'This view lost access. Run a-stack, or a-stack open, to open a new link.';
+// A view link carries a one-time code in its fragment. The page trades it for a
+// view token and keeps that in the tab's session storage, so a reload works.
+async function readToken() {
+  const code=location.hash.slice(1);
   history.replaceState(null,'',location.pathname);
-  if (fragment) { sessionStorage.removeItem(storageKey); if (/^[A-Za-z0-9_-]{43}$/.test(fragment)) sessionStorage.setItem(storageKey,fragment); }
-  return sessionStorage.getItem(storageKey) || '';
+  let saved='';try{saved=sessionStorage.getItem(storageKey) || '';}catch{}
+  if(!code)return saved;
+  try{
+    const response=await fetch('/v1/browser/redeem',{method:'POST',headers:{'Content-Type':'application/json','X-A-Stack-Instance':instance},body:JSON.stringify({...context,code}),credentials:'omit',cache:'no-store',redirect:'error'});
+    if(!response.ok)throw new Error(response.status===401?linkUsed:'');
+    const fresh=(await response.json()).data.token;
+    try{sessionStorage.setItem(storageKey,fresh);}catch{}
+    return fresh;
+  }catch(error){if(!saved)notice=error.message || 'The local service did not answer. Run a-stack, or a-stack open, to open a new link.';return saved;}
+}
+// noAccess says on the page itself why the view cannot read.
+function noAccess(text) {
+  notice=text;
+  if(!model)setText(document.querySelector('.workspace-title h1'),'No access');
+  setText(document.querySelector('.workspace-subtitle'),text);
+  updateSource();
+}
+// A new link in the same tab replaces the view token and clears an old notice.
+async function connect() {
+  clearTimeout(timer);controller?.abort();failures=0;notice='';etag='';
+  token=await readToken();
+  if(token){if(model)render();refresh();}else{stale=true;$('attention').disabled=true;noAccess(notice || 'Open this view with a-stack, or a-stack open.');}
 }
 // The theme survives browser restarts; until one is picked, follow the system.
 function savedTheme() {
@@ -55,14 +79,7 @@ function load(key) { try { return localStorage.getItem(key); } catch { return nu
 function save(key,value) { try { localStorage.setItem(key,value); } catch {} }
 if (views.includes(load('a-stack-view'))) state.view = load('a-stack-view');
 state.archived = load('a-stack-archived') === '1';
-try {
-  token = readToken();
-} catch { history.replaceState(null,'',location.pathname); }
-window.addEventListener('hashchange',()=>{
-  try { token=readToken(); } catch { token=''; history.replaceState(null,'',location.pathname); }
-  clearTimeout(timer);controller?.abort();failures=0;
-  if(token)refresh();else{stale=true;updateSource('Read credential missing · run a-stack open');}
-});
+window.addEventListener('hashchange',connect);
 const labels = {waiting:'Waiting',working:'Working',finished:'Finished',cancelled:'Cancelled'};
 function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className=cls; if (text !== undefined) n.textContent=text; return n; }
 function setText(n,text) { if (n.textContent !== String(text)) n.textContent=text; }
@@ -390,7 +407,7 @@ function updateRuntimeAges() { if(model)for(const a of model.agents){const r=row
 function plural(n,word) { return `${n} ${word}${n===1?'':'s'}`; }
 // Stale for 30 s: if the service still answers, it is busy (Task changes keep
 // restarting the collection); if not, a restart on a new port needs a-stack.
-function lost() { return stale&&lastSuccess>0&&Date.now()-lastSuccess>30000; }
+function lost() { return !notice&&stale&&lastSuccess>0&&Date.now()-lastSuccess>30000; }
 // The service sets X-A-Stack-Low-Disk on snapshot answers, 304 included.
 let lowDisk=false;
 function updateHint() {
@@ -399,7 +416,7 @@ function updateHint() {
 }
 function updateSource(message) {
   const service=version?'Local service '+version:'Local service';
-  const text=message || (lastSuccess?`${stale?'Saved · stale':service} · checked ${age(new Date(lastSuccess).toISOString())}`:service+' · connecting');
+  const text=message || (notice?'No access · run a-stack open':lastSuccess?`${stale?'Saved · stale':service} · checked ${age(new Date(lastSuccess).toISOString())}`:service+' · connecting');
   updateHint();
   setText(document.querySelector('.preview-label'),text);setText(document.querySelector('.preview-short'),stale?'Saved · stale':'Read-only');
   setText($('source-info'),`${text}${model?'. Snapshot captured '+model.snapshot.captured_at+' · revision '+model.snapshot.session.read_revision+'. Runtime observations have their own age and are unverified.':''}`);
@@ -552,13 +569,13 @@ async function refresh() {
         if(error.status===409&&attempt<2){const shell=await fetch(location.pathname,{cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});if(shell.ok){instance=shell.headers.get('X-A-Stack-Instance') || instance;version=shell.headers.get('X-A-Stack-Version') || version;}continue;}throw error;
       }
     }
-  }catch(error){if(error.name!=='AbortError'){stale=true;failures++;answered=!(error instanceof TypeError)&&error.status!==401&&error.status!==403;updateSource(model?undefined:error.status===401||error.status===403?'Read credential unavailable · run a-stack open again':'Local service unavailable · retrying');}}
+  }catch(error){if(error.name!=='AbortError'){stale=true;failures++;answered=!(error instanceof TypeError)&&error.status!==401&&error.status!==403;if(error.status===401||error.status===403){token='';try{sessionStorage.removeItem(storageKey);}catch{}noAccess(accessEnded);}else updateSource(model?undefined:'Local service unavailable · retrying');}}
   finally{busy=false;controller=null;schedule();}
 }
 function schedule(){clearTimeout(timer);if(!document.hidden&&token)timer=setTimeout(refresh,Math.min(30000,2000*2**Math.min(failures,4)));}
-document.addEventListener('visibilitychange',()=>{clearTimeout(timer);if(document.hidden)controller?.abort();else refresh();});
+document.addEventListener('visibilitychange',()=>{document.documentElement.classList.toggle('tab-hidden',document.hidden);clearTimeout(timer);if(document.hidden)controller?.abort();else refresh();});
 setInterval(()=>{if(!document.hidden&&model){updateSource();updateRuntimeAges();updateNowAges();}},1000);
 render();
-if(token)refresh();else{updateSource('Read credential missing · run a-stack open');$('attention').disabled=true;}
+connect();
 
 })();

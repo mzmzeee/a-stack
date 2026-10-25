@@ -68,7 +68,7 @@ jobs:
             echo "::error::CHANGELOG.md has no section for $GITHUB_REF_NAME"
             exit 1
           fi
-          printf '\nTo update, run the install script again and restart the service. See [Update](https://github.com/mzmzeee/a-stack/blob/%s/docs/install.md#update).\n' "$GITHUB_REF_NAME" >> "$notes"
+          printf '\nTo update, run a-stack update and restart the service. See [Update](https://github.com/mzmzeee/a-stack/blob/%s/docs/install.md#update).\n' "$GITHUB_REF_NAME" >> "$notes"
           cat "$notes"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -80,11 +80,23 @@ jobs:
           cd dist
           sha256sum a-stack_linux_*.tar.gz install.sh a-stack.service a-stack-skill.tar.gz > SHA256SUMS
           cat SHA256SUMS
+      # SHA256SUMS.sig is the raw 64-byte Ed25519 signature of SHA256SUMS. The
+      # check uses the public key in install.sh, which a-stack update also has.
+      - if: steps.existing.outputs.exists == 'false'
+        env:
+          SIGNING_KEY: ${{ secrets.A_STACK_SIGNING_KEY }}
+        run: |
+          key="$RUNNER_TEMP/release-key.pem"
+          trap 'rm -f "$key"' EXIT
+          (umask 077 && printf '%s\n' "$SIGNING_KEY" > "$key")
+          openssl pkeyutl -sign -rawin -inkey "$key" -in dist/SHA256SUMS -out dist/SHA256SUMS.sig
+          sed -n '/^-----BEGIN PUBLIC KEY-----$/,/^-----END PUBLIC KEY-----$/p' install.sh > "$RUNNER_TEMP/release-pub.pem"
+          openssl pkeyutl -verify -pubin -inkey "$RUNNER_TEMP/release-pub.pem" -rawin -in dist/SHA256SUMS -sigfile dist/SHA256SUMS.sig
       # GitHub supports attestations on private repositories only with Enterprise Cloud.
       - if: github.event.repository.visibility == 'public' && steps.existing.outputs.exists == 'false'
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
-          subject-path: dist/a-stack_linux_*.tar.gz
+          subject-path: dist/*
       - if: steps.existing.outputs.exists == 'false'
         env:
           GH_TOKEN: ${{ github.token }}

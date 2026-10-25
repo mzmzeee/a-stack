@@ -462,6 +462,9 @@ func TestPopulatedV2UpgradeAndV3FailureRecovery(t *testing.T) {
 			if _, err = db.Exec("INSERT INTO workspaces VALUES(?,?,?);INSERT INTO sessions(id,workspace_id,name,created_at,updated_at) VALUES(?,?,?,?,?);INSERT INTO agents(id,workspace_id,session_id,name,runtime_id,binding,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?);UPDATE sessions SET orchestrator_id=?,revision=2,read_revision=3 WHERE id=?", w, privateTestDir(t), timestamp, session, w, "v2", timestamp, timestamp, agent, w, session, "retained-agent", "v2-runtime", `{"instance_id":"v2-runtime"}`, timestamp, timestamp, agent, session); err != nil {
 				t.Fatal(err)
 			}
+			if _, err = db.Exec(expiresStandIn); err != nil {
+				t.Fatal(err)
+			}
 			old := &Store{db: db, path: path, id: id}
 			op := Operation{ID: "v2-retained-operation", Name: "v2.test", Scope: session, Payload: json.RawMessage(`{}`)}
 			allow := func(context.Context, *sql.Tx, Principal, Receipt) error { return nil }
@@ -469,6 +472,9 @@ func TestPopulatedV2UpgradeAndV3FailureRecovery(t *testing.T) {
 				return Receipt{ResourceID: agent, Revision: 1, Outcome: "registered"}, nil
 			})
 			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = db.Exec(dropExpires); err != nil {
 				t.Fatal(err)
 			}
 			if failMigration {

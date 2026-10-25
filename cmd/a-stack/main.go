@@ -39,7 +39,10 @@ func writeError(stderr io.Writer, err error) int {
 	}
 	_ = json.NewEncoder(stderr).Encode(map[string]any{"error": e})
 	if e == stack.ErrStateOwned || e == errStateBusy {
-		return 3 // systemd: RestartPreventExitStatus=3
+		return 3 // systemd: RestartPreventExitStatus
+	}
+	if e.DatabaseUnusable() {
+		return 4 // a damaged database, or a newer or unknown schema
 	}
 	if e.Code == "invalid_input" {
 		return 2
@@ -60,7 +63,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var state, credential, kind, listen, destination, herdrExecutable string
-	var machine, help, noBrowser, resume, project, refresh, check bool
+	var machine, help, noBrowser, resume, project, refresh, check, all bool
 	var release versionFlag
 	fs.StringVar(&state, "state-dir", "", "State directory (default ~/.local/state/a-stack)")
 	fs.StringVar(&credential, "credential-file", "", "Credential file (default: operator.json)")
@@ -77,6 +80,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&project, "project", false, "Use .claude and .agents in the current folder, not in your home folder")
 	fs.BoolVar(&refresh, "refresh", false, "Replace only the skill copies that exist; write no new ones")
 	fs.BoolVar(&check, "check", false, "Only print the current and the latest version")
+	fs.BoolVar(&all, "all", false, "Revoke the views of every Session")
 	fs.StringVar(&herdrExecutable, "herdr-executable", "", "Turn on Herdr mention notices with this herdr binary")
 	var lifecycle lifecycleFlags
 	lifecycle.register(fs)
@@ -134,7 +138,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		}
 		cmd = "new"
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) {
+	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -183,6 +187,14 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 	if cmd == "open" {
 		return openBrowser(ctx, client, stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, machine, noBrowser, stdout, stderr)
+	}
+	if cmd == "view revoke" {
+		data, err := client.RevokeViews(ctx, stack.ViewRevokeRequest{Context: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, All: all})
+		if err != nil {
+			return err
+		}
+		_, err = stdout.Write(append(data, '\n'))
+		return err
 	}
 	if isNotificationCommand(cmd) {
 		data, err := notificationRequest(ctx, client, cmd, lifecycle)

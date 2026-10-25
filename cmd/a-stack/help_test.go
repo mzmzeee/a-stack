@@ -18,7 +18,7 @@ func helpOutput(t *testing.T, args ...string) string {
 }
 
 func allCommands() []string {
-	commands := []string{"new", "open", "serve", "health", "version", "storage status", "storage backup", "notifications status", "notifications drain", "skill install", "skill uninstall", "update"}
+	commands := []string{"new", "open", "serve", "health", "version", "storage status", "storage backup", "notifications status", "notifications drain", "skill install", "skill uninstall", "update", "view revoke"}
 	return append(append(append(commands, lifecycleCommands...), taskCommands...), mailCommands...)
 }
 
@@ -119,10 +119,10 @@ func TestHelpJSONStaysCompatible(t *testing.T) {
 	}
 	old := []string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}
 	old = append(append(append(old, lifecycleCommands...), taskCommands...), mailCommands...)
-	if len(help.Data.Commands) != len(old)+7 || strings.Join(help.Data.Commands[:len(old)], ",") != strings.Join(old, ",") || strings.Join(help.Data.Commands[len(old):], ",") != "new,skill install,skill uninstall,update,service install,service uninstall,service status" {
+	if len(help.Data.Commands) != len(old)+8 || strings.Join(help.Data.Commands[:len(old)], ",") != strings.Join(old, ",") || strings.Join(help.Data.Commands[len(old):], ",") != "new,skill install,skill uninstall,update,view revoke,service install,service uninstall,service status" {
 		t.Fatalf("commands changed: %v", help.Data.Commands)
 	}
-	added := map[string]bool{"-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true}
+	added := map[string]bool{"-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true, "--all": true}
 	before := []string{}
 	for _, f := range help.Data.Flags {
 		if !added[f] {

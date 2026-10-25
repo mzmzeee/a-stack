@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -34,6 +36,23 @@ const (
 	maxArchive      = 256 << 20 // the archive and the binary in it
 	maxSums         = 1 << 20
 )
+
+// releaseKey checks SHA256SUMS.sig, the raw Ed25519 signature that the
+// release workflow makes over SHA256SUMS. install.sh has the same key as PEM.
+// Tests replace it.
+var releaseKey = ed25519.PublicKey(mustBase64("NkJiNRRt3iLovFX+EVrAxA1Z7a3diAw6F3PhyC9+D08="))
+
+// signedSince is the first signed release. Older releases have no
+// SHA256SUMS.sig; update installs them with a warning.
+var signedSince = [3]int{0, 1, 5}
+
+func mustBase64(s string) []byte {
+	b, err := base64.StdEncoding.DecodeString(s)
+	if err != nil {
+		panic(err)
+	}
+	return b
+}
 
 // releaseTag is a release version as the release workflow builds it.
 var releaseTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`)
@@ -79,10 +98,15 @@ func newReleases() releases {
 	return releases{base: base, mirror: mirror, client: client}
 }
 
-func (r releases) get(rawURL string, limit int64) ([]byte, error) {
+// get downloads a release file. With optional, a file that does not exist
+// returns nil and no error.
+func (r releases) get(rawURL string, limit int64, optional bool) ([]byte, error) {
 	var body io.ReadCloser
 	if file, ok := strings.CutPrefix(rawURL, "file://"); ok && r.mirror {
 		f, err := os.Open(file)
+		if optional && errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		}
 		if err != nil {
 			return nil, updateFailed("cannot read " + rawURL)
 		}
@@ -94,6 +118,10 @@ func (r releases) get(rawURL string, limit int64) ([]byte, error) {
 		resp, err := r.client.Get(rawURL)
 		if err != nil {
 			return nil, updateFailed("download failed: " + rawURL)
+		}
+		if optional && resp.StatusCode == http.StatusNotFound {
+			resp.Body.Close()
+			return nil, nil
 		}
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
@@ -137,23 +165,37 @@ func (r releases) latest() (string, error) {
 	return tag, nil
 }
 
-// download returns the verified a-stack binary of a release.
-func (r releases) download(tag string) ([]byte, error) {
+// download returns the verified a-stack binary of a release. It trusts
+// SHA256SUMS only after its signature checks out with releaseKey; signed is
+// false for a release from before signedSince that has no signature.
+func (r releases) download(tag string) (binary []byte, signed bool, err error) {
 	dir := r.base + "/download/" + tag + "/"
-	name := "a-stack_linux_" + runtime.GOARCH + ".tar.gz"
-	archive, err := r.get(dir+name, maxArchive)
+	sums, err := r.get(dir+"SHA256SUMS", maxSums, false)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	sums, err := r.get(dir+"SHA256SUMS", maxSums)
+	sig, err := r.get(dir+"SHA256SUMS.sig", 1024, true)
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	n, _, _ := semver(tag)
+	if sig == nil && slices.Compare(n[:], signedSince[:]) >= 0 {
+		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "release " + tag + " has no SHA256SUMS.sig, but every release since v0.1.5 is signed; nothing changed"}
+	}
+	if sig != nil && !ed25519.Verify(releaseKey, sums, sig) {
+		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "the signature of SHA256SUMS for " + tag + " is not valid; nothing changed"}
+	}
+	name := "a-stack_linux_" + runtime.GOARCH + ".tar.gz"
+	archive, err := r.get(dir+name, maxArchive, false)
+	if err != nil {
+		return nil, false, err
 	}
 	sum := sha256.Sum256(archive)
 	if !slices.Contains(strings.Split(string(sums), "\n"), hex.EncodeToString(sum[:])+"  "+name) {
-		return nil, &stack.Error{Code: "integration_unavailable", Message: "checksum mismatch for " + name + "; nothing changed"}
+		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "checksum mismatch for " + name + "; nothing changed"}
 	}
-	return extractBinary(archive)
+	binary, err = extractBinary(archive)
+	return binary, sig != nil, err
 }
 
 // extractBinary returns the a-stack file of a release archive. It refuses an
@@ -308,7 +350,7 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	}
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
-	binary, err := r.download(target)
+	binary, signed, err := r.download(target)
 	if err != nil {
 		return err
 	}
@@ -319,6 +361,9 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	}
 	if _, err = tmp.Write(binary); err == nil {
 		err = tmp.Chmod(mode | 0o100)
+	}
+	if err == nil {
+		err = tmp.Sync() // the rename must never publish an empty file
 	}
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
@@ -332,9 +377,21 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	if err = os.Rename(tmp.Name(), exe); err != nil {
 		return updateFailed("cannot replace " + exe + "; nothing changed")
 	}
+	if err = syncDir(dir); err != nil {
+		return updateFailed("replaced " + exe + " with a-stack " + target + ", but cannot sync " + dir + " to disk")
+	}
 
-	data["version"], data["updated"] = target, true
+	data["version"], data["updated"], data["signed"] = target, true, signed
 	lines := []string{"Updated a-stack " + current + " -> " + target + " in " + exe}
+	warnings := []string{}
+	if !signed {
+		warnings = append(warnings, "Warning: a-stack "+target+" has no release signature, as every release before v0.1.5; only its SHA-256 checksum was checked.")
+	}
+	if newer(current, target) {
+		warnings = append(warnings, "Warning: a-stack "+target+" is older than "+current+" and may not open the current database: serve then stops with exit code 4. To go back, run a-stack update --version "+current+", or restore the state.db.pre-vN copy that a schema migration left in the state directory (changes made after it are lost).")
+	}
+	data["warnings"] = warnings
+	lines = append(lines, warnings...)
 	refreshed, ok := refreshSkills(exe)
 	if !ok {
 		lines = append(lines, "a-stack "+target+" cannot update the agent skill; the copies stay as they are.")
@@ -351,6 +408,16 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	}
 	data["restart_hint"] = hint
 	return write(data, append(lines, hint, "Then run a-stack to open the view.")...)
+}
+
+// syncDir makes a rename in dir durable.
+func syncDir(dir string) error {
+	f, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return f.Sync()
 }
 
 // refreshSkills runs the new binary's skill install --refresh for the user
