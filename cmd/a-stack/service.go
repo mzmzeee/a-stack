@@ -10,6 +10,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 
@@ -17,7 +18,9 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-// Tests replace these, so that they never run the real systemctl.
+// Tests replace these, so that they never run the real systemctl or
+// launchctl. serviceOS picks the service manager: launchd on macOS (see
+// launchd.go), systemd otherwise.
 var (
 	runCommand = func(name string, args ...string) (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -26,6 +29,7 @@ var (
 		return strings.TrimSpace(string(out)), err
 	}
 	serviceWait = 10 * time.Second
+	serviceOS   = runtime.GOOS
 )
 
 // defaultExecStart is the command of the embedded unit. install replaces it
@@ -209,16 +213,20 @@ func serviceCommand(command, state string, machine bool, stdout io.Writer) error
 	if err != nil {
 		return invalid("cannot find home directory")
 	}
-	file, err := unitFile(unit, home)
-	if err != nil {
+	var file string
+	if serviceOS == "darwin" {
+		unit, file = launchdLabel(unit), launchdFile(unit, home)
+	} else if file, err = unitFile(unit, home); err != nil {
 		return err
 	}
 	data := map[string]any{"unit": unit, "unit_file": file}
 	var lines []string
-	switch command {
-	case "service install":
+	switch {
+	case serviceOS == "darwin":
+		lines, err = launchdCommand(command, unit, file, state, home, data)
+	case command == "service install":
 		lines, err = serviceInstall(unit, file, state, home, data)
-	case "service uninstall":
+	case command == "service uninstall":
 		lines, err = serviceUninstall(unit, file, data)
 	default:
 		lines = serviceStatus(unit, file, state, home, data)
@@ -233,13 +241,59 @@ func serviceCommand(command, state string, machine bool, stdout io.Writer) error
 	return err
 }
 
-func serviceInstall(unit, file, state, home string, data map[string]any) ([]string, error) {
+// serviceBinary is the real path of the running a-stack binary.
+func serviceBinary() (string, error) {
 	exe, err := executable()
 	if err == nil {
 		exe, err = filepath.EvalSymlinks(exe)
 	}
 	if err != nil {
-		return nil, &stack.Error{Code: "integration_unavailable", Message: "cannot find the running a-stack binary"}
+		return "", &stack.Error{Code: "integration_unavailable", Message: "cannot find the running a-stack binary"}
+	}
+	return exe, nil
+}
+
+// installFile writes content to file unless it is there already, and says
+// whether it was created, updated or unchanged.
+func installFile(file, content string) (string, error) {
+	old, err := os.ReadFile(file)
+	status := "unchanged"
+	if os.IsNotExist(err) {
+		status = "created"
+	} else if err != nil {
+		return "", &stack.Error{Code: "storage_unavailable", Message: "cannot read " + file}
+	} else if string(old) != content {
+		status = "updated"
+	}
+	if status != "unchanged" {
+		if err = writeFileAtomic(file, content); err != nil {
+			return "", &stack.Error{Code: "storage_unavailable", Message: "cannot write " + file + ": " + err.Error()}
+		}
+	}
+	return status, nil
+}
+
+// installedLines describe the file and the command of an installed service.
+func installedLines(status, kind, file, exe, state string) []string {
+	return []string{
+		map[string]string{"created": "Wrote ", "updated": "Updated ", "unchanged": "Kept "}[status] + file + map[string]string{"created": ".", "updated": "; it differed from the " + kind + " of this a-stack.", "unchanged": "; it is up to date."}[status],
+		"It runs " + exe + " serve --state-dir " + state + ".",
+	}
+}
+
+// waitForService waits until the service of state answers, and returns its URL.
+func waitForService(state string) (url string, err error) {
+	for deadline := time.Now().Add(serviceWait); ; time.Sleep(200 * time.Millisecond) {
+		if _, url, err = health(state); err == nil || time.Now().After(deadline) {
+			return url, err
+		}
+	}
+}
+
+func serviceInstall(unit, file, state, home string, data map[string]any) ([]string, error) {
+	exe, err := serviceBinary()
+	if err != nil {
+		return nil, err
 	}
 	content, err := renderUnit(exe, state, home)
 	if err != nil {
@@ -254,19 +308,9 @@ func serviceInstall(unit, file, state, home string, data map[string]any) ([]stri
 			return nil, &stack.Error{Code: "conflict", Message: "a-stack serve already runs for " + state + " outside systemd; press Ctrl-C in its terminal first, then run a-stack service install again"}
 		}
 	}
-	old, err := os.ReadFile(file)
-	status := "unchanged"
-	if os.IsNotExist(err) {
-		status = "created"
-	} else if err != nil {
-		return nil, &stack.Error{Code: "storage_unavailable", Message: "cannot read " + file}
-	} else if string(old) != content {
-		status = "updated"
-	}
-	if status != "unchanged" {
-		if err = writeFileAtomic(file, content); err != nil {
-			return nil, &stack.Error{Code: "storage_unavailable", Message: "cannot write " + file + ": " + err.Error()}
-		}
+	status, err := installFile(file, content)
+	if err != nil {
+		return nil, err
 	}
 	if out, err := systemctl("daemon-reload"); err != nil {
 		return nil, systemdFailed("daemon-reload", out)
@@ -275,17 +319,11 @@ func serviceInstall(unit, file, state, home string, data map[string]any) ([]stri
 		return nil, systemdFailed("enable --now "+unit, out)
 	}
 	data["unit_file_status"], data["binary"], data["state_dir"] = status, exe, state
-	lines := []string{map[string]string{"created": "Wrote ", "updated": "Updated ", "unchanged": "Kept "}[status] + file + map[string]string{"created": ".", "updated": "; it differed from the unit of this a-stack.", "unchanged": "; it is up to date."}[status]}
-	lines = append(lines, "It runs "+exe+" serve --state-dir "+state+".")
+	lines := installedLines(status, "unit", file, exe, state)
 	if _, err := os.Stat(file + ".d"); err == nil {
 		lines = append(lines, "The drop-ins in "+file+".d also apply; check that they do not change ExecStart.")
 	}
-	url := ""
-	for deadline := time.Now().Add(serviceWait); ; time.Sleep(200 * time.Millisecond) {
-		if _, url, err = health(state); err == nil || time.Now().After(deadline) {
-			break
-		}
-	}
+	url, err := waitForService(state)
 	if err != nil {
 		return nil, &stack.Error{Code: "integration_unavailable", Message: "systemd started " + unit + ".service, but the service does not answer; see systemctl --user status " + unit + " and journalctl --user -u " + unit, Retryable: true}
 	}
@@ -378,6 +416,11 @@ func serviceStatus(unit, file, state, home string, data map[string]any) []string
 		value += "; " + lingerHint(name)
 	}
 	lines = append(lines, column("Linger:", value))
+	return append(lines, healthLine(state, data))
+}
+
+// healthLine is the status line of a-stack health for state.
+func healthLine(state string, data map[string]any) string {
 	h, url, err := health(state)
 	if err != nil {
 		e, ok := err.(*stack.Error)
@@ -385,10 +428,8 @@ func serviceStatus(unit, file, state, home string, data map[string]any) []string
 			e = &stack.Error{Code: "storage_unavailable", Message: err.Error()}
 		}
 		data["health"] = map[string]any{"error": e}
-		lines = append(lines, column("Health:", e.Message))
-	} else {
-		data["health"] = map[string]any{"data": h, "url": url}
-		lines = append(lines, column("Health:", fmt.Sprintf("a-stack %s answers at %s", h.Version, url)))
+		return fmt.Sprintf("%-11s%s", "Health:", e.Message)
 	}
-	return lines
+	data["health"] = map[string]any{"data": h, "url": url}
+	return fmt.Sprintf("%-11sa-stack %s answers at %s", "Health:", h.Version, url)
 }

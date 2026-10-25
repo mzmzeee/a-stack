@@ -17,7 +17,7 @@ The state directory holds these files:
 | `service.json` | The discovery file for clients. |
 | `operator.json` | The Operator credential. |
 
-Before `serve` opens `state.db`, it takes a nonblocking Linux `flock` on `service.lock`. The lock file stays in place. The service holds the lock until HTTP has stopped and SQLite has closed. A second `serve` on the same directory fails with `conflict`. If the process is killed, the kernel releases the lock, and the next start lets SQLite recover its write-ahead log (WAL). Do not delete the lock file or the SQLite sidecar files.
+Before `serve` opens `state.db`, it takes a nonblocking `flock` on `service.lock`. The lock file stays in place. The service holds the lock until HTTP has stopped and SQLite has closed. A second `serve` on the same directory fails with `conflict`. If the process is killed, the kernel releases the lock, and the next start lets SQLite recover its write-ahead log (WAL). Do not delete the lock file or the SQLite sidecar files.
 
 The state directory must belong to the current operating system account and give no access to group or others. The database, discovery and credential files must be private to that account too. a-stack rejects symlinked files and unsafe permissions. It also rejects a state directory inside a Git checkout, also when a symlink in a parent directory leads there. Use a local filesystem. Network filesystems are not supported.
 

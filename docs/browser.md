@@ -8,13 +8,13 @@ Run `serve` in one terminal. Then open one Workspace and Session by its IDs, or 
 
 ```sh
 a-stack open --workspace WORKSPACE_ID --session SESSION_ID
-# Print the URL, but do not start xdg-open:
+# Print the URL, but do not start the browser:
 a-stack open --workspace WORKSPACE_ID --session SESSION_ID --no-browser --json
 ```
 
 `open` accepts the usual `--state-dir`, `--credential-file` and `--as` flags. Only the Operator can open the view, also for a closed Session. With an Agent credential, `open` fails with `forbidden`, because the view reads the Task mail of every Task in its Session. The view reads the Session metadata and that Task mail. It cannot open another view, send or check mail, or use the write, storage or runtime endpoints.
 
-`open` prints the URL before it runs `xdg-open`. If `xdg-open` fails, the command still succeeds, the URL is on stdout, and stderr shows a fixed message. Open a printed URL within a minute: it works once, for 60 seconds (see [Keep the URL private](#keep-the-url-private)). With `--json`, the output is `{"data":{"url":"..."}}`.
+`open` prints the URL before it starts the browser with `xdg-open` on Linux or `open` on macOS. If that fails, the command still succeeds, the URL is on stdout, and stderr shows a fixed message. Open a printed URL within a minute: it works once, for 60 seconds (see [Keep the URL private](#keep-the-url-private)). With `--json`, the output is `{"data":{"url":"..."}}`.
 
 ## Open the last Session
 
@@ -26,7 +26,7 @@ a-stack -r           # pick a Session in the terminal (also --resume)
 a-stack new [NAME]   # make a Session for the current folder and open it
 ```
 
-They act as the Operator with `operator.json` in the state directory. They accept `--state-dir`, `--no-browser` and `--json`, but no credential flags. Each one opens the view the same way as `open`: a new one-time link, the same `xdg-open` launch and the same fixed message when the launch fails. Before the URL, it prints the name and folder of the Session that it opens. With `--json`, the `data` object also has `workspace_id`, `workspace_path`, `session_id`, `session_name` and `current_folder`.
+They act as the Operator with `operator.json` in the state directory. They accept `--state-dir`, `--no-browser` and `--json`, but no credential flags. Each one opens the view the same way as `open`: a new one-time link, the same browser launch and the same fixed message when the launch fails. Before the URL, it prints the name and folder of the Session that it opens. With `--json`, the `data` object also has `workspace_id`, `workspace_path`, `session_id`, `session_name` and `current_folder`.
 
 If no service answers for the state directory, the command starts the service in the foreground first, with the same checks and lock as `serve`. It prints a line with the service URL and a line that says how to keep it running with `a-stack service install` (with `--json`, only the same ready line as `serve`), opens the view, and keeps the service running until Ctrl-C, SIGTERM or SIGHUP. SIGHUP comes when you close the terminal, so the service still shuts down cleanly and removes `service.json`. A hint or a failed step does not stop the service. The error goes to stderr. If another `serve` holds the state directory lock but does not answer yet, because it is still starting or hangs, the command says so and exits with 3. To use `--listen` or `--herdr-executable`, start `serve` yourself.
 
@@ -66,7 +66,7 @@ The code works once, within 60 seconds after `open`. The page reads it from the 
 
 A view token works for 30 days. Then, or after [`view revoke`](#revoke-view-access), the page says that the view lost access. A link that was already used or is older than 60 seconds shows "This link has expired or was already used". In both cases, run `a-stack` or `a-stack open` for a new link. Opening the same link in a second tab fails, because the first tab used the code. A new tab without a fragment has no access. If you open a new link in a tab, the tab uses the new view token.
 
-So a link in the browser history, in the command line of `xdg-open` or in a screenshot is useless after a minute. The view token is never in a URL. The page sends it only in the `Authorization` header of data requests to the same origin. It is never in request paths, query strings, assets or logs. The Operator credential never reaches the page.
+So a link in the browser history, in the command line of `xdg-open` or `open`, or in a screenshot is useless after a minute. The view token is never in a URL. The page sends it only in the `Authorization` header of data requests to the same origin. It is never in request paths, query strings, assets or logs. The Operator credential never reaches the page.
 
 Each `open` makes a new link, and each new link deletes the expired links and view tokens. A lost response can leave a link that nobody uses; it expires. There is no automatic retry. A direct API caller keeps the same operation ID and hash for a matching retry.
 

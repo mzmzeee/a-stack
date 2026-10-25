@@ -1,3 +1,7 @@
+// The test needs F_SETPIPE_SZ, which macOS lacks.
+
+//go:build linux
+
 package main
 
 import (
