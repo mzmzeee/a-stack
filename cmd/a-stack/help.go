@@ -28,6 +28,9 @@ var helpGroups = []helpGroup{
 	{"Agent skill", []helpRow{
 		{"skill install", "", "Install the agent skill in ~/.claude and ~/.agents"},
 		{"skill uninstall", "", "Remove the agent skill from ~/.claude and ~/.agents"},
+		{"hook install", "", "Add a-stack hooks for one Agent to Claude Code and Codex"},
+		{"hook uninstall", "", "Remove this folder's a-stack hooks"},
+		{"hook", "", "Handle one hook event (run by the harness)"},
 	}},
 	{"Service", []helpRow{
 		{"serve", "", "Run the service in the foreground"},
@@ -158,7 +161,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "status", "watch")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "status", "watch", "hook install", "hook uninstall", "hook")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string

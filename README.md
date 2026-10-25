@@ -92,6 +92,7 @@ The Task graph is empty at first. To register Agents and give them Tasks, follow
 - [Task mail](docs/mail.md): send and read messages, and mention Agents.
 - [Browser view](docs/browser.md): open the view and read what it shows.
 - [Watch from the terminal](docs/watch.md): `a-stack status` and `a-stack watch` show what needs you, with a bell and opt-in desktop notices.
+- [Agent hooks](docs/hooks.md): `a-stack hook install` reminds Claude Code and Codex agents of their Tasks after a compaction and reports their runtime state.
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
 - [Agent skill](docs/agent-skill.md): run `a-stack skill install` to teach your coding agents to work in an a-stack Session.

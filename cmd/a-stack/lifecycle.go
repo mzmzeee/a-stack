@@ -66,6 +66,12 @@ func acceptedFlags(command string) string {
 		return " project json help "
 	} else if command == "update" {
 		return " check version json help "
+	} else if command == "hook" {
+		return " state-dir credential-file workspace session agent runtime-id worktree help "
+	} else if command == "hook install" {
+		return " claude codex project state-dir credential-file workspace session agent name runtime-id worktree json help "
+	} else if command == "hook uninstall" {
+		return " claude codex project worktree json help "
 	}
 	allowed := " state-dir json help "
 	// The Operator shortcuts use operator.json and may start the service, so
