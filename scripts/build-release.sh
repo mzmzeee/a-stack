@@ -64,7 +64,8 @@ if [ $# -gt 1 ]; then
     go build -trimpath -ldflags "-s -w -X main.version=$version -linkmode external -extldflags -static" \
     -o "$out/a-stack.exe" ./cmd/a-stack
   # Only DLLs of Windows itself: no libc++, libunwind or winpthread.
-  if "$toolchain/bin/llvm-objdump" -p "$out/a-stack.exe" | grep 'DLL Name:' | grep -Eiv 'DLL Name: (kernel32|advapi32|shell32|ws2_32|winmm|ntdll|bcryptprimitives|userenv|api-ms-win-[a-z0-9-]+)\.dll$'; then
+  imports="$("$toolchain/bin/llvm-objdump" -p "$out/a-stack.exe")"
+  if printf '%s\n' "$imports" | grep 'DLL Name:' | grep -Eiv 'DLL Name: (kernel32|advapi32|shell32|ws2_32|winmm|ntdll|bcryptprimitives|userenv|api-ms-win-[a-z0-9-]+)\.dll$'; then
     echo "the binary needs a DLL that Windows does not have" >&2
     exit 1
   fi

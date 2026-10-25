@@ -416,3 +416,139 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 		t.Fatalf("hand-off without a service: exit %d %s", code, stderr.String())
 	}
 }
+
+func TestOrchestratorJSONDoesNotOpenView(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "state")
+	launch(t, dir)
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+	old := launchBrowser
+	defer func() { launchBrowser = old }()
+	launched := false
+	launchBrowser = func(string) error { launched = true; return nil }
+	var out, errout bytes.Buffer
+	if code := run([]string{"new", "--orchestrator", "01-review", "--state-dir", dir, "--json"}, &out, &errout); code != 0 {
+		t.Fatalf("unexpected code %d", code)
+	}
+	var data struct {
+		Data struct {
+			URL string `json:"url"`
+		}
+	}
+	if err := json.Unmarshal(out.Bytes(), &data); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(data.Data.URL, "#") {
+		t.Error("JSON agent handoff contains a view credential fragment")
+	}
+	if launched {
+		t.Error("JSON agent handoff launches browser")
+	}
+}
+
+func TestOrchestratorNameConflictDoesNotCreateSession(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "state")
+	launch(t, dir)
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+	var out, errout bytes.Buffer
+	args := []string{"new", "first", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}
+	if code := run(args, &out, &errout); code != 0 {
+		t.Fatalf("first handoff: exit %d", code)
+	}
+	var first struct{ Data shortcutResult }
+	if err := json.Unmarshal(out.Bytes(), &first); err != nil {
+		t.Fatal(err)
+	}
+	args[1] = "second"
+	out.Reset()
+	errout.Reset()
+	if code := run(args, &out, &errout); code == 0 {
+		t.Fatal("accepted duplicate Agent name")
+	}
+	out.Reset()
+	errout.Reset()
+	if code := run([]string{"session", "list", "--workspace", first.Data.WorkspaceID, "--state-dir", dir, "--json"}, &out, &errout); code != 0 {
+		t.Fatalf("list: exit %d", code)
+	}
+	var sessions struct {
+		Data struct{ Items []stack.Session }
+	}
+	if err := json.Unmarshal(out.Bytes(), &sessions); err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions.Data.Items) != 1 {
+		t.Fatalf("name conflict left %d Sessions, want 1", len(sessions.Data.Items))
+	}
+}
+
+func TestOrchestratorResumesUnappointedAgent(t *testing.T) {
+	for _, mismatch := range []bool{false, true} {
+		t.Run(map[bool]string{false: "matching credential", true: "another Agent credential"}[mismatch], func(t *testing.T) {
+			root := t.TempDir()
+			dir := filepath.Join(root, "state")
+			launch(t, dir)
+			t.Setenv("HOME", t.TempDir())
+			project := t.TempDir()
+			t.Chdir(project)
+			common := func(args ...string) []string { return append(args, "--state-dir", dir, "--json") }
+			workspace := receiptResult(t, common("workspace", "create", "--path", project, "--operation-id", "resume-workspace"))
+			session := receiptResult(t, common("session", "create", "--workspace", workspace.ResourceID, "--name", "resume", "--operation-id", "resume-session"))
+			credential := filepath.Join(root, "a-stack-agents", session.ResourceID, "01-orch.json")
+			if err := stack.MkdirPrivate(filepath.Dir(credential)); err != nil {
+				t.Fatal(err)
+			}
+			register := func(name, path string) stack.Receipt {
+				return receiptResult(t, common("agent", "register", "--workspace", workspace.ResourceID, "--session", session.ResourceID, "--name", name, "--operation-id", "resume-"+name, "--new-credential-file", path))
+			}
+			agent := register("01-orch", credential)
+			if mismatch {
+				workerFile := filepath.Join(filepath.Dir(credential), "02-worker.json")
+				register("02-worker", workerFile)
+				// Even forged local metadata cannot authorize a different Agent.
+				data, err := os.ReadFile(workerFile)
+				if err != nil {
+					t.Fatal(err)
+				}
+				data = bytes.ReplaceAll(data, []byte("02-worker"), []byte("01-orch"))
+				if err := os.WriteFile(credential, data, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			before, err := os.ReadFile(credential)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var out, errout bytes.Buffer
+			code := run(common("new", "resume", "--orchestrator", "01-orch", "--no-browser"), &out, &errout)
+			if mismatch && code == 0 {
+				t.Fatal("appointed another Agent")
+			}
+			if !mismatch && code != 0 {
+				t.Fatalf("resume failed: exit %d", code)
+			}
+			after, err := os.ReadFile(credential)
+			if err != nil || !bytes.Equal(before, after) {
+				t.Fatal("changed existing credential")
+			}
+			out.Reset()
+			errout.Reset()
+			if code := run(common("session", "inspect", "--workspace", workspace.ResourceID, "--session", session.ResourceID), &out, &errout); code != 0 {
+				t.Fatalf("inspect: exit %d", code)
+			}
+			var inspected struct{ Data stack.Session }
+			if err := json.Unmarshal(out.Bytes(), &inspected); err != nil {
+				t.Fatal(err)
+			}
+			if mismatch {
+				if inspected.Data.OrchestratorID != nil {
+					t.Fatal("mismatch appointed an Agent")
+				}
+			} else if inspected.Data.OrchestratorID == nil || *inspected.Data.OrchestratorID != agent.ResourceID {
+				t.Fatal("did not appoint registered Agent")
+			}
+		})
+	}
+}

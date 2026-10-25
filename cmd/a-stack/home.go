@@ -222,6 +222,21 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 				return h.handOff(ctx, client, row, fields, before)
 			}
 		}
+		// Agent names are unique across the Workspace, including closed
+		// Sessions. Reject a known conflict before creating an empty Session.
+		if h.orchestrator != "" {
+			for _, s := range sessions {
+				agents, err := listPages[stack.Agent](ctx, client, "/v1/agent/list", stack.Context{WorkspaceID: row.WorkspaceID, SessionID: s.ID})
+				if err != nil {
+					return err
+				}
+				for _, agent := range agents {
+					if agent.Name == h.orchestrator {
+						return invalid("this Workspace already has an Agent named " + h.orchestrator + "; choose another --orchestrator name")
+					}
+				}
+			}
+		}
 	}
 	if row.WorkspaceID == "" {
 		id := operationID()
@@ -272,6 +287,30 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 			}
 		}
 		return invalid("this Session already has an Orchestrator; to replace it, see a-stack help session appoint")
+	}
+	registered, err := listPages[stack.Agent](ctx, client, "/v1/agent/list", ref)
+	if err != nil {
+		return err
+	}
+	for _, agent := range registered {
+		if agent.Name != h.orchestrator {
+			continue
+		}
+		// Registration may have succeeded before appointment was interrupted.
+		// Authenticate the file against the server's ID, not its editable name.
+		for _, path := range []string{credential, filepath.Join(agents, h.orchestrator+".json")} {
+			if _, ok := h.authenticatedAgent(ctx, path, ref, agent.ID); !ok {
+				continue
+			}
+			appointID := operationID()
+			if _, err := lifecycleRequest(ctx, client, "session appoint", lifecycleFlags{workspace: row.WorkspaceID, session: row.SessionID, operationID: appointID, revision: session.Revision, agent: agent.ID}); err != nil {
+				return err
+			}
+			fields["appoint_operation_id"] = appointID
+			before = append(before, fmt.Sprintf("Appointed the registered Agent %s as the Orchestrator (operation ID %s).", printable(h.orchestrator), appointID))
+			return h.briefOrchestrator(ctx, client, row, agent.ID, path, fields, before)
+		}
+		return invalid("this Session already has an Agent named " + h.orchestrator + ", but its credential file does not prove ownership")
 	}
 	if _, err := os.Lstat(credential); err == nil {
 		return invalid(credential + " already exists; choose another --orchestrator name")
@@ -326,16 +365,21 @@ func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row 
 // Orchestrator id of the Session ref: the service names the caller of an
 // inspect, so a file of another Agent of the Session does not pass.
 func (h *home) ownsOrchestrator(ctx context.Context, path string, ref stack.Context, id string) bool {
+	session, ok := h.authenticatedAgent(ctx, path, ref, id)
+	return ok && session.OrchestratorID != nil && *session.OrchestratorID == id
+}
+
+func (h *home) authenticatedAgent(ctx context.Context, path string, ref stack.Context, id string) (stack.Session, bool) {
 	c, err := stack.ReadCredential(path)
 	if err != nil || c.Kind != stack.AgentCapability || c.WorkspaceID != ref.WorkspaceID || c.SessionID != ref.SessionID || c.AgentName != h.orchestrator {
-		return false
+		return stack.Session{}, false
 	}
 	own, err := stack.NewClient(h.state, path, stack.AgentCapability)
 	if err != nil {
-		return false
+		return stack.Session{}, false
 	}
 	session, err := inspectSession(ctx, own, ref)
-	return err == nil && session.YourAgentID == id && session.OrchestratorID != nil && *session.OrchestratorID == id
+	return session, err == nil && session.YourAgentID == id
 }
 
 // orchestratorName is the service's Agent name rule.
@@ -400,7 +444,7 @@ func (h *home) openWith(ctx context.Context, client *stack.Client, r sessionRow,
 	if r.Closed {
 		state = " closed"
 	}
-	notes := viewNotes{fields: fields, after: after, noView: h.orchestrator != "" && h.noBrowser}
+	notes := viewNotes{fields: fields, after: after, noView: h.orchestrator != "" && (h.noBrowser || h.machine)}
 	if notes.noView {
 		before = append(before, fmt.Sprintf("The%s Session %q is in %s. Open the view with: a-stack", state, printable(r.Name), where))
 	} else {
