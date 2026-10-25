@@ -123,8 +123,8 @@ func (s *Store) ReadMail(ctx context.Context, token string, r MailReadRequest) (
 		return empty, err
 	}
 	defer tx.Rollback()
-	// A browser view credential reads the mail of any Task in its own Session
-	// (ADR 0003 amendment); everyone else must be a current assignee. The read
+	// A browser view credential reads the mail of any Task in its own Session;
+	// everyone else must be a current assignee. The read
 	// writes nothing: no read position, receipt or notice.
 	if p.Kind == BrowserCapability {
 		_, err = taskInSession(ctx, tx, r.TaskID, r.SessionID)

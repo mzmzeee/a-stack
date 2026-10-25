@@ -398,7 +398,7 @@ func TestMailQuotedEmailClosuresDoNotMention(t *testing.T) {
 }
 
 // The browser view reads the mail of any Task in its own Session, read-only,
-// with the same pages and cursor as mail read (ADR 0003 amendment).
+// with the same pages and cursor as mail read.
 func TestBrowserMailReadScopePagingAndMailCount(t *testing.T) {
 	f := mailFixture(t)
 	s := f.service.Store

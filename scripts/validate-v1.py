@@ -444,7 +444,7 @@ def scenario(run):
     run.cli('session', 'reopen', *run.context, '--expected-revision', run.session()['revision'], '--operation-id', run.op())
     check(run.show(shared)['progress'] == 'waiting', 'closure changed Task progress')
     browser, _ = run.browser()
-    # The browser credential reads the Task mail of its Session, read-only (ADR 0003 amendment).
+    # The browser credential reads the Task mail of its Session, read-only.
     check(len(run.data('/v1/mail/read', {'task_id': shared}, browser)['messages']) == 9, 'browser lost Task mail read')
     run.api('/v1/mail/send', {'task_id': shared, 'body': 'Denied', 'operation_id': run.op()}, browser, expect='forbidden')
     run.api('/v1/mail/check', {}, browser, expect='forbidden')

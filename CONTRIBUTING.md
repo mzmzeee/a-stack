@@ -56,17 +56,3 @@ scripts/record-demo.sh
 ```
 
 The script builds a-stack and runs a short Session on a temporary service, with a temporary HOME. It records one story: a real terminal (`scripts/demo-terminal.py`) and the browser view (agent-browser) at the same time. `scripts/demo-overlay.js` draws the outlines and callouts and zooms in, in the recording browser only. Then it cuts the scenes into GIFs, each scene under its caption. The scene list at the top of the script names the GIF, the tab, the terminal and the caption of each scene. To try a change without touching the images, set `DEMO_OUT` to another folder. In `docs/images` it writes `demo.gif` (the README tour), `demo-graph.gif`, `demo-archive.gif` and `demo-agents.gif` (the clips in the browser view guide), the stills `graph-light.png`, `graph-dark.png`, `now-light.png`, `now-dark.png`, `mail-light.png`, `mail-dark.png` and `agents.png`, and `picker.png`. It deletes the temporary state when it ends. It needs Go, Python 3, ffmpeg, agent-browser, ImageMagick (`magick`) and curl. It downloads a pinned release of [agg](https://github.com/asciinema/agg) into `.tmp/` and checks its SHA-256. It does not need Docker.
-
-## Design records
-
-Read these before you change how a-stack behaves:
-
-- [Glossary](GLOSSARY.md): the meaning of Operator, Orchestrator, Task, Session and the other terms.
-- Architecture decision records:
-  - [0001: Orchestrator authority and Task rules](docs/adr/0001-graph-only-approval.md)
-  - [0002: Local Go service and SQLite](docs/adr/0002-local-service-and-sqlite.md)
-  - [0003: Retained shared Task mail](docs/adr/0003-retained-task-mail.md)
-  - [0004: Herdr mention notices](docs/adr/0004-herdr-notifications.md)
-  - [0005: Read-only browser](docs/adr/0005-read-only-browser.md)
-- [Visual prototype](prototypes/h-stack-visual/README.md): the approved design reference for the browser view.
-- Research notes in [`docs/research/`](docs/research/): background evidence. Their proposals do not override the specification or the decision records.
