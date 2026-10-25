@@ -63,7 +63,7 @@ Old work is archived so that it does not clutter the graph. a-stack archives a f
 curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | sh
 ```
 
-The script installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download or a build from source, see [Install](docs/install.md).
+The script installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download, `go install` (it needs a C compiler) or a build from source, see [Install](docs/install.md).
 
 To update, run `a-stack update` and restart the service. See [Update](docs/install.md#update).
 
@@ -91,6 +91,8 @@ The Task graph is empty at first. `a-stack new --orchestrator 01-orchestrator` a
 - [Tasks and the Task graph](docs/tasks.md): create and assign Tasks, report progress, ask questions, add dependencies.
 - [Task mail](docs/mail.md): send and read messages, and mention Agents.
 - [Browser view](docs/browser.md): open the view and read what it shows.
+- [Watch from the terminal](docs/watch.md): `a-stack status`, `a-stack watch` and `a-stack statusline` show what needs you, with a bell, opt-in desktop notices and a Claude Code status line.
+- [Agent hooks](docs/hooks.md): `a-stack hook install` reminds Claude Code and Codex agents of their Tasks after a compaction and reports their runtime state.
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
 - [Agent skill](docs/agent-skill.md): run `a-stack skill install` to teach your coding agents to work in an a-stack Session.

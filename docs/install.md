@@ -52,6 +52,26 @@ sh install.sh
    tar -xzf a-stack_linux_amd64.tar.gz -C ~/.local/bin a-stack
    ```
 
+## Go install
+
+With Go installed, you can build and install a release with one command:
+
+```sh
+CGO_ENABLED=1 go install github.com/mzmzeee/a-stack/cmd/a-stack@latest
+```
+
+- It needs a C compiler, such as `gcc`, because SQLite is built in with cgo. Without one, the build fails.
+- It needs Go 1.27.3 or later. An older `go` downloads that version itself, unless `GOTOOLCHAIN=local` is set.
+- It installs the binary in `$(go env GOBIN)`, or `~/go/bin` when `GOBIN` is not set. Make sure that folder is on your `PATH`.
+- The build takes about a minute. `a-stack version` shows the release, such as `v0.1.4`. Use `@vX.Y.Z` instead of `@latest` for another version.
+- The binary uses your system's C library, like a [build from source](#build-from-source). It does not check the release signature; Go checks the module against the Go checksum database instead.
+
+`a-stack update` replaces this binary with the release binary, in the same folder.
+
+## Package managers
+
+An AUR package (`a-stack-bin`) and a Homebrew formula for Linux are prepared in [`contrib/`](../contrib/README.md), but not published yet. Both install the release binary and check it against the release's `SHA256SUMS`. If you install a-stack with a package manager, update it with that package manager: `a-stack update` cannot replace a binary in `/usr/bin`.
+
 ## How releases are verified
 
 The release workflow on GitHub Actions builds every release. It signs the `SHA256SUMS` file with an Ed25519 key that only the workflow can use, and uploads the signature as `SHA256SUMS.sig`. The file has the raw 64-byte signature. The public key is in `install.sh` and in the `a-stack` binary:

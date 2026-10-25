@@ -60,6 +60,14 @@ func acceptedFlags(command string) string {
 		return " project json help "
 	} else if command == "update" {
 		return " check version json help "
+	} else if command == "statusline" {
+		return " state-dir help "
+	} else if command == "hook" {
+		return " state-dir credential-file workspace session agent runtime-id worktree help "
+	} else if command == "hook install" {
+		return " claude codex project state-dir credential-file workspace session agent name runtime-id worktree json help "
+	} else if command == "hook uninstall" {
+		return " claude codex project worktree json help "
 	} else if command == "service install" || command == "service status" {
 		return " state-dir json help "
 	} else if command == "service uninstall" {
@@ -110,6 +118,10 @@ func acceptedFlags(command string) string {
 		allowed += "workspace session operation-id expected-revision agent runtime-id runtime-file clear-runtime new-credential-file "
 	case "agent observe":
 		allowed += "workspace session agent expected-revision runtime-id runtime-state "
+	case "watch":
+		allowed += "session all notify notify-text "
+	case "status":
+		allowed += "session all "
 	}
 	if isTaskCommand(command) {
 		allowed += "workspace session " + taskAllowedFlags(command) + " "

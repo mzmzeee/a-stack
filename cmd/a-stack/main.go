@@ -26,6 +26,9 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	err := execute(args, stdout, stderr)
+	if isHookRun(args) || len(args) > 0 && args[0] == "statusline" {
+		return 0 // a hook or a status line never stops the harness
+	}
 	if err == nil {
 		return 0
 	}
@@ -90,7 +93,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&project, "project", false, "Use .claude and .agents in the current folder, not in your home folder")
 	fs.BoolVar(&refresh, "refresh", false, "Replace only the skill copies that exist; write no new ones")
 	fs.BoolVar(&check, "check", false, "Only print the current and the latest version")
-	fs.BoolVar(&all, "all", false, "Revoke the views of every Session")
+	fs.BoolVar(&all, "all", false, "Every Session")
 	fs.StringVar(&herdrExecutable, "herdr-executable", "", "Turn on Herdr mention notices with this herdr binary")
 	fs.StringVar(&orchestrator, "orchestrator", "", "Also register an Agent with this name and appoint it as the Orchestrator")
 	var lifecycle lifecycleFlags
@@ -99,6 +102,10 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	tasks.register(fs)
 	var mail mailFlags
 	mail.register(fs)
+	var watching watchFlags
+	watching.register(fs)
+	var hooks hookFlags
+	hooks.register(fs)
 	// stdlib flag stops at the first positional; set known flags here so the
 	// same explicit flags work before or after the command without a CLI
 	// dependency.
@@ -165,7 +172,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if cmd != "" && cmd != "new" && !knownCommand(cmd) {
 		return unknownCommand(command, seen, stdout)
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" {
+	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -191,6 +198,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if cmd == "update" {
 		return updateCommand(release, check, machine, stdout)
 	}
+	stateFlag := state
 	if state == "" {
 		var err error
 		state, err = stack.DefaultStateDir()
@@ -205,6 +213,20 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return serviceCommand(cmd, state, machine, stdout)
 	}
 	ctx := context.Background()
+	if cmd == "statusline" {
+		statusLine(state, os.Stdin, stdout)
+		return nil
+	}
+	if isHookCommand(cmd) {
+		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}}
+		if cmd == "hook" {
+			runHook(id, os.Stdin, stdout)
+			return nil
+		}
+		id.state = stateFlag // the command names the state only when you did
+		h := hookInstall{identity: id, name: lifecycle.name, flags: hooks, project: project, remove: cmd == "hook uninstall", machine: machine, stdout: stdout}
+		return h.run(ctx)
+	}
 	if cmd == "" || cmd == "new" {
 		h := home{state: state, mode: cmd, name: sessionName, orchestrator: orchestrator, resume: resume, machine: machine, noBrowser: noBrowser, stdout: stdout, stderr: stderr}
 		return h.run(ctx)
@@ -216,6 +238,11 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return serveForeground(ctx, state, listen, herdrExecutable, func(_ context.Context, service *stack.Service) error {
 			return json.NewEncoder(stdout).Encode(readyLine(service))
 		})
+	}
+	if isWatchCommand(cmd) {
+		connect := func() (*stack.Client, error) { return stack.NewClient(state, credential, stack.CapabilityKind(kind)) }
+		watching.all = all
+		return watchCommand(ctx, connect, cmd, lifecycle.session, watching, machine, stdout, stderr)
 	}
 	client, err := stack.NewClient(state, credential, stack.CapabilityKind(kind))
 	if err != nil {

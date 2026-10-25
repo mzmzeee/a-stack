@@ -22,11 +22,17 @@ var helpGroups = []helpGroup{
 		{"new", "new [NAME]", "Create a Session for this folder and open it"},
 		{"", "-r, --resume", "Pick a Session in the terminal and open it"},
 		{"open", "", "Open one Session in the browser by its IDs"},
+		{"status", "", "Count what needs you, works, waits and finished"},
+		{"watch", "", "Print each change and ring on a new Needs you"},
+		{"statusline", "", "Print a status line for Claude Code"},
 		{"view revoke", "", "End browser view access: one Session or --all"},
 	}},
 	{"Agent skill", []helpRow{
 		{"skill install", "", "Install the agent skill in ~/.claude and ~/.agents"},
 		{"skill uninstall", "", "Remove the agent skill from ~/.claude and ~/.agents"},
+		{"hook install", "", "Add a-stack hooks for one Agent to Claude Code and Codex"},
+		{"hook uninstall", "", "Remove this folder's a-stack hooks"},
+		{"hook", "", "Handle one hook event (run by the harness)"},
 	}},
 	{"Service", []helpRow{
 		{"serve", "", "Run the service in the foreground"},
@@ -160,7 +166,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string
