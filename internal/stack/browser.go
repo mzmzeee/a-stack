@@ -2,8 +2,10 @@ package stack
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +19,18 @@ import (
 //go:embed browser/*
 var browserFiles embed.FS
 var browserTemplate = template.Must(template.ParseFS(browserFiles, "browser/index.html"))
+
+// browserAssetTags holds an ETag per embedded asset: a hash of its content, so
+// a browser revalidates and downloads the file again only after it changed.
+var browserAssetTags = func() map[string]string {
+	tags := map[string]string{}
+	for _, name := range []string{"browser/app.js", "browser/app.css"} {
+		b, _ := browserFiles.ReadFile(name)
+		sum := sha256.Sum256(b)
+		tags[name] = `"` + hex.EncodeToString(sum[:12]) + `"`
+	}
+	return tags
+}()
 
 // ViewLinkAge is how long the one-time code of a view link works. ViewTokenAge
 // is how long the view token works that the page gets for the code.
@@ -214,6 +228,15 @@ func (s *Service) browserAsset(w http.ResponseWriter, r *http.Request) bool {
 		name, contentType := "browser/app.js", "text/javascript; charset=utf-8"
 		if path == "/assets/app.css" {
 			name, contentType = "browser/app.css", "text/css; charset=utf-8"
+		}
+		// The assets hold no data or credentials, so a browser may keep them,
+		// but it must ask each time whether they are still current.
+		tag := browserAssetTags[name]
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", tag)
+		if r.Header.Get("If-None-Match") == tag {
+			w.WriteHeader(http.StatusNotModified)
+			return true
 		}
 		b, _ := browserFiles.ReadFile(name)
 		w.Header().Set("Content-Type", contentType)
