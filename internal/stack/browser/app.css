@@ -470,4 +470,6 @@ kbd { display: inline-block; min-width: 20px; padding: 0 5px; border: 1px solid 
 .task-row.is-new::after, .feed-item.is-new::after { top: 13px; right: auto; left: 0; }
 .graph-world.far .task-card.is-new::after { width: min(calc(7px / var(--z)), 90px); height: min(calc(7px / var(--z)), 90px); top: min(calc(4px / var(--z)), 40px); right: min(calc(4px / var(--z)), 40px); }
 @media (forced-colors: active) { .is-new::after, .new-dot { forced-color-adjust: none; background: Highlight; } }
-
+/* A quiet Working Task: a small chip on the status line. */
+.quiet-chip { padding: 0 6px; border-radius: 4px; background: var(--waiting-bg); color: var(--muted); font-size: 11.5px; line-height: 18px; font-weight: 550; white-space: nowrap; }
+.graph-world.far .quiet-chip { display: none; }

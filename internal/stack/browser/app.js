@@ -35,7 +35,7 @@ const graph = $('graph-world'), panel = $('graph-panel'), agentsPanel = $('agent
 const svgNS = 'http://www.w3.org/2000/svg';
 const views = ['now','graph','agents'];
 // focus is the Task highlighted in the graph with its direct neighbours; it stays after the details close.
-const state = {view:'now',theme:'light',query:'',filter:'all',zoom:1,selected:null,focus:null,archived:false,allFinished:false};
+const state = {view:'now',theme:'light',query:'',filter:'all',zoom:1,selected:null,focus:null,unlinked:false,archived:false,allFinished:false};
 let graphTasks = [], graphEdges = [], hiddenEdges = [], focusIds = null;
 let model = null, etag = '', instance = document.querySelector('meta[name="a-stack-instance"]').content, version = document.querySelector('meta[name="a-stack-version"]').content;
 // The version and the asset files this page came with; after a restart the service may run others.
@@ -128,6 +128,12 @@ const mailText=t=>t.mail_count?` ${plural(t.mail_count,'Task mail message')}.`:'
 const seenKey='a-stack-seen:'+location.pathname;let seenAt=Number(load(seenKey)) || 0;
 const fresh=at=>seenAt>0&&Date.parse(at)>seenAt, isNew=t=>fresh(t.updated_at), newText=t=>isNew(t)?' Changed since you looked.':'';
 function markSeen() {if(!model)return;seenAt=Math.max(seenAt,...model.tasks.map(t=>Date.parse(t.updated_at) || 0));save(seenKey,String(seenAt));}
+// A quiet Task is Working without a change or Task mail for 30 minutes (the service decides): a "quiet" chip, and
+// "Quiet for 45 min." in the label, counted from the later of the last change and the last Task mail.
+function quietFor(t) {const m=Math.max(0,Math.floor((Date.now()-Math.max(Date.parse(t.updated_at) || 0,Date.parse(t.last_mail_at) || 0))/60000));return m<60?`${m} min`:m<1440?`${Math.floor(m/60)} h`:`${Math.floor(m/1440)} d`;}
+const quietText=t=>t.quiet?` Quiet for ${quietFor(t)}.`:'';
+function quietChip(n,t) {n.hidden=!t.quiet;const tip=t.quiet?`No change and no Task mail for ${quietFor(t)}`:'';if(n.title!==tip)n.title=tip;}
+const chip=()=>el('span','quiet-chip','quiet');
 // Screen reader labels: a sentence ends with one mark, so a question keeps its own; a list reads "A, B and C".
 const sentence=s=>/[.?!…]$/.test(s)?s:s+'.';
 const listing=a=>a.length<3?a.join(' and '):a.slice(0,-1).join(', ')+' and '+a.at(-1);
@@ -135,10 +141,10 @@ const asked=t=>t.needs_you?' '+sentence(t.question_preview?'Needs you: '+t.quest
 function makeCard(t) {
   const article=el('article','task-unit');article.dataset.task=t.id;
   const own=el('div','owners'), button=el('button','task-card');button.dataset.openTask=t.id;
-  const top=el('span','card-top'),st=el('span','status'),mail=el('span','mail-count'),title=el('span','task-title'),note=el('span','task-note'),foot=el('span','task-caption');
-  top.append(st,mail);button.append(top,title,note,foot);article.append(own,button);
+  const top=el('span','card-top'),st=el('span','status'),quiet=chip(),mail=el('span','mail-count'),title=el('span','task-title'),note=el('span','task-note'),foot=el('span','task-caption');
+  top.append(st,quiet,mail);button.append(top,title,note,foot);article.append(own,button);
   button.addEventListener('click',e=>e.detail?peek(t.id):openTask(t.id,button)); // a pointer click peeks; Enter opens the details
-  return {article,own,button,st,mail,title,note,foot};
+  return {article,own,button,st,quiet,mail,title,note,foot};
 }
 // A card in the graph. Only the graph uses these cards; Now and Agents have their own.
 function patchCard(c,t) {
@@ -148,14 +154,14 @@ function patchCard(c,t) {
       const n=el('span','owner');n.append(iconNode('agent'),el('span','owner-name',name));return n;
     }));
   }
-  status(c.st,t);statusMark(c.button,t);setText(c.title,t.title);setText(c.note,t.report_preview || 'No report yet.');mailCount(c.mail,t.mail_count);
+  status(c.st,t);statusMark(c.button,t);setText(c.title,t.title);setText(c.note,t.report_preview || 'No report yet.');mailCount(c.mail,t.mail_count);quietChip(c.quiet,t);
   const hidden=hiddenPrerequisites.get(t.id) || 0;
   const caption=[t.reference_count ? `${t.reference_count} file reference${t.reference_count===1?'':'s'}`:'',t.cancelled_prerequisite_count?`${t.cancelled_prerequisite_count} cancelled prerequisite${t.cancelled_prerequisite_count===1?'':'s'}`:'',hidden?`${hidden} archived prerequisite${hidden===1?'':'s'} hidden`:''].filter(Boolean).join(' · ');
   // In the graph, done Tasks without an open question are one-line blocks; the details still show everything.
   const compact=compactTask(t), tip=compact?t.title:'';c.article.classList.toggle('compact',compact);if(c.button.title!==tip)c.button.title=tip; // a compact block may cut its title
   setText(c.foot,caption);
   c.button.classList.toggle('selected',state.selected===t.id||state.focus===t.id); // the focused Task keeps its outline
-  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${t.needs_you?' Needs you.':''} Assigned to ${listing(names) || 'Unassigned'}.${mailText(t)}${caption?' '+sentence(caption):''}${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
+  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${t.needs_you?' Needs you.':''}${quietText(t)} Assigned to ${listing(names) || 'Unassigned'}.${mailText(t)}${caption?' '+sentence(caption):''}${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
   const visible=matches(t);
   c.article.classList.toggle('archived',!!t.archived);
   c.article.classList.toggle('unfocused',!!focusIds&&!focusIds.has(t.id)&&!t.needs_you); // Needs you never fades
@@ -299,7 +305,7 @@ function drawEdges() {
 function connection(e,d) {
   const p=document.createElementNS(svgNS,'path');p.setAttribute('d',d);p.classList.add('connection');
   const near=e.prerequisite_id===state.focus||e.dependent_id===state.focus||e.prerequisite_id===state.selected||e.dependent_id===state.selected;
-  if(near)p.classList.add('active');else if(state.focus)p.classList.add('unfocused');
+  if(near)p.classList.add('active');else if(focusIds)p.classList.add('unfocused');
   p.setAttribute('marker-end',near?'url(#arrow-active)':'url(#arrow)');
   index();if(!matches(taskByID.get(e.prerequisite_id))&&!matches(taskByID.get(e.dependent_id)))p.classList.add('faded');
   return p;
@@ -307,7 +313,8 @@ function connection(e,d) {
 function measure(name,run) {performance.clearMarks(name+'-start');performance.clearMarks(name+'-end');performance.clearMeasures(name);performance.mark(name+'-start');run();performance.mark(name+'-end');performance.measure(name,name+'-start',name+'-end');}
 function patchGraph() {
   if(state.focus&&!graphTasks.some(t=>t.id===state.focus))state.focus=null;
-  focusIds=state.focus?focusSet():null;mapBase=null; // statuses and filters color the minimap
+  const loose=state.unlinked?unlinkedTasks():[];if(!loose.length)state.unlinked=false;
+  focusIds=state.focus?focusSet():state.unlinked?new Set(loose.map(t=>t.id)):null;mapBase=null; // statuses and filters color the minimap
   const ids=new Set(graphTasks.map(t=>t.id));
   for(const [id,c] of cards)if(!ids.has(id)){c.article.remove();cards.delete(id);}
   // Archived prerequisites that the graph hides, named in the caption of the Tasks that need them.
@@ -349,9 +356,9 @@ function makeAgentCard(id) {
   return {section,name,avatar,meta,chips,open,moreWaiting,moreDone,doneList,empty,rows:new Map()};
 }
 function makeRow(t) {
-  const li=el('li'),b=el('button','task-row'),st=el('span','row-status'),main=el('span','row-main'),title=el('span','row-title'),question=el('span','row-question'),others=el('span','row-meta'),side=el('span','row-side'),mail=el('span','mail-count'),when=el('time','now-age');
-  main.append(title,question,others);side.append(mail,when);b.append(st,main,side);li.append(b);b.dataset.openTask=t.id;b.addEventListener('click',()=>openTask(t.id,b));
-  return {li,b,st,title,question,others,mail,when};
+  const li=el('li'),b=el('button','task-row'),st=el('span','row-status'),main=el('span','row-main'),title=el('span','row-title'),question=el('span','row-question'),others=el('span','row-meta'),side=el('span','row-side'),quiet=chip(),mail=el('span','mail-count'),when=el('time','now-age');
+  main.append(title,question,others);side.append(quiet,mail,when);b.append(st,main,side);li.append(b);b.dataset.openTask=t.id;b.addEventListener('click',()=>openTask(t.id,b));
+  return {li,b,st,title,question,others,quiet,mail,when};
 }
 function patchRow(r,t,agent) {
   const kind=t.needs_you?'needs-you':t.progress;
@@ -359,9 +366,9 @@ function patchRow(r,t,agent) {
   const others=owners(t).filter(n=>n!==agent);
   setText(r.title,t.title);setText(r.question,t.needs_you?t.question_preview || '':'');r.question.hidden=!r.question.textContent;
   setText(r.others,others.length?'with '+others.slice(0,2).join(', ')+(others.length>2?` +${others.length-2}`:''):'');r.others.hidden=!others.length;
-  mailCount(r.mail,t.mail_count);stamp(r.when,t.updated_at);
+  mailCount(r.mail,t.mail_count);quietChip(r.quiet,t);stamp(r.when,t.updated_at);
   r.b.classList.toggle('selected',state.selected===t.id);r.b.classList.toggle('archived',!!t.archived);
-  r.b.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${t.archived?' Archived.':''}${asked(t)}${others.length?' With '+listing(others)+'.':''}${mailText(t)} Changed ${age(t.updated_at)}.${newText(t)}`);r.b.classList.toggle('is-new',isNew(t));
+  r.b.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${quietText(t)}${t.archived?' Archived.':''}${asked(t)}${others.length?' With '+listing(others)+'.':''}${mailText(t)} Changed ${age(t.updated_at)}.${newText(t)}`);r.b.classList.toggle('is-new',isNew(t));
   return r.li;
 }
 function patchAgents() {
@@ -415,20 +422,20 @@ const column=t=>t.needs_you?'attention':t.progress==='working'?'working':t.progr
 const firstLine=text=>(text || '').split('\n').find(l=>l.trim())?.trim() || '';
 function stamp(n,at) { if(n.dataset.at!==at){n.dataset.at=at;n.dateTime=at;} setText(n,at?age(at):''); }
 function makeNowCard(t) {
-  const button=el('button','task-card now-card'),top=el('span','now-top'),st=el('span','status'),mail=el('span','mail-count'),when=el('time','now-age'),title=el('span','task-title'),own=el('span','now-owners'),question=el('span','now-question'),waits=el('span','now-waits'),note=el('span','task-note');
-  top.append(st,mail,when);button.append(top,title,own,question,waits,note);button.dataset.openTask=t.id;
+  const button=el('button','task-card now-card'),top=el('span','now-top'),st=el('span','status'),quiet=chip(),mail=el('span','mail-count'),when=el('time','now-age'),title=el('span','task-title'),own=el('span','now-owners'),question=el('span','now-question'),waits=el('span','now-waits'),note=el('span','task-note');
+  top.append(st,quiet,mail,when);button.append(top,title,own,question,waits,note);button.dataset.openTask=t.id;
   button.addEventListener('click',()=>openTask(t.id,button));
-  return {button,st,mail,when,title,own,question,waits,note};
+  return {button,st,quiet,mail,when,title,own,question,waits,note};
 }
 function patchNowCard(c,t,byID) {
   const names=owners(t), blockers=(prerequisites.get(t.id) || []).map(e=>byID.get(e.prerequisite_id)).filter(p=>p&&!done(p)).map(p=>p.title);
-  status(c.st,t);statusMark(c.button,t);mailCount(c.mail,t.mail_count);stamp(c.when,t.updated_at);setText(c.title,t.title);
+  status(c.st,t);statusMark(c.button,t);mailCount(c.mail,t.mail_count);quietChip(c.quiet,t);stamp(c.when,t.updated_at);setText(c.title,t.title);
   const ownKey=names.join('\n');if(c.own.dataset.key!==ownKey){c.own.dataset.key=ownKey;c.own.replaceChildren(iconNode('agent'),el('span','owner-name',names.join(', ') || 'Unassigned'));}
   setText(c.question,t.question_preview || '');c.question.hidden=!t.needs_you||!t.question_preview;
   setText(c.waits,blockers.length?'Waits for: '+blockers.slice(0,3).join(', ')+(blockers.length>3?` +${blockers.length-3} more`:''):'');c.waits.hidden=t.progress!=='waiting'||!blockers.length;
   const report=firstLine(t.report_preview);setText(c.note,report || 'No report yet.');
   c.button.classList.toggle('selected',state.selected===t.id);c.button.classList.toggle('archived',!!t.archived);
-  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${t.archived?' Archived.':''}${asked(t)} Assigned to ${listing(names) || 'Unassigned'}.${c.waits.hidden?'':' '+sentence(c.waits.textContent)}${mailText(t)} Changed ${age(t.updated_at)}.${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
+  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${quietText(t)}${t.archived?' Archived.':''}${asked(t)} Assigned to ${listing(names) || 'Unassigned'}.${c.waits.hidden?'':' '+sentence(c.waits.textContent)}${mailText(t)} Changed ${age(t.updated_at)}.${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
 }
 // Moving a node keeps its focus where the browser supports moveBefore.
 function place(list,node,ref) { if(node.nextSibling===ref&&node.parentNode===list)return; try{if(list.moveBefore&&node.isConnected&&node.ownerDocument===list.ownerDocument){list.moveBefore(node,ref);return;}}catch{} list.insertBefore(node,ref); }
@@ -533,16 +540,22 @@ function render() {
   // The Archived toggle works in the Graph and Agents tabs.
   const archived=model.tasks.filter(t=>t.archived).length;setText($('archived-label'),`Archived (${archived})`);$('archived').setAttribute('aria-pressed',String(state.archived));
   $('archived').setAttribute('aria-label',`${state.archived?'Hide':'Show'} ${plural(archived,'archived Task')} in the Graph and Agents tabs`);
+  const loose=state.view==='graph'&&model.tasks.filter(t=>!done(t)).length>1?unlinkedTasks():[], note=$('unlinked');note.hidden=!loose.length;
+  setText(note,loose.length===1?'1 open Task has no links':`${loose.length} open Tasks have no links`);note.setAttribute('aria-pressed',String(state.unlinked));
   const changed=model.tasks.filter(isNew).length;$('mark-seen').hidden=!changed;$('mark-seen').setAttribute('aria-label',`Mark all seen: ${plural(changed,'Task')} changed since you looked`);
   if(state.view==='graph')redrawMinimap();
   patchPeek();updateSource();
 }
 $('mark-seen').onclick=()=>{markSeen();render();};
+// Open Tasks with neither prerequisites nor dependents, from the dependencies the view already has. The note in the
+// graph highlights them, like the focus of one Task; it changes nothing.
+function unlinkedTasks() {const linked=new Set();for(const e of model.dependencies){linked.add(e.prerequisite_id);linked.add(e.dependent_id);}return model.tasks.filter(t=>!done(t)&&!t.archived&&!linked.has(t.id));}
+$('unlinked').onclick=()=>{const on=!state.unlinked;state.focus=null;peekID=null;state.unlinked=on;render();const first=on&&cards.get(unlinkedTasks()[0]?.id);if(first)first.button.scrollIntoView({block:'nearest',inline:'nearest'});};
 addEventListener('pagehide',markSeen);
 // Only the visible view is patched. The others are patched when they show, if their inputs changed since.
 const patched={}, patchers={now:()=>patchNow(),graph:()=>patchGraph(),agents:()=>patchAgents()};
 function patchView(view) {
-  const inputs=[model,state.query,state.filter,state.archived,state.focus,state.selected,state.allFinished,seenAt], last=patched[view];
+  const inputs=[model,state.query,state.filter,state.archived,state.focus,state.unlinked,state.selected,state.allFinished,seenAt], last=patched[view];
   if(last&&inputs.every((x,i)=>x===last[i]))return;
   patched[view]=inputs;patchers[view]();
 }
@@ -689,7 +702,7 @@ panel.addEventListener('pointermove',e=>{if(!drag)return;
   panel.scrollLeft=drag.left+drag.x-e.clientX;panel.scrollTop=drag.top+drag.y-e.clientY;});
 const endDrag=()=>{drag=null;panel.classList.remove('panning');};
 // A click on empty space, without a drag, clears the focus.
-panel.addEventListener('pointerup',e=>{if(drag){dragged=drag.moving;if(!dragged&&!e.target.closest('.task-card')&&state.focus)setFocus(null);}endDrag();});panel.addEventListener('pointercancel',endDrag);
+panel.addEventListener('pointerup',e=>{if(drag){dragged=drag.moving;if(!dragged&&!e.target.closest('.task-card')&&(state.focus||state.unlinked))setFocus(null);}endDrag();});panel.addEventListener('pointercancel',endDrag);
 panel.addEventListener('click',e=>{if(dragged){e.stopPropagation();e.preventDefault();}dragged=false;},true);
 $('about-button').onclick=()=>{$('about-dialog').showModal();};
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
@@ -763,7 +776,7 @@ mailToggle.onclick=()=>{
 mailMore.onclick=()=>fetchMail();
 dialog.append(top,body);
 dialog.addEventListener('close',()=>{detailEpoch++;state.selected=null;detailKey='';render();if(returnFocus?.isConnected&&!returnFocus.closest('[inert]')&&!returnFocus.closest('[hidden]'))returnFocus.focus();else $(state.view+'-tab').focus();});
-function setFocus(id) {state.focus=id;if(!id)peekID=null;render();}
+function setFocus(id) {state.focus=id;state.unlinked=false;if(!id)peekID=null;render();}
 $('archived').addEventListener('click',()=>{state.archived=!state.archived;save('a-stack-archived',state.archived?'1':'0');render();});
 function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){resetMail(id);for(const name of ['description','report','reason','result','question','references'])detailText(name,'');delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
 const archiveReasons={command:'Archived with task archive.',chain:'Archived: every Task that depends on it is finished or cancelled.',age:'Archived: it ended more than 24 hours ago.'};
@@ -820,8 +833,9 @@ function goTo(id) {const b=cards.get(id).button;b.focus({preventScroll:true});b.
 let gAt=0;
 $('keys-button').onclick=()=>$('keys-dialog').showModal();
 document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'&&e.target===$('search')&&state.query){e.preventDefault();$('search').value='';state.query='';render();return;} // the search text goes first
   if(e.ctrlKey||e.metaKey||e.altKey||e.isComposing||document.querySelector('dialog[open]'))return;
-  if(e.key==='Escape'){if(state.view!=='graph')return;if(peekID){e.preventDefault();closePeek();}else if(state.focus){e.preventDefault();setFocus(null);}return;}
+  if(e.key==='Escape'){if(state.view!=='graph')return;if(peekID){e.preventDefault();closePeek();}else if(state.focus||state.unlinked){e.preventDefault();setFocus(null);}return;}
   const where=panel.contains(e.target)||peekBox.contains(e.target)?'graph':agentsPanel.contains(e.target)?'agents':'', k=e.key, g=Date.now()-gAt<1500;
   if(!where||e.target.closest('input, select, textarea'))return;
   gAt=0;
