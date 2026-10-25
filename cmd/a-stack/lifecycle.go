@@ -66,6 +66,10 @@ func acceptedFlags(command string) string {
 		return " project json help "
 	} else if command == "update" {
 		return " check version json help "
+	} else if command == "service install" || command == "service status" {
+		return " state-dir json help "
+	} else if command == "service uninstall" {
+		return " json help "
 	}
 	allowed := " state-dir json help "
 	// The Operator shortcuts use operator.json and may start the service, so

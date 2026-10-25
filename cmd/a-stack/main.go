@@ -138,7 +138,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		}
 		cmd = "new"
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" {
+	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -164,6 +164,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 	if !filepath.IsAbs(state) {
 		return invalid("--state-dir must be absolute")
+	}
+	if isServiceCommand(cmd) {
+		return serviceCommand(cmd, state, machine, stdout)
 	}
 	ctx := context.Background()
 	if cmd == "" || cmd == "new" {
