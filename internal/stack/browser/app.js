@@ -338,7 +338,7 @@ function patchAgents() {
   const focused=document.activeElement, filtering=!!state.query.trim()||state.filter!=='all', groups=agentGroups(), live=new Set();
   let needs=0,working=0,idle=0;
   for(const g of groups) {
-    const id=g.a.id, me=id==='unassigned'?'':g.a.name, [n,w,wait,d]=g.counts;live.add(id);
+    const id=g.a.id, me=id==='unassigned'?'':g.a.name, [n,w,wait]=g.counts;live.add(id);
     if(id!=='unassigned'){if(n)needs++;if(w)working++;if(!n&&!w&&!wait)idle++;}
     let r=rows.get(id);if(!r){r=makeAgentCard(id);rows.set(id,r);}
     setText(r.name,g.a.name);setText(r.avatar,g.a.name.slice(0,2));setText(r.meta,id==='unassigned'?'No assignee':agentMeta(g.a));
