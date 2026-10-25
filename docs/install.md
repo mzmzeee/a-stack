@@ -103,7 +103,10 @@ CGO_ENABLED=1 go install github.com/mzmzeee/a-stack/cmd/a-stack@latest
 
 ## Package managers
 
-An AUR package (`a-stack-bin`), a Homebrew formula for Linux and macOS and a Scoop manifest for Windows are prepared in [`contrib/`](../contrib/README.md), but not published yet. They install the release binary and check it against the release's `SHA256SUMS`. If you install a-stack with a package manager, update it with that package manager: `a-stack update` cannot replace a binary in `/usr/bin`, and on Windows it refuses to replace a binary in a Scoop or WinGet folder and names `scoop update a-stack` or `winget upgrade a-stack` instead.
+- **Homebrew**, on macOS 13 or later and Linux: `brew install mzmzeee/tap/a-stack`. Update with `brew upgrade`. The service runs the binary by its path in the Homebrew Cellar, which changes with each version, so run `a-stack service install` again after an upgrade.
+- **Scoop**, on Windows: `scoop bucket add mzmzeee https://github.com/mzmzeee/scoop-bucket`, then `scoop install mzmzeee/a-stack`. Update with `scoop update a-stack`. Scoop cannot replace a running program, so stop the service first; see [On Windows with Task Scheduler](#on-windows-with-task-scheduler).
+
+Both install the release binary and check it against the release's `SHA256SUMS`. An AUR package (`a-stack-bin`) is prepared in [`contrib/`](../contrib/README.md) but not published yet. If you install a-stack with a package manager, update it with that package manager: `a-stack update` cannot replace a binary in `/usr/bin`, and on Windows it refuses to replace a binary in a Scoop or WinGet folder and names `scoop update a-stack` or `winget upgrade a-stack` instead.
 
 ## How releases are verified
 

@@ -24,31 +24,7 @@ func TestSnapshotETagChangesWhenTheAgeRuleArchives(t *testing.T) {
 	f.assignA(t, done)
 	f.progress(t, done, "finished")
 	_, token := viewTest(t, f, f.ref(0))
-	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
-	// poll is one refresh of app.js: known_revision and the last ETag.
-	poll := func(known int64, tag string) (int, string, SessionSnapshot) {
-		t.Helper()
-		body, _ := json.Marshal(SnapshotRequest{Context: f.ref(0), KnownRevision: known})
-		req, _ := http.NewRequest("POST", f.service.Discovery.URL+"/v1/session/snapshot", bytes.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-A-Stack-Instance", f.service.Discovery.InstanceID)
-		req.Header.Set("Authorization", "Bearer "+token)
-		if tag != "" {
-			req.Header.Set("If-None-Match", tag)
-		}
-		r, err := client.Do(req)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer r.Body.Close()
-		var answer struct {
-			Data SessionSnapshot `json:"data"`
-		}
-		if r.StatusCode == 200 && json.NewDecoder(r.Body).Decode(&answer) != nil {
-			t.Fatal("snapshot answer")
-		}
-		return r.StatusCode, r.Header.Get("ETag"), answer.Data
-	}
+	poll := viewPoller(t, f, token)
 	status, tag, first := poll(0, "")
 	revision := first.Session.ReadRevision
 	if status != 200 || first.Unchanged {
@@ -72,5 +48,33 @@ func TestSnapshotETagChangesWhenTheAgeRuleArchives(t *testing.T) {
 	// An ETag from an older service has no mark and gets the full answer once.
 	if status, _, answer = poll(revision, `"`+f.ref(0).SessionID+`:1"`); status != 200 || answer.Unchanged {
 		t.Fatal("an old ETag kept the view unchanged", status)
+	}
+}
+
+// viewPoller returns one refresh of app.js: known_revision and the last ETag.
+func viewPoller(t *testing.T, f taskTeam, token string) func(known int64, tag string) (int, string, SessionSnapshot) {
+	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+	return func(known int64, tag string) (int, string, SessionSnapshot) {
+		t.Helper()
+		body, _ := json.Marshal(SnapshotRequest{Context: f.ref(0), KnownRevision: known})
+		req, _ := http.NewRequest("POST", f.service.Discovery.URL+"/v1/session/snapshot", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-A-Stack-Instance", f.service.Discovery.InstanceID)
+		req.Header.Set("Authorization", "Bearer "+token)
+		if tag != "" {
+			req.Header.Set("If-None-Match", tag)
+		}
+		r, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer r.Body.Close()
+		var answer struct {
+			Data SessionSnapshot `json:"data"`
+		}
+		if r.StatusCode == 200 && json.NewDecoder(r.Body).Decode(&answer) != nil {
+			t.Fatal("snapshot answer")
+		}
+		return r.StatusCode, r.Header.Get("ETag"), answer.Data
 	}
 }

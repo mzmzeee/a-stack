@@ -11,12 +11,13 @@ Each command prints `{"data": ...}` on stdout. A change returns a receipt: `data
 | `me session inspect` | `data.revision`, `data.graph_revision`, `data.orchestrator_id`, `data.closed`, and your own Agent ID in `data.your_agent_id` |
 | `me session snapshot --known-revision 12` | Counts of Tasks, Agents, dependencies and assignments, or `unchanged: true` if `read_revision` is still 12 |
 | `me agent list` | `data.items[]` with each Agent's `id` and `name`; find your own ID here |
-| `me task list` | `data.items[]` with `id`, `title`, `progress`, `revision`, `unassigned`, `needs_you`, `prerequisite_count` |
+| `me task list` | `data.items[]` with `id`, `title`, `progress`, `revision`, `unassigned`, `needs_you`, `prerequisite_count`, `quiet` (Working, but no change and no Task mail for 30 minutes) |
 | `me task show --task T` | One Task with `revision`, `progress`, `description`, `report`, `reason`, `result` |
 | `me task assignees --task T` | `data.items[].agent_name` and `agent_id` |
 | `me task history --task T` | Every change of the Task, with the changed texts |
 | `me task references --task T` | The current file references, each with its `id` |
 | `me task dependencies --task T` | The prerequisites of T and their progress |
+| `me task handoff --task T` | A plain-text brief to take over T: its description, report, open question, unfinished prerequisites, assignees and the last 20 Task mails (`--limit N` for more). Only assignees see the mail. `--json` gives the same as data |
 | `me dependency history` | The dependency changes of the Session |
 
 Lists return `data.items` and, when more follow, `data.next`. Get the next page with `--after "$next"`. `--limit` takes 1 to 100.
