@@ -348,7 +348,7 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	f.run(f.workerFile, f.scoped("mail", "check", "--cursor-file", own)...)
 	ownBefore, _ := os.ReadFile(own)
 	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}, noStopGuard: true}
-	dir := filepath.Join(home, ".cache", "a-stack", "hooks", f.worker)
+	dir := hookCacheDir(filepath.Join(home, ".cache"), f.worker)
 	sum := sha256.Sum256([]byte("abc"))
 	file := filepath.Join(dir, hex.EncodeToString(sum[:16])+".json")
 	later := func(path string) {
