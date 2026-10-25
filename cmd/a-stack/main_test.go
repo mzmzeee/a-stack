@@ -101,7 +101,13 @@ func TestCLIRealProcessesCrashRestartBackupRestore(t *testing.T) {
 	if json.Unmarshal(health, &h) != nil || h.Data.Version != "dev" {
 		t.Fatal("health")
 	}
-	commandResult(t, []string{"--json", "storage", "status", "--state-dir", dir}, 0)
+	storage, _ := commandResult(t, []string{"--json", "storage", "status", "--state-dir", dir}, 0)
+	var st struct {
+		Data stack.StorageStatus `json:"data"`
+	}
+	if json.Unmarshal(storage, &st) != nil || st.Data.FreeBytes == nil || *st.Data.FreeBytes == 0 || st.Data.LowDisk != (*st.Data.FreeBytes < stack.LowDiskBytes) {
+		t.Fatal("storage status free space", string(storage))
+	}
 	// Exit code 3 lets the systemd unit stop instead of restarting in a loop.
 	_, stderr := commandResult(t, []string{"serve", "--state-dir", dir, "--json"}, 3)
 	if !bytes.Contains(stderr, []byte(`"conflict"`)) || !bytes.Contains(stderr, []byte("already running")) {

@@ -105,6 +105,9 @@ func (s *Service) taskHTTP(w http.ResponseWriter, r *http.Request, token string)
 		}
 		data, err = s.Store.ChangeDependency(r.Context(), token, action, *q)
 	}
+	if r.URL.Path == "/v1/session/snapshot" && s.Store.lowDisk() {
+		w.Header().Set("X-A-Stack-Low-Disk", "1") // the browser view's footer warning
+	}
 	if err != nil {
 		writeError(w, err)
 	} else if !snapshotConditional(w, r, data) {

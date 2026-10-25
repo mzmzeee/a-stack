@@ -80,7 +80,19 @@ Request rules:
 - Private JSON files, such as credentials, can be 4 KiB at most. A file that is not a regular file cannot block a credential read.
 - Header size and the read, write and idle timeouts have limits.
 
-An error response is a JSON `error` object with `code`, `message` and `retryable`. It also has `current_revision` when that applies. A Task conflict has the current revision and `current_progress`. A second Operator question on the same Task also has `current_question`. Error messages never repeat the input, credentials, paths or SQL. Standard request logging is off, so the service keeps no log that can grow without limit.
+An error response is a JSON `error` object with `code`, `message` and `retryable`. It also has `current_revision` when that applies, and `retry_after_seconds` for `rate_limited`. A Task conflict has the current revision and `current_progress`. A second Operator question on the same Task also has `current_question`. Error messages never repeat the input, credentials, paths or SQL. Standard request logging is off, so the service keeps no log that can grow without limit.
+
+## Write budget
+
+A misbehaving Agent could otherwise fill the disk, because a-stack never deletes retained data. So each Agent has a write budget. Each change an Agent commits costs the size of its JSON request, which holds every text the change stores: mail bodies, reports, descriptions, questions and so on. An Agent can spend 8 MiB at once, and the budget refills by 1 MiB a minute. When the budget cannot pay for a change, the service refuses it with `rate_limited` (HTTP 429). The error is retryable and has `retry_after_seconds`, which the HTTP answer also sends as `Retry-After`. Wait that long and send the same command again with the same operation ID.
+
+- Heavy use stays below the budget. In the [stress test](performance.md), each of 20 Agents makes about 25 calls a second with small bodies, which costs at most about 450 KiB a minute.
+- The burst lets an Orchestrator set up thousands of Tasks at once, and it is larger than the largest request (1 MiB), so every valid change fits.
+- A runaway loop stores 8 MiB and then at most 1 MiB a minute, about 1.4 GiB a day per Agent.
+- A retry of a committed operation ID returns its receipt and is never refused. A refused or failed change costs nothing.
+- The Operator has no budget. The budget is kept in memory, per Agent, and starts full when the service starts.
+
+The numbers are constants in `internal/stack/limits.go`.
 
 ## SQLite
 
@@ -97,7 +109,7 @@ Each schema version added one area:
 
 A storage error returns `storage_unavailable`. A failed commit never returns a successful receipt. If the connection drops during a commit, the outcome is unknown, so the caller must retry with the same operation ID.
 
-`storage status` reports the current sizes of the main database, WAL and SHM files. These sizes can change between two calls. a-stack never deletes retained data. The single connection and the backup operation run work one at a time. Add read concurrency only after a measurement shows the need.
+`storage status` reports the current sizes of the main database, WAL and SHM files, and `free_bytes`, the free space of the file system that holds them. These sizes can change between two calls. The free space is measured at most 10 seconds earlier. Below 1 GiB, the status also has `low_disk: true` and a `warning`, and the [browser view](browser.md#refresh) footer shows a warning. When the free space cannot be measured, `free_bytes` is absent. a-stack never deletes retained data. The single connection and the backup operation run work one at a time. Add read concurrency only after a measurement shows the need.
 
 ## Operation IDs and receipts
 
@@ -145,7 +157,7 @@ Endpoints in `internal/stack` use these interfaces:
 - `IssueCapability(ctx, tx, kind, subjectID, sessionID)` issues a token inside the registration or rebind transaction. The server gets the `Principal` from the stored hash, never from an identity in the request. To revoke or rotate a credential, delete the old hash in the same transaction. The kind and Session scope do not replace the checks of current membership and roles.
 - `Store.Mutate(ctx, token, Operation, authorizeReplay, apply)` authenticates again inside its transaction. An `Operation` has a name, a resource scope and a bounded JSON payload. Handlers serialize typed payloads with `json.Marshal`, including the expected revision and all parameters of the change. The digest includes the name and the scope. JSON objects with the same keys in a different order are not guaranteed to match.
 - `apply(ctx, tx, principal)` checks that the Session is open, and checks role, membership, references and the expected revision. It then writes the resource, the compact history and any mention references in the same transaction. It returns a `Receipt` with the resource ID, revision, a scalar outcome and an optional body reference ID. A receipt or transaction never contains external calls, body copies or snapshots.
-- `authorizeReplay(ctx, tx, principal, receipt)` is required. It checks current read access to the resource of the receipt. It must allow an authorized read after the Session is closed, and it must reject a revoked membership. The service calls it only when the digest matches, before it returns a saved outcome. A digest mismatch returns only `operation_conflict` and does not call the replay callback of the new command. A revoked token fails authentication before the receipt lookup. Browser credentials cannot call `Mutate`.
+- `authorizeReplay(ctx, tx, principal, receipt)` is required. It checks current read access to the resource of the receipt. It must allow an authorized read after the Session is closed, and it must reject a revoked membership. The service calls it only when the digest matches, before it returns a saved outcome. A digest mismatch returns only `operation_conflict` and does not call the replay callback of the new command. A revoked token fails authentication before the receipt lookup. Browser credentials cannot call `Mutate`. For an Agent, `Mutate` checks the [write budget](#write-budget) after the replay lookup and charges it after the commit.
 
 ## Tests
 
@@ -160,6 +172,8 @@ Endpoints in `internal/stack` use these interfaces:
 - Rollback of failed precommit and receipt writes.
 - A real `SQLITE_FULL` error from SQLite page limits, and write failures on read-only storage.
 - Safe backup and restore.
+- The write budget with a test clock, a mail burst from one Agent next to another Agent, and replay past the budget.
+- The low-disk flag in `storage status` and on the snapshot answer, with a fake free-space source.
 
 `go test -race ./...` runs the same tests with the race detector. Test-only tables exercise the change primitives. Production schemas do not contain them.
 

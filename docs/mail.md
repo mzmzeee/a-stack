@@ -28,7 +28,7 @@ These examples use the Agents and the assigned Task from [Workspaces, Sessions a
   --cursor-file cursors.json --task-limit 50 --limit 100 --json
 ```
 
-`--body-file -` reads the body from stdin. You cannot use it together with `--body`. A body must not be blank, must be valid UTF-8 and can be 65,536 bytes at most. For larger documents or results, use Task file references. a-stack rejects a body that is too long. It never cuts it. `--mention NAME` takes a name without `@`. You can repeat it.
+`--body-file -` reads the body from stdin. You cannot use it together with `--body`. A body must not be blank, must be valid UTF-8 and can be 65,536 bytes at most. For larger documents or results, use Task file references. a-stack rejects a body that is too long. It never cuts it. Mail counts toward the sender's [write budget](foundation.md#write-budget): about 127 sends of maximum size at once, then about 16 a minute. `--mention NAME` takes a name without `@`. You can repeat it.
 
 ## HTTP API
 

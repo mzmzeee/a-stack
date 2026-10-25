@@ -45,6 +45,8 @@ type Store struct {
 	id            string
 	sqliteVersion string
 	noticeWake    func()
+	budget        writeBudget
+	disk          diskSpace
 }
 
 // stmtCacheSize bounds the prepared statements the driver keeps. Past it, the
@@ -349,6 +351,12 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	if !errors.Is(err, sql.ErrNoRows) {
 		return empty, storageError()
 	}
+	// A replay above is never limited: it stores nothing new.
+	if p.Kind == AgentCapability {
+		if err = s.budget.check(p.SubjectID, len(op.Payload)); err != nil {
+			return empty, err
+		}
+	}
 	r, err = apply(ctx, tx, p)
 	if err != nil {
 		return empty, publicError(err)
@@ -365,6 +373,9 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	if tx.Commit() != nil {
 		return empty, storageError()
 	}
+	if p.Kind == AgentCapability {
+		s.budget.charge(p.SubjectID, len(op.Payload))
+	}
 	if s.noticeWake != nil {
 		s.noticeWake()
 	}
@@ -376,6 +387,11 @@ type StorageStatus struct {
 	DatabaseBytes int64  `json:"database_bytes"`
 	WALBytes      int64  `json:"wal_bytes"`
 	SHMBytes      int64  `json:"shm_bytes"`
+	// FreeBytes is the free space of the database's file system, measured at
+	// most diskCheckInterval ago. It is absent when it cannot be measured.
+	FreeBytes *uint64 `json:"free_bytes,omitempty"`
+	LowDisk   bool    `json:"low_disk,omitempty"`
+	Warning   string  `json:"warning,omitempty"`
 }
 
 func (s *Store) Status() (StorageStatus, error) {
@@ -389,6 +405,13 @@ func (s *Store) Status() (StorageStatus, error) {
 			return status, storageError()
 		}
 		*target = info.Size()
+	}
+	if free, err := s.disk.get(s.path); err == nil {
+		status.FreeBytes = &free
+		if free < LowDiskBytes {
+			status.LowDisk = true
+			status.Warning = "less than 1 GiB of disk space is free for the a-stack state; free some space, because a-stack never deletes retained data"
+		}
 	}
 	return status, nil
 }

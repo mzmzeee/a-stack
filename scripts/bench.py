@@ -108,7 +108,10 @@ class Api:
                     raise
 
     def call(self, path, payload, tok):
-        status, data, _ = self.raw(path, payload, tok)
+        status, data, r = self.raw(path, payload, tok)
+        while status == 429:  # an Agent's write budget is used up; the same call is safe to repeat
+            time.sleep(int(r.headers.get('Retry-After', '1')))
+            status, data, r = self.raw(path, payload, tok)
         doc = json.loads(data) if data else {}
         if status != 200:
             raise ApiError(status, doc.get('error', {}).get('code'), doc)

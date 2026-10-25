@@ -63,6 +63,9 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 func writeError(w http.ResponseWriter, err error) {
 	e := publicError(err)
+	if e.RetryAfter > 0 {
+		w.Header().Set("Retry-After", strconv.FormatInt(e.RetryAfter, 10))
+	}
 	writeJSON(w, statusCode(e), map[string]any{"error": e})
 }
 

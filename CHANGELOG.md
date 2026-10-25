@@ -6,6 +6,11 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- Each Agent has a write budget, so a runaway loop cannot fill the disk. A change costs the size of its request; an Agent can spend 8 MiB at once and 1 MiB more a minute. Past that, a change gets the new error code `rate_limited` (HTTP 429, retryable) with `retry_after_seconds`. A replay of a committed operation ID and the Operator are never limited. In a rerun of the review's reproduction (16 parallel `mail send` loops with 64 KiB bodies from one Agent for 20 seconds), the Agent stored 13,835 messages (925 MB) before and 132 messages (8 MB) now; another Agent could still send.
+- `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
+
 ## [0.1.4] - 2026-10-25
 
 ### Added
