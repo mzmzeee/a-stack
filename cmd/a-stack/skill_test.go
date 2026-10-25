@@ -198,7 +198,7 @@ func TestSkillInstallClaudeConfigDirAndFlags(t *testing.T) {
 		t.Fatalf("~/.claude written although CLAUDE_CONFIG_DIR is set: %v", err)
 	}
 	t.Setenv("CLAUDE_CONFIG_DIR", "relative")
-	for _, args := range [][]string{{"skill", "install"}, {"skill", "install", "--state-dir", "/x"}, {"skill", "install", "--as", "agent"}, {"skill"}, {"new", "--project"}} {
+	for _, args := range [][]string{{"skill", "install"}, {"skill", "install", "--state-dir", "/x"}, {"skill", "install", "--as", "agent"}, {"skill", "--project"}, {"new", "--project"}} {
 		var out, errout bytes.Buffer
 		if run(args, &out, &errout) != 2 || out.Len() != 0 || !strings.Contains(errout.String(), "invalid_input") {
 			t.Fatalf("%v: want invalid_input, got %s", args, errout.String())

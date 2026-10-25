@@ -24,13 +24,12 @@ func isMailCommand(command string) bool {
 }
 
 type mailFlags struct {
-	body, cursor, cursorFile, afterTask string
-	mentions                            []string
-	taskLimit                           int
+	cursor, cursorFile, afterTask string
+	mentions                      []string
+	taskLimit                     int
 }
 
 func (f *mailFlags) register(fs *flag.FlagSet) {
-	fs.StringVar(&f.body, "body", "", "Mail text")
 	fs.Func("mention", "Assignee name to mention; repeat for more", func(name string) error { f.mentions = append(f.mentions, name); return nil })
 	fs.StringVar(&f.cursor, "cursor", "", "Read after this mail cursor")
 	fs.StringVar(&f.cursorFile, "cursor-file", "", "JSON map of Task IDs to cursors, or - for stdin")
@@ -84,12 +83,12 @@ func mailRequest(ctx context.Context, client *stack.Client, command string, l li
 			if err != nil {
 				return nil, err
 			}
-			f.body = text
+			t.body = text
 		}
-		if len(f.body) > stack.MaxMailBodyBytes || !utf8.ValidString(f.body) {
+		if len(t.body) > stack.MaxMailBodyBytes || !utf8.ValidString(t.body) {
 			return nil, invalid("mail body must be UTF-8 and at most 64 KiB")
 		}
-		body = stack.MailSendRequest{Context: ref, OperationID: l.operationID, TaskID: t.task, Body: f.body, Mentions: f.mentions}
+		body = stack.MailSendRequest{Context: ref, OperationID: l.operationID, TaskID: t.task, Body: t.body, Mentions: f.mentions}
 	case "mail read":
 		body = stack.MailReadRequest{Context: ref, TaskID: t.task, Cursor: f.cursor, Limit: l.limit}
 	case "mail check":

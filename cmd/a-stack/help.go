@@ -44,6 +44,8 @@ var helpGroups = []helpGroup{
 		{"session close", "", "Close a Session"},
 		{"session reopen", "", "Reopen a closed Session"},
 		{"session appoint", "", "Appoint the Orchestrator of a Session"},
+		{"session snapshot", "", "Show a Session's revisions and counts"},
+		{"session page", "", "Read one page of a Session collection"},
 		{"agent register", "", "Register an Agent and write its credential"},
 		{"agent list", "", "List the Agents of a Session"},
 		{"agent attach", "", "Bind a running instance to an Agent"},
@@ -73,8 +75,6 @@ var helpGroups = []helpGroup{
 		{"dependency add", "", "Make one Task depend on another"},
 		{"dependency remove", "", "Remove a dependency"},
 		{"dependency history", "", "List the changes of the Task graph"},
-		{"session snapshot", "", "Show a Session's revisions and counts"},
-		{"session page", "", "Read one page of a Session collection"},
 	}},
 	{"Task mail", []helpRow{
 		{"mail send", "", "Send Task mail to the other assignees"},
@@ -168,7 +168,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 	default:
 		text = prefixHelp(command)
 		if text == "" {
-			return invalid("unknown command; use --help")
+			return invalid("no help for " + short(command) + didYouMean(command) + "; use --help")
 		}
 	}
 	_, err := io.WriteString(stdout, text)
@@ -282,6 +282,12 @@ var flagValues = map[string]string{
 
 func flagText(fs *flag.FlagSet, command, name string) string {
 	text := fs.Lookup(name).Usage
+	if name == "body" && command != "mail send" {
+		text = "Same as --" + textFlag(command, "")
+		if command == "task status" {
+			text += ", or --summary with --progress finished"
+		}
+	}
 	if flagRequired(command, name) {
 		text += " (required)"
 	}

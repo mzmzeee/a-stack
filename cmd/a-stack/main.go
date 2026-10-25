@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -47,6 +48,15 @@ func writeError(stderr io.Writer, err error) int {
 	return 1
 }
 func invalid(message string) error { return &stack.Error{Code: "invalid_input", Message: message} }
+
+// writeData prints a service response, which already ends with a newline.
+func writeData(stdout io.Writer, data []byte) error {
+	if len(data) == 0 || data[len(data)-1] != '\n' {
+		data = append(data, '\n')
+	}
+	_, err := stdout.Write(data)
+	return err
+}
 func buildVersion() string {
 	if version != "" {
 		return version
@@ -84,45 +94,58 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	tasks.register(fs)
 	var mail mailFlags
 	mail.register(fs)
-	// stdlib flag stops at the first positional; extract known flags so the same
-	// explicit flags work before or after the command without a CLI dependency.
-	var flags, command []string
+	// stdlib flag stops at the first positional; set known flags here so the
+	// same explicit flags work before or after the command without a CLI
+	// dependency.
+	var command []string
+	given := map[string]bool{}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
-		if strings.HasPrefix(a, "-") {
-			name := strings.TrimLeft(strings.SplitN(a, "=", 2)[0], "-")
-			if fs.Lookup(name) == nil {
-				return invalid("unknown flag; use --help")
-			}
-			// --version takes a release only when one follows, as in
-			// `update --version v0.1.3`; alone it prints the version.
-			if name == "version" && !strings.Contains(a, "=") && i+1 < len(args) && releaseTag.MatchString(args[i+1]) {
-				i++
-				a += "=" + args[i]
-			}
-			flags = append(flags, a)
-			boolFlag, isBool := fs.Lookup(name).Value.(interface{ IsBoolFlag() bool })
-			if !(isBool && boolFlag.IsBoolFlag()) && !strings.Contains(a, "=") {
-				i++
-				if i >= len(args) {
-					return invalid("flag requires a value")
-				}
-				flags = append(flags, args[i])
-			}
-		} else {
+		if !strings.HasPrefix(a, "-") {
 			command = append(command, a)
+			continue
 		}
-	}
-	if fs.Parse(flags) != nil {
-		return invalid("invalid flags; use --help")
+		name, value, hasValue := strings.Cut(strings.TrimLeft(a, "-"), "=")
+		f := fs.Lookup(name)
+		if f == nil {
+			return unknownFlag(fs, name)
+		}
+		// --version takes a release only when one follows, as in
+		// `update --version v0.1.3`; alone it prints the version.
+		if name == "version" && !hasValue && i+1 < len(args) && releaseTag.MatchString(args[i+1]) {
+			i++
+			value, hasValue = args[i], true
+		}
+		if b, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && b.IsBoolFlag() && !hasValue {
+			value = "true"
+		} else if !hasValue {
+			i++
+			if i >= len(args) || strings.HasPrefix(args[i], "--") && fs.Lookup(strings.TrimLeft(strings.SplitN(args[i], "=", 2)[0], "-")) != nil {
+				return invalid("--" + name + " requires a value")
+			}
+			value = args[i]
+		}
+		if given[name] && name != "mention" {
+			return invalid("--" + name + " is given more than once")
+		}
+		given[name] = true
+		if fs.Set(name, value) != nil {
+			message := "invalid value " + strconv.Quote(short(value)) + " for --" + name
+			if flagValues[name] == "N" {
+				message += "; give a whole number"
+			}
+			return invalid(message)
+		}
 	}
 	command, help = aliasCommands(command, help, release.set)
 	if help {
 		return writeHelp(fs, command, machine, stdout)
 	}
+	seen := map[string]bool{}
+	fs.Visit(func(f *flag.Flag) { seen[f.Name] = true })
 	cmd := strings.Join(command, " ")
 	if cmd == "version" {
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]string{"version": buildVersion()}})
+		delete(seen, "version") // a-stack --version
 	}
 	var sessionName string
 	if len(command) > 0 && command[0] == "new" {
@@ -134,16 +157,28 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		}
 		cmd = "new"
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" {
+	if cmd != "" && cmd != "new" && !knownCommand(cmd) {
+		return unknownCommand(command, seen, stdout)
+	}
+	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && cmd != "version" {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
-		return invalid("invalid capability kind")
+		return invalid("--as takes operator, agent or browser")
 	}
-	seen := map[string]bool{}
-	fs.Visit(func(f *flag.Flag) { seen[f.Name] = true })
 	if err := validateCommandFlags(cmd, seen); err != nil {
 		return err
+	}
+	if err := checkIDs(seen, lifecycle, tasks); err != nil {
+		return err
+	}
+	if isTaskCommand(cmd) {
+		if err := tasks.readText(cmd, seen); err != nil {
+			return err
+		}
+	}
+	if cmd == "version" {
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]string{"version": buildVersion()}})
 	}
 	if isSkillCommand(cmd) {
 		return skillCommand(cmd, project, refresh, machine, stdout)
@@ -186,32 +221,28 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		if err != nil {
 			return err
 		}
-		_, err = stdout.Write(append(data, '\n'))
-		return err
+		return writeData(stdout, data)
 	}
 	if isMailCommand(cmd) {
 		data, err := mailRequest(ctx, client, cmd, lifecycle, tasks, mail, seen)
 		if err != nil {
 			return err
 		}
-		_, err = stdout.Write(append(data, '\n'))
-		return err
+		return writeData(stdout, data)
 	}
 	if isTaskCommand(cmd) {
 		data, err := taskRequest(ctx, client, cmd, lifecycle, tasks, seen)
 		if err != nil {
 			return err
 		}
-		_, err = stdout.Write(append(data, '\n'))
-		return err
+		return writeData(stdout, data)
 	}
 	if isLifecycleCommand(cmd) {
 		data, err := lifecycleRequest(ctx, client, cmd, lifecycle)
 		if err != nil {
 			return err
 		}
-		_, err = stdout.Write(append(data, '\n'))
-		return err
+		return writeData(stdout, data)
 	}
 	method, path := "GET", "/v1/health"
 	var body any
@@ -232,8 +263,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 	// Foundation commands use JSON in both modes; --json guarantees this remains
 	// machine-readable when future domain commands gain human-oriented output.
-	_, err = stdout.Write(append(data, '\n'))
-	return err
+	return writeData(stdout, data)
 }
 
 // readyLine prints no credentials. Discovery is private on disk; this ready

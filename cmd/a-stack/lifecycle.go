@@ -29,7 +29,7 @@ type lifecycleFlags struct {
 func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.workspace, "workspace", "", "Workspace ID")
 	fs.StringVar(&f.session, "session", "", "Session ID")
-	fs.StringVar(&f.operationID, "operation-id", "", "Your ID for this change; reuse it to retry")
+	fs.StringVar(&f.operationID, "operation-id", "", "Your ID for this change: 8–128 letters, digits, _ or -; reuse it to retry")
 	fs.StringVar(&f.path, "path", "", "Absolute project folder")
 	fs.StringVar(&f.name, "name", "", "Session or Agent name")
 	fs.StringVar(&f.agent, "agent", "", "Agent ID")
@@ -43,21 +43,14 @@ func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 	fs.IntVar(&f.limit, "limit", 0, "Page size: 1 to 100, mail 1 to 500")
 	fs.StringVar(&f.after, "after", "", "Continue after this ID or cursor")
 }
-func validateCommandFlags(command string, seen map[string]bool) error {
-	allowed := acceptedFlags(command)
-	for name := range seen {
-		if !strings.Contains(allowed, " "+name+" ") {
-			return invalid("flag does not apply to this command; use --help")
-		}
-	}
-	return nil
-}
 
 // acceptedFlags lists the flags a command accepts, space-separated with a
 // space at both ends. Help uses the same list.
 func acceptedFlags(command string) string {
 	// No service and no credential.
-	if command == "skill install" {
+	if command == "version" {
+		return " json help "
+	} else if command == "skill install" {
 		return " project refresh json help "
 	} else if command == "skill uninstall" {
 		return " project json help "
