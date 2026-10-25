@@ -139,6 +139,19 @@
   .dependency + .dependency { border-top: 1px solid var(--line); }
   .dependency:hover .dependency-name { text-decoration: underline; }
   .dependency-name { font-size: 14px; }
+.detail-props { display: flex; flex-direction: column; gap: 8px; margin: 16px 0 0; font-size: 13px; line-height: 20px; }
+.detail-prop { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; }
+.detail-prop dt { color: var(--muted); }
+.detail-prop dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.detail-prop .status { margin: 0; }
+.dep-link { display: flex; align-items: flex-start; gap: 7px; width: 100%; padding: 2px 0; border: 0; background: none; text-align: left; font-size: 13px; line-height: 20px; }
+.dep-link + .dep-link { margin-top: 2px; }
+.dep-link .status { flex: none; padding-top: 2px; }
+.dep-link .dependency-name { font-size: 13px; overflow-wrap: anywhere; }
+.dep-link:hover .dependency-name { text-decoration: underline; }
+.dep-note { flex: none; color: var(--muted); }
+.detail-question { border-top: 0; margin-top: 18px; padding: 12px 14px; border-radius: 8px; background: var(--attention-bg); }
+.detail-question h3 { color: var(--attention); }
   .detail-footnote { color: var(--muted); font-size: 12px; margin: 24px 0 0; }
   .about-panel { width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 0; border-radius: 12px; }
   .about-panel p { line-height: 24px; }

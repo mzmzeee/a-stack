@@ -191,8 +191,8 @@ function layout() {
   for(const t of tasks) if(linked.has(t.id)) (cols[rank.get(t.id)] ??= []).push(t.id);
   // Barycenter sweeps place each Task near the Tasks it connects to, so fewer lines cross; ties keep the stable Task order.
   const prev=new Map(tasks.map(t=>[t.id,[]]));for(const [id,ns] of next)for(const n of ns)prev.get(n).push(id);
-  const order=new Map(), place=l=>l.forEach((id,i)=>order.set(id,(i+.5)/l.length));cols.forEach(place);
-  const sweep=(l,near)=>{const c=new Map(l.map(id=>{const n=near.get(id);return [id,n.length?n.reduce((s,x)=>s+order.get(x),0)/n.length:order.get(id)];}));l.sort((a,b)=>c.get(a)-c.get(b));place(l);};
+  const order=new Map(), spread=l=>l.forEach((id,i)=>order.set(id,(i+.5)/l.length));cols.forEach(spread);
+  const sweep=(l,near)=>{const c=new Map(l.map(id=>{const n=near.get(id);return [id,n.length?n.reduce((s,x)=>s+order.get(x),0)/n.length:order.get(id)];}));l.sort((a,b)=>c.get(a)-c.get(b));spread(l);};
   for(let i=1;i<cols.length;i++)sweep(cols[i],prev);for(let i=cols.length-2;i>=0;i--)sweep(cols[i],next);for(let i=1;i<cols.length;i++)sweep(cols[i],prev);
   const sizes=new Map(), compact=new Set();ports=new Map();
   for(const t of tasks){const c=cards.get(t.id);sizes.set(t.id,c.article.offsetHeight);ports.set(t.id,c.button.offsetTop+c.button.offsetHeight/2);if(c.article.classList.contains('compact'))compact.add(t.id);}
@@ -222,6 +222,10 @@ function layout() {
   const [W,H]=box(extra);
   positions.clear();
   for(const [id,p] of pos){const x=padX+p.x,y=padY+p.y;positions.set(id,{x,y});const n=cards.get(id).article;n.style.left=x+'px';n.style.top=y+'px';}
+  // Tab order follows the layout: column by column, top to bottom. A focused card keeps the focus.
+  const focused=document.activeElement;let ref=edgesSVG.nextSibling;
+  for(const [id] of [...positions].sort((a,b)=>a[1].x-b[1].x||a[1].y-b[1].y)){const n=cards.get(id).article;if(n===ref)ref=n.nextSibling;else place(graph,n,ref);}
+  if(focused&&focused!==document.activeElement&&focused.isConnected)focused.focus({preventScroll:true});
   width=W+2*padX;height=H+2*padY; // tight around the Task units, so Fit fits the cards
   graph.style.width=width+'px';graph.style.height=height+'px';applyZoom();drawEdges();
   if(wasHidden){panel.hidden=true;panel.style.visibility='';}
@@ -533,13 +537,21 @@ function renderAttention() {
 $('attention').onclick=()=>{const tasks=model.tasks.filter(t=>t.needs_you);if(tasks.length===1)openTask(tasks[0].id,$('attention'));else{renderAttention();$('attention-dialog').showModal();}};
 const dialog=$('task-dialog');
 const top=el('div','detail-top'),kicker=el('span','detail-kicker','TASK DETAILS'),close=el('button','icon-button');close.setAttribute('aria-label','Close task details');close.append(iconNode('close'));close.onclick=()=>dialog.close();top.append(kicker,close);
-const body=el('div','detail-body'),detailTitle=el('h2'),detailStatus=el('div','status'),detailArchive=el('p','detail-archive'),detailLoading=el('p','detail-footnote'),detailFields={};detailTitle.id='detail-title';body.append(detailTitle,detailStatus,detailArchive,detailLoading);
-for(const [key,label]of Object.entries({ticket:'Ticket reference',description:'Description',report:'Latest report',reason:'Reason',result:'Result',question:'Needs you',owners:'Assigned agents',dependencies:'Dependencies',references:'File references',source:'Source'})){
-  const section=el('section','detail-section'),h=el('h3','',label),content=el('div','detail-text');section.append(h,content);body.append(section);detailFields[key]=content;
+// The details: a property grid (status, Agents, Ticket, both directions of dependencies), then the sections that
+// have content, then Task mail. Service details such as the read revision go in the footnote.
+const body=el('div','detail-body'),detailTitle=el('h2'),detailStatus=el('div','status'),detailArchive=el('p','detail-archive'),detailLoading=el('p','detail-footnote'),props=el('dl','detail-props'),detailFields={},propRows={};detailTitle.id='detail-title';body.append(detailTitle,detailArchive,props);
+for(const [key,label]of Object.entries({status:'Status',owners:'Agents',ticket:'Ticket',requires:'Requires',requiredBy:'Required by'})){
+  const row=el('div','detail-prop'),dd=el('dd');row.append(el('dt','',label),dd);props.append(row);propRows[key]=row;detailFields[key]=dd;
 }
+detailFields.status.append(detailStatus);
+for(const [key,label]of Object.entries({question:'Needs you',report:'Latest report',description:'Description',reason:'Reason',result:'Result',references:'File references'})){
+  const section=el('section','detail-section'),h=el('h3','',label),content=el('div','detail-text');section.append(h,content);section.hidden=true;body.append(section);detailFields[key]=content;
+}
+detailFields.question.parentElement.classList.add('detail-question');
+function detailText(name,text) { setText(detailFields[name],text || '');detailFields[name].parentElement.hidden=!text; }
 // Task mail loads only when the Operator opens the section, oldest first, in pages that follow the mail read cursor.
 const mailToggle=el('button','mail-toggle'),mailThread=el('div','mail-thread'),mailList=el('ol','mail-list'),mailStatus=el('p','detail-footnote mail-status'),mailMore=el('button','plain-button mail-more','Load more');
-{const section=el('section','detail-section mail-section'),h=el('h3');mailThread.id='mail-thread';mailToggle.setAttribute('aria-controls',mailThread.id);mailToggle.append(iconNode('chevron'),el('span'));h.append(mailToggle);mailThread.append(mailList,mailStatus,mailMore);section.append(h,mailThread);body.insertBefore(section,detailFields.reason.parentElement);}
+{const section=el('section','detail-section mail-section'),h=el('h3');mailThread.id='mail-thread';mailToggle.setAttribute('aria-controls',mailThread.id);mailToggle.append(iconNode('chevron'),el('span'));h.append(mailToggle);mailThread.append(mailList,mailStatus,mailMore);section.append(h,mailThread);body.append(section,detailLoading);}
 const mail={task:null,open:false,cursor:'',more:false,loaded:0,busy:false,epoch:0,ids:new Set()};
 function resetMail(id) {Object.assign(mail,{task:id,open:false,cursor:'',more:false,loaded:0,busy:false,ids:new Set()});mail.epoch++;mailList.replaceChildren();setText(mailStatus,'');mailMore.hidden=true;mailThread.hidden=true;mailToggle.setAttribute('aria-expanded','false');}
 resetMail(null);
@@ -561,11 +573,13 @@ async function fetchMail() {
     for(const m of r.data.messages)if(!mail.ids.has(m.id)){mail.ids.add(m.id);mailList.append(mailMessage(m));}
     mail.cursor=r.data.cursor;mail.more=r.data.more;mail.loaded=mail.ids.size;setText(mailStatus,mail.loaded?'':'No Task mail yet.');
   }catch{if(epoch===mail.epoch)setText(mailStatus,'Task mail unavailable · retrying with the next refresh.');}
-  finally{if(epoch===mail.epoch){mail.busy=false;mailMore.disabled=false;mailMore.hidden=!mail.more;}}
+  finally{if(epoch===mail.epoch){mail.busy=false;mailMore.disabled=false;mailMore.hidden=!mail.more;labelMore();}}
 }
+// "Load 13 more": the next page, from the Task's mail count, or "Load more" when the count is behind.
+function labelMore() { const left=(taskByID.get(mail.task)?.mail_count || 0)-mail.loaded;setText(mailMore,left>0?`Load ${Math.min(50,left)} more`:'Load more'); }
 // On a poll, an open thread fetches the messages after its cursor, so the scroll position stays.
 function patchMail(t) {
-  setText(mailToggle.lastChild,`Task mail (${t.mail_count || 0})`);
+  setText(mailToggle.lastChild,`Task mail (${t.mail_count || 0})`);if(mail.more)labelMore();
   if(mail.open&&!mail.more&&!mail.busy&&(t.mail_count || 0)>mail.loaded)fetchMail();
 }
 mailToggle.onclick=()=>{
@@ -580,15 +594,22 @@ function setFocus(id) {state.focus=id;render();}
 // Escape clears the focus once no dialog is open; an open dialog takes the first Escape.
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.focus&&state.view==='graph'&&!document.querySelector('dialog[open]')){e.preventDefault();setFocus(null);}});
 $('archived').addEventListener('click',()=>{state.archived=!state.archived;save('a-stack-archived',state.archived?'1':'0');render();});
-function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){resetMail(id);for(const name of ['description','report','reason','result','question','references','source'])detailFields[name].replaceChildren();delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
+function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){resetMail(id);for(const name of ['description','report','reason','result','question','references'])detailText(name,'');delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
 const archiveReasons={command:'Archived with task archive.',chain:'Archived: every Task that depends on it is finished or cancelled.',age:'Archived: it ended more than 24 hours ago.'};
 function patchDetailMetadata(t) {
-  setText(detailTitle,t.title);status(detailStatus,t);setText(detailArchive,t.archived?archiveReasons[t.archived_reason] || 'Archived.':'');detailArchive.hidden=!t.archived;setText(detailFields.ticket,t.ticket_ref || 'None.');setText(detailFields.owners,owners(t).join(', ') || 'Unassigned');patchMail(t);
-  const dep=detailFields.dependencies;
-  const signature=JSON.stringify(model.dependencies.filter(e=>e.dependent_id===t.id||e.prerequisite_id===t.id).map(e=>{const other=model.tasks.find(x=>x.id===(e.dependent_id===t.id?e.prerequisite_id:e.dependent_id));return [e.id,other?.title,other?.progress,other?.archived];}));
-  if(dep.dataset.key===t.id+signature)return;dep.dataset.key=t.id+signature;dep.replaceChildren();
-  for(const e of model.dependencies)if(e.dependent_id===t.id||e.prerequisite_id===t.id){const prior=e.dependent_id===t.id,other=model.tasks.find(x=>x.id===(prior?e.prerequisite_id:e.dependent_id));if(!other)continue;const b=el('button','dependency',`${prior?'Requires':'Required by'}: ${other.title} · ${labels[other.progress]}${other.archived?' · archived':''}`);b.onclick=()=>openTask(other.id,returnFocus);dep.append(b);}
-  if(!dep.childNodes.length)setText(dep,'No dependencies.');
+  setText(detailTitle,t.title);status(detailStatus,t);setText(detailArchive,t.archived?archiveReasons[t.archived_reason] || 'Archived.':'');detailArchive.hidden=!t.archived;
+  setText(detailFields.ticket,t.ticket_ref || '');propRows.ticket.hidden=!t.ticket_ref;setText(detailFields.owners,owners(t).join(', ') || 'Unassigned');patchMail(t);
+  // Both directions, each with the other Task's status icon: open Tasks first, then by title.
+  index();const order=(a,b)=>done(a)-done(b)||(a.title<b.title?-1:a.title>b.title?1:0);
+  const requires=model.dependencies.filter(e=>e.dependent_id===t.id).map(e=>taskByID.get(e.prerequisite_id)).filter(Boolean).sort(order);
+  const requiredBy=model.dependencies.filter(e=>e.prerequisite_id===t.id).map(e=>taskByID.get(e.dependent_id)).filter(Boolean).sort(order);
+  for(const [key,list] of [['requires',requires],['requiredBy',requiredBy]]){
+    const dd=detailFields[key], signature=t.id+JSON.stringify(list.map(o=>[o.id,o.title,o.progress,o.archived]));propRows[key].hidden=!list.length;
+    if(dd.dataset.key===signature)continue;dd.dataset.key=signature;
+    dd.replaceChildren(...list.map(o=>{const b=el('button','dep-link'),mark=el('span','status '+o.progress);mark.append(iconNode(o.progress==='cancelled'?'idle':o.progress));
+      b.append(mark,el('span','dependency-name',o.title));if(o.archived)b.append(el('span','dep-note','archived'));
+      b.setAttribute('aria-label',`${o.title}, ${labels[o.progress]}${o.archived?', archived':''}`);b.onclick=()=>openTask(o.id,returnFocus);return b;}));
+  }
 }
 async function loadDetail() {
   const t=model.tasks.find(t=>t.id===state.selected);if(!t)return;
@@ -599,12 +620,13 @@ async function loadDetail() {
   try{
     const [detail,refs]=await Promise.all([request('/v1/task/show',{task_id:t.id,read_revision:revision}),pages('references',revision,t.id)]);
     if(epoch!==detailEpoch||state.selected!==t.id)return;
-    for(const name of ['description','report','reason','result'])setText(detailFields[name],detail.data[name] || 'None.');
-    const q=detail.data.question;setText(detailFields.question,q?`${q.question}\nAsked by ${model.agents.find(a=>a.id===q.asker_id)?.name || q.asker_id} at ${q.asked_at}${q.note?'\n'+q.note:''}`:'No open request.');
+    for(const name of ['description','report','reason','result'])detailText(name,detail.data[name]);
+    const q=detail.data.question;detailText('question',q?`${q.question}\nAsked by ${model.agents.find(a=>a.id===q.asker_id)?.name || q.asker_id} at ${new Date(q.asked_at).toLocaleString()}${q.note?'\n'+q.note:''}`:'');
     const referencesKey=JSON.stringify(refs);
     if(detailFields.references.dataset.key!==t.id+referencesKey){detailFields.references.dataset.key=t.id+referencesKey;detailFields.references.replaceChildren(...refs.map(ref=>{const row=el('div','reference'),text=el('code','',ref.location+(ref.revision?' @ '+ref.revision:'')),copy=el('button','plain-button','Copy');copy.setAttribute('aria-label','Copy reference '+ref.location);copy.onclick=async()=>{try{await navigator.clipboard.writeText(ref.location);copy.textContent='Copied';}catch{copy.textContent='Select text to copy';}};row.append(text,copy);return row;}));
-    if(!refs.length)setText(detailFields.references,'No file references.');}
-    setText(detailFields.source,`Local service · read revision ${revision}. Report received ${t.report_at || 'never'}.`);setText(detailLoading,'Read-only · viewing does not resolve requests.');
+    }
+    detailFields.references.parentElement.hidden=!refs.length;
+    setText(detailLoading,`Read-only · viewing does not resolve requests. Read revision ${revision}${t.report_at?' · report received '+new Date(t.report_at).toLocaleString():''}.`);
   }catch{if(epoch===detailEpoch){detailKey='';setText(detailLoading,'Details unavailable · saved content may be stale. Retrying with the next refresh.');}}
 }
 async function request(endpoint,payload,headers={},signal) {

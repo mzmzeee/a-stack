@@ -127,9 +127,13 @@ The Agents tab shows each Agent with its Tasks in one row. A shared Task shows i
 
 ![A short clip of the Agents tab: 01-orchestrator with no Tasks, then 02-backend with its three finished Tasks, then 03-frontend and 04-reviewer.](images/demo-agents.gif)
 
+### Task details
+
+The details of a Task start with a list of properties: Status, Agents, Ticket, Requires and Required by. Requires names the Task's prerequisites and Required by its dependents, each with its status icon, open Tasks first. A click on one opens its details. Then come the sections that have content, in this order: Needs you (highlighted), Latest report, Description, Reason, Result and File references. Empty sections and an empty Ticket are hidden. Task mail comes last. The footnote at the bottom says that the view is read-only, and gives the read revision and the time of the report.
+
 ### Task mail
 
-The details of a Task have a Task mail section, closed by default, with the number of messages, such as "Task mail (12)". The page loads no mail until you open the section. Then it reads the Task's mail with `POST /v1/mail/read`, 50 messages at a time, oldest first. "Load more" reads the next page from the cursor.
+The details of a Task have a Task mail section at the end, closed by default, with the number of messages, such as "Task mail (12)". The page loads no mail until you open the section. Then it reads the Task's mail with `POST /v1/mail/read`, 50 messages at a time, oldest first. "Load 13 more" reads the next page from the cursor; the number comes from the Task's `mail_count`, at most 50.
 
 - Each message shows the sender's name, the age, with the exact time on hover, and the body as plain text with its line breaks.
 - An `@name` of an Agent in the Session is styled as a mention. The body never becomes HTML, so markup and scripts show as text.
@@ -142,6 +146,7 @@ Reading mail in the view changes nothing. It stores no read position, writes no 
 
 - The arrow keys, Home and End switch between the tabs.
 - In search, Enter moves the focus to the first matching card of the current tab.
+- In the Graph tab, Tab moves through the cards column by column, from top to bottom, in the order of the layout.
 - On a card, Enter opens the details. Escape closes them and returns the focus. In the Graph tab, a second Escape clears the focus highlight.
 - Search looks at Agent names, titles, Ticket references and the short report preview.
 - The status filter includes Cancelled and Needs you.

@@ -15,6 +15,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Changed
 
+- The browser view's Task details start with a property grid (Status, Agents, Ticket, Requires, Required by, each dependency with its status icon), hide empty sections, put Task mail last with a "Load 13 more" button, and move the read revision into the footnote.
+- In the Graph tab, Tab moves through the cards in the order of the layout, column by column. Before, it followed the random Task IDs.
 - The browser view draws only the tab that you see, keeps the dependencies while the snapshot's `graph_revision` stays the same, and indexes Agents and prerequisites once per snapshot. On a 2,000-Task Session, a poll with a change took 2.3–3.9 seconds of main-thread time and now takes 0.2–0.5 seconds; it makes 54 requests and reads 2.4 MB instead of 79 requests and 3.3 MB. Ages tick only where they show, so an idle page no longer lays out every second.
 - Browser view cards have a left border in their status color, and a Task that needs you has a red border and ring, so status reads also at Fit on a big Session. When the Graph focuses a Task, a Task that needs you no longer fades, and the other cards fade their background and borders but keep readable text. Before, the fade failed the WCAG AA contrast check.
 - Schema 7 adds an expiry to credentials and a table of unused view links. It deletes every existing browser credential, because their secrets are in browser histories. **After the upgrade, open views lose access once: run `a-stack` or `a-stack open` again.**
