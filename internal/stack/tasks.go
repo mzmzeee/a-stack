@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"unicode/utf8"
 )
@@ -255,9 +256,16 @@ func replayTask(assigned bool) func(context.Context, *sql.Tx, Principal, Receipt
 		return err
 	}
 }
-func validText(body string, max int, required bool) error {
-	if len(body) > max || !utf8.ValidString(body) || (required && strings.TrimSpace(body) == "") {
-		return failure("invalid_input", "text is empty, invalid UTF-8 or exceeds its byte limit")
+
+// validText checks one text field and names it in the error.
+func validText(field, body string, max int, required bool) error {
+	switch {
+	case required && strings.TrimSpace(body) == "":
+		return failure("invalid_input", field+" is required")
+	case len(body) > max:
+		return failure("invalid_input", fmt.Sprintf("%s exceeds %d bytes", field, max))
+	case !utf8.ValidString(body):
+		return failure("invalid_input", field+" is not valid UTF-8")
 	}
 	return nil
 }
@@ -288,7 +296,7 @@ func bumpGraph(ctx context.Context, tx *sql.Tx, session string) error {
 	return err
 }
 func checkTicket(ctx context.Context, tx *sql.Tx, session, task, ticket string) error {
-	if err := validText(ticket, 1024, false); err != nil {
+	if err := validText("ticket_ref", ticket, 1024, false); err != nil {
 		return err
 	}
 	if ticket == "" {
@@ -312,10 +320,10 @@ func (s *Store) CreateTask(ctx context.Context, token string, r TaskCreateReques
 		if err = RequireOrchestrator(p, session); err != nil {
 			return Receipt{}, err
 		}
-		if err = validText(r.Title, 256, true); err != nil {
+		if err = validText("title", r.Title, 256, true); err != nil {
 			return Receipt{}, err
 		}
-		if err = validText(r.Description, MaxTaskTextBytes, false); err != nil {
+		if err = validText("description", r.Description, MaxTaskTextBytes, false); err != nil {
 			return Receipt{}, err
 		}
 		if err = checkTicket(ctx, tx, r.SessionID, "", r.TicketRef); err != nil {
@@ -426,7 +434,11 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 		change := TaskChange{}
 		outcome := action
 		setText := func(kind, body string, current *string, max int, required bool) error {
-			if err := validText(body, max, required); err != nil {
+			field := kind
+			if kind == "result" {
+				field = "summary"
+			}
+			if err := validText(field, body, max, required); err != nil {
 				return err
 			}
 			old, err := contentBody(ctx, tx, *current)
@@ -450,7 +462,7 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 				return Receipt{}, failure("invalid_input", "at least one definition field required")
 			}
 			if r.Title != nil {
-				if err = validText(*r.Title, 256, true); err != nil {
+				if err = validText("title", *r.Title, 256, true); err != nil {
 					return Receipt{}, err
 				}
 				task.Title = *r.Title
@@ -560,7 +572,7 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 			}
 			task.ReportAt = now()
 		case "attention.set":
-			if err = validText(r.Question, MaxTaskNoteBytes, true); err != nil {
+			if err = validText("question", r.Question, MaxTaskNoteBytes, true); err != nil {
 				return Receipt{}, err
 			}
 			id := opaqueID()
@@ -570,7 +582,7 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 			}
 			change.QuestionID = id
 		case "attention.resolve":
-			if err = validText(r.Note, MaxTaskNoteBytes, true); err != nil {
+			if err = validText("note", r.Note, MaxTaskNoteBytes, true); err != nil {
 				return Receipt{}, err
 			}
 			question, err := openQuestion(ctx, tx, task.ID)
@@ -586,10 +598,10 @@ func (s *Store) ChangeTask(ctx context.Context, token, action string, r TaskChan
 			}
 			change.QuestionID = question.ID
 		case "reference.add":
-			if err = validText(r.Location, 2048, true); err != nil {
+			if err = validText("location", r.Location, 2048, true); err != nil {
 				return Receipt{}, err
 			}
-			if err = validText(r.ReferenceRevision, 128, false); err != nil {
+			if err = validText("reference_revision", r.ReferenceRevision, 128, false); err != nil {
 				return Receipt{}, err
 			}
 			lower := strings.ToLower(strings.TrimSpace(r.Location))

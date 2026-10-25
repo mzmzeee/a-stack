@@ -196,6 +196,9 @@ type Credential struct {
 	Enrollment *Enrollment    `json:"enrollment,omitempty"`
 }
 
+// ValidID reports whether id has the form of a Workspace, Session, Agent,
+// Task or reference ID.
+func ValidID(id string) bool { return validToken(id) }
 func validToken(token string) bool {
 	b, err := base64.RawURLEncoding.DecodeString(token)
 	return err == nil && len(b) == 32 && base64.RawURLEncoding.EncodeToString(b) == token
