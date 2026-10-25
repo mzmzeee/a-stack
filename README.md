@@ -102,7 +102,7 @@ To see all commands, run `a-stack --help`. To see the flags of one command, run 
 
 ## Contributing
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, and the checks.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup and the checks.
 
 ## License
 

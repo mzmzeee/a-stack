@@ -6,6 +6,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-25
+
+Upgrading from v0.1.4: run `a-stack update`, then restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`). The first start copies the database to `state.db.pre-v6` and moves it to schema 7. Open browser views lose access once, because old view links are revoked: run `a-stack` to open a new one. If you set up the systemd unit by hand, run `a-stack service install` once to update it.
+
 ### Added
 
 - `a-stack new --orchestrator NAME` also registers that Agent, with a credential file in `a-stack-agents` next to the state directory, appoints it as the Orchestrator and prints a brief to paste into the coding agent. It checks the name and the credential file before it makes anything, and refuses a Session that already has an Orchestrator.
@@ -30,7 +34,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - Schema 7 adds an expiry to credentials and a table of unused view links. It deletes every existing browser credential, because their secrets are in browser histories. **After the upgrade, open views lose access once: run `a-stack` or `a-stack open` again.**
 - The Working status icon turns three times when a Task starts working, then stays still, and waits while the tab is hidden. An endless spin kept the browser busy: about 6.5% of a CPU core with 150 Tasks open.
 - `serve` runs SQLite `PRAGMA quick_check` before it says ready. On a damaged database it stops with exit code 4, names the database file and points to the restore steps. On a 940 MB database the check adds about 0.2 seconds to the start.
-- A state database with a newer or unknown schema also stops `serve` with exit code 4. The message names the schema version it found and the newest one it supports, and says how to get back: update a-stack, or restore a backup. The systemd unit now has `RestartPreventExitStatus=3 4`, so it does not restart in a loop. Download the unit again to get this.
+- A state database with a newer or unknown schema also stops `serve` with exit code 4. The message names the schema version it found and the newest one it supports, and says how to get back: update a-stack, or restore a backup. The systemd unit now has `RestartPreventExitStatus=3 4`, so it does not restart in a loop. Run `a-stack service install` to update the unit.
 - Before a schema migration, `serve` writes a private copy of the database, `state.db.pre-vN`, with `VACUUM INTO`. It never replaces an earlier copy, and it does not migrate when it cannot write the copy.
 - The restore steps check the backup with `PRAGMA integrity_check` first.
 - When the service is not running, cannot be reached or its response is cut off, the CLI error has `retryable: true`, because the change may have been made. The message also says to ask the Operator to start the service, which is what an Agent must do.
@@ -176,7 +180,8 @@ The first release.
 - One static Linux binary for `amd64` and `arm64`, with SQLite built in. It accepts connections only on `127.0.0.1`.
 - An install script that checks the download against the release checksums.
 
-[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/mzmzeee/a-stack/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/mzmzeee/a-stack/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/mzmzeee/a-stack/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/mzmzeee/a-stack/compare/v0.1.1...v0.1.2
