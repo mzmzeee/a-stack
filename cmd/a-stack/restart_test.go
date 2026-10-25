@@ -22,9 +22,7 @@ func TestServeReportsATakenLastPortOnStderr(t *testing.T) {
 		t.Fatal("discovery", err)
 	}
 	address := strings.TrimPrefix(discovery.URL, "http://")
-	if first.Process.Signal(syscall.SIGTERM) != nil || first.Wait() != nil {
-		t.Fatal("stop first serve")
-	}
+	stopServe(t, first, syscall.SIGTERM)
 	squatter, err := net.Listen("tcp4", address)
 	if err != nil {
 		t.Fatal(err)

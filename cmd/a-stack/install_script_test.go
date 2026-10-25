@@ -1,3 +1,7 @@
+// install.sh is for Linux and macOS; install.ps1 is for Windows.
+
+//go:build linux || darwin
+
 package main
 
 import (

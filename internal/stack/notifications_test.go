@@ -173,6 +173,7 @@ type noticeFixture struct {
 
 func noticeTestFixture(t *testing.T) *noticeFixture {
 	t.Helper()
+	unixOnly(t, "the fake Herdr is a shell script, and a-stack refuses Herdr on Windows")
 	f := mailFixture(t)
 	dir := t.TempDir()
 	executable, err := os.Executable()

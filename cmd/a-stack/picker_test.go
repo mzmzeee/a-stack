@@ -13,6 +13,9 @@ func TestPickerAgesPathsAndPrintableText(t *testing.T) {
 			t.Fatalf("relativeAge(%v)=%q want %q", d, got, want)
 		}
 	}
+	old := windowsPaths
+	windowsPaths = false
+	defer func() { windowsPaths = old }()
 	for _, c := range [][3]string{{"/home/a/code/x", "/home/a", "~/code/x"}, {"/home/a", "/home/a", "~"}, {"/home/ab/x", "/home/a", "/home/ab/x"}, {"/srv/x", "", "/srv/x"}, {"/x", "/", "/x"}} {
 		if got := shortenHome(c[0], c[1]); got != c[2] {
 			t.Fatalf("shortenHome(%q,%q)=%q", c[0], c[1], got)

@@ -224,7 +224,7 @@ func TestSpecReviewBackupAndConfiguration(t *testing.T) {
 	if err != nil || backupStatus.DatabaseID != s.Store.id {
 		t.Fatalf("backup failed: %v", err)
 	}
-	backup, err := sql.Open("sqlite3", "file:"+destination+"?mode=ro")
+	backup, err := sql.Open("sqlite3", fileURI(destination)+"?mode=ro")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,7 +235,7 @@ func TestSpecReviewBackupAndConfiguration(t *testing.T) {
 	}
 	reviewCount(t, backup, "review_committed", 1)
 	info, err := os.Stat(destination)
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || posixModes && info.Mode().Perm() != 0600 {
 		t.Fatal("backup permissions are not private")
 	}
 	_, err = s.Store.Backup(context.Background(), c.Token, destination)

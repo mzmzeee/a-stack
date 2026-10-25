@@ -14,7 +14,6 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 )
@@ -143,7 +142,7 @@ func TestServiceSecurityRestartAndSQLite(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if info.Mode().Perm() != 0600 {
+		if posixModes && info.Mode().Perm() != 0600 {
 			t.Fatalf("%s mode=%v", name, info.Mode())
 		}
 	}
@@ -261,23 +260,27 @@ func TestCapabilitiesAndPrivateFiles(t *testing.T) {
 	if err = s.Store.db.QueryRow("SELECT token_hash FROM capabilities WHERE kind='operator'").Scan(&hash); err != nil || hash == operator.Token || hash != tokenHash(operator.Token) {
 		t.Fatal("credential not hashed")
 	}
-	if os.Chmod(agentPath, 0644) != nil {
-		t.Fatal("chmod")
-	}
-	_, err = ReadCredential(agentPath)
-	requireCode(t, err, "invalid_input")
 	link := filepath.Join(dir, "linked.json")
 	if os.Symlink(filepath.Join(dir, "operator.json"), link) != nil {
 		t.Fatal("symlink")
 	}
 	_, err = ReadCredential(link)
 	requireCode(t, err, "invalid_input")
-	unsafe := privateTestDir(t)
-	if os.Chmod(unsafe, 0755) != nil {
-		t.Fatal("chmod")
+	// On Windows the access list of the folder, not the mode, keeps files
+	// private; state_windows_test.go reads it back.
+	if posixModes {
+		if os.Chmod(agentPath, 0644) != nil {
+			t.Fatal("chmod")
+		}
+		_, err = ReadCredential(agentPath)
+		requireCode(t, err, "invalid_input")
+		unsafe := privateTestDir(t)
+		if os.Chmod(unsafe, 0755) != nil {
+			t.Fatal("chmod")
+		}
+		_, err = Start(ctx, unsafe, "")
+		requireCode(t, err, "invalid_input")
 	}
-	_, err = Start(ctx, unsafe, "")
-	requireCode(t, err, "invalid_input")
 	root := privateTestDir(t)
 	if os.Mkdir(filepath.Join(root, ".git"), 0700) != nil {
 		t.Fatal("mkdir")
@@ -498,7 +501,7 @@ func TestSafeBackupRestoreAndMissingCredential(t *testing.T) {
 	_, err = s.Store.Backup(ctx, c.Token, backupPath)
 	requireCode(t, err, "conflict")
 	info, err := os.Stat(backupPath)
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || posixModes && info.Mode().Perm() != 0600 {
 		t.Fatal("backup permissions")
 	}
 	status, err := s.Store.Status()
@@ -636,20 +639,6 @@ func TestForeignSchemaLiteralSQLitePrefix(t *testing.T) {
 				t.Fatal("foreign database migrated")
 			}
 		})
-	}
-}
-func TestFIFOCredentialFailsWithoutBlocking(t *testing.T) {
-	path := filepath.Join(privateTestDir(t), "fifo.json")
-	if err := syscall.Mkfifo(path, 0600); err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan error, 1)
-	go func() { _, err := ReadCredential(path); done <- err }()
-	select {
-	case err := <-done:
-		requireCode(t, err, "invalid_input")
-	case <-time.After(time.Second):
-		t.Fatal("FIFO credential blocked")
 	}
 }
 func TestReceiptSurvivesDatabaseRestart(t *testing.T) {

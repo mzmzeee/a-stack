@@ -30,6 +30,7 @@ var errExit = errors.New("exit status 3")
 // folder with a space, a state directory and a fake systemd.
 func serviceSetup(t *testing.T) (f *fakeSystemd, exe, state, file string) {
 	t.Helper()
+	unixOnly(t, "systemd units hold Unix paths")
 	root := t.TempDir()
 	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))

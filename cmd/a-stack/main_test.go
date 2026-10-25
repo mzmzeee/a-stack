@@ -139,12 +139,7 @@ func TestCLIRealProcessesCrashRestartBackupRestore(t *testing.T) {
 	}
 	backup := filepath.Join(backupDir, "saved.db")
 	commandResult(t, []string{"storage", "backup", "--state-dir", dir, "--destination", backup, "--json"}, 0)
-	if second.Process.Signal(syscall.SIGTERM) != nil {
-		t.Fatal("terminate")
-	}
-	if err = second.Wait(); err != nil {
-		t.Fatal(err)
-	}
+	stopServe(t, second, syscall.SIGTERM)
 	commandResult(t, []string{"health", "--state-dir", dir, "--json"}, 1)
 	restoredDir := filepath.Join(t.TempDir(), "restored")
 	if os.Mkdir(restoredDir, 0700) != nil {
@@ -164,12 +159,7 @@ func TestCLIRealProcessesCrashRestartBackupRestore(t *testing.T) {
 	if json.Unmarshal(health, &h2) != nil || h2.Data.DatabaseID != h.Data.DatabaseID {
 		t.Fatal("restore identity")
 	}
-	if restored.Process.Signal(syscall.SIGTERM) != nil {
-		t.Fatal("terminate restored")
-	}
-	if err = restored.Wait(); err != nil {
-		t.Fatal(err)
-	}
+	stopServe(t, restored, syscall.SIGTERM)
 }
 func TestCLIParsingAndMachineErrors(t *testing.T) {
 	for _, args := range [][]string{{"health", "--listen", "127.0.0.1:0"}, {"health", "--state-dir"}, {"serve", "--as", "agent"}, {"storage", "backup", "--state-dir", "relative"}, {"health", "--json=not-bool"}, {"unsupported"}} {
