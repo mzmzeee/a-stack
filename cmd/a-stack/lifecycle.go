@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
+	"io/fs"
+	"os"
 	"strings"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
@@ -64,6 +67,10 @@ func acceptedFlags(command string) string {
 		return " project json help "
 	} else if command == "update" {
 		return " check version json help "
+	} else if command == "service install" || command == "service status" {
+		return " state-dir json help "
+	} else if command == "service uninstall" {
+		return " json help "
 	}
 	allowed := " state-dir json help "
 	// The Operator shortcuts use operator.json and may start the service, so
@@ -82,6 +89,8 @@ func acceptedFlags(command string) string {
 		allowed += "workspace session agent limit after "
 	case "notifications drain":
 		allowed += "workspace session limit "
+	case "view revoke":
+		allowed += "workspace session all "
 	case "open":
 		allowed += "workspace session no-browser "
 	case "storage backup":
@@ -118,6 +127,23 @@ func acceptedFlags(command string) string {
 	return allowed
 }
 func lifecycleRequest(ctx context.Context, client *stack.Client, command string, f lifecycleFlags) ([]byte, error) {
+	// A new credential file that this request writes. If the request fails for
+	// good, no Agent holds its token, so the file goes. A retryable failure
+	// keeps it: the same command resumes with it.
+	fresh := ""
+	if command == "agent register" || command == "agent rebind" {
+		if _, err := os.Lstat(f.newCredential); errors.Is(err, fs.ErrNotExist) {
+			fresh = f.newCredential
+		}
+	}
+	data, err := lifecycleCall(ctx, client, command, f)
+	var e *stack.Error
+	if fresh != "" && errors.As(err, &e) && !e.Retryable {
+		_ = os.Remove(fresh)
+	}
+	return data, err
+}
+func lifecycleCall(ctx context.Context, client *stack.Client, command string, f lifecycleFlags) ([]byte, error) {
 	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}
 	var body any
 	switch command {

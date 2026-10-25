@@ -59,6 +59,13 @@ func TestCLIEnrollmentAppointmentRebindAndLifecycle(t *testing.T) {
 		return withRef(append(args, "--as", "agent", "--credential-file", file)...)
 	}
 	receiptResult(t, workerArgs(workerFile, "agent", "attach", "--agent", worker.ResourceID, "--operation-id", "cli-attach-worker", "--expected-revision", "1", "--runtime-id", "cli-worker-runtime"))
+	// A register that fails for good leaves no credential file behind.
+	refused := filepath.Join(private, "refused.json")
+	commandResult(t, workerArgs(workerFile, "agent", "register", "--name", "03-other", "--operation-id", "cli-enroll-refused", "--new-credential-file", refused), 1)
+	commandResult(t, orch("agent", "register", "--name", "02-worker", "--operation-id", "cli-enroll-duplicate", "--new-credential-file", refused), 1)
+	if _, err := os.Lstat(refused); !os.IsNotExist(err) {
+		t.Fatal("a refused register left its credential file", err)
+	}
 	newFile := filepath.Join(private, "worker-rebound.json")
 	rebind := withRef("agent", "rebind", "--agent", worker.ResourceID, "--operation-id", "cli-rebind-worker", "--expected-revision", "2", "--runtime-id", "cli-new-runtime", "--new-credential-file", newFile)
 	rebound := receiptResult(t, rebind)

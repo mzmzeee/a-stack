@@ -225,11 +225,18 @@ func ReadCredential(path string) (Credential, error) {
 	return c, nil
 }
 
+// An Agent never starts the service, so the hint also tells it whom to ask.
 const (
-	startHint          = "start it with a-stack serve, or systemctl --user start a-stack if you use the systemd service"
+	startHint          = "start it with a-stack serve (or systemctl --user start a-stack), or ask the Operator to start it; then run the same command again"
 	serviceDown        = "the a-stack service is not running; " + startHint
 	serviceUnreachable = "cannot reach the a-stack service; if it stopped, " + startHint
 )
+
+// unreachable is retryable: a request that failed may still have committed,
+// and the same command with the same operation ID returns its receipt.
+func unreachable(message string) *Error {
+	return &Error{Code: "storage_unavailable", Message: message, Retryable: true}
+}
 
 type Discovery struct {
 	URL        string `json:"url"`
@@ -241,7 +248,7 @@ func ReadDiscovery(dir string) (Discovery, error) {
 	var d Discovery
 	data, err := privateRead(filepath.Join(dir, "service.json"))
 	if err != nil {
-		return d, failure("storage_unavailable", serviceDown)
+		return d, unreachable(serviceDown)
 	}
 	if decodeJSON(data, &d) != nil || !validToken(d.DatabaseID) || !validToken(d.InstanceID) || !strings.HasPrefix(d.URL, "http://127.0.0.1:") {
 		return d, failure("invalid_input", "invalid service discovery")

@@ -70,7 +70,7 @@ Set `worker_id` from the receipt of the Agent's registration. Agent mode and bro
 
 The CLI makes a random token and writes it to the new file with mode 0600. It syncs the file before it sends the request, and it sends only the token's SHA-256 hash. The database and the receipt never contain the token. A private enrollment record in the file links it to the database ID, the operation ID and the exact request digest.
 
-If you lose a response, run the same command again, with the same operation ID, flags, actor credential and new credential file name. The CLI reads the existing file, and the service returns the original receipt. It does not register or rotate again. The file stays in place after errors, also when the outcome is uncertain.
+If you lose a response, run the same command again, with the same operation ID, flags, actor credential and new credential file name. The CLI reads the existing file, and the service returns the original receipt. It does not register or rotate again. The file stays in place after a retryable error, also when the outcome is uncertain. When the service refuses the request with an error that is not retryable, such as `forbidden` or `conflict`, the CLI deletes the file that this command wrote, because no Agent holds its token. A file that existed before the command is never deleted.
 
 - A different payload under the same operation ID causes a conflict.
 - A credential file that was made for a different request or database also causes a conflict, before anything is sent.

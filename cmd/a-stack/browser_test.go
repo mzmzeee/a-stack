@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -34,5 +35,32 @@ func TestOpenPrintsScopedURLWhenLaunchFails(t *testing.T) {
 	code = run([]string{"open", "--state-dir", dir, "--workspace", w.ResourceID, "--session", s.ResourceID, "--no-browser", "--json"}, &stdout, &stderr)
 	if code != 0 || launched != "" || stderr.Len() != 0 || !strings.Contains(stdout.String(), `"url"`) {
 		t.Fatal("no-browser JSON")
+	}
+	// Only the Operator opens views and revokes them.
+	private := filepath.Join(t.TempDir(), "credentials")
+	if os.Mkdir(private, 0700) != nil {
+		t.Fatal("private credential dir")
+	}
+	agentFile := filepath.Join(private, "agent.json")
+	ref := []string{"--workspace", w.ResourceID, "--session", s.ResourceID}
+	receiptResult(t, common(append([]string{"agent", "register", "--name", "01-orchestrator", "--operation-id", "browser-agent", "--new-credential-file", agentFile}, ref...)...))
+	asAgent := func(args ...string) []string {
+		return common(append(append(args, ref...), "--as", "agent", "--credential-file", agentFile)...)
+	}
+	for _, args := range [][]string{asAgent("open", "--no-browser"), asAgent("view", "revoke")} {
+		if _, errout := commandResult(t, args, 1); !strings.Contains(string(errout), `"forbidden"`) {
+			t.Fatalf("%v: %s", args[:2], errout)
+		}
+	}
+	for _, args := range [][]string{common("view", "revoke"), common(append([]string{"view", "revoke", "--all"}, ref...)...)} {
+		commandResult(t, args, 2)
+	}
+	out, _ := commandResult(t, common(append([]string{"view", "revoke"}, ref...)...), 0)
+	if strings.TrimSpace(string(out)) != `{"data":{"revoked":0}}` {
+		t.Fatalf("view revoke: %s", out)
+	}
+	out, _ = commandResult(t, common("view", "revoke", "--all"), 0)
+	if strings.TrimSpace(string(out)) != `{"data":{"revoked":0}}` {
+		t.Fatalf("view revoke --all: %s", out)
 	}
 }

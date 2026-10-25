@@ -246,6 +246,10 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, failure("conflict", "service instance changed; reload discovery"))
 		return
 	}
+	if r.URL.Path == "/v1/browser/redeem" {
+		s.redeemHTTP(w, r)
+		return
+	}
 	values := r.Header.Values("Authorization")
 	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
 		writeError(w, failure("unauthorized", "valid bearer credential required"))
@@ -385,11 +389,14 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 	}
 	response, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, failure("storage_unavailable", serviceUnreachable)
+		return nil, unreachable(serviceUnreachable)
 	}
 	defer response.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(response.Body, MaxRequestBytes+1))
-	if err != nil || len(b) > MaxRequestBytes {
+	if err != nil {
+		return nil, unreachable("the response from the a-stack service was cut off; run the same command again")
+	}
+	if len(b) > MaxRequestBytes {
 		return nil, failure("storage_unavailable", "invalid or oversized service response")
 	}
 	var envelope struct {

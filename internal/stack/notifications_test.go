@@ -606,7 +606,7 @@ func TestNotificationsV4UpgradeAndRollback(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = db.Exec(undoMigration6 + "DROP TABLE notice_batch_refs; DROP TABLE notice_batches; DROP TABLE notice_targets; PRAGMA user_version=4"); err != nil {
+			if _, err = db.Exec(undoMigration7 + undoMigration6 + "DROP TABLE notice_batch_refs; DROP TABLE notice_batches; DROP TABLE notice_targets; PRAGMA user_version=4"); err != nil {
 				t.Fatal(err)
 			}
 			if fail {

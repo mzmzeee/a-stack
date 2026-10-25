@@ -9,14 +9,39 @@ The release workflow uses the section of a version as the notes of its GitHub re
 ### Added
 
 - Each Agent has a write budget, so a runaway loop cannot fill the disk. A change costs the size of its request; an Agent can spend 8 MiB at once and 1 MiB more a minute. Past that, a change gets the new error code `rate_limited` (HTTP 429, retryable) with `retry_after_seconds`. A replay of a committed operation ID and the Operator are never limited. In a rerun of the review's reproduction (16 parallel `mail send` loops with 64 KiB bodies from one Agent for 20 seconds), the Agent stored 13,835 messages (925 MB) before and 132 messages (8 MB) now; another Agent could still send.
+- `a-stack service install` sets up the systemd user service in one step, so a-stack keeps running after you close the terminal. It writes `~/.config/systemd/user/a-stack.service` (or below `$XDG_CONFIG_HOME`) from the unit in the binary, with the real path of the running binary and the CLI's state directory, then runs `daemon-reload` and `enable --now` and waits until the service answers. It refuses while an `a-stack serve` outside systemd holds the state directory, says when it updated a different unit, and prints the `loginctl enable-linger` command when linger is off. `a-stack service status` shows the unit, enabled, active, binary, linger and health; `a-stack service uninstall` disables the service and removes the unit, and never touches the state directory.
+- When `a-stack`, `a-stack -r` or `a-stack new` start the service in the terminal, they say that closing the terminal stops a-stack and how to keep it running.
 - `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
+- `a-stack view revoke --workspace ID --session ID` ends browser view access to one Session, and `--all` to every Session. Open tabs say that they lost access at their next refresh. Only the Operator can run it.
 - `agent register` and `agent rebind` write the Workspace ID, the Session ID and the Agent name into the new credential file. These fields are not secret. With such a file, Agent commands can leave out `--workspace` and `--session`; a flag that is given must match the file. Older credential files keep working with explicit flags.
 - `mail check` has a top-level `more`, true when more mail is waiting than the response holds. Without `--cursor-file`, the output then has a `hint`.
 
 ### Changed
 
+- Schema 7 adds an expiry to credentials and a table of unused view links. It deletes every existing browser credential, because their secrets are in browser histories. **After the upgrade, open views lose access once: run `a-stack` or `a-stack open` again.**
+- The Working status icon turns three times when a Task starts working, then stays still, and waits while the tab is hidden. An endless spin kept the browser busy: about 6.5% of a CPU core with 150 Tasks open.
+- `serve` runs SQLite `PRAGMA quick_check` before it says ready. On a damaged database it stops with exit code 4, names the database file and points to the restore steps. On a 940 MB database the check adds about 0.2 seconds to the start.
+- A state database with a newer or unknown schema also stops `serve` with exit code 4. The message names the schema version it found and the newest one it supports, and says how to get back: update a-stack, or restore a backup. The systemd unit now has `RestartPreventExitStatus=3 4`, so it does not restart in a loop. Download the unit again to get this.
+- Before a schema migration, `serve` writes a private copy of the database, `state.db.pre-vN`, with `VACUUM INTO`. It never replaces an earlier copy, and it does not migrate when it cannot write the copy.
+- The restore steps check the backup with `PRAGMA integrity_check` first.
+- When the service is not running, cannot be reached or its response is cut off, the CLI error has `retryable: true`, because the change may have been made. The message also says to ask the Operator to start the service, which is what an Agent must do.
+- `a-stack update` syncs the new binary to disk before it renames it into place, and syncs the folder after, so a power cut cannot leave an empty binary.
+- `a-stack update --version` with an older version warns that the older a-stack may not open the current database, and says how to go back.
+- The release notes say to run `a-stack update`.
+- `scripts/build-release.sh` pins the versions of the Alpine packages it installs (`gcc`, `musl-dev`, `binutils`).
 - `mail check --cursor-file FILE` now writes the file: it merges the returned cursors and the Task scan position into it, atomically and with mode 0600, and creates it if it is missing. The same command run again shows only new mail, and the output lists only the Tasks with new mail. Before, a plain `mail check` started at message 1 every time and stopped at 100 messages, so an Agent on a busy Task never saw its newest mail (in the review's reproduction with 105 messages, messages 100–105 never appeared), and every check put old mail back into its context. Now the second check reaches message 105, and a third shows nothing. Two checks with the same file at once leave a whole file; the last write wins. `--cursor-file -` still only reads.
 - The agent skill uses `mail check --cursor-file` in its work loop, and its `me` helper needs only the credential file. It no longer reads the Task before every change: it uses the revision of the Task it read or of its last receipt, and reads again only after a `conflict`, so the revision check catches changes by others again. One full work loop takes 8 commands instead of 11. The `rev` and `grev` helper scripts are gone.
+
+### Fixed
+
+- When the service refuses `agent register` or `agent rebind` with an error that is not retryable, the CLI deletes the new credential file that the command wrote. A file that existed before is kept.
+
+### Security
+
+- Releases are signed. The release workflow signs `SHA256SUMS` with an Ed25519 key and uploads the raw signature as `SHA256SUMS.sig`. `a-stack update` checks it with the public key in the binary before it trusts the checksums, and the install script checks it with OpenSSL 3 when it is installed. For v0.1.5 and later, a missing or wrong signature stops the update or the install, and nothing changes. Older releases have no signature; they install with a warning, only when you name their version.
+- Every release file, `install.sh` included, has a build provenance attestation. The install guide shows how to check a file with `gh attestation verify` and the signature with `openssl`.
+- Only the Operator can open the browser view. `open` with an Agent credential fails with `forbidden`. Before, an Agent could open a view and read the Task mail of Tasks it was not assigned to.
+- A view link works once, within 60 seconds. The page trades the code in its fragment for a view token, which it keeps for the tab, so a reload works. Opening the same link again shows that it expired. A view token works for 30 days. Each new link deletes the expired links and view tokens. `a-stack`, `a-stack -r`, `a-stack new` and `open` print or open a fresh link as before.
 
 ## [0.1.4] - 2026-10-25
 
