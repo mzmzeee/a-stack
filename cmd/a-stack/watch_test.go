@@ -249,3 +249,31 @@ func TestWatchSkipsUnchangedSessionsAndNotifiesText(t *testing.T) {
 		t.Fatalf("notice with text: %q", notices)
 	}
 }
+
+func TestStatusLineForClaudeCode(t *testing.T) {
+	f := newTeam(t)
+	line := func(state, input string) string {
+		var out bytes.Buffer
+		statusLine(state, strings.NewReader(input), &out)
+		return out.String()
+	}
+	input := `{"cwd":"/elsewhere","workspace":{"current_dir":` + jsonString(f.project) + `}}`
+	if got := line(f.state, input); got != "a-stack Build: 0 needs you · 0 working\n" {
+		t.Fatalf("status line %q", got)
+	}
+	rev := f.taskChange(f.workerFile, "line-working", 2, "status", "--progress", "working")
+	f.taskChange(f.workerFile, "line-ask", rev, "attention", "set", "--question", "Which?")
+	f.receipt("", "session", "create", "--workspace", f.workspace, "--name", "Second", "--operation-id", "line-second")
+	if got := line(f.state, `{"cwd":`+jsonString(f.project)+`}`); got != "a-stack: 1 needs you · 0 working\n" {
+		t.Fatalf("status line of two Sessions %q", got)
+	}
+	for _, quiet := range []string{line(f.state, `{"cwd":"/"}`), line(f.state, "nonsense"), line(filepath.Join(t.TempDir(), "none"), input)} {
+		if quiet != "" {
+			t.Fatalf("status line printed %q", quiet)
+		}
+	}
+	var out, errout bytes.Buffer
+	if code := run([]string{"statusline", "--no-such-flag"}, &out, &errout); code != 0 || out.Len() != 0 || errout.Len() != 0 {
+		t.Fatalf("statusline error: %d %q %q", code, out.String(), errout.String())
+	}
+}

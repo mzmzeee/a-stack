@@ -415,3 +415,52 @@ func (w *watcher) desktopNotice(summary, body string) {
 func markupEscape(s string) string {
 	return strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;").Replace(printable(s))
 }
+
+// statusLine prints one line for Claude Code's status line: what needs you
+// and what works in the open Sessions of the Workspace of the session's
+// folder, such as `a-stack Build: 1 needs you · 2 working`. It prints no view
+// URL. On any error, or outside a Workspace, it prints nothing.
+func statusLine(state string, stdin io.Reader, stdout io.Writer) {
+	var in struct {
+		Cwd       string `json:"cwd"`
+		Workspace struct {
+			CurrentDir string `json:"current_dir"`
+		} `json:"workspace"`
+	}
+	if json.NewDecoder(io.LimitReader(stdin, 1<<20)).Decode(&in) != nil {
+		return
+	}
+	dir := in.Workspace.CurrentDir
+	if dir == "" {
+		dir = in.Cwd
+	}
+	if canonical, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = canonical
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	client, err := stack.NewClient(state, "", stack.OperatorCapability)
+	if err != nil {
+		return
+	}
+	w := &watcher{client: client, cwd: dir}
+	sessions, err := w.scope(ctx)
+	if err != nil || len(sessions) == 0 {
+		return
+	}
+	total := sessionStatus{}
+	for _, s := range sessions {
+		tasks, err := w.tasks(ctx, s)
+		if err != nil {
+			return
+		}
+		r := countTasks(s, tasks)
+		total.NeedsYou += r.NeedsYou
+		total.Working += r.Working
+	}
+	name := "a-stack"
+	if len(sessions) == 1 {
+		name += " " + truncate(printable(sessions[0].Name), 40)
+	}
+	fmt.Fprintf(stdout, "%s: %d needs you · %d working\n", name, total.NeedsYou, total.Working)
+}

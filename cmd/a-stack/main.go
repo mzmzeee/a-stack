@@ -25,8 +25,8 @@ func main() {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	err := execute(args, stdout, stderr)
-	if isHookRun(args) {
-		return 0 // a hook never stops the Agent
+	if isHookRun(args) || len(args) > 0 && args[0] == "statusline" {
+		return 0 // a hook or a status line never stops the harness
 	}
 	if err == nil {
 		return 0
@@ -144,7 +144,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		}
 		cmd = "new"
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isWatchCommand(cmd) && !isHookCommand(cmd) {
+	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -173,6 +173,10 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return invalid("--state-dir must be absolute")
 	}
 	ctx := context.Background()
+	if cmd == "statusline" {
+		statusLine(state, os.Stdin, stdout)
+		return nil
+	}
 	if isHookCommand(cmd) {
 		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}}
 		if cmd == "hook" {

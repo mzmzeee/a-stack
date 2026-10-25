@@ -1,10 +1,10 @@
 # Watch from the terminal
 
-`a-stack status` and `a-stack watch` show the Operator what the Agents do, without the browser view. Both only read. They use the Operator credential (`operator.json` in the state directory) and change nothing.
+`a-stack status`, `a-stack watch` and `a-stack statusline` show the Operator what the Agents do, without the browser view. All three only read. They use the Operator credential (`operator.json` in the state directory) and change nothing.
 
 ## Which Sessions
 
-By default both commands show the open Sessions of the Workspace of the current folder, or of the closest folder above it that is a Workspace. Outside a Workspace they stop with `this folder has no Workspace; use --all or --session ID`.
+By default `status` and `watch` show the open Sessions of the Workspace of the current folder, or of the closest folder above it that is a Workspace. Outside a Workspace they stop with `this folder has no Workspace; use --all or --session ID`.
 
 - `--all` shows the open Sessions of every Workspace.
 - `--session ID` shows one Session, also when it is closed.
@@ -45,3 +45,17 @@ With `--json`, watch prints the first status as one JSON document and then one d
 ### Desktop notices
 
 `--notify` also shows a desktop notice through `notify-send`, when it is installed, for each Session with a new Needs you: `a-stack: 1 needs you in OAuth login`. The number counts all open questions in that Session. The notice has no question text, because notices can show on a locked screen or in a shared screen. To include the questions, use `--notify-text` (it turns on `--notify`). Without `notify-send`, watch says so once and keeps printing.
+
+## Claude Code status line
+
+`a-stack statusline` prints one line for the [status line](https://code.claude.com/docs/en/statusline) of your own Claude Code session, such as `a-stack OAuth login: 1 needs you · 2 working`. It reads the session's folder from the JSON that Claude Code sends on stdin, and counts the open Sessions of that folder's Workspace. With several open Sessions it shows only `a-stack:` and the sums. It never prints a view URL.
+
+Add it to your Claude Code settings, for example `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {"type": "command", "command": "a-stack statusline"}
+}
+```
+
+Add `--state-dir DIR` to the command if your service does not use the default state directory. Outside a Workspace, when the service is down, or on any other error, it prints nothing and exits with 0. It gives up after one second. Claude Code runs it after changes in the conversation, so the counts can be a little old while the session is idle; add `"refreshInterval": 10` to the `statusLine` object to update them every 10 seconds.

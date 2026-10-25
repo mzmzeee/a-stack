@@ -66,6 +66,8 @@ func acceptedFlags(command string) string {
 		return " project json help "
 	} else if command == "update" {
 		return " check version json help "
+	} else if command == "statusline" {
+		return " state-dir help "
 	} else if command == "hook" {
 		return " state-dir credential-file workspace session agent runtime-id worktree help "
 	} else if command == "hook install" {
