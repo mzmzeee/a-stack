@@ -141,6 +141,10 @@ func writePrivate(path string, v any, replace bool) error {
 	return syncDir(filepath.Dir(path))
 }
 
+// ReplacePrivate replaces path with v as JSON, mode 0600: a synced temporary
+// file is renamed over it. Of two writers at once, the last one wins.
+func ReplacePrivate(path string, v any) error { return writePrivate(path, v, true) }
+
 type stateLock struct {
 	dir  string
 	file *os.File
