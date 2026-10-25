@@ -616,7 +616,8 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	if err != nil {
 		return empty, err
 	}
-	if p.Kind == BrowserCapability {
+	// The answer to a Needs you question is the view's one write.
+	if p.Kind == BrowserCapability && op.Name != "task.answer" {
 		return empty, failure("forbidden", "browser credentials are read-only")
 	}
 	actor := string(p.Kind) + ":" + p.SubjectID

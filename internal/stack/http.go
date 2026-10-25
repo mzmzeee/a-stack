@@ -274,12 +274,21 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Session-scoped browser tokens have no foundation data endpoints. They may use
-	// the Session read endpoints and read Task mail; default dispatch remains deny.
-	if p.Kind == BrowserCapability && !taskReadEndpoint(r.URL.Path) && r.URL.Path != "/v1/mail/read" {
+	// the Session read endpoints, read Task mail and answer a Needs you question;
+	// default dispatch remains deny. The answer is their one write, so it also
+	// needs the Origin of the service, which a browser always sends with a POST.
+	answer := r.URL.Path == "/v1/task/answer"
+	if p.Kind == BrowserCapability && !taskReadEndpoint(r.URL.Path) && r.URL.Path != "/v1/mail/read" && !answer {
 		writeError(w, failure("forbidden", "browser credential requires a Session read endpoint"))
 		return
 	}
+	if p.Kind == BrowserCapability && answer && r.Header.Get("Origin") == "" {
+		writeError(w, failure("forbidden", "the view's answer requires the Origin header"))
+		return
+	}
 	switch r.URL.Path {
+	case "/v1/task/answer":
+		s.answerHTTP(w, r, token)
 	case "/v1/health":
 		if r.Method != http.MethodGet {
 			writeError(w, failure("invalid_input", "GET required"))

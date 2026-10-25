@@ -77,12 +77,15 @@ type Task struct {
 	chainDone                                       bool
 }
 type Question struct {
-	ID         string `json:"id"`
-	TaskID     string `json:"task_id"`
-	Question   string `json:"question"`
-	AskerID    string `json:"asker_id"`
-	AskedAt    string `json:"asked_at"`
-	Note       string `json:"note,omitempty"`
+	ID       string `json:"id"`
+	TaskID   string `json:"task_id"`
+	Question string `json:"question"`
+	AskerID  string `json:"asker_id"`
+	AskedAt  string `json:"asked_at"`
+	Note     string `json:"note,omitempty"`
+	// Answer is the Operator's answer. A question that the Operator answered
+	// has no resolver; its answer is stored as the note.
+	Answer     string `json:"answer,omitempty"`
 	ResolverID string `json:"resolver_id,omitempty"`
 	ResolvedAt string `json:"resolved_at,omitempty"`
 }
@@ -94,6 +97,8 @@ type TaskDetail struct {
 	Reason       string    `json:"reason"`
 	Result       string    `json:"result"`
 	Question     *Question `json:"question,omitempty"`
+	// AnsweredQuestion is the latest question that the Operator answered.
+	AnsweredQuestion *Question `json:"answered_question,omitempty"`
 }
 type TaskCreateRequest struct {
 	Context
@@ -302,8 +307,9 @@ func contentBody(ctx context.Context, tx *sql.Tx, id string) (string, error) {
 }
 func recordTask(ctx context.Context, tx *sql.Tx, p Principal, taskID, action string, revision int64, change TaskChange) error {
 	b, _ := json.Marshal(change)
+	// A view token acts for the Operator: its one write is the Operator's answer.
 	kind, actor := "agent", any(p.SubjectID)
-	if p.Kind == OperatorCapability {
+	if p.Kind != AgentCapability {
 		kind, actor = "operator", nil
 	}
 	_, err := tx.ExecContext(ctx, "INSERT INTO task_history(task_id,actor_kind,actor_id,action,revision,received_at,changes) VALUES(?,?,?,?,?,?,?)", taskID, kind, actor, action, revision, now(), string(b))
@@ -755,6 +761,25 @@ func openQuestion(ctx context.Context, tx *sql.Tx, id string) (*Question, error)
 	}
 	if err != nil {
 		return nil, err
+	}
+	return &q, nil
+}
+
+const questionColumns = "id,task_id,question,asker_id,asked_at,note,COALESCE(resolver_id,''),COALESCE(resolved_at,'')"
+
+// scanQuestion reads questionColumns. It returns nil without an error when
+// there is no row.
+func scanQuestion(row *sql.Row) (*Question, error) {
+	var q Question
+	err := row.Scan(&q.ID, &q.TaskID, &q.Question, &q.AskerID, &q.AskedAt, &q.Note, &q.ResolverID, &q.ResolvedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if q.ResolvedAt != "" && q.ResolverID == "" {
+		q.Answer, q.Note = q.Note, ""
 	}
 	return &q, nil
 }

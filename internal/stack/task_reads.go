@@ -183,6 +183,9 @@ func (s *Store) ShowTask(ctx context.Context, token string, r TaskReadRequest) (
 		*field.target = body
 	}
 	detail.Question, err = openQuestion(ctx, tx, task.ID)
+	if err == nil {
+		detail.AnsweredQuestion, err = scanQuestion(tx.QueryRowContext(ctx, "SELECT "+questionColumns+" FROM task_questions WHERE task_id=? AND resolver_id IS NULL AND resolved_at IS NOT NULL ORDER BY resolved_at DESC LIMIT 1", task.ID))
+	}
 	if err != nil {
 		return TaskDetail{}, storageError(err)
 	}
@@ -389,12 +392,13 @@ func snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequest, id str
 			h.Texts = createTexts(h)
 		}
 		if h.Changes.QuestionID != "" {
-			var q Question
-			err = tx.QueryRowContext(ctx, "SELECT id,task_id,question,asker_id,asked_at,note,COALESCE(resolver_id,''),COALESCE(resolved_at,'') FROM task_questions WHERE id=? AND task_id=?", h.Changes.QuestionID, r.TaskID).Scan(&q.ID, &q.TaskID, &q.Question, &q.AskerID, &q.AskedAt, &q.Note, &q.ResolverID, &q.ResolvedAt)
+			h.Question, err = scanQuestion(tx.QueryRowContext(ctx, "SELECT "+questionColumns+" FROM task_questions WHERE id=? AND task_id=?", h.Changes.QuestionID, r.TaskID))
+			if err == nil && h.Question == nil {
+				err = sql.ErrNoRows
+			}
 			if err != nil {
 				return nil, err
 			}
-			h.Question = &q
 		}
 		if h.Changes.ReferenceID != "" {
 			ref, err := readReference(ctx, tx, r.TaskID, h.Changes.ReferenceID)

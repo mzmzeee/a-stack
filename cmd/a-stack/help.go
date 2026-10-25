@@ -25,6 +25,7 @@ var helpGroups = []helpGroup{
 		{"open", "", "Open one Session in the browser by its IDs"},
 		{"status", "", "Count what needs you, works, waits and finished"},
 		{"watch", "", "Print each change and ring on a new Needs you"},
+		{"answer", "", "Answer a Needs you question; the Agents get Task mail"},
 		{"statusline", "", "Print a status line for Claude Code"},
 		{"view revoke", "", "End browser view access: one Session or --all"},
 	}},
@@ -132,7 +133,7 @@ var requiredFlags = map[string]string{
 	"agent observe": "agent runtime-id runtime-state", "task assign": "agent", "task unassign": "agent",
 	"task create": "title", "task status": "progress", "task reference add": "location",
 	"task reference remove": "reference", "dependency add": "from to", "dependency remove": "from to",
-	"session page": "page-kind", "herdr bind": "agent", "herdr focus": "agent",
+	"session page": "page-kind", "answer": "question-id", "herdr bind": "agent", "herdr focus": "agent",
 }
 
 func flagRequired(command, name string) bool {
@@ -292,7 +293,7 @@ var flagValues = map[string]string{
 	"name": "NAME", "orchestrator": "NAME", "agent": "ID", "worktree": "DIR", "new-credential-file": "FILE", "runtime-id": "ID",
 	"runtime-file": "FILE", "runtime-state": "STATE", "expected-revision": "N", "limit": "N", "after": "CURSOR",
 	"task": "ID", "title": "TEXT", "description": "TEXT", "ticket": "REF", "report": "TEXT", "progress": "STATE",
-	"reason": "TEXT", "summary": "TEXT", "question": "TEXT", "note": "TEXT", "location": "PATH",
+	"reason": "TEXT", "summary": "TEXT", "question": "TEXT", "question-id": "ID", "text": "TEXT", "note": "TEXT", "location": "PATH",
 	"reference-revision": "REV", "reference": "ID", "from": "ID", "to": "ID", "body-file": "FILE",
 	"page-kind": "KIND", "read-revision": "N", "known-revision": "N", "body": "TEXT", "mention": "NAME",
 	"cursor": "CURSOR", "cursor-file": "FILE", "after-task": "TOKEN", "task-limit": "N",

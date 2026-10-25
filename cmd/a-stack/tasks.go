@@ -11,7 +11,7 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-var taskCommands = []string{"task create", "task list", "task show", "task edit", "task assign", "task unassign", "task status", "task reopen", "task archive", "task unarchive", "task report", "task history", "task assignees", "task references", "task dependencies", "task attention set", "task attention resolve", "task reference add", "task reference remove", "dependency add", "dependency remove", "dependency history", "session snapshot", "session page"}
+var taskCommands = []string{"task create", "task list", "task show", "task edit", "task assign", "task unassign", "task status", "task reopen", "task archive", "task unarchive", "task report", "task history", "task assignees", "task references", "task dependencies", "task attention set", "task attention resolve", "task reference add", "task reference remove", "dependency add", "dependency remove", "dependency history", "session snapshot", "session page", "answer"}
 
 func isTaskCommand(command string) bool {
 	for _, c := range taskCommands {
@@ -23,8 +23,8 @@ func isTaskCommand(command string) bool {
 }
 
 type taskFlags struct {
-	task, title, description, ticket, report, progress, reason, summary, question, note, location, referenceRevision, reference, from, to, body, bodyFile, pageKind string
-	readRevision, knownRevision                                                                                                                                     int64
+	task, title, description, ticket, report, progress, reason, summary, question, questionID, text, note, location, referenceRevision, reference, from, to, body, bodyFile, pageKind string
+	readRevision, knownRevision                                                                                                                                                       int64
 }
 
 func (f *taskFlags) register(fs *flag.FlagSet) {
@@ -38,6 +38,8 @@ func (f *taskFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.summary, "summary", "", "Result summary of the finished Task")
 	fs.StringVar(&f.question, "question", "", "Question for the Operator")
 	fs.StringVar(&f.note, "note", "", "Note for the resolved question")
+	fs.StringVar(&f.questionID, "question-id", "", "ID of the open Needs you question; task show prints it")
+	fs.StringVar(&f.text, "text", "", "Your answer to the question")
 	fs.StringVar(&f.location, "location", "", "File path or URL to show")
 	fs.StringVar(&f.referenceRevision, "reference-revision", "", "Revision of the referenced file")
 	fs.StringVar(&f.reference, "reference", "", "Reference ID")
@@ -75,6 +77,8 @@ func taskAllowedFlags(command string) string {
 		return "task operation-id expected-revision question body body-file"
 	case "task attention resolve":
 		return "task operation-id expected-revision note body body-file"
+	case "answer":
+		return "task operation-id question-id text body-file"
 	case "task reference add":
 		return "task operation-id expected-revision location reference-revision"
 	case "task reference remove":
@@ -110,6 +114,8 @@ func textFlag(command, progress string) string {
 		return "question"
 	case "task attention resolve":
 		return "note"
+	case "answer":
+		return "text"
 	}
 	return ""
 }
@@ -118,7 +124,7 @@ func textFlag(command, progress string) string {
 // flag, and checks the text that the chosen progress needs. It runs before
 // the CLI connects to the service.
 func (f *taskFlags) readText(command string, seen map[string]bool) error {
-	texts := map[string]*string{"description": &f.description, "report": &f.report, "reason": &f.reason, "summary": &f.summary, "question": &f.question, "note": &f.note}
+	texts := map[string]*string{"description": &f.description, "report": &f.report, "reason": &f.reason, "summary": &f.summary, "question": &f.question, "note": &f.note, "text": &f.text}
 	field := textFlag(command, f.progress)
 	if seen["body"] || seen["body-file"] {
 		if field == "" || seen[field] || seen["body"] && seen["body-file"] {
@@ -193,6 +199,9 @@ func taskRequest(ctx context.Context, client *stack.Client, command string, l li
 		body = stack.SnapshotPageRequest{Context: ref, Kind: kind, TaskID: f.task, ReadRevision: f.readRevision, After: l.after, Limit: l.limit}
 	case "session snapshot":
 		body = stack.SnapshotRequest{Context: ref, KnownRevision: f.knownRevision}
+	case "answer":
+		path = "/v1/task/answer"
+		body = stack.AnswerRequest{Context: ref, OperationID: l.operationID, TaskID: f.task, QuestionID: f.questionID, Answer: f.text}
 	case "dependency add", "dependency remove":
 		body = stack.DependencyRequest{Context: ref, OperationID: l.operationID, ExpectedGraphRevision: l.revision, PrerequisiteID: f.from, DependentID: f.to}
 	default:

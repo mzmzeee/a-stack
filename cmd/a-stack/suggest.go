@@ -178,6 +178,7 @@ func checkIDs(seen map[string]bool, l lifecycleFlags, t taskFlags) error {
 		{"from", t.from, "a Task ID", "a-stack task list"},
 		{"to", t.to, "a Task ID", "a-stack task list"},
 		{"reference", t.reference, "a reference ID", "a-stack task references"},
+		{"question-id", t.questionID, "a question ID", "a-stack task show"},
 	}
 	for _, id := range ids {
 		if !seen[id.flag] || stack.ValidID(id.value) {
