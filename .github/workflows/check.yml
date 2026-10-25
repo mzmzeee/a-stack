@@ -95,7 +95,7 @@ jobs:
           mkdir -p "$mirror" "$RUNNER_TEMP/zip"
           go build -ldflags "-X main.version=v0.0.1" -o "$RUNNER_TEMP/zip/a-stack.exe" ./cmd/a-stack
           (cd "$RUNNER_TEMP/zip" && 7z a -tzip "$mirror/a-stack_windows_amd64.zip" a-stack.exe >/dev/null)
-          (cd "$mirror" && sha256sum a-stack_windows_amd64.zip > SHA256SUMS)
+          (cd "$mirror" && sha256sum --binary a-stack_windows_amd64.zip > SHA256SUMS)
           python -m http.server 8765 --bind 127.0.0.1 --directory "$RUNNER_TEMP/mirror" &
           server=$!
           sleep 2

@@ -53,8 +53,11 @@ function Install-AStack {
 		}
 		$expected = ''
 		foreach ($line in Get-Content -LiteralPath (Join-Path $tmp 'SHA256SUMS')) {
-			$fields = $line -split '\s+'
-			if ($fields.Count -ge 2 -and $fields[1] -eq $archive) { $expected = $fields[0] }
+			# sha256sum uses a space for text mode and * for binary mode.
+			if ($line -match '^([0-9a-fA-F]{64}) [ *](.+)$' -and $Matches[2] -ceq $archive) {
+				if ($expected) { throw "a-stack install: duplicate checksum for $archive" }
+				$expected = $Matches[1]
+			}
 		}
 		$actual = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $tmp $archive)).Hash
 		if (-not $expected -or $expected -ne $actual) {
