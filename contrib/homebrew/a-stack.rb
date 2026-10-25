@@ -3,7 +3,6 @@
 class AStack < Formula
   desc "Keep an eye on your AI coding agents"
   homepage "https://github.com/mzmzeee/a-stack"
-  version "0.1.6"
   license "MIT"
 
   on_macos do
