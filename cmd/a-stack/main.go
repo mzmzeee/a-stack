@@ -87,6 +87,8 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	tasks.register(fs)
 	var mail mailFlags
 	mail.register(fs)
+	var watching watchFlags
+	watching.register(fs)
 	// stdlib flag stops at the first positional; extract known flags so the same
 	// explicit flags work before or after the command without a CLI dependency.
 	var flags, command []string
@@ -137,7 +139,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		}
 		cmd = "new"
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" {
+	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isWatchCommand(cmd) {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -176,6 +178,10 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return serveForeground(ctx, state, listen, herdrExecutable, func(_ context.Context, service *stack.Service) error {
 			return json.NewEncoder(stdout).Encode(readyLine(service))
 		})
+	}
+	if isWatchCommand(cmd) {
+		connect := func() (*stack.Client, error) { return stack.NewClient(state, credential, stack.CapabilityKind(kind)) }
+		return watchCommand(ctx, connect, cmd, lifecycle.session, watching, machine, stdout, stderr)
 	}
 	client, err := stack.NewClient(state, credential, stack.CapabilityKind(kind))
 	if err != nil {

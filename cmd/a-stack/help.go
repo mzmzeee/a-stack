@@ -22,6 +22,8 @@ var helpGroups = []helpGroup{
 		{"new", "new [NAME]", "Create a Session for this folder and open it"},
 		{"", "-r, --resume", "Pick a Session in the terminal and open it"},
 		{"open", "", "Open one Session in the browser by its IDs"},
+		{"status", "", "Count what needs you, works, waits and finished"},
+		{"watch", "", "Print each change and ring on a new Needs you"},
 	}},
 	{"Agent skill", []helpRow{
 		{"skill install", "", "Install the agent skill in ~/.claude and ~/.agents"},
@@ -156,7 +158,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "status", "watch")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string

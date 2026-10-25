@@ -110,6 +110,10 @@ func acceptedFlags(command string) string {
 		allowed += "workspace session operation-id expected-revision agent runtime-id runtime-file clear-runtime new-credential-file "
 	case "agent observe":
 		allowed += "workspace session agent expected-revision runtime-id runtime-state "
+	case "watch":
+		allowed += "session all notify notify-text "
+	case "status":
+		allowed += "session all "
 	}
 	if isTaskCommand(command) {
 		allowed += "workspace session " + taskAllowedFlags(command) + " "

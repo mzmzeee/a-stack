@@ -8,6 +8,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Added
 
+- `a-stack status` prints one line per Session: how many Tasks need you, work, wait and finished. `a-stack watch` prints that once, then one line per change (new Tasks, status changes, Needs you, answers, reports) until Ctrl-C, and rings the terminal bell on a new Needs you. `--notify` also shows a desktop notice through `notify-send`, without the question unless you add `--notify-text`. Both use the Operator credential, only read, and show the current folder's Sessions, or `--session ID` or `--all`. Watch reads a Session's Tasks only when its read revision changed. See [Watch from the terminal](docs/watch.md).
 - Each Agent has a write budget, so a runaway loop cannot fill the disk. A change costs the size of its request; an Agent can spend 8 MiB at once and 1 MiB more a minute. Past that, a change gets the new error code `rate_limited` (HTTP 429, retryable) with `retry_after_seconds`. A replay of a committed operation ID and the Operator are never limited. In a rerun of the review's reproduction (16 parallel `mail send` loops with 64 KiB bodies from one Agent for 20 seconds), the Agent stored 13,835 messages (925 MB) before and 132 messages (8 MB) now; another Agent could still send.
 - `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
 

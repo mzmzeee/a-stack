@@ -91,6 +91,7 @@ The Task graph is empty at first. To register Agents and give them Tasks, follow
 - [Tasks and the Task graph](docs/tasks.md): create and assign Tasks, report progress, ask questions, add dependencies.
 - [Task mail](docs/mail.md): send and read messages, and mention Agents.
 - [Browser view](docs/browser.md): open the view and read what it shows.
+- [Watch from the terminal](docs/watch.md): `a-stack status` and `a-stack watch` show what needs you, with a bell and opt-in desktop notices.
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
 - [Agent skill](docs/agent-skill.md): run `a-stack skill install` to teach your coding agents to work in an a-stack Session.
