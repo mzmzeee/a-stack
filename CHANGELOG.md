@@ -10,6 +10,13 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 - Each Agent has a write budget, so a runaway loop cannot fill the disk. A change costs the size of its request; an Agent can spend 8 MiB at once and 1 MiB more a minute. Past that, a change gets the new error code `rate_limited` (HTTP 429, retryable) with `retry_after_seconds`. A replay of a committed operation ID and the Operator are never limited. In a rerun of the review's reproduction (16 parallel `mail send` loops with 64 KiB bodies from one Agent for 20 seconds), the Agent stored 13,835 messages (925 MB) before and 132 messages (8 MB) now; another Agent could still send.
 - `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
+- `agent register` and `agent rebind` write the Workspace ID, the Session ID and the Agent name into the new credential file. These fields are not secret. With such a file, Agent commands can leave out `--workspace` and `--session`; a flag that is given must match the file. Older credential files keep working with explicit flags.
+- `mail check` has a top-level `more`, true when more mail is waiting than the response holds. Without `--cursor-file`, the output then has a `hint`.
+
+### Changed
+
+- `mail check --cursor-file FILE` now writes the file: it merges the returned cursors and the Task scan position into it, atomically and with mode 0600, and creates it if it is missing. The same command run again shows only new mail, and the output lists only the Tasks with new mail. Before, a plain `mail check` started at message 1 every time and stopped at 100 messages, so an Agent on a busy Task never saw its newest mail (in the review's reproduction with 105 messages, messages 100–105 never appeared), and every check put old mail back into its context. Now the second check reaches message 105, and a third shows nothing. Two checks with the same file at once leave a whole file; the last write wins. `--cursor-file -` still only reads.
+- The agent skill uses `mail check --cursor-file` in its work loop, and its `me` helper needs only the credential file. It no longer reads the Task before every change: it uses the revision of the Task it read or of its last receipt, and reads again only after a `conflict`, so the revision check catches changes by others again. One full work loop takes 8 commands instead of 11. The `rev` and `grev` helper scripts are gone.
 
 ## [0.1.4] - 2026-10-25
 

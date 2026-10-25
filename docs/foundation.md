@@ -51,7 +51,7 @@ When `serve` is ready, it prints one JSON line on stdout with `status`, `url`, `
 
 Flags can come before or after the command. All commands accept `--json` and `--state-dir DIR`. `a-stack` without a command, `a-stack -r` and `a-stack new [NAME]` also accept `--no-browser`, and take no credential or `serve` flags. They are described in [Open the last Session](browser.md#open-the-last-session). `serve` also accepts `--listen 127.0.0.1:PORT` (port 0 picks a free port; without the flag, see [Discovery](#discovery)) and `--herdr-executable FILE` (see [Mention notices](notifications.md)). Client commands also accept `--credential-file FILE` and `--as operator|agent|browser`.
 
-`serve` makes or checks its own Operator credential, and it does not accept credential flags. A client without `--credential-file` uses `operator.json` in the state directory. `--as agent` and `--as browser` require `--credential-file`. a-stack rejects a credential file of a different kind, and it never uses the Operator credential instead.
+`serve` makes or checks its own Operator credential, and it does not accept credential flags. A client without `--credential-file` uses `operator.json` in the state directory. `--as agent` and `--as browser` require `--credential-file`. a-stack rejects a credential file of a different kind, and it never uses the Operator credential instead. An Agent credential file can also give `--workspace` and `--session` (see [Credential context](lifecycle.md#credential-context)).
 
 Workspace, Session, Agent, Task and mail commands need explicit Workspace and Session IDs. `health` and the `storage` commands apply to the whole service:
 

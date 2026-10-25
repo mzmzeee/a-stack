@@ -2,7 +2,7 @@
 
 This page describes how the Operator sets up a team and how Agents get their credentials. It also covers runtime bindings, and Session close and reopen.
 
-The service gives each Workspace, Session and Agent a stable opaque ID. The CLI always sends these IDs explicitly. The current directory never selects a Workspace or a Session, and lifecycle commands never look up an Agent by its name. There is one exception: the three Operator commands `a-stack`, `a-stack -r` and `a-stack new` use the current folder as a default or a filter, and their output shows the folder they used. No other command and no Agent command uses the current directory. See [Open the last Session](browser.md#open-the-last-session).
+The service gives each Workspace, Session and Agent a stable opaque ID. The CLI always sends these IDs explicitly, from flags or from an Agent credential file that names them (see [Credential context](#credential-context)). The current directory never selects a Workspace or a Session, and lifecycle commands never look up an Agent by its name. There is one exception: the three Operator commands `a-stack`, `a-stack -r` and `a-stack new` use the current folder as a default or a filter, and their output shows the folder they used. No other command and no Agent command uses the current directory. See [Open the last Session](browser.md#open-the-last-session).
 
 ## Workspaces, Sessions and Agents
 
@@ -53,14 +53,12 @@ Give the new Agent its private `worker.json`, the Workspace, Session and Agent I
 
 These scopes prevent accidental use of the wrong API permissions. They do not protect files from a hostile process: a trusted local process can still read other files of the same operating system account.
 
-An Agent gives its credential and its context in every call:
+An Agent gives its credential in every call. The credential file names its Workspace and Session, so the Agent can leave out `--workspace` and `--session`:
 
 ```sh
-./a-stack session inspect --as agent --credential-file "$credential_dir/worker.json" \
-  --workspace "$workspace_id" --session "$session_id" --json
+./a-stack session inspect --as agent --credential-file "$credential_dir/worker.json" --json
 ./a-stack agent attach --as agent --credential-file "$credential_dir/worker.json" \
-  --workspace "$workspace_id" --session "$session_id" --agent "$worker_id" \
-  --runtime-id explicit-runtime-instance-id --expected-revision 1 \
+  --agent "$worker_id" --runtime-id explicit-runtime-instance-id --expected-revision 1 \
   --operation-id worker-attach-1 --json
 ```
 
@@ -80,6 +78,14 @@ If you lose a response, run the same command again, with the same operation ID, 
 - Never delete a pending credential file only because a response was lost.
 
 If an Agent loses its token, the Operator recovers access with `agent rebind`. The rebind needs a new operation ID, the current Agent revision and a different new credential file name. The rebind replaces the stored hash, makes all old tokens of that Agent invalid, and changes or clears the runtime binding. The Agent keeps its ID and its history. Keep all credential files that you gave out separately from the database backups, because the hashes cannot rebuild them.
+
+### Credential context
+
+`agent register` and `agent rebind` also write three fields into the new credential file: `workspace_id`, `session_id` and `agent_name`. They are not secret, and they give no access: the service still finds the Agent from the token alone. A rebind looks up the Agent's name with `agent list` before it writes the file.
+
+When a command runs with an Agent credential file that has these fields, the CLI takes `--workspace` and `--session` from the file if they are not given. A flag that is given must name the same ID, or the command fails with `invalid_input` before it sends anything. The context still comes only from a file that the caller names, never from the current folder or from environment variables, which child processes and subagents would inherit.
+
+Credential files from before v0.1.5 have no context. They keep working with explicit `--workspace` and `--session`.
 
 ## Runtime bindings
 
