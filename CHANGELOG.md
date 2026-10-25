@@ -6,6 +6,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- A Working Task with no change and no Task mail for 30 minutes is quiet: its Agent may have stopped. `a-stack status` shows it among the working Tasks, such as `2 working (1 quiet)`, and `--json` has `quiet`. The Task data in `task list`, `task show` and the browser view's pages has `quiet` and `last_mail_at`. `a-stack watch` prints a line and rings the bell once when a Task turns quiet. A Task that waits for an answer to its Needs you question is never quiet. a-stack derives this when it reads a Task, with no schema change and no background job; the view's snapshot ETag counts quiet Tasks, so an open view sees a Task turn quiet in an idle Session. See [Quiet Tasks](docs/watch.md#quiet-tasks).
+
 ## [0.1.6] - 2026-10-25
 
 Upgrading from v0.1.5: run `a-stack update`, then restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`). The first start copies the database to `state.db.pre-v7` (`state.db.pre-v6` from v0.1.4), moves it to schema 8 and prints one line that names the copy. It needs free space of up to three times the size of `state.db`; with less, it stops before it changes anything and says how much it needs. After the upgrade, v0.1.5 cannot open the database. To go back, run `a-stack update --version v0.1.5`, stop the service, and put `state.db.pre-v7` back as `state.db` in a new state directory in the same place, as in [Go back to an older version](docs/install.md#go-back-to-an-older-version); changes made after the upgrade are lost. The database file keeps the pages that the migration freed; a backup and a restore make it small again.

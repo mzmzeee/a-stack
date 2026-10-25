@@ -292,3 +292,66 @@ func TestStatusLineForClaudeCode(t *testing.T) {
 		t.Fatalf("statusline error: %d %q %q", code, out.String(), errout.String())
 	}
 }
+
+// A Working Task with no change and no Task mail for QuietAfter is quiet:
+// status counts it, task list marks it, and watch rings once when it turns
+// quiet, although no read revision changes, and again only after news ends it.
+func TestQuietTasksInStatusListAndWatch(t *testing.T) {
+	before := stack.QuietAfter
+	stack.QuietAfter = 700 * time.Millisecond
+	t.Cleanup(func() { stack.QuietAfter = before })
+	f := newTeam(t)
+	t.Chdir(f.project)
+	f.taskChange(f.workerFile, "quiet-working", 2, "status", "--progress", "working")
+	client, err := stack.NewClient(f.state, "", stack.OperatorCapability)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, errout syncBuffer
+	w := &watcher{client: client, stdout: &out, stderr: &errout, interval: 20 * time.Millisecond}
+	w.setup()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- w.watch(ctx) }()
+	waitFor(t, "start", &out, "0 needs you · 1 working · 0 waiting · 0 finished\n")
+	quietLine := "Build the parser: quiet: Working, but no change or Task mail for 700ms\n\a"
+	waitFor(t, "quiet", &out, quietLine)
+	time.Sleep(200 * time.Millisecond)
+	if strings.Count(out.String(), "\a") != 1 {
+		t.Fatalf("watch rang more than once: %q", out.String())
+	}
+
+	status, _, code := f.run("", "status")
+	if code != 0 || !strings.HasSuffix(status, ": 0 needs you · 1 working (1 quiet) · 0 waiting · 0 finished\n") {
+		t.Fatalf("status: %q", status)
+	}
+	status, _, _ = f.run("", "status", "--json")
+	if !strings.Contains(status, `"working":1,"quiet":1,`) {
+		t.Fatalf("status --json: %s", status)
+	}
+	list, _, _ := f.run(f.workerFile, f.scoped("task", "list")...)
+	if !strings.Contains(list, `"quiet":true`) {
+		t.Fatalf("task list: %s", list)
+	}
+
+	// Task mail ends quiet; the Task rings again once it is quiet again.
+	f.receipt(f.workerFile, f.scoped("mail", "send", "--task", f.task, "--body", "Still on it", "--operation-id", "quiet-mail")...)
+	list, _, _ = f.run(f.workerFile, f.scoped("task", "list")...)
+	if !strings.Contains(list, `"quiet":false`) || !strings.Contains(list, `"last_mail_at":`) {
+		t.Fatalf("task list after mail: %s", list)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for strings.Count(out.String(), "\a") < 2 {
+		if time.Now().After(deadline) {
+			t.Fatalf("no second quiet bell: %q", out.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(out.String(), quietLine) != 2 || errout.String() != "" {
+		t.Fatalf("quiet lines: %q %q", out.String(), errout.String())
+	}
+}

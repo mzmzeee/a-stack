@@ -47,11 +47,15 @@ const MaxTaskNoteBytes = 2048
 
 // ReportPreview and QuestionPreview are limited to 160 Unicode code points in the read projection.
 // LastAction is the action of the Task's latest history entry, such as task.status; it happened at UpdatedAt.
+// LastMailAt is the time of the latest Task mail. Quiet marks a Working Task with no change and no Task mail
+// for QuietAfter that does not wait for the Operator's answer (see QuietAt).
 type Task struct {
 	ReportPreview                                   string `json:"report_preview,omitempty"`
 	QuestionPreview                                 string `json:"question_preview,omitempty"`
 	LastAction                                      string `json:"last_action,omitempty"`
 	MailCount                                       int64  `json:"mail_count"`
+	LastMailAt                                      string `json:"last_mail_at,omitempty"`
+	Quiet                                           bool   `json:"quiet"`
 	Archived                                        bool   `json:"archived"`
 	ArchivedReason                                  string `json:"archived_reason,omitempty"`
 	ArchivedAt                                      string `json:"archived_at,omitempty"`
@@ -179,6 +183,7 @@ const taskColumns = `t.id,t.session_id,t.title,t.ticket_ref,t.progress,t.revisio
  COALESCE((SELECT substr(q.question,1,160) FROM task_questions q WHERE q.task_id=t.id AND q.resolved_at IS NULL),''),
  COALESCE((SELECT h.action FROM task_history h WHERE h.task_id=t.id ORDER BY h.sequence DESC LIMIT 1),''),
  COALESCE((SELECT max(m.sequence) FROM mail_messages m WHERE m.task_id=t.id),0),
+ COALESCE((SELECT m.received_at FROM mail_messages m WHERE m.task_id=t.id ORDER BY m.sequence DESC LIMIT 1),''),
  t.archived_at,t.ended_at,
  CASE WHEN t.progress IN ('finished','cancelled') THEN EXISTS(SELECT 1 FROM dependencies d WHERE d.session_id=t.session_id AND d.prerequisite_id=t.id)
   AND NOT EXISTS(SELECT 1 FROM dependencies d JOIN tasks n ON n.id=d.dependent_id WHERE d.session_id=t.session_id AND d.prerequisite_id=t.id AND n.progress NOT IN ('finished','cancelled')) ELSE 0 END`
@@ -191,9 +196,11 @@ const taskByID = "SELECT " + taskColumns + " FROM tasks t WHERE t.id=? AND t.ses
 
 func scanTask(row interface{ Scan(...any) error }) (Task, error) {
 	var t Task
-	err := row.Scan(&t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction, &t.MailCount, &t.ArchivedAt, &t.EndedAt, &t.chainDone)
+	err := row.Scan(&t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction, &t.MailCount, &t.LastMailAt, &t.ArchivedAt, &t.EndedAt, &t.chainDone)
 	t.Unassigned = t.AssigneeCount == 0
-	deriveArchive(&t, clockNow())
+	at := clockNow()
+	deriveArchive(&t, at)
+	t.Quiet = t.quiet(at)
 	if errors.Is(err, sql.ErrNoRows) {
 		return t, failure("not_found", "Task not found in Session")
 	}

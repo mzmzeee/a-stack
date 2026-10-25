@@ -162,6 +162,8 @@ A Task item has:
 - `last_action`, the action of the latest history entry, such as `task.status`. It happened at `updated_at`.
 - `archived`, `archived_reason` (`command`, `chain` or `age`), `archived_at` and `ended_at`, as described in [Archived Tasks](#archived-tasks).
 - `mail_count`, the number of messages in the Task's mail. It is the last mail sequence, read from the `(task_id, sequence)` index.
+- `last_mail_at`, the time of the latest Task mail, left out when the Task has none.
+- `quiet`, true for a Working Task with no change and no Task mail for 30 minutes that does not wait for an answer to a Needs you question. The read derives it from `updated_at` and `last_mail_at`; nothing is stored. See [Quiet Tasks](watch.md#quiet-tasks).
 
 It has no full report, question or description body.
 
