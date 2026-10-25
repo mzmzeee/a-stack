@@ -26,3 +26,30 @@ jobs:
         with:
           cache-dependency-glob: scripts/check.sh # the uvx tool pins live there
       - run: scripts/check.sh
+
+  # The macOS build: go build, vet and test with cgo on Apple silicon.
+  # scripts/check.sh is Linux only (findmnt, the linters); the Intel build is
+  # checked by the release workflow.
+  macos:
+    runs-on: macos-15
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: "1"
+        run: |
+          # Tests keep private state in TMPDIR. The default one is below /var,
+          # a symlink on macOS; use a plain folder instead.
+          TMPDIR="$(mktemp -d "$RUNNER_TEMP/a-stack-check.XXXXXX")"
+          export TMPDIR
+          go build -o "$RUNNER_TEMP/a-stack" ./cmd/a-stack
+          "$RUNNER_TEMP/a-stack" version
+          go vet ./...
+          go test -count=1 ./...

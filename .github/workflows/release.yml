@@ -16,21 +16,36 @@ jobs:
     strategy:
       matrix:
         include:
-          - arch: amd64
+          - os: linux
+            arch: amd64
             runner: ubuntu-24.04
-          - arch: arm64
+          - os: linux
+            arch: arm64
             runner: ubuntu-24.04-arm
+          # go-sqlite3 needs cgo, so each Mac build runs on its own processor.
+          - os: darwin
+            arch: arm64
+            runner: macos-15
+          - os: darwin
+            arch: amd64
+            runner: macos-15-intel
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The Linux build runs in a pinned Go image; macOS builds natively.
+      - if: matrix.os == 'darwin'
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false # a release build never uses a cache
       - run: scripts/build-release.sh "$GITHUB_REF_NAME"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: a-stack_linux_${{ matrix.arch }}
-          path: dist/a-stack_linux_${{ matrix.arch }}.tar.gz
+          name: a-stack_${{ matrix.os }}_${{ matrix.arch }}
+          path: dist/a-stack_${{ matrix.os }}_${{ matrix.arch }}.tar.gz
           if-no-files-found: error
 
   publish:
@@ -78,7 +93,7 @@ jobs:
           cp install.sh contrib/systemd/a-stack.service dist/
           tar -czf dist/a-stack-skill.tar.gz -C skills a-stack
           cd dist
-          sha256sum a-stack_linux_*.tar.gz install.sh a-stack.service a-stack-skill.tar.gz > SHA256SUMS
+          sha256sum a-stack_linux_*.tar.gz a-stack_darwin_*.tar.gz install.sh a-stack.service a-stack-skill.tar.gz > SHA256SUMS
           cat SHA256SUMS
       # SHA256SUMS.sig is the raw 64-byte Ed25519 signature of SHA256SUMS. The
       # check uses the public key in install.sh, which a-stack update also has.
