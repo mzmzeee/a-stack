@@ -63,7 +63,7 @@ Old work is archived so that it does not clutter the graph. a-stack archives a f
 curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | sh
 ```
 
-The script installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download or a build from source, see [Install](docs/install.md).
+The script installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download, `go install` (it needs a C compiler) or a build from source, see [Install](docs/install.md).
 
 To update, run `a-stack update` and restart the service. See [Update](docs/install.md#update).
 
