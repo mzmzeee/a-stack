@@ -22,7 +22,7 @@ Notices are turned on for a harness only after a native fixture showed how it qu
 
 Herdr is accepted when its running server reports private protocol 22, the protocol of Herdr 0.9.5 that the fixtures used, and says that the CLI and the endpoint are compatible (`herdr status server --json`). a-stack does not compare the Herdr release string.
 
-All other harnesses, versions outside these lines and other Herdr protocols stay mail-only. That includes Claude Code and Pi, which `herdr bind` can bind, until a native fixture verifies them. In Pi, `/new`, `/resume` and `/fork` change the session file, so Herdr's metadata no longer matches the binding, as with a new Claude Code session ID. A Codex 0.165 needs a new fixture run before it gets notices. A test-only fixture service allows one exact disposable binding, for isolated checks. Production delivery always needs the complete identity checks below.
+All other harnesses, versions outside these lines and other Herdr protocols stay mail-only. That includes Claude Code, Pi and OpenCode, which `herdr bind` can bind, until a native fixture verifies them. In Pi, `/new`, `/resume` and `/fork` change the session file, so Herdr's metadata no longer matches the binding, as with a new Claude Code session ID. A Codex 0.165 needs a new fixture run before it gets notices. A test-only fixture service allows one exact disposable binding, for isolated checks. Production delivery always needs the complete identity checks below.
 
 The Codex fixture had Herdr client and server 0.9.5 with protocol 22, and the actual native `/status` (gpt-6.1-sol, OpenAI, xhigh, Full Access) through the existing oc/YOLO launcher.
 
@@ -36,13 +36,13 @@ a-stack herdr bind --as agent --credential-file "$credential_dir/worker.json" \
   --expected-revision 1 --operation-id worker-bind-1 --json
 ```
 
-`herdr bind` needs Herdr's integration for the harness, because only the integration reports the harness's native session to Herdr. Install it once with `herdr integration install claude`, `herdr integration install codex` or `herdr integration install pi`, then start the harness again in its pane.
+`herdr bind` needs Herdr's integration for the harness, because only the integration reports the harness's native session to Herdr. Install it once with `herdr integration install claude`, `herdr integration install codex`, `herdr integration install pi` or `herdr integration install opencode`, then start the harness again in its pane.
 
 The command does these steps:
 
 1. It reads `HERDR_ENV`, `HERDR_PANE_ID` and `HERDR_SOCKET_PATH`, which Herdr sets in each pane. Outside a Herdr pane it fails with `invalid_input`.
 2. It checks the Herdr server, like a notice does, and runs `herdr agent get` for its own pane.
-3. The pane must hold Claude Code, Codex or Pi, with a native session that Herdr's integration reported. For Claude Code and Codex that is the session ID. Herdr's Pi integration reports the absolute path of Pi's session file, and a-stack keeps that path as the native session. Otherwise it fails with `integration_missing`, and the message names the `herdr integration install` command.
+3. The pane must hold Claude Code, Codex, Pi or OpenCode, with a native session that Herdr's integration reported. For Claude Code, Codex and OpenCode that is the session ID. Herdr's Pi integration reports the absolute path of Pi's session file, and a-stack keeps that path as the native session. Otherwise it fails with `integration_missing`, and the message names the `herdr integration install` command.
 4. If the pane's agent has no Herdr name yet, it names it `a-` plus the lowercase a-stack name, cut to 32 characters, with `herdr agent rename`. It renames only its own pane. If Herdr refuses the name, it fails with `conflict`.
 5. It runs the harness's own `--version`, such as `codex --version`, and keeps the first `MAJOR.MINOR.PATCH`.
 6. It sends the same request as `agent attach`, with the instance ID `herdr:` plus the terminal ID. The binding never goes to a file, and the receipt does not show it.

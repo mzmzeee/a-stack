@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mzmzeee/a-stack/contrib/opencode"
 	"github.com/mzmzeee/a-stack/contrib/pi"
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
@@ -25,6 +26,8 @@ func hookHome(t *testing.T) string {
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("PI_CODING_AGENT_DIR", "")
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("USERPROFILE", home)                           // the home folder on Windows
 	t.Setenv("XDG_CACHE_HOME", "")                          // use the platform cache below the test home
 	t.Setenv("LOCALAPPDATA", filepath.Join(home, ".cache")) // and on Windows there
@@ -235,6 +238,63 @@ func TestHookInstallPiWritesTheExtension(t *testing.T) {
 	}
 	if _, errout, code = f.run("", append(install, "--project")...); code != 2 || !strings.Contains(errout, "--pi has no --project") {
 		t.Fatalf("--project --pi: %d %s", code, errout)
+	}
+}
+
+// --opencode writes the hook list and the plugin into OpenCode's config
+// folder, below XDG_CONFIG_HOME or OPENCODE_CONFIG_DIR, and nothing else.
+func TestHookInstallOpenCodeWritesThePlugin(t *testing.T) {
+	f := newTeam(t)
+	home := hookHome(t)
+	t.Chdir(f.project)
+	config := filepath.Join(home, ".config", "opencode")
+	list, plugin := filepath.Join(config, "a-stack-hooks.json"), filepath.Join(config, "plugins", "a-stack.js")
+	install := []string{"hook", "install", "--opencode", "--credential-file", f.workerFile, "--runtime-id", "oc-1"}
+	out, errout, code := f.run("", install...)
+	if code != 0 || out != "Installed the a-stack hooks for "+f.project+" in:\n  "+list+"\n  "+plugin+"\nOpenCode loads the plugin when it starts; restart a running OpenCode.\n" {
+		t.Fatalf("install --opencode: %d %q %s", code, out, errout)
+	}
+	s := readSettings(t, list)
+	if _, ok := s.Hooks["Notification"]; ok || len(s.Hooks) != 5 || !strings.HasSuffix(commands(s, "Stop")[0], " --runtime-id 'oc-1' --worktree "+quotePath(f.project)) {
+		t.Fatalf("OpenCode hook list: %+v", s.Hooks)
+	}
+	if data, err := os.ReadFile(plugin); err != nil || string(data) != opencode.Plugin || !strings.HasPrefix(string(data), opencode.Header) {
+		t.Fatalf("plugin: %v", err)
+	}
+	for _, other := range []string{".claude", ".codex", ".pi"} {
+		if _, err := os.Stat(filepath.Join(home, other)); !os.IsNotExist(err) {
+			t.Fatalf("--opencode wrote %s", other)
+		}
+	}
+	if out = runSkill(t, "hook", "uninstall", "--opencode"); out != "Removed the a-stack hooks for "+f.project+" from:\n  "+list+"\n  "+plugin+"\n" {
+		t.Fatalf("uninstall: %q", out)
+	}
+	if entries, err := os.ReadDir(config); err != nil || len(entries) != 1 || entries[0].Name() != "plugins" {
+		t.Fatalf("left in the config folder: %v %v", entries, err)
+	}
+	// XDG_CONFIG_HOME moves both files, OPENCODE_CONFIG_DIR wins over it.
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
+	if _, errout, code = f.run("", install...); code != 0 {
+		t.Fatalf("XDG_CONFIG_HOME: %s", errout)
+	}
+	if _, err := os.Stat(filepath.Join(home, "xdg", "opencode", "plugins", "a-stack.js")); err != nil {
+		t.Fatal("XDG_CONFIG_HOME: no plugin")
+	}
+	custom := filepath.Join(home, "oc")
+	t.Setenv("OPENCODE_CONFIG_DIR", custom)
+	if os.MkdirAll(filepath.Join(custom, "plugins"), 0o700) != nil || os.WriteFile(filepath.Join(custom, "plugins", "a-stack.js"), []byte("// mine\n"), 0o600) != nil {
+		t.Fatal("fixture")
+	}
+	if _, errout, code = f.run("", install...); code != 1 || !strings.Contains(errout, "not the a-stack OpenCode plugin") {
+		t.Fatalf("a foreign a-stack.js: %d %s", code, errout)
+	}
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
+	t.Setenv("XDG_CONFIG_HOME", "relative")
+	if _, errout, code = f.run("", install...); code != 2 || !strings.Contains(errout, "XDG_CONFIG_HOME must be absolute") {
+		t.Fatalf("relative XDG_CONFIG_HOME: %d %s", code, errout)
+	}
+	if _, errout, code = f.run("", append(install, "--project")...); code != 2 || !strings.Contains(errout, "--opencode has no --project") {
+		t.Fatalf("--project --opencode: %d %s", code, errout)
 	}
 }
 

@@ -84,6 +84,8 @@ func TestHerdrExecutableHelper(t *testing.T) {
 			session["value"] = "sessions/relative.jsonl"
 		}
 		agent["agent"], agent["agent_session"] = "pi", session
+	case "opencode":
+		agent["agent"], agent["agent_session"] = "opencode", map[string]any{"agent": "opencode", "kind": "id", "source": "herdr:opencode", "value": config.Binding.NativeSessionID}
 	}
 	if len(args) == 3 && args[0] == "agent" && args[1] == "get" {
 		switch config.Mode {

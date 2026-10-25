@@ -14,7 +14,7 @@ import (
 // bindableHarnesses are the harnesses whose Herdr integration reports a
 // native session and whose `--version` herdr bind can read. Notices still need
 // a verified line in verifiedHarnesses.
-var bindableHarnesses = map[string]bool{"claude": true, "codex": true, "pi": true}
+var bindableHarnesses = map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true}
 var harnessVersionPattern = regexp.MustCompile(`[0-9]+\.[0-9]+\.[0-9]+`)
 
 // nativeSession reports whether Herdr's session of a pane is the harness's
@@ -55,7 +55,7 @@ func HerdrBind(ctx context.Context, executable, agentName string, getenv func(st
 	}
 	agent, ok := h.agent(ctx, b, "agent", "get", pane)
 	if !ok || !bindableHarnesses[agent.Agent] {
-		return nil, failure("integration_missing", "Herdr sees no Claude Code, Codex or Pi in this pane; start your harness in it, then bind again")
+		return nil, failure("integration_missing", "Herdr sees no Claude Code, Codex, Pi or OpenCode in this pane; start your harness in it, then bind again")
 	}
 	harness := agent.Agent
 	if !nativeSession(harness, agent.Session.Agent, agent.Session.Kind, agent.Session.Source, agent.Session.Value) {
