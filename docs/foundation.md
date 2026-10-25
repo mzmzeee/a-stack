@@ -105,7 +105,7 @@ The service uses one serialized `database/sql` connection with WAL, `synchronous
 
 A database with a newer schema comes from a newer a-stack, for example after an update to an older version. `serve` then stops with exit code 4. The message names the schema version it found and the newest one it supports. To get back, update a-stack to the newer version with `a-stack update`, or restore a backup made with this version.
 
-Before a migration, `serve` copies the database to `state.db.pre-vN` in the state directory, where N is the old schema version. It uses SQLite `VACUUM INTO`, the file is private (0600), and it is synced to disk. It never replaces an earlier copy: the next copy with the same version is `state.db.pre-vN.2`, and so on. If the copy cannot be written, for example because the disk is full, `serve` stops and does not migrate. The copy is a normal backup: to go back to the older a-stack, restore it as in [Backup and restore](#backup-and-restore). Changes made after the migration are not in it. a-stack never deletes these copies; delete them yourself when you no longer need them.
+Before a migration, `serve` copies the database to `state.db.pre-vN` in the state directory, where N is the old schema version. It uses SQLite `VACUUM INTO` into `state.db.pre-vN.tmp`, the file is private (0600), synced to disk, and renamed to its final name only when it is complete; a crash leaves only the temporary file, which the next start removes. The copy gets the modification time of the database, after its WAL is checkpointed into it. A later start that migrates the same, unchanged database again, because an earlier start failed, uses that copy instead of writing another one. A copy is used again only when its time, schema version and database ID match. It never replaces an earlier copy: the next copy with the same version is `state.db.pre-vN.2`, and so on. If the copy cannot be written, for example because the disk is full, `serve` stops and does not migrate. Before it copies, `serve` checks the free space: the copy needs up to the size of the database, and the migration up to twice that size again, because it rebuilds tables first in the WAL file and then in the database file (see [Update](install.md#update)). With less free space, it stops and says how much it needs. After the migration, it writes one line to stderr that names the copy. The copy is a normal backup: to go back to the older a-stack, restore it as in [Backup and restore](#backup-and-restore). Changes made after the migration are not in it. a-stack never deletes these copies; delete them yourself when you no longer need them.
 
 Each schema version added one area:
 
@@ -147,24 +147,27 @@ backup_dir="$(mktemp -d)"
 a-stack storage backup --destination "$backup_dir/a-stack.sqlite" --json
 ```
 
-To restore a completed backup, stop the service first. Check the backup, then copy only the backup and the original Operator credential into a new, empty, private directory:
+To restore a completed backup, stop the service first: press Ctrl-C in its terminal, or see [Go back to an older version](install.md#go-back-to-an-older-version) for systemd, launchd and Task Scheduler. Check the backup, move the state directory aside, then copy only the backup and the original Operator credential into a new, private state directory in the same place:
 
 ```sh
 # backup_dir is the private directory of the backup command.
-# Stop the old foreground service with Ctrl-C before you continue.
 sqlite3 -readonly "$backup_dir/a-stack.sqlite" 'PRAGMA integrity_check'  # must print ok
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/a-stack"
-restore_dir="$(mktemp -d)"
-install -m 600 "$backup_dir/a-stack.sqlite" "$restore_dir/state.db"
-install -m 600 "$state_dir/operator.json" "$restore_dir/operator.json"
-a-stack serve --state-dir "$restore_dir" --json
+old_dir="$state_dir.before-restore-$(date +%Y%m%d-%H%M%S)"
+mv "$state_dir" "$old_dir"
+mkdir -m 700 "$state_dir"
+install -m 600 "$backup_dir/a-stack.sqlite" "$state_dir/state.db"
+install -m 600 "$old_dir/operator.json" "$state_dir/operator.json"
+a-stack serve --json
 ```
+
+Restore into the state directory that the CLI uses, as above, not into a new folder such as one from `mktemp -d`. The CLI, the Agents' helper scripts and the agent hooks look for the service in the state directory they know, and `/tmp` can be emptied at the next boot. If you use another state directory, set `state_dir` to it and give `--state-dir` to `serve`.
 
 A backup is compact: SQLite writes it without the free pages of the database file. The database never shrinks while it runs, because a-stack never deletes retained data and SQLite keeps freed pages for reuse. So restoring a backup is also the way to compact the database, for example after a migration that rebuilt tables.
 
 If the integrity check prints anything but `ok`, do not use that backup; take an older one. Without the `sqlite3` tool, `serve` still runs its own check: it stops with exit code 4 on a damaged copy. The same steps restore a `state.db.pre-vN` copy that `serve` made before a migration.
 
-In another terminal, run `a-stack health --state-dir "$restore_dir" --json` and make sure that the database ID is the original one. Keep the old state directory until you have checked the restored copy.
+In another terminal, run `a-stack health --json` and make sure that the database ID is the original one. Keep the old state directory (`$old_dir`) until you have checked the restored copy.
 
 Never copy only a live main database file. Never mix a backup with old sidecar files, and never delete sidecar files to try a recovery. Keep the Agent credential files that you gave out in a separate place, because the database hashes cannot rebuild their tokens. See [credential delivery and recovery](lifecycle.md#credential-delivery-and-recovery).
 
