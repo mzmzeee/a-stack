@@ -15,6 +15,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Changed
 
+- The browser view's feed keeps the change on its own line, so a long title no longer hides it, and each kind of change has its own icon. The Needs you chooser lists the oldest request first, with the question and its age. A waiting card names up to three blockers and "+N more". A compact block in the Graph shows its full title on hover.
+- The Needs you button says "Needs you (2)", or "All clear" in neutral colors. An empty Session suggests to brief an Orchestrator with the a-stack skill, and the Agents tab of a Session with no Agents says "No Agents yet". "Clear filters" shows only when a filter is set.
 - The browser view's Task details start with a property grid (Status, Agents, Ticket, Requires, Required by, each dependency with its status icon), hide empty sections, put Task mail last with a "Load 13 more" button, and move the read revision into the footnote.
 - In the Graph tab, Tab moves through the cards in the order of the layout, column by column. Before, it followed the random Task IDs.
 - The browser view draws only the tab that you see, keeps the dependencies while the snapshot's `graph_revision` stays the same, and indexes Agents and prerequisites once per snapshot. On a 2,000-Task Session, a poll with a change took 2.3–3.9 seconds of main-thread time and now takes 0.2–0.5 seconds; it makes 54 requests and reads 2.4 MB instead of 79 requests and 3.3 MB. Ages tick only where they show, so an idle page no longer lays out every second.

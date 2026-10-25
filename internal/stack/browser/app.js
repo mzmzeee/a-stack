@@ -19,6 +19,9 @@ const icons = {
   close: '<path d="m6 6 12 12M6 18 18 6"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.2"/>',
+  report: '<path d="M7 3h7l5 5v13H7Z"/><path d="M14 3v5h5M10 13h6m-6 4h6"/>',
+  file: '<path d="m20 11-8.5 8.5a5 5 0 0 1-7-7L13 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L14 7"/>',
+  edit: '<path d="M4 20h4L19 9l-4-4L4 16Z"/>',
   bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4Z"/><path d="M10 21a2 2 0 0 0 4 0"/>'
 };
 const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.info}</svg>`;
@@ -128,7 +131,7 @@ function patchCard(c,t,graphCard=false) {
   const hidden=graphCard?hiddenPrerequisites.get(t.id) || 0:0;
   const caption=[t.reference_count ? `${t.reference_count} file reference${t.reference_count===1?'':'s'}`:'',t.cancelled_prerequisite_count?`${t.cancelled_prerequisite_count} cancelled prerequisite${t.cancelled_prerequisite_count===1?'':'s'}`:'',hidden?`${hidden} archived prerequisite${hidden===1?'':'s'} hidden`:''].filter(Boolean).join(' · ');
   // In the graph, done Tasks without an open question are one-line blocks; the details still show everything.
-  c.article.classList.toggle('compact',graphCard&&compactTask(t));
+  const compact=graphCard&&compactTask(t), tip=compact?t.title:'';c.article.classList.toggle('compact',compact);if(c.button.title!==tip)c.button.title=tip; // a compact block may cut its title
   setText(c.foot,caption);
   c.button.classList.toggle('selected',state.selected===t.id||graphCard&&state.focus===t.id); // the focused Task keeps its outline
   c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.needs_you?' Needs you.':''} Assigned to ${names.join(' and ') || 'Unassigned'}. ${caption}`);
@@ -325,7 +328,7 @@ function patchNowCard(c,t,byID) {
   status(c.st,t);statusMark(c.button,t);stamp(c.when,t.updated_at);setText(c.title,t.title);
   const ownKey=names.join('\n');if(c.own.dataset.key!==ownKey){c.own.dataset.key=ownKey;c.own.replaceChildren(iconNode('agent'),el('span','owner-name',names.join(', ') || 'Unassigned'));}
   setText(c.question,t.question_preview || '');c.question.hidden=!t.needs_you||!t.question_preview;
-  setText(c.waits,blockers.length?'Waits for: '+blockers.join(', '):'');c.waits.hidden=t.progress!=='waiting'||!blockers.length;
+  setText(c.waits,blockers.length?'Waits for: '+blockers.slice(0,3).join(', ')+(blockers.length>3?` +${blockers.length-3} more`:''):'');c.waits.hidden=t.progress!=='waiting'||!blockers.length;
   const report=firstLine(t.report_preview);setText(c.note,report || 'No report yet.');
   c.button.classList.toggle('selected',state.selected===t.id);c.button.classList.toggle('archived',!!t.archived);
   c.button.setAttribute('aria-label',`${t.title}. ${labels[t.progress]}.${t.archived?' Archived.':''}${t.needs_you?' Needs you: '+(t.question_preview || '')+'.':''} Assigned to ${names.join(' and ') || 'Unassigned'}.${c.waits.hidden?'':' '+c.waits.textContent+'.'} Changed ${age(t.updated_at)}.`);
@@ -370,25 +373,27 @@ function collectEvents() {
   const ids=new Set(model.tasks.map(t=>t.id));for(const [k,e] of events)if(!ids.has(e.task))events.delete(k);
   if(events.size>300)[...events.values()].sort((a,b)=>a.at<b.at?-1:1).slice(0,events.size-300).forEach(e=>events.delete(e.key));
 }
+// The action is its own line under the title, so a long title never hides it.
 function eventText(e) {
-  return {status:`changed to ${labels[e.progress] || e.progress}`,create:'was added',report:e.text?'reported: '+e.text:'reported',ask:e.text?'needs you: '+e.text:'needs you',resolve:'Needs you resolved',assign:'Agents changed',refs:'file references changed',archive:'was archived',unarchive:'was unarchived',edit:'was edited'}[e.kind];
+  return {status:`Changed to ${labels[e.progress] || e.progress}`,create:'Added',report:e.text?'Reported: '+e.text:'Reported',ask:e.text?'Needs you: '+e.text:'Needs you',resolve:'Needs you resolved',assign:'Agents changed',refs:'File references changed',archive:'Archived',unarchive:'Unarchived',edit:'Edited'}[e.kind];
 }
+const feedIcons={ask:'attention',resolve:'finished',archive:'archive',unarchive:'archive',report:'report',refs:'file',assign:'agents',create:'plus',edit:'edit'};
 function patchFeed(byID) {
   if(feedModel!==model)collectEvents();
   const list=$('feed-list'), shown=[...events.values()].filter(e=>byID.has(e.task)&&matches(byID.get(e.task))).sort((a,b)=>a.at<b.at?1:a.at>b.at?-1:a.key<b.key?-1:1).slice(0,12);
   for(const k of feedRows.keys())if(!events.has(k))feedRows.delete(k);
   placeAll(list,shown.map(e=>{
     let r=feedRows.get(e.key),t=byID.get(e.task);
-    if(!r){const li=el('li'),b=el('button','feed-item'),mark=el('span','feed-mark'),text=el('span','feed-text'),title=el('span','feed-title'),what=el('span'),when=el('time','now-age');
-      mark.append(iconNode(e.kind==='status'?(e.progress==='cancelled'?'idle':e.progress):e.kind==='ask'?'attention':e.kind==='resolve'?'finished':e.kind==='archive'||e.kind==='unarchive'?'archive':'info'));mark.className='feed-mark '+(e.kind==='status'?e.progress:e.kind);
-      text.append(title,' ',what);b.append(mark,text,when);li.append(b);b.onclick=()=>openTask(e.task,b);r={li,b,title,what,when};feedRows.set(e.key,r);}
-    setText(r.title,t.title);setText(r.what,eventText(e));stamp(r.when,e.at);r.b.setAttribute('aria-label',`${t.title} ${eventText(e)}, ${age(e.at)}`);
+    if(!r){const li=el('li'),b=el('button','feed-item'),mark=el('span','feed-mark'),text=el('span','feed-text'),title=el('span','feed-title'),what=el('span','feed-what'),when=el('time','now-age');
+      mark.append(iconNode(e.kind==='status'?(e.progress==='cancelled'?'idle':e.progress):feedIcons[e.kind]));mark.className='feed-mark '+(e.kind==='status'?e.progress:e.kind);
+      text.append(title,what);b.append(mark,text,when);li.append(b);b.onclick=()=>openTask(e.task,b);r={li,b,title,what,when};feedRows.set(e.key,r);}
+    setText(r.title,t.title);setText(r.what,eventText(e));stamp(r.when,e.at);r.b.setAttribute('aria-label',`${t.title}: ${eventText(e)}, ${age(e.at)}`);
     return r.li;
   }));
   $('feed-empty').hidden=shown.length>0;
 }
 // Ages tick every second only where they show: the Now board and the open Task mail.
-function updateNowAges() { for(const root of [state.view==='now'&&nowPanel,dialog.open&&dialog])if(root)for(const n of root.querySelectorAll('time[data-at]'))setText(n,age(n.dataset.at)); }
+function updateNowAges() { for(const root of [state.view==='now'&&nowPanel,dialog.open&&dialog,$('attention-dialog').open&&$('attention-dialog')])if(root)for(const n of root.querySelectorAll('time[data-at]'))setText(n,age(n.dataset.at)); }
 function render() {
   document.documentElement.dataset.theme=state.theme;
   document.querySelectorAll('.theme-button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===state.theme)));
@@ -407,7 +412,8 @@ function render() {
   setText($('project-name'),model.snapshot.workspace_name || '');$('project-name').hidden=!model.snapshot.workspace_name; // the Workspace folder name, never its full path
   setText(document.querySelector('.workspace-subtitle'),`${plural(model.agents.length,'agent')} · ${plural(model.tasks.length,'task')}${model.snapshot.session.closed?' · Closed Session':''}`);
   const count=model.tasks.filter(matches).length, attention=model.tasks.filter(t=>t.needs_you);
-  $('attention').replaceChildren(iconNode('attention'),document.createTextNode(`${attention.length} needs you`));$('attention').disabled=!attention.length;
+  const attentionText=attention.length?`Needs you (${attention.length})`:'All clear';
+  if($('attention').textContent!==attentionText)$('attention').replaceChildren(iconNode(attention.length?'attention':'finished'),document.createTextNode(attentionText));$('attention').disabled=!attention.length;
   setText($('result-count'),state.query||state.filter!=='all'?`${count} of ${model.tasks.length} tasks`:'');
   // The service decides which Tasks are archived (command, chain or age); the graph hides them unless the Archived toggle is on.
   graphTasks=state.archived?model.tasks:model.tasks.filter(t=>!t.archived);
@@ -415,10 +421,12 @@ function render() {
   if(!document.hidden)patchView(state.view);
   // In the graph, all matching Tasks can be archived and hidden.
   const onlyHidden=state.view==='graph'&&count>0&&!graphTasks.some(matches);
-  $('empty').hidden=(count>0&&!onlyHidden) || (state.view==='agents'&&!model.tasks.length&&model.agents.length>0);
-  setText($('empty').querySelector('h2'),onlyHidden?'Only archived Tasks match':model.tasks.length?'No matching work':'No Tasks yet');
-  setText($('empty').querySelector('p'),onlyHidden?'Turn on Archived to see them in the graph.':model.tasks.length?'Try another agent name, task, or status.':'Tasks will appear here when the Orchestrator adds them.');
-  $('clear-filters').hidden=onlyHidden&&!state.query&&state.filter==='all';
+  // An empty Session says what comes next; Clear filters shows only when a filter is set.
+  const noAgents=state.view==='agents'&&!model.agents.length, noTasks=!model.tasks.length&&state.view!=='agents', start=' To start, brief an Orchestrator with the a-stack skill.';
+  $('empty').hidden=!(noAgents || noTasks || onlyHidden || model.tasks.length&&!count);
+  setText($('empty').querySelector('h2'),noAgents?'No Agents yet':noTasks?'No Tasks yet':onlyHidden?'Only archived Tasks match':'No matching work');
+  setText($('empty').querySelector('p'),noAgents?'Agents appear here when the Orchestrator registers them.'+start:noTasks?'Tasks appear here when the Orchestrator adds them.'+start:onlyHidden?'Turn on Archived to see them in the graph.':'Try another Agent name, Task or status.');
+  $('clear-filters').hidden=!state.query.trim()&&state.filter==='all';
   graph.parentElement.style.visibility=count&&!onlyHidden?'visible':'hidden';
   nowPanel.firstElementChild.style.visibility=count?'visible':'hidden';
   updateHint();
@@ -523,14 +531,15 @@ $('about-button').onclick=()=>{$('about-dialog').showModal();};
 document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 const attentionChoices = new Map();
 function renderAttention() {
-  const list=$('attention-list'), tasks=model.tasks.filter(t=>t.needs_you), ids=new Set(tasks.map(t=>t.id));
+  // Oldest request first, with the question preview and the age of the last change.
+  const list=$('attention-list'), tasks=model.tasks.filter(t=>t.needs_you).sort((a,b)=>a.updated_at<b.updated_at?-1:a.updated_at>b.updated_at?1:0), ids=new Set(tasks.map(t=>t.id));
   const focused=document.activeElement, oldOrder=[...list.children], oldIndex=oldOrder.indexOf(focused);
   for(const [id,b] of attentionChoices)if(!ids.has(id)){b.remove();attentionChoices.delete(id);}
-  for(let i=0;i<tasks.length;i++) {
-    const t=tasks[i];let b=attentionChoices.get(t.id);
-    if(!b){b=el('button','dependency');b.dataset.attentionTask=t.id;b.onclick=()=>{$('attention-dialog').close();openTask(t.id,$('attention'));};attentionChoices.set(t.id,b);list.insertBefore(b,list.children[i] || null);}
-    setText(b,t.title);
-  }
+  placeAll(list,tasks.map(t=>{
+    let b=attentionChoices.get(t.id);
+    if(!b){b=el('button','dependency choice');b.dataset.attentionTask=t.id;b.append(el('span','dependency-name'),el('time','now-age'),el('span','choice-question'));b.onclick=()=>{$('attention-dialog').close();openTask(t.id,$('attention'));};attentionChoices.set(t.id,b);}
+    setText(b.children[0],t.title);stamp(b.children[1],t.updated_at);setText(b.children[2],t.question_preview || '');return b;
+  }));
   if(!tasks.length && $('attention-dialog').open){$('attention-dialog').close();$(state.view+'-tab').focus();}
   else if(oldIndex>=0&&!focused.isConnected)list.children[Math.min(oldIndex,tasks.length-1)]?.focus();
 }
