@@ -1,27 +1,20 @@
 
-  /* Throwaway comparison: one Graph/Agents layout, two themes, identical sample data. */
+  /* Each color is light-dark(light, dark). The page follows the system until a theme is picked;
+     data-theme then fixes color-scheme, so the first paint already has the right theme. */
   :root {
-    color-scheme: light;
-    --canvas: #f4f3ef; --chrome: #faf9f6; --surface: #ffffff; --raised: #f0efeb;
-    --ink: #252a2d; --muted: #60686c; --line: #d8dcd8; --strong-line: #a0a7a6;
-    --edge: #7b8588; --accent: #3558bc; --accent-bg: #eaf0ff;
-    --working: #3558bc; --working-bg: #edf1fc; --finished: #256548; --finished-bg: #eaf3ed;
-    --attention: #a33c2f; --attention-bg: #faece6; --waiting: #62676f; --waiting-bg: #efefed;
-    --shadow: 0 2px 3px #22252b04, 0 5px 14px #22252b04;
-    --panel-shadow: 0 16px 80px #111a2730;
+    color-scheme: light dark;
+    --canvas: light-dark(#f4f3ef, #151a1c); --chrome: light-dark(#faf9f6, #1a2022); --surface: light-dark(#ffffff, #242b2e); --raised: light-dark(#f0efeb, #30383b);
+    --ink: light-dark(#252a2d, #f0f1eb); --muted: light-dark(#60686c, #b1bbbd); --line: light-dark(#d8dcd8, #3e484c); --strong-line: light-dark(#a0a7a6, #768487);
+    --edge: light-dark(#7b8588, #879497); --accent: light-dark(#3558bc, #a7bcff); --accent-bg: light-dark(#eaf0ff, #303c58);
+    --working: light-dark(#3558bc, #a7bcff); --working-bg: light-dark(#edf1fc, #303c58); --finished: light-dark(#256548, #9ed4b5); --finished-bg: light-dark(#eaf3ed, #2c4037);
+    --attention: light-dark(#a33c2f, #ffb0a1); --attention-bg: light-dark(#faece6, #48332f); --waiting: light-dark(#62676f, #bdc4c8); --waiting-bg: light-dark(#efefed, #363d40);
+    --shadow: 0 1px 2px light-dark(#22252b14, #0000001a), 0 4px 12px light-dark(#22252b0d, #0000000d);
+    --panel-shadow: 0 16px 80px light-dark(#111a2730, #00000060);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 14px; line-height: 1.5; font-synthesis: none;
   }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --canvas: #151a1c; --chrome: #1a2022; --surface: #242b2e; --raised: #30383b;
-    --ink: #f0f1eb; --muted: #b1bbbd; --line: #3e484c; --strong-line: #768487;
-    --edge: #879497; --accent: #a7bcff; --accent-bg: #303c58;
-    --working: #a7bcff; --working-bg: #303c58; --finished: #9ed4b5; --finished-bg: #2c4037;
-    --attention: #ffb0a1; --attention-bg: #48332f; --waiting: #bdc4c8; --waiting-bg: #363d40;
-    --shadow: 0 2px 4px #0000001a, 0 5px 14px #0000000d;
-    --panel-shadow: 0 16px 80px #00000060;
-  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--canvas); color: var(--ink); }
   button, input, select { font: inherit; color: inherit; }
@@ -30,7 +23,7 @@
   button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 4px;
   }
-  button:disabled { cursor: default; opacity: .45; }
+  button:disabled { cursor: default; opacity: .6; }
   button svg, .icon { width: 18px; height: 18px; flex: 0 0 auto; vertical-align: middle; }
   [hidden] { display: none !important; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
@@ -76,7 +69,6 @@
   .connection.faded { opacity: .17; }
   .task-unit { width: 274px; }
   .graph-world > .task-unit { position: absolute; }
-  .task-unit.dimmed { opacity: .18; }
   .owners { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 8px; min-height: 20px; background: var(--canvas); }
   .owner { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; font-size: 14px; font-weight: 500; color: var(--muted); overflow-wrap: anywhere; }
   .owner svg { width: 13px; height: 13px; flex-shrink: 0; }
@@ -84,8 +76,8 @@
   .task-card:hover { border-color: var(--strong-line); }
   .task-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
   .task-title { display: block; font-size: 16px; font-weight: 620; letter-spacing: -.22px; line-height: 23px; margin-top: 10px; }
-  .task-note { display: block; color: var(--muted); line-height: 21px; margin-top: 6px; font-size: 14px; }
-  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap; color: var(--waiting); }
+  .task-note { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; height: 42px; color: var(--muted); line-height: 21px; margin-top: 6px; font-size: 14px; }
+  .status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; line-height: 18px; font-weight: 600; color: var(--waiting); }
   .status svg { width: 14px; height: 14px; }
   .status.working { color: var(--working); }
   .status.finished { color: var(--finished); }
@@ -102,8 +94,8 @@
   .agent-identity { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .agent-avatar { width: 32px; height: 32px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); font-size: 13px; font-weight: 650; }
   .agent-name { margin: 0; font-size: 14px; line-height: 21px; font-weight: 600; overflow-wrap: anywhere; }
-  .agent-meta { font-size: 12px; color: var(--muted); margin-top: 1px; }
-  .agent-state { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; }
+  .agent-meta { font-size: 12px; color: var(--muted); margin-top: 1px; overflow-wrap: anywhere; }
+  .agent-state { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; line-height: 20px; overflow-wrap: anywhere; }
   .agent-state svg { width: 14px; height: 14px; }
   .agent-tasks { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 24px 18px; }
   .agent-tasks .task-unit { width: 272px; max-width: 100%; }
@@ -178,6 +170,7 @@
     .tab { padding-inline: 14px; }
     .theme-switch { margin-left: auto; }
     .theme-button { padding-inline: 8px; }
+    .theme-label { display: none; }
     .workspacebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 18px 16px 14px; gap: 14px 10px; }
     .banner { margin-inline: 16px; }
     .workspace-title { width: auto; margin: 0; }
@@ -208,17 +201,12 @@
 /* Live content keeps the approved card dimensions while reports change. */
 .owner-name { min-width: 0; overflow-wrap: anywhere; }
 .task-title, .task-caption, .detail-text, .dependency, .workspace-title h1 { overflow-wrap: anywhere; }
-.task-note { height: 42px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; width: 100%; }
 .task-caption { display: block; line-height: 16px; margin-top: 6px; font-size: 11px; color: var(--muted); }
-.status { flex-wrap: wrap; white-space: normal; }
 .status.cancelled { color: var(--muted); }
 .detail-text { white-space: pre-wrap; line-height: 24px; }
 .reference { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .reference code { min-width: 0; flex: 1; }
-.agent-meta, .agent-state { overflow-wrap: anywhere; }
 .agent-identity > div { min-width: 0; }
-.agent-state { line-height: 20px; }
-button:disabled { cursor: default; opacity: .6; }
 .workspace-title h1 { max-height: 58px; overflow: auto; }
 
 .task-caption:empty { display: none; }
@@ -264,7 +252,7 @@ button:disabled { cursor: default; opacity: .6; }
 .mail-sender { font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
 .mail-meta .now-age { cursor: help; }
 .mail-body { font-size: 14px; line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.mention { padding: 0 2px; margin: 0 -2px; border-radius: 4px; background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+.mention { white-space: nowrap; padding: 0 2px; margin: 0 -2px; border-radius: 4px; background: var(--accent-bg); color: var(--accent); font-weight: 600; }
 .mail-status:empty { display: none; }
 .mail-status { margin-top: 8px; }
 .mail-more { margin-top: 8px; font-size: 13px; }

@@ -15,6 +15,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Changed
 
+- The browser view has a System theme button next to Light and Dark, and follows the system theme from the first paint, so a dark system no longer sees a light flash. Mentions in Task mail no longer break inside a name, card shadows are visible, the theme buttons are labelled "Theme", and duplicate CSS rules are gone.
 - The browser view's feed keeps the change on its own line, so a long title no longer hides it, and each kind of change has its own icon. The Needs you chooser lists the oldest request first, with the question and its age. A waiting card names up to three blockers and "+N more". A compact block in the Graph shows its full title on hover.
 - The Needs you button says "Needs you (2)", or "All clear" in neutral colors. An empty Session suggests to brief an Orchestrator with the a-stack skill, and the Agents tab of a Session with no Agents says "No Agents yet". "Clear filters" shows only when a filter is set.
 - The browser view's Task details start with a property grid (Status, Agents, Ticket, Requires, Required by, each dependency with its status icon), hide empty sections, put Task mail last with a "Load 13 more" button, and move the read revision into the footnote.

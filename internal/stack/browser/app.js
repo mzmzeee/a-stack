@@ -22,6 +22,7 @@ const icons = {
   report: '<path d="M7 3h7l5 5v13H7Z"/><path d="M14 3v5h5M10 13h6m-6 4h6"/>',
   file: '<path d="m20 11-8.5 8.5a5 5 0 0 1-7-7L13 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L14 7"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16Z"/>',
+  system: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8m-4-4v4"/>',
   bell: '<path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4Z"/><path d="M10 21a2 2 0 0 0 4 0"/>'
 };
 const icon = name => `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.info}</svg>`;
@@ -72,10 +73,10 @@ async function connect() {
   token=await readToken();
   if(token){if(model)render();refresh();}else{stale=true;$('attention').disabled=true;noAccess(notice || 'Open this view with a-stack, or a-stack open.');}
 }
-// The theme survives browser restarts; until one is picked, follow the system.
+// The theme survives browser restarts. System, the default, follows the light or dark setting of the system.
 function savedTheme() {
   try { const t=localStorage.getItem('a-stack-theme'); if (t==='dark'||t==='light') return t; } catch {}
-  return matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+  return 'system';
 }
 state.theme = savedTheme();
 // The last tab and the Archived toggle are remembered per browser, like the theme.
@@ -395,7 +396,7 @@ function patchFeed(byID) {
 // Ages tick every second only where they show: the Now board and the open Task mail.
 function updateNowAges() { for(const root of [state.view==='now'&&nowPanel,dialog.open&&dialog,$('attention-dialog').open&&$('attention-dialog')])if(root)for(const n of root.querySelectorAll('time[data-at]'))setText(n,age(n.dataset.at)); }
 function render() {
-  document.documentElement.dataset.theme=state.theme;
+  if(state.theme==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=state.theme;
   document.querySelectorAll('.theme-button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===state.theme)));
   document.querySelectorAll('[data-view]').forEach(b=>{const active=b.dataset.view===state.view;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});
   panel.hidden=state.view!=='graph';agentsPanel.hidden=state.view!=='agents';nowPanel.hidden=state.view!=='now';

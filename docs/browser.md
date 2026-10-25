@@ -79,7 +79,7 @@ a-stack view revoke --all
 
 ## What the view shows
 
-The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It has three tabs: Now, Graph and Agents, and both themes. Now is the default tab. The view remembers the tab that you last used and the theme that you pick in the browser's local storage, so they stay after a browser restart. Until you pick a theme, the view follows the light or dark setting of your system. The storage belongs to the view's address, so a service on a new port starts again from the defaults.
+The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It has three tabs: Now, Graph and Agents, and a light and a dark theme. Now is the default tab. The view remembers the tab that you last used and the theme that you pick in the browser's local storage, so they stay after a browser restart. The theme buttons are Light, Dark and System. System is the default: the view follows the light or dark setting of your system, also from the first paint, without a light flash. The storage belongs to the view's address, so a service on a new port starts again from the defaults.
 
 - The header shows the name of the Workspace folder next to a-stack, for example `my-project`. It comes from the snapshot's `workspace_name`, which is only the last part of the Workspace path, so the home directory never appears in the view or in screenshots. The name is hidden in narrow windows.
 - A shared Task shows the same data in every Agent row. The Unassigned row shows Tasks with no assignee.
