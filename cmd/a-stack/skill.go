@@ -124,14 +124,14 @@ func installSkill(target string) error {
 		return err
 	}
 	if _, err := os.Lstat(target); err != nil {
-		return os.Rename(tmp, target)
+		return stack.Rename(tmp, target)
 	}
 	old := tmp + "-old"
-	if err := os.Rename(target, old); err != nil {
+	if err := stack.Rename(target, old); err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, target); err != nil {
-		_ = os.Rename(old, target)
+	if err := stack.Rename(tmp, target); err != nil {
+		_ = stack.Rename(old, target)
 		return err
 	}
 	return os.RemoveAll(old)

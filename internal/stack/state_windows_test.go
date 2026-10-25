@@ -7,6 +7,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 	"unsafe"
 )
 
@@ -99,6 +100,48 @@ func TestDefaultStateDirIsInLocalAppData(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", `D:\state`)
 	if dir, err := DefaultStateDir(); err != nil || dir != `D:\state\a-stack` {
 		t.Fatal(dir, err)
+	}
+}
+
+// TestRenameWaitsForReader: a reader that Go opened, without delete
+// sharing, blocks a rename over its file until it closes.
+func TestRenameWaitsForReader(t *testing.T) {
+	dir := t.TempDir()
+	target, tmp := filepath.Join(dir, "service.json"), filepath.Join(dir, "new")
+	if os.WriteFile(target, []byte("old"), 0600) != nil || os.WriteFile(tmp, []byte("new"), 0600) != nil {
+		t.Fatal("write")
+	}
+	reader, err := os.Open(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !renameBusy(os.Rename(tmp, target)) {
+		t.Skip("this Windows renames over an open file")
+	}
+	go func() { time.Sleep(200 * time.Millisecond); reader.Close() }()
+	if err = Rename(tmp, target); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(target); string(data) != "new" {
+		t.Fatalf("target holds %q", data)
+	}
+}
+
+// TestPrivateReadSharesDelete: a writer can replace a private file while
+// a reader has it open.
+func TestPrivateReadSharesDelete(t *testing.T) {
+	dir := privateTestDir(t)
+	file := filepath.Join(dir, "service.json")
+	if err := writePrivate(file, Discovery{URL: "http://127.0.0.1:1"}, true); err != nil {
+		t.Fatal(err)
+	}
+	f, err := openPrivate(file, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err = os.Rename(file, file+".moved"); err != nil {
+		t.Fatal("a private read blocks a rename:", err)
 	}
 }
 

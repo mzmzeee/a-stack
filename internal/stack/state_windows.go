@@ -139,6 +139,12 @@ func defaultStateRoot() (string, error) {
 	return "", failure("invalid_input", "LOCALAPPDATA is not set; give --state-dir")
 }
 
+// renameBusy reports whether a rename failed because another process has
+// the target open: access is denied, or the sharing is violated.
+func renameBusy(err error) bool {
+	return errors.Is(err, syscall.ERROR_ACCESS_DENIED) || errors.Is(err, errorSharingViolation)
+}
+
 // syncDir does nothing: Windows cannot flush a folder, and NTFS journals
 // its renames.
 func syncDir(string) error { return nil }

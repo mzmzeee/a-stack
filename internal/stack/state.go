@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
 const maxPrivateFile = 4096
@@ -111,7 +112,7 @@ func writePrivate(path string, v any, replace bool) error {
 		return storageError()
 	}
 	if replace {
-		err = os.Rename(tmp, path)
+		err = Rename(tmp, path)
 	} else {
 		err = os.Link(tmp, path)
 	}
@@ -122,6 +123,18 @@ func writePrivate(path string, v any, replace bool) error {
 		return storageError(err)
 	}
 	return syncDir(filepath.Dir(path))
+}
+
+// Rename renames from to to, also over a file. On Windows that fails while
+// another process has the target open without delete sharing, as Go opens
+// files; Rename then tries again for up to a second.
+func Rename(from, to string) error {
+	err := os.Rename(from, to)
+	for i := 0; i < 20 && renameBusy(err); i++ {
+		time.Sleep(50 * time.Millisecond)
+		err = os.Rename(from, to)
+	}
+	return err
 }
 
 // ReplacePrivate replaces path with v as JSON, mode 0600: a synced temporary

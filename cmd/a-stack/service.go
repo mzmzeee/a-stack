@@ -363,7 +363,7 @@ func writeFileAtomic(file, content string) error {
 	if err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), file)
+	return stack.Rename(tmp.Name(), file)
 }
 
 func serviceUninstall(unit, file string, data map[string]any) ([]string, error) {

@@ -562,5 +562,5 @@ func writeAtomic(file string, data []byte, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), file)
+	return stack.Rename(tmp.Name(), file)
 }

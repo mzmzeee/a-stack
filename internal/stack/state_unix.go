@@ -75,6 +75,9 @@ func defaultStateRoot() (string, error) {
 	return filepath.Join(home, ".local", "state"), nil
 }
 
+// renameBusy is for Windows; see Rename.
+func renameBusy(error) bool { return false }
+
 func syncDir(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
