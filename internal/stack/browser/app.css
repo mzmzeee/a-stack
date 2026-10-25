@@ -311,3 +311,8 @@ button:disabled { cursor: default; opacity: .6; }
 .task-unit.compact .task-card[data-status="needs-you"] { box-shadow: 0 0 0 3px var(--attention-bg); }
 .task-card[data-status], .graph-world > .task-unit.unfocused .task-card[data-status] { border-left: 3px solid var(--status); }
 .graph-world > .task-unit.unfocused .task-card[data-status] { border-left-color: var(--line); }
+
+/* Render cost: cards out of view skip layout and paint; graph cards are laid out on their own. */
+.now-card { content-visibility: auto; contain-intrinsic-size: auto 150px; }
+.agent-row { content-visibility: auto; contain-intrinsic-size: auto 320px; }
+.graph-world > .task-unit { contain: layout style; }

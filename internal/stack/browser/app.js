@@ -85,8 +85,17 @@ const labels = {waiting:'Waiting',working:'Working',finished:'Finished',cancelle
 function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className=cls; if (text !== undefined) n.textContent=text; return n; }
 function setText(n,text) { if (n.textContent !== String(text)) n.textContent=text; }
 function iconNode(name) { const n=el('span'); n.innerHTML=icon(name); return n; } // only constant artwork
-// ponytail: linear ownership scans measured at 1,000 Tasks; index by Task if larger Sessions require it.
-function owners(t) { return model.assignments.filter(a=>a.task_id===t.id).map(a=>a.agent_name).sort(); }
+// Indexes of the current model, built once per snapshot: Agent names by Task, Task IDs by Agent,
+// prerequisite edges by dependent Task, and Tasks by ID. A 2,000-Task Session made the linear scans quadratic.
+let indexed=null, ownerNames=new Map(), agentTasks=new Map(), prerequisites=new Map(), taskByID=new Map();
+function index() {
+  if(indexed===model)return;indexed=model;ownerNames=new Map();agentTasks=new Map();prerequisites=new Map();taskByID=new Map(model.tasks.map(t=>[t.id,t]));
+  const add=(map,key,value)=>{let list=map.get(key);if(!list)map.set(key,list=[]);list.push(value);};
+  for(const a of model.assignments){add(ownerNames,a.task_id,a.agent_name);add(agentTasks,a.agent_id,a.task_id);}
+  for(const names of ownerNames.values())names.sort();
+  for(const e of model.dependencies)add(prerequisites,e.dependent_id,e);
+}
+function owners(t) { index();return ownerNames.get(t.id) || []; }
 function matches(t) {
   return (state.filter==='all' || (state.filter==='blocked' ? t.needs_you : t.progress===state.filter)) &&
     [t.title,t.ticket_ref,t.report_preview,...owners(t)].join(' ').toLowerCase().includes(state.query.trim().toLowerCase());
@@ -245,13 +254,11 @@ function connection(e,d) {
   const near=e.prerequisite_id===state.focus||e.dependent_id===state.focus||e.prerequisite_id===state.selected||e.dependent_id===state.selected;
   if(near)p.classList.add('active');else if(state.focus)p.classList.add('unfocused');
   p.setAttribute('marker-end',near?'url(#arrow-active)':'url(#arrow)');
-  if(!matches(model.tasks.find(t=>t.id===e.prerequisite_id))&&!matches(model.tasks.find(t=>t.id===e.dependent_id)))p.classList.add('faded');
+  index();if(!matches(taskByID.get(e.prerequisite_id))&&!matches(taskByID.get(e.dependent_id)))p.classList.add('faded');
   return p;
 }
 function measure(name,run) {performance.clearMarks(name+'-start');performance.clearMarks(name+'-end');performance.clearMeasures(name);performance.mark(name+'-start');run();performance.mark(name+'-end');performance.measure(name,name+'-start',name+'-end');}
 function patchGraph() {
-  // The service decides which Tasks are archived (command, chain or age); the graph hides them unless the Archived toggle is on.
-  graphTasks=state.archived?model.tasks:model.tasks.filter(t=>!t.archived);
   if(state.focus&&!graphTasks.some(t=>t.id===state.focus))state.focus=null;
   focusIds=state.focus?focusSet():null;
   const ids=new Set(graphTasks.map(t=>t.id));
@@ -260,7 +267,7 @@ function patchGraph() {
   hiddenPrerequisites=new Map();
   for(const e of model.dependencies)if(!ids.has(e.prerequisite_id)&&ids.has(e.dependent_id))hiddenPrerequisites.set(e.dependent_id,(hiddenPrerequisites.get(e.dependent_id) || 0)+1);
   for(const t of graphTasks) {let c=cards.get(t.id);if(!c){c=makeCard(t);cards.set(t.id,c);graph.append(c.article);}patchCard(c,t,true);}
-  const key=JSON.stringify([graphTasks.map(t=>[t.id,t.title,owners(t),t.progress,t.needs_you,t.reference_count,t.cancelled_prerequisite_count,hiddenPrerequisites.get(t.id) || 0]),model.dependencies.map(e=>[e.prerequisite_id,e.dependent_id])]);
+  const key=JSON.stringify([graphTasks.map(t=>[t.id,t.title,owners(t),compactTask(t),t.needs_you,t.reference_count,t.cancelled_prerequisite_count,hiddenPrerequisites.get(t.id) || 0]),model.dependencies.map(e=>[e.prerequisite_id,e.dependent_id])]);
   if(geometryKey!==key){
     geometryKey=key;
     measure('a-stack-layout',()=>{measure('a-stack-reduce',()=>{({kept:graphEdges,hidden:hiddenEdges}=reduceEdges(graphTasks,model.dependencies));});layout();});
@@ -271,7 +278,7 @@ function patchGraph() {
 function patchAgents() {
   const all=[...model.agents,{id:'unassigned',name:'Unassigned'}], live=new Set();
   for(const a of all) {
-    const assigned=a.id==='unassigned'?model.tasks.filter(t=>t.unassigned):model.tasks.filter(t=>model.assignments.some(x=>x.task_id===t.id&&x.agent_id===a.id));
+    index();const mine=new Set(agentTasks.get(a.id)), assigned=a.id==='unassigned'?model.tasks.filter(t=>t.unassigned):model.tasks.filter(t=>mine.has(t.id));
     if(a.id==='unassigned'&&!assigned.length)continue;
     live.add(a.id);let r=rows.get(a.id);
     if(!r){
@@ -310,7 +317,7 @@ function makeNowCard(t) {
   return {button,st,when,title,own,question,waits,note};
 }
 function patchNowCard(c,t,byID) {
-  const names=owners(t), blockers=model.dependencies.filter(e=>e.dependent_id===t.id).map(e=>byID.get(e.prerequisite_id)).filter(p=>p&&!done(p)).map(p=>p.title);
+  const names=owners(t), blockers=(prerequisites.get(t.id) || []).map(e=>byID.get(e.prerequisite_id)).filter(p=>p&&!done(p)).map(p=>p.title);
   status(c.st,t);statusMark(c.button,t);stamp(c.when,t.updated_at);setText(c.title,t.title);
   const ownKey=names.join('\n');if(c.own.dataset.key!==ownKey){c.own.dataset.key=ownKey;c.own.replaceChildren(iconNode('agent'),el('span','owner-name',names.join(', ') || 'Unassigned'));}
   setText(c.question,t.question_preview || '');c.question.hidden=!t.needs_you||!t.question_preview;
@@ -376,7 +383,8 @@ function patchFeed(byID) {
   }));
   $('feed-empty').hidden=shown.length>0;
 }
-function updateNowAges() { for(const n of document.querySelectorAll('time[data-at]'))setText(n,age(n.dataset.at)); } // the Now board and the open Task mail
+// Ages tick every second only where they show: the Now board and the open Task mail.
+function updateNowAges() { for(const root of [state.view==='now'&&nowPanel,dialog.open&&dialog])if(root)for(const n of root.querySelectorAll('time[data-at]'))setText(n,age(n.dataset.at)); }
 function render() {
   document.documentElement.dataset.theme=state.theme;
   document.querySelectorAll('.theme-button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===state.theme)));
@@ -397,7 +405,10 @@ function render() {
   const count=model.tasks.filter(matches).length, attention=model.tasks.filter(t=>t.needs_you);
   $('attention').replaceChildren(iconNode('attention'),document.createTextNode(`${attention.length} needs you`));$('attention').disabled=!attention.length;
   setText($('result-count'),state.query||state.filter!=='all'?`${count} of ${model.tasks.length} tasks`:'');
-  patchGraph();patchAgents();patchNow();
+  // The service decides which Tasks are archived (command, chain or age); the graph hides them unless the Archived toggle is on.
+  graphTasks=state.archived?model.tasks:model.tasks.filter(t=>!t.archived);
+  if(feedModel!==model)collectEvents(); // the feed sees every snapshot, also while another tab shows
+  if(!document.hidden)patchView(state.view);
   // In the graph, all matching Tasks can be archived and hidden.
   const onlyHidden=state.view==='graph'&&count>0&&!graphTasks.some(matches);
   $('empty').hidden=(count>0&&!onlyHidden) || (state.view==='agents'&&!model.tasks.length&&model.agents.length>0);
@@ -411,9 +422,16 @@ function render() {
   if($('attention-dialog').open)renderAttention();
   updateSource();
 }
+// Only the visible view is patched. The others are patched when they show, if their inputs changed since.
+const patched={}, patchers={now:()=>patchNow(),graph:()=>patchGraph(),agents:()=>patchAgents()};
+function patchView(view) {
+  const inputs=[model,state.query,state.filter,state.archived,state.focus,state.selected,state.allFinished], last=patched[view];
+  if(last&&inputs.every((x,i)=>x===last[i]))return;
+  patched[view]=inputs;patchers[view]();
+}
 function age(timestamp) {const seconds=Math.max(0,Math.floor((Date.now()-new Date(timestamp).getTime())/1000));return seconds<60?`${seconds}s ago`:seconds<3600?`${Math.floor(seconds/60)}m ago`:seconds<86400?`${Math.floor(seconds/3600)}h ago`:`${Math.floor(seconds/86400)}d ago`;}
 function runtimeText(a) { return `Runtime: ${a.runtime_attached?(a.runtime_state || 'unknown'):'unbound'} · unverified${a.observed_at?' · '+age(a.observed_at):''}`; }
-function updateRuntimeAges() { if(model)for(const a of model.agents){const r=rows.get(a.id);if(r)setText(r.runtime,runtimeText(a));} }
+function updateRuntimeAges() { if(model&&state.view==='agents')for(const a of model.agents){const r=rows.get(a.id);if(r)setText(r.runtime,runtimeText(a));} }
 function plural(n,word) { return `${n} ${word}${n===1?'':'s'}`; }
 // Saved data older than 10 s, or no data at all, gets a banner above the view and "Stale" in the tab title.
 // If the service still answers, it is busy (Task changes keep restarting the collection);
@@ -434,7 +452,8 @@ function updateHint() {
 }
 function updateSource(message) {
   const service=version?'Local service '+version:'Local service';
-  const text=message || (notice?'No access · run a-stack open':lastSuccess?`${stale?'Saved · stale':service} · checked ${age(new Date(lastSuccess).toISOString())}`:service+' · connecting');
+  // While polls succeed, "just now" keeps the footer still, so it causes no layout every second.
+  const text=message || (notice?'No access · run a-stack open':lastSuccess?`${stale?'Saved · stale':service} · checked ${!stale&&Date.now()-lastSuccess<60000?'just now':age(new Date(lastSuccess).toISOString())}`:service+' · connecting');
   updateHint();
   setText(document.querySelector('.preview-label'),text);setText(document.querySelector('.preview-short'),stale?'Saved · stale':'Read-only');
   setText($('source-info'),`${text}${model?'. Snapshot captured '+model.snapshot.captured_at+' · revision '+model.snapshot.session.read_revision+'. Runtime observations have their own age and are unverified.':''}`);
@@ -608,9 +627,13 @@ async function refresh() {
         const manifest=await request('/v1/session/snapshot',{known_revision:model?.snapshot.session.read_revision || 0},etag?{'If-None-Match':etag}:{},controller.signal);
         if(!manifest.unchanged&&!manifest.data.unchanged){
           const revision=manifest.data.session.read_revision;
-          const [tasks,agents,assignments,dependencies]=await Promise.all(['tasks','agents','assignments','dependencies'].map(k=>pages(k,revision,null,controller.signal)));
+          // Dependencies change only with graph_revision (a new Task or dependency), so the page keeps them otherwise.
+          // It reads only their IDs; the progress fields in a kept edge may be old.
+          const keep=model&&manifest.data.session.graph_revision===model.snapshot.session.graph_revision&&model.dependencies.length===manifest.data.counts.dependencies;
+          const [tasks,agents,assignments,fresh]=await Promise.all(['tasks','agents','assignments',...(keep?[]:['dependencies'])].map(k=>pages(k,revision,null,controller.signal)));
+          const dependencies=keep?model.dependencies:fresh;
           for(const [key,items]of Object.entries({tasks,agents,assignments,dependencies}))if(items.length!==manifest.data.counts[key])throw new Error('Incomplete collection');
-          model={snapshot:manifest.data,tasks:tasks.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0),agents:agents.sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0),assignments,dependencies:dependencies.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)};etag=manifest.etag || '';render();notifyNew();
+          model={snapshot:manifest.data,tasks:tasks.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0),agents:agents.sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0),assignments,dependencies:keep?dependencies:dependencies.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)};etag=manifest.etag || '';render();notifyNew();
         }
         lastSuccess=Date.now();stale=false;failures=0;lowDisk=manifest.low;updateSource();if(state.selected&&!document.hidden)loadDetail();break;
       }catch(error){

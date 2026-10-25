@@ -115,7 +115,7 @@ A poll moves cards between columns in place. The selection, the focused card and
 - The graph hides a dependency line when another path already connects the two Tasks; the details panel lists every dependency.
 - The graph hides [archived Tasks](tasks.md#archived-tasks) by default. Finished and cancelled Tasks that are not archived stay, so the finished work that a live Task depends on and the last Task of each chain are visible. Lines to or from a hidden archived Task are not drawn, so a Task whose prerequisites are all archived sits in the first column. A full card says how many of its prerequisites are archived and hidden. The Archived (N) toggle in the graph toolbar shows them again, dimmed. The view remembers the toggle in local storage. The service decides which Tasks are archived; the view cannot archive anything.
 - Select a Task, with a click or with Enter, to focus it. Its lines turn the accent color, get thicker and move on top of the others. Its direct prerequisites and dependents stay bright. Other cards fade: they take the background color, their titles turn grey and their status border turns grey, but their text keeps its contrast. A Task that needs you never fades. Other lines fade to 22%. Lines that the graph hides because another path connects the Tasks appear dashed while one of their Tasks has the focus. The focus and the accent outline of the Task stay after the details close. Escape, or a click on empty space, clears it.
-- The layout runs again when Tasks or dependencies change, when the Archived toggle changes, or when a card changes size: a new title, a new status, other assigned Agents, Needs you, file references, cancelled prerequisites or hidden archived prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes.
+- The layout runs again when Tasks or dependencies change, when the Archived toggle changes, or when a card changes size: a new title, a Task that becomes finished or cancelled or opens again, other assigned Agents, Needs you, file references, cancelled prerequisites or hidden archived prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes, a new report or a change between Waiting and Working.
 
 ![A short clip of the Graph tab. Curved lines lead from two Working Tasks to a Token exchange Task and on to a Security review. A click on one Task lights up its lines and fades the Tasks it does not connect to.](images/demo-graph.gif)
 
@@ -154,7 +154,7 @@ Reading mail in the view changes nothing. It stores no read position, writes no 
 
 While the page is visible, it polls the snapshot every two seconds. It sends `If-None-Match` and its known read revision. The service checks authentication and Session access before it returns an empty 304 response for a matching ETag.
 
-When the snapshot has changed, the page loads all pages of Tasks, Agents, assignments and dependencies for that one read revision. It shows the new model only when all collections match the counts in the snapshot. If there is a conflict, it starts the collection again, up to three times, and then backs off.
+When the snapshot has changed, the page loads all pages of Tasks, Agents, assignments and dependencies for that one read revision. Dependencies change only with the snapshot's `graph_revision`, which grows when a Task or a dependency is added or removed. While it stays the same, the page keeps the dependencies that it has and does not load them again. The view reads only their Task IDs. It shows the new model only when all collections match the counts in the snapshot. If there is a conflict, it starts the collection again, up to three times, and then backs off.
 
 - If the service instance changes, the page fetches the public page again to read the new instance ID, and tries again.
 - If an error occurs, the page keeps the last complete model and marks it as saved and stale.
@@ -211,7 +211,25 @@ Curved lines and compact blocks came on 2026-10-25. On the same machine and brow
 
 ² The first load after the browser started. The other four took 1.9–2.0 ms.
 
-With 1,000 Tasks, one wide rank makes one very tall column: in the first v0.1.0 measurement, a canvas of 192,929 px. Archived Tasks are hidden by default, so the graph of a long Session stays close to the size of its open work and the finished Tasks next to it. The view shows every open Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
+With 1,000 Tasks, one wide rank makes one very tall column: in the first v0.1.0 measurement, a canvas of 192,929 px. Archived Tasks are hidden by default, so the graph of a long Session stays close to the size of its open work and the finished Tasks next to it. The view shows every open Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout is simple on purpose, and it can become slow above these sizes. Add virtualization only when larger measured workloads need them.
+
+### Render cost
+
+The page draws only the tab that you see. A poll updates that tab; the other tabs update when you open them, and only if something changed. A hidden page draws nothing until it is visible again; it only updates its title and icon. Ages tick every second only on the Now tab and in open Task mail, and the footer says "checked just now" while polls succeed, so an idle page does not lay out every second. Cards that are out of view on the Now and Agents tabs skip layout and paint. The page indexes the assigned Agents, the Tasks of each Agent and the prerequisites of each Task once per snapshot.
+
+Measured on 2026-10-25 with the same machine, agent-browser 0.39.2 and headless Chromium at 1440×900, on a copy of the 2,000-Task performance fixture (20 Agents), with a Chrome trace of the page's main thread:
+
+| Case | Before | After |
+| --- | --- | --- |
+| A report change, Now tab: main thread | 3,945 ms | 462 ms |
+| A status change, Now tab: main thread | 3,164 ms | 414 ms |
+| A report change, Graph tab: main thread | 3,311 ms | 462 ms |
+| A status change, Graph tab: main thread | 2,348 ms | 208 ms |
+| A changed poll: page requests and bytes | 79, 3,273 KB | 54, 2,433 KB |
+| Idle Now tab, 10 s: layouts | 14 (255 ms) | 10 (40 ms) |
+| Reload on the Now tab, 12 s: main thread | 4,299–5,396 ms | 2,317–2,849 ms |
+
+Before, every poll with a change patched all three tabs and laid out the hidden graph again. The bytes are still large because a changed poll loads all Tasks and assignments again.
 
 ## Checks
 
