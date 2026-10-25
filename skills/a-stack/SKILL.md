@@ -14,9 +14,9 @@ If you are the Session's Orchestrator, also read [references/orchestrator.md](re
 If the Operator asks you directly to use a-stack or to be the Orchestrator, and gives you no credential file, set yourself up. Do not ask the Operator for IDs or paths:
 
 1. Run `a-stack new --orchestrator 01-orchestrator --no-browser --json` in the project folder. It makes or reuses the folder's Workspace and Session, registers you, appoints you as the Orchestrator and prints `orchestrator_credential_file`, `workspace_id`, `session_id` and a `brief`. Running it again returns the same hand-off, so it is safe after a lost answer or in a new conversation.
-2. If it fails because the service is not running, run `a-stack service install` (a user service, no sudo), then step 1 again.
-3. If it says the Session already has an Orchestrator, ask the Operator whether to use another Session (`a-stack new NAME --orchestrator 01-orchestrator --no-browser --json`) or to replace the Orchestrator.
-4. Follow the brief: set up `me` below with the credential file, then read [references/orchestrator.md](references/orchestrator.md).
+2. If it fails because the service is not running, run `a-stack service install` (a user service, no sudo), tell the Operator that you did, then run step 1 again.
+3. If it says the Session already has an Orchestrator, ask the Operator whether to use another Session or to replace the Orchestrator. For another Session in the same folder, use a new Session name and a new Agent name, because Agent names are unique in a project folder: `a-stack new NAME --orchestrator 01-orchestrator-NAME --no-browser --json`.
+4. Follow the brief: set up `me` below with the credential file, then read [references/orchestrator.md](references/orchestrator.md). The output has no view link; tell the Operator to open the view with `a-stack`.
 
 ## What you receive
 
@@ -67,7 +67,7 @@ A finished Task stays in the Operator's graph until it is archived. The Orchestr
 
 When you wait for another Task, set `--progress waiting --reason 'Waits for the API Task'`.
 
-If an a-stack hook stops you from stopping because a Task is still Working without a report, write the report and finish, or set Waiting with a reason. If it says there is new Task mail, run your `mail check`.
+If an a-stack hook blocks you from stopping, write the report and finish, or set Waiting with a reason. If it says there is new Task mail, run your `mail check`.
 
 When only the Operator can decide, ask one clear question with `me task attention set --task T --question 'Which release gets this?' --expected-revision R --operation-id 02-worker-ask-1`. Then stop, and say in your conversation that you wait for the Operator's answer. After the answer, run `task attention resolve` with a `--note` (see [references/commands.md](references/commands.md)).
 

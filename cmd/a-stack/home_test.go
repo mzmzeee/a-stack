@@ -313,7 +313,7 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 		t.Fatalf("new --orchestrator: exit %d %s %s", code, stdout.String(), stderr.String())
 	}
 	got := made.Data
-	if got.Credential != filepath.Join(root, "a-stack-agents", "01-orch.json") || !stack.ValidID(got.OrchestratorID) || got.SessionOperation == "" {
+	if got.Credential != filepath.Join(root, "a-stack-agents", got.SessionID, "01-orch.json") || !stack.ValidID(got.OrchestratorID) || got.SessionOperation == "" {
 		t.Fatalf("hand-off result %+v", got)
 	}
 	info, err := os.Stat(got.Credential)
@@ -349,18 +349,43 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	if again.Data.OrchestratorID != got.OrchestratorID || !again.Data.Existing || again.Data.Brief != got.Brief {
 		t.Fatalf("hand-off again %+v", again.Data)
 	}
-	// Again in another Session: the credential file exists, so nothing is made.
+	// With --no-browser an agent may be the caller: no view link, so no view secret.
+	if got.URL != "" || strings.Contains(stdout.String(), `"url"`) || !strings.Contains(got.Hint, "a-stack") {
+		t.Fatalf("hand-off made a view link: %+v", got)
+	}
+	// A credential file where v0.1.5 kept it also proves the hand-off.
+	legacy := filepath.Join(root, "a-stack-agents", "01-orch.json")
+	if err := os.Rename(got.Credential, legacy); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), `"existing_orchestrator":true`) || !strings.Contains(stdout.String(), legacy) {
+		t.Fatalf("hand-off from the v0.1.5 path: exit %d %s %s", code, stdout.String(), stderr.String())
+	}
+	// Another project gets its own credential file with the same Orchestrator
+	// name. (Within one Workspace, Agent names stay unique.)
+	var other struct {
+		Data struct {
+			shortcutResult
+			Credential string `json:"orchestrator_credential_file"`
+		} `json:"data"`
+	}
+	project := t.TempDir()
+	t.Chdir(project)
 	stdout.Reset()
 	stderr.Reset()
-	if code := run([]string{"new", "other", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "already exists") {
-		t.Fatalf("existing credential file: exit %d %s", code, stderr.String())
+	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 0 || json.Unmarshal(stdout.Bytes(), &other) != nil {
+		t.Fatalf("hand-off in another Session: exit %d %s %s", code, stdout.String(), stderr.String())
+	}
+	if other.Data.SessionID == got.SessionID || other.Data.Credential != filepath.Join(root, "a-stack-agents", other.Data.SessionID, "01-orch.json") {
+		t.Fatalf("hand-off in another Session %+v", other.Data)
 	}
 	// The same Session with another name: it already has an Orchestrator.
 	stderr.Reset()
 	if code := run([]string{"new", "--orchestrator", "02-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "already has an Orchestrator") {
 		t.Fatalf("second Orchestrator: exit %d %s", code, stderr.String())
 	}
-	if _, err := os.Stat(filepath.Join(root, "a-stack-agents", "02-orch.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(root, "a-stack-agents", other.Data.SessionID, "02-orch.json")); !os.IsNotExist(err) {
 		t.Fatal("a refused hand-off left a credential file")
 	}
 	// Without a service, the hand-off does not start one in the foreground.

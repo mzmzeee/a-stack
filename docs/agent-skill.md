@@ -1,8 +1,8 @@
 # Agent skill
 
-The [`skills/a-stack`](../skills/a-stack/SKILL.md) folder is an agent skill. A coding agent loads it to learn how to work in an a-stack Session with the CLI: what it gets from the Operator or the Orchestrator, its work loop on a Task, Task mail, Needs you, and the rules for operation IDs, revisions, mentions and credentials. The Orchestrator gets a separate reference in the same folder.
+The [`skills/a-stack`](../skills/a-stack/SKILL.md) folder is an agent skill. A coding agent loads it to learn how to work in an a-stack Session with the CLI: what it gets from the Operator or the Orchestrator, how it sets itself up when nobody briefed it, its work loop on a Task, Task mail, Needs you, and the rules for operation IDs, revisions, mentions and credentials. The work loop starts with the Task's prerequisites, and every piece of work stays on a Task. The Orchestrator gets a separate reference in the same folder.
 
-With the skill installed, an Agent's brief can be short. It needs only the credential file path, the Workspace and Session IDs, the Agent's name, its Task IDs, and the state directory if it is not the default.
+With the skill installed, an Agent's brief can be short. It needs only the credential file path, the Agent's name, its Task IDs, a private folder, and the state directory if it is not the default. The credential file names the Workspace and the Session.
 
 ## Install
 
@@ -40,4 +40,4 @@ curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/a-stack-s
 
 To keep an agent on the protocol after its context is compacted, to show its runtime state in the view, to stop it once when it would end a turn while a Task it set Working has no report, and to tell it about new Task mail, also install the [agent hooks](hooks.md).
 
-Start the agent and tell it that it is an a-stack Agent. Give it its credential file path and IDs as [Getting started](getting-started.md) describes. The skill's description makes the agent load it when it hears that it is an a-stack Agent, gets an a-stack credential file, or must coordinate Tasks or Task mail with other agents. You can also name the skill in the prompt.
+Start the agent and tell it that it is an a-stack Agent. Give it its credential file path and IDs as [Getting started](getting-started.md) describes. To make your coding agent the Orchestrator, you can also ask it to use a-stack: it sets itself up with `a-stack new --orchestrator` (see [Hand your Session to an Orchestrator](getting-started.md#hand-your-session-to-an-orchestrator)). The skill's description makes the agent load it when it hears that it is an a-stack Agent, gets an a-stack credential file, or must coordinate Tasks or Task mail with other agents. You can also name the skill in the prompt.

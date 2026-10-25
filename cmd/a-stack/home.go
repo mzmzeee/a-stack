@@ -215,12 +215,6 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 			}
 		}
 	}
-	// Refuse before anything is made.
-	if h.orchestrator != "" {
-		if _, err := os.Lstat(h.orchestratorFile()); err == nil {
-			return errOrchestratorFile(h.orchestratorFile())
-		}
-	}
 	if row.WorkspaceID == "" {
 		id := operationID()
 		receipt, err := mutate(ctx, client, "/v1/workspace/create", stack.WorkspaceCreateRequest{OperationID: id, Path: h.cwd}, "workspace create from this folder", id)
@@ -243,7 +237,8 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 }
 
 // handOff opens the Session. With --orchestrator it first registers that Agent
-// with a credential file in a-stack-agents next to the state directory, appoints
+// with a credential file in a-stack-agents/SESSION_ID next to the state
+// directory, so each Session has its own, appoints
 // it and prints a brief to paste into the coding agent. The brief names only
 // paths and IDs, never the credential.
 func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow, fields map[string]any, before []string) error {
@@ -255,22 +250,28 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 	if err != nil {
 		return err
 	}
-	credential := h.orchestratorFile()
+	agents := filepath.Join(filepath.Dir(h.state), "a-stack-agents")
+	credential := filepath.Join(agents, row.SessionID, h.orchestrator+".json")
 	if session.OrchestratorID != nil {
 		// The same hand-off again, for example from an agent that lost it:
 		// the Orchestrator's own credential file proves it, and nothing is made.
-		if h.ownsOrchestrator(ctx, credential, ref, *session.OrchestratorID) {
-			fields["existing_orchestrator"] = true
-			before = append(before, fmt.Sprintf("%s is already the Orchestrator of this Session.", printable(h.orchestrator)))
-			return h.briefOrchestrator(ctx, client, row, *session.OrchestratorID, credential, fields, before)
+		// v0.1.5 kept the file directly in a-stack-agents.
+		for _, path := range []string{credential, filepath.Join(agents, h.orchestrator+".json")} {
+			if h.ownsOrchestrator(ctx, path, ref, *session.OrchestratorID) {
+				fields["existing_orchestrator"] = true
+				before = append(before, fmt.Sprintf("%s is already the Orchestrator of this Session.", printable(h.orchestrator)))
+				return h.briefOrchestrator(ctx, client, row, *session.OrchestratorID, path, fields, before)
+			}
 		}
 		return invalid("this Session already has an Orchestrator; to replace it, see a-stack help session appoint")
 	}
 	if _, err := os.Lstat(credential); err == nil {
-		return errOrchestratorFile(credential)
+		return invalid(credential + " already exists; choose another --orchestrator name")
 	}
-	if err := stack.MkdirPrivate(filepath.Dir(credential)); err != nil {
-		return invalid("cannot make the folder " + filepath.Dir(credential))
+	for _, dir := range []string{agents, filepath.Dir(credential)} {
+		if err := stack.MkdirPrivate(dir); err != nil {
+			return invalid("cannot make the folder " + dir)
+		}
 	}
 	registerID := operationID()
 	data, err := lifecycleRequest(ctx, client, "agent register", lifecycleFlags{workspace: row.WorkspaceID, session: row.SessionID, operationID: registerID, name: h.orchestrator, newCredential: credential})
@@ -299,9 +300,13 @@ func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row 
 		"Workspace: " + row.WorkspaceID + "   Session: " + row.SessionID,
 		"Your name: " + h.orchestrator + "   Your private folder: make one with mktemp -d",
 		"Work in: " + h.cwd,
-		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register one Agent per Task and brief each one.",
+		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register an Agent for each Task that you hand out and brief each Agent.",
 	}, "\n")
 	fields["orchestrator_id"], fields["orchestrator_credential_file"], fields["brief"] = id, credential, brief
+	if h.noBrowser {
+		// Often a coding agent runs this, so no view secret enters its context.
+		fields["hint"] = "Open the view with: a-stack"
+	}
 	after := []string{"Start your coding agent in this folder and give it this brief, with your goal:", "", brief, ""}
 	if !skillInstalled(h.homeDir) {
 		after = append(after, "Install the agent skill first, if your agent does not have it: a-stack skill install")
@@ -324,18 +329,8 @@ func (h *home) ownsOrchestrator(ctx context.Context, path string, ref stack.Cont
 	return err == nil && session.OrchestratorID != nil && *session.OrchestratorID == id
 }
 
-func errOrchestratorFile(path string) error {
-	return invalid(path + " already exists; choose another --orchestrator name")
-}
-
 // orchestratorName is the service's Agent name rule.
 var orchestratorName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
-
-// orchestratorFile is the new Orchestrator's credential file, in a private
-// a-stack-agents folder next to the state directory.
-func (h *home) orchestratorFile() string {
-	return filepath.Join(filepath.Dir(h.state), "a-stack-agents", h.orchestrator+".json")
-}
 
 func inspectSession(ctx context.Context, client *stack.Client, ref stack.Context) (stack.Session, error) {
 	data, err := client.Do(ctx, "POST", "/v1/session/inspect", ref)
@@ -396,8 +391,14 @@ func (h *home) openWith(ctx context.Context, client *stack.Client, r sessionRow,
 	if r.Closed {
 		state = " closed"
 	}
-	before = append(before, fmt.Sprintf("Opening the%s Session %q in %s.", state, printable(r.Name), where))
-	return openView(ctx, client, stack.Context{WorkspaceID: r.WorkspaceID, SessionID: r.SessionID}, viewNotes{fields: fields, before: before, after: after}, h.machine, h.noBrowser, h.stdout, h.stderr)
+	notes := viewNotes{fields: fields, after: after, noView: h.orchestrator != "" && h.noBrowser}
+	if notes.noView {
+		before = append(before, fmt.Sprintf("The%s Session %q is in %s. Open the view with: a-stack", state, printable(r.Name), where))
+	} else {
+		before = append(before, fmt.Sprintf("Opening the%s Session %q in %s.", state, printable(r.Name), where))
+	}
+	notes.before = before
+	return openView(ctx, client, stack.Context{WorkspaceID: r.WorkspaceID, SessionID: r.SessionID}, notes, h.machine, h.noBrowser, h.stdout, h.stderr)
 }
 
 // sessions lists the Sessions of every Workspace, newest change first. The

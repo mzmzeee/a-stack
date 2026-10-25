@@ -207,7 +207,7 @@ An older a-stack cannot open a database that a newer one migrated. `a-stack serv
 
 ## Start a-stack automatically
 
-If you start a-stack with `a-stack`, `a-stack new` or `a-stack -r`, the service runs in that terminal. When you close the terminal, a-stack stops. On Linux with systemd, a user service can run `a-stack serve` for you instead. systemd starts it when your user manager starts, and starts it again if it crashes. You do not need `sudo`. On macOS, the same command sets up a launchd agent; see [On macOS with launchd](#on-macos-with-launchd). On Windows, it sets up a Task Scheduler task; see [On Windows with Task Scheduler](#on-windows-with-task-scheduler).
+If you start a-stack with `a-stack`, `a-stack new` or `a-stack -r`, the service runs in that terminal. When you close the terminal, a-stack stops. Instead, a user service can run `a-stack serve` for you. It starts when you log in and starts again after a crash. You do not need `sudo` or administrator rights.
 
 Run this command:
 
@@ -215,29 +215,90 @@ Run this command:
 a-stack service install
 ```
 
-It does these steps:
+It uses systemd on Linux, launchd on macOS and Task Scheduler on Windows. First, it checks that no `a-stack serve` runs for the state directory outside the service manager. If one runs, it stops and changes nothing. Press Ctrl-C in the terminal of that service, then run the command again. Only one service can use a state directory.
 
-1. It checks that no `a-stack serve` runs for the state directory outside systemd. If one runs, it stops and changes nothing. Press Ctrl-C in the terminal of that service, then run the command again. Only one service can use a state directory.
-2. It writes the unit `~/.config/systemd/user/a-stack.service` (or below `$XDG_CONFIG_HOME`). The unit runs the `a-stack` binary that you ran, with its real path, and the state directory that the CLI uses. If the unit exists and differs, it replaces the unit and says `Updated`. If systemd runs the service already, it tells you to restart the service to use the new unit.
-3. It runs `systemctl --user daemon-reload` and `systemctl --user enable --now a-stack`.
-4. It waits until the service answers, and prints its URL. If the service does not answer, read the log with `journalctl --user -u a-stack`.
-5. It checks linger. Without linger, systemd starts your user services only when you log in, and stops them when you log out. If linger is off, the command prints the command that turns it on, and does not run it:
+The service runs the `a-stack` binary that you ran, with its real path, and the state directory that the CLI uses. Run `a-stack service install` again after you move the binary or change the state directory. It changes nothing when the service is up to date.
+
+`a-stack service status` shows the service, the binary and the state directory that it uses, and the result of `a-stack health`. `--json` prints the same as one JSON object. `a-stack service uninstall` stops the service and removes it. It never touches the state directory. The sections below give the details for each system.
+
+### On Linux with systemd
+
+On Linux, `a-stack service install` sets up a systemd user service. systemd starts it when your user manager starts, and starts it again if it crashes. It does these steps:
+
+1. It writes the unit `~/.config/systemd/user/a-stack.service` (or below `$XDG_CONFIG_HOME`). If the unit exists and differs, it replaces the unit and says `Updated`. If systemd runs the service already, it tells you to restart the service to use the new unit.
+2. It runs `systemctl --user daemon-reload` and `systemctl --user enable --now a-stack`.
+3. It waits until the service answers, and prints its URL. If the service does not answer, read the log with `journalctl --user -u a-stack`.
+4. It checks linger. Without linger, systemd starts your user services only when you log in, and stops them when you log out. If linger is off, the command prints the command that turns it on, and does not run it:
 
    ```sh
    loginctl enable-linger "$USER"
    ```
 
-Run `a-stack service install` again after you move the binary or change `XDG_STATE_HOME`. It changes nothing when the unit is up to date.
+`a-stack service status` shows whether the unit file exists, whether it is enabled and active, the binary and the state directory in the unit, and linger.
 
-`a-stack service status` shows whether the unit file exists, whether it is enabled and active, the binary and the state directory in the unit, linger, and the result of `a-stack health`. `--json` prints the same as one JSON object.
-
-`a-stack service uninstall` stops and disables the service, removes the unit file and runs `systemctl --user daemon-reload`. It never touches the state directory.
+`a-stack service uninstall` stops and disables the service, removes the unit file and runs `systemctl --user daemon-reload`.
 
 To read the service's log, run `journalctl --user -u a-stack`. At each start, the service writes one ready line with its URL.
 
-### Set up the unit by hand
+To stop the service until the next boot or login, run `systemctl --user stop a-stack`. systemd starts the service again only when it fails, so it stays stopped. To stop it and not start it automatically again, run `systemctl --user disable --now a-stack`. To remove the unit, see [Uninstall](#uninstall).
 
-Releases up to v0.1.4 do not have `a-stack service`. You can also set up the unit by hand.
+### On macOS with launchd
+
+On macOS, `a-stack service install` sets up a launchd agent. launchd starts it when you log in, and starts it again after a crash. The agent runs only while you are logged in; macOS has nothing like linger. It does these steps:
+
+1. It writes the agent `~/Library/LaunchAgents/dev.a-stack.plist`. It writes the service's output, such as the ready line with the URL, to `~/Library/Logs/a-stack.log`. If the plist exists and differs, it replaces the plist and says `Updated`. If launchd runs the agent already, it prints the two commands that load the new plist.
+2. If the agent is not loaded, it runs `launchctl enable gui/UID/dev.a-stack` and `launchctl bootstrap gui/UID ~/Library/LaunchAgents/dev.a-stack.plist`, with your user ID as UID. If the agent is loaded, it runs `launchctl kickstart gui/UID/dev.a-stack`, which starts the service only if it stopped.
+3. It waits until the service answers, and prints its URL. If the service does not answer, read the log and the output of `launchctl print gui/$(id -u)/dev.a-stack`.
+
+The plist names the state directory with `--state-dir`, because launchd does not get the variables of your shell.
+
+launchd starts the service again after it exits with an error. Unlike systemd, it cannot skip exit codes 3 (another `a-stack serve` owns the state directory) and 4 (the database is damaged or has a newer schema), so it tries again every 10 seconds, and the log shows the error each time. Stop the other `a-stack serve`, or see [Go back to an older version](#go-back-to-an-older-version).
+
+`a-stack service status` shows the plist, launchd's state of the agent (such as `running`, or `not loaded`), the binary and the state directory in the plist, and the log file. With `--json`, `unit` is the label `dev.a-stack`, `unit_file` is the plist, `loaded` and `active` take the place of `enabled` and `linger`, and `log` is the log file.
+
+`a-stack service uninstall` runs `launchctl bootout gui/UID/dev.a-stack` and removes the plist. It never touches the log.
+
+To control the service by hand:
+
+```sh
+launchctl kickstart -k gui/$(id -u)/dev.a-stack   # restart
+launchctl kill TERM gui/$(id -u)/dev.a-stack      # stop until the next login
+launchctl kickstart gui/$(id -u)/dev.a-stack      # start again
+```
+
+After `kill TERM`, the service exits with 0, so launchd does not start it again until you log in again or run `kickstart`.
+
+### On Windows with Task Scheduler
+
+On Windows, `a-stack service install` sets up a Task Scheduler task named `a-stack`. Task Scheduler starts it when you log in, and starts it again within a minute after it stops. The task runs only while you are logged in, with your normal rights, also on battery, and without a time limit. It does these steps:
+
+1. It creates the task with `schtasks /Create`. If the task exists and differs, it replaces the task and says `Updated`. If the service runs already, it prints the commands that restart it.
+2. If the service does not run, it starts the task with `schtasks /Run /TN a-stack`.
+3. It waits until the service answers, and prints its URL. If the service does not answer, read the log and the output of `schtasks /Query /TN a-stack /V /FO LIST`.
+
+The service started by Task Scheduler has no terminal. It leaves its console window and writes its output, such as the ready line with the URL, to a log file next to the state directory: `%LOCALAPPDATA%\a-stack.log` for the default state directory. At each start, it empties the log when the log is larger than 1 MiB. A console window can show for a moment when the task starts.
+
+The task names the state directory with `--state-dir`.
+
+Task Scheduler cannot skip exit codes 3 (another `a-stack serve` owns the state directory) and 4 (the database is damaged or has a newer schema), so it tries again every minute, and the log shows the error each time. Stop the other `a-stack serve`, or see [Go back to an older version](#go-back-to-an-older-version).
+
+`a-stack service status` shows the task, whether it is enabled, the binary and the state directory in the task, and the log file. With `--json`, `unit` is the task name and `installed` and `enabled` say whether the task exists and is enabled.
+
+`a-stack service uninstall` stops the task and deletes it. It never touches the log.
+
+To control the service by hand:
+
+```powershell
+schtasks /End /TN a-stack; schtasks /Run /TN a-stack   # restart
+schtasks /Change /TN a-stack /DISABLE; schtasks /End /TN a-stack   # stop and keep it stopped
+schtasks /Change /TN a-stack /ENABLE; schtasks /Run /TN a-stack    # start again
+```
+
+`schtasks /End` alone stops the service only until the task starts it again, within a minute.
+
+### Set up the systemd unit by hand
+
+Releases up to v0.1.4 do not have `a-stack service`. On Linux, you can also set up the unit by hand.
 
 The unit runs `~/.local/bin/a-stack`. If you installed the binary in another folder, change the path in the `ExecStart` line.
 
@@ -288,7 +349,7 @@ The unit runs `~/.local/bin/a-stack`. If you installed the binary in another fol
    loginctl enable-linger "$USER"
    ```
 
-### Use the same state directory as the CLI
+#### Use the same state directory as the CLI
 
 `a-stack service install` writes the CLI's state directory into the unit, so you need this only for a unit that you set up by hand.
 
@@ -308,72 +369,6 @@ systemctl --user restart a-stack
 ```
 
 The empty `ExecStart=` line clears the command from the unit. The quotes keep a path with spaces in one piece. systemd reads `%` as the start of a specifier, such as `%h` for your home folder. If your path contains `%`, open `state-dir.conf` and write each `%` in the path as `%%`. You can add other `serve` flags in the same way, such as `--herdr-executable` (see [Mention notices](notifications.md)).
-
-### Stop the service
-
-To stop the service until the next boot or login, run `systemctl --user stop a-stack`. systemd starts the service again only when it fails, so it stays stopped.
-
-To stop the service and not start it automatically again, run `systemctl --user disable --now a-stack`. To remove the unit, see [Uninstall](#uninstall).
-
-### On macOS with launchd
-
-On macOS, `a-stack service install` sets up a launchd agent instead of a systemd unit. launchd starts it when you log in, and starts it again after a crash. You do not need `sudo`. The agent runs only while you are logged in; macOS has nothing like linger.
-
-It does these steps:
-
-1. It checks that no `a-stack serve` runs for the state directory outside launchd. If one runs, it stops and changes nothing. Press Ctrl-C in the terminal of that service, then run the command again.
-2. It writes the agent `~/Library/LaunchAgents/dev.a-stack.plist`. The agent runs the `a-stack` binary that you ran, with its real path, and the state directory that the CLI uses. It writes the service's output, such as the ready line with the URL, to `~/Library/Logs/a-stack.log`. If the plist exists and differs, it replaces the plist and says `Updated`. If launchd runs the agent already, it prints the two commands that load the new plist.
-3. If the agent is not loaded, it runs `launchctl enable gui/UID/dev.a-stack` and `launchctl bootstrap gui/UID ~/Library/LaunchAgents/dev.a-stack.plist`, with your user ID as UID. If the agent is loaded, it runs `launchctl kickstart gui/UID/dev.a-stack`, which starts the service only if it stopped.
-4. It waits until the service answers, and prints its URL. If the service does not answer, read the log and the output of `launchctl print gui/$(id -u)/dev.a-stack`.
-
-The plist names the state directory with `--state-dir`, because launchd does not get the variables of your shell. Run `a-stack service install` again after you move the binary or change `XDG_STATE_HOME`.
-
-launchd starts the service again after it exits with an error. Unlike systemd, it cannot skip exit codes 3 (another `a-stack serve` owns the state directory) and 4 (the database is damaged or has a newer schema), so it tries again every 10 seconds, and the log shows the error each time. Stop the other `a-stack serve`, or see [Go back to an older version](#go-back-to-an-older-version).
-
-`a-stack service status` shows the plist, launchd's state of the agent (such as `running`, or `not loaded`), the binary and the state directory in the plist, the log file and the result of `a-stack health`. With `--json`, `unit` is the label `dev.a-stack`, `unit_file` is the plist, `loaded` and `active` take the place of `enabled` and `linger`, and `log` is the log file.
-
-`a-stack service uninstall` runs `launchctl bootout gui/UID/dev.a-stack` and removes the plist. It never touches the state directory or the log.
-
-To control the service by hand:
-
-```sh
-launchctl kickstart -k gui/$(id -u)/dev.a-stack   # restart
-launchctl kill TERM gui/$(id -u)/dev.a-stack      # stop until the next login
-launchctl kickstart gui/$(id -u)/dev.a-stack      # start again
-```
-
-After `kill TERM`, the service exits with 0, so launchd does not start it again until you log in again or run `kickstart`.
-
-### On Windows with Task Scheduler
-
-On Windows, `a-stack service install` sets up a Task Scheduler task named `a-stack`. Task Scheduler starts it when you log in, and starts it again within a minute after it stops. You do not need administrator rights. The task runs only while you are logged in, with your normal rights, also on battery, and without a time limit.
-
-It does these steps:
-
-1. It checks that no `a-stack serve` runs for the state directory outside Task Scheduler. If one runs, it stops and changes nothing. Press Ctrl-C in the terminal of that service, then run the command again.
-2. It creates the task with `schtasks /Create`. The task runs the `a-stack.exe` that you ran, with its real path, and the state directory that the CLI uses. If the task exists and differs, it replaces the task and says `Updated`. If the service runs already, it prints the commands that restart it.
-3. If the service does not run, it starts the task with `schtasks /Run /TN a-stack`.
-4. It waits until the service answers, and prints its URL. If the service does not answer, read the log and the output of `schtasks /Query /TN a-stack /V /FO LIST`.
-
-The service started by Task Scheduler has no terminal. It leaves its console window and writes its output, such as the ready line with the URL, to a log file next to the state directory: `%LOCALAPPDATA%\a-stack.log` for the default state directory. At each start, it empties the log when the log is larger than 1 MiB. A console window can show for a moment when the task starts.
-
-The task names the state directory with `--state-dir`. Run `a-stack service install` again after you move the binary or change the state directory.
-
-Task Scheduler cannot skip exit codes 3 (another `a-stack serve` owns the state directory) and 4 (the database is damaged or has a newer schema), so it tries again every minute, and the log shows the error each time. Stop the other `a-stack serve`, or see [Go back to an older version](#go-back-to-an-older-version).
-
-`a-stack service status` shows the task, whether it is enabled, the binary and the state directory in the task, the log file and the result of `a-stack health`. With `--json`, `unit` is the task name and `installed` and `enabled` say whether the task exists and is enabled.
-
-`a-stack service uninstall` stops the task and deletes it. It never touches the state directory or the log.
-
-To control the service by hand:
-
-```powershell
-schtasks /End /TN a-stack; schtasks /Run /TN a-stack   # restart
-schtasks /Change /TN a-stack /DISABLE; schtasks /End /TN a-stack   # stop and keep it stopped
-schtasks /Change /TN a-stack /ENABLE; schtasks /Run /TN a-stack    # start again
-```
-
-`schtasks /End` alone stops the service only until the task starts it again, within a minute.
 
 ## On Windows
 
