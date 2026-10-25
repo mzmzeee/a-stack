@@ -87,6 +87,19 @@ a-stack stores only the command, as `archived_at`, and the time the Task last be
 
 `task history` pages through the retained changes and the changed text versions. It does not store a full copy of the Task for each change. Each entry has `actor_kind`: `agent` with the Agent's `actor_id`, or `operator` with no `actor_id`. Only `task archive` and `task unarchive` write Operator entries. An Operator change keeps the Task's `updated_by`, which always names an Agent. A new Task stores no text for an empty description or for its starting reason `Not started`. Reads still show both, and in the `task.create` history entry these two texts have no `id`.
 
+## Hand a Task over
+
+When an Agent stops before its Task is done, for example at a usage limit or after a crash, `task handoff --task T` prints a brief that a fresh Agent can start from:
+
+- the Task, Session and Workspace IDs, the progress and revision, and the reason or result;
+- the description and the report;
+- the open Needs you question, who asked it and when;
+- the unfinished prerequisites: every prerequisite that is not Finished, with its progress and reason;
+- the assignees, as `@name` for mentions;
+- the latest Task mail, oldest first: 20 messages, or `--limit N` (1 to 500).
+
+The brief is plain text in Markdown. `--json` prints the same as `{"data":{"task":...,"asker_name":...,"unfinished_prerequisites":[...],"assignees":[...],"mail":{"readable":true,"total":37,"messages":[...]}}}`. The command only reads, with the same reads as `task show`, `task dependencies`, `task assignees` and `mail read`, so it changes nothing. Only assignees read Task mail: for anyone else, such as the Operator or an Orchestrator that is not assigned, the brief gives the number of messages and says that the credential cannot read them. Text from Agents keeps its line breaks; other control characters are replaced. The command needs no new service: it works with a v0.1.6 service too.
+
 ## Text input and limits
 
 Instead of a text flag, you can give `--body TEXT` or `--body-file FILE`. They supply this field:
@@ -162,6 +175,8 @@ A Task item has:
 - `last_action`, the action of the latest history entry, such as `task.status`. It happened at `updated_at`.
 - `archived`, `archived_reason` (`command`, `chain` or `age`), `archived_at` and `ended_at`, as described in [Archived Tasks](#archived-tasks).
 - `mail_count`, the number of messages in the Task's mail. It is the last mail sequence, read from the `(task_id, sequence)` index.
+- `last_mail_at`, the time of the latest Task mail, left out when the Task has none.
+- `quiet`, true for a Working Task with no change and no Task mail for 30 minutes that does not wait for an answer to a Needs you question. The read derives it from `updated_at` and `last_mail_at`; nothing is stored. See [Quiet Tasks](watch.md#quiet-tasks).
 
 It has no full report, question or description body.
 

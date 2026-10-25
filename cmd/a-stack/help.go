@@ -79,6 +79,7 @@ var helpGroups = []helpGroup{
 		{"task assignees", "", "List a Task's Agents"},
 		{"task references", "", "List a Task's file references"},
 		{"task dependencies", "", "List a Task's dependencies"},
+		{"task handoff", "", "Print a brief that hands a Task to a fresh Agent"},
 		{"task attention set", "", "Ask the Operator a Needs you question"},
 		{"task attention resolve", "", "Resolve a Needs you question"},
 		{"task reference add", "", "Add a file reference to a Task"},
@@ -316,6 +317,14 @@ func flagText(fs *flag.FlagSet, command, name string) string {
 		if command == "task status" {
 			text += ", or --summary with --progress finished"
 		}
+	}
+	if name == "name" && command == "agent register" {
+		text = "Agent name"
+	} else if name == "name" && command == "session create" {
+		text = "Session name"
+	}
+	if name == "limit" && command == "task handoff" {
+		text = "How many of the latest Task mails to show: 1 to 500 (default 20)"
 	}
 	switch {
 	case !flagRequired(command, name):

@@ -40,10 +40,12 @@ func clockNow() time.Time {
 }
 
 // archiveMark counts the done Tasks of a Session that are ArchiveAge old or
-// older, without an archive command. It grows when the age rule archives a
-// Task, which changes no revision. The snapshot ETag includes it, so that an
-// open view of a quiet Session loads the Tasks again then. The count is kept
-// until the Session's read revision changes or the next Task gets old enough.
+// older, without an archive command, plus its quiet Tasks (see quietMark). It
+// grows when the age rule archives a Task or a Task turns quiet, which changes
+// no revision. Neither count falls without a change, so the sum grows too. The
+// snapshot ETag includes it, so that an open view of an idle Session loads the
+// Tasks again then. The count is kept until the Session's read revision
+// changes or the next Task gets old enough or turns quiet.
 func (s *Store) archiveMark(ctx context.Context, tx *sql.Tx, session Session) (int64, error) {
 	at := clockNow()
 	s.marksMu.Lock()
@@ -63,6 +65,14 @@ func (s *Store) archiveMark(ctx context.Context, tx *sql.Tx, session Session) (i
 	// raises the read revision.
 	if ended, err := time.Parse(time.RFC3339Nano, next); err == nil {
 		m.next = ended.Add(ArchiveAge)
+	}
+	quiet, quietNext, err := quietMark(ctx, tx, session.ID, at)
+	if err != nil {
+		return 0, err
+	}
+	m.count += quiet
+	if !quietNext.IsZero() && quietNext.Before(m.next) {
+		m.next = quietNext
 	}
 	s.marksMu.Lock()
 	if s.marks == nil {
