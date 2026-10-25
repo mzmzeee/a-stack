@@ -6,7 +6,12 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+Upgrading from v0.1.6: run `a-stack update`, then restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`). The first start copies the database to `state.db.pre-v8`, moves it to schema 9 and prints one line that names the copy. Schema 9 adds the standing orders and rebuilds the Task mail table, so that a message can come from the Operator; Agent mail reads the same as before. It needs free space of up to three times the size of `state.db`; with less, it stops before it changes anything and says how much it needs. After the upgrade, v0.1.6 cannot open the database. To go back, run `a-stack update --version v0.1.6`, stop the service, and put `state.db.pre-v8` back as `state.db` in a new state directory in the same place, as in [Go back to an older version](docs/install.md#go-back-to-an-older-version); changes made after the upgrade are lost.
+
 ### Added
+
+- Standing orders: the Operator's rules for every Agent of a Workspace, such as "commit as mzmzeee only", in one place that every harness reads, also after a compaction. `a-stack workspace orders set --workspace ID --body-file FILE --expected-revision N --operation-id ID` sets them (plain text, at most 4 KiB; `--body TEXT` also works), `workspace orders clear` clears them, and `workspace orders show` shows them with their `revision` (1 while there are none). Only the Operator sets or clears them. Agents read them in `session inspect` (`standing_orders`) and `workspace orders show`; the SessionStart reminder of the agent hooks shows their first 8 lines and the command for the rest, and the brief of `a-stack new --orchestrator` shows them too. The browser view shows them read-only in a collapsed "Standing orders" line under the header. The agent skill says that they override an Agent's own defaults. See [Standing orders](docs/lifecycle.md#standing-orders).
+- Task mail can come from the Operator (schema 9). Such a message has `sender_kind: "operator"`, an empty `sender_id` and the `sender_name` "Operator"; Agent mail has no `sender_kind` and reads the same as before.
 
 - Homebrew and Scoop packages. Install with `brew install mzmzeee/tap/a-stack` on macOS and Linux, or `scoop bucket add mzmzeee https://github.com/mzmzeee/scoop-bucket` and `scoop install mzmzeee/a-stack` on Windows. See [Package managers](docs/install.md#package-managers).
 

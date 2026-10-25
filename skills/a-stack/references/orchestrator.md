@@ -66,6 +66,8 @@ Give each Agent only what it needs, in private:
 
 Keep the Operator credential, other Agents' credentials and the browser URL out of every brief.
 
+Every Agent reads the Workspace's standing orders through a-stack, so do not copy them into briefs. When the Operator gives you a rule for all Agents, such as how to sign commits, suggest that they set it as a standing order with `a-stack workspace orders set` (an Operator command; see `a-stack help workspace orders set`).
+
 Give each brief to its Agent yourself when you can, for example when you start the Agent. When the Agent is a coding agent that the Operator runs, such as an open Claude Code or Codex window, give the Operator one short brief per Agent to paste there. Do the rest yourself: register the Agents, create and link the Tasks, and write the briefs.
 
 A brief can be this short:

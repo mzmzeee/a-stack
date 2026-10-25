@@ -117,6 +117,7 @@ Each schema version added one area:
 6. [Archived Tasks and Operator entries in the Task history](tasks.md#archived-tasks).
 7. [One-time view links and expiring view tokens](browser.md#keep-the-url-private). It deletes the older browser credentials.
 8. Task texts and [Task mail](mail.md#storage-for-notices) in rowid tables, which store long reports and mail bodies more compactly, and without the extra `(id, task_id)` index on mail. Schema 8 rebuilds these tables, which SQLite allows only with foreign keys off; the migration turns them off for its transaction and runs `PRAGMA foreign_key_check` before the commit. A database with a broken reference is not migrated, and `serve` stops with exit code 4.
+9. [Standing orders](lifecycle.md#standing-orders) of a Workspace, and [Task mail](mail.md#storage-for-notices) from the Operator. Schema 9 rebuilds `mail_messages` the same way, with a `sender_kind`.
 
 A migration that rebuilds tables leaves the old pages free inside the database file, so the file does not shrink at once: new Tasks and mail use the free pages before the file grows again. A backup is compact, so to get the smaller file at once, make a backup and [restore it](#backup-and-restore). With the 2,000-Task fixture of the [stress test](performance.md), the migration from schema 7 added 2 to 3 seconds to the start (3.4 to 4.2 seconds instead of 1.2 to 1.5 seconds in three runs); the file grew from 91.0 MB to 113.1 MB with 32.0 MB free, and a backup of it is 80.0 MB.
 

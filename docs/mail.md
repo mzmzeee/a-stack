@@ -109,6 +109,8 @@ Schema version 4 adds two tables:
 
 Schema version 8 rebuilds `mail_messages` as a rowid table, so a long body is stored in the table page instead of an overflow page of its own. Before, a foreign key to the message ID and the Task ID needed a second unique index on `(id, task_id)`; the trigger does that check with the primary key.
 
+Schema version 9 rebuilds `mail_messages` with a `sender_kind`: `agent`, with the Agent in `sender_id`, or `operator`, with no `sender_id`, because the Operator is no Agent. Reads of an Operator message give `sender_kind: "operator"`, an empty `sender_id` and the `sender_name` "Operator". Agent mail has no `sender_kind` in reads and reads the same as before.
+
 A mention row has a notice state: `pending`, `submitting`, `submitted`, `uncertain` or `suppressed`, or `self`, which makes no notice. `state_at` records the time of the last state change. The pending index starts with the state, the recipient and the message. The membership index starts with the Task, the recipient, the state and the message.
 
 Mail makes `pending` and `self` rows. An unassignment suppresses `pending` and `submitting` rows. The optional [notice dispatcher](notifications.md) does everything else outside the mail transactions: exact batches, runtime and binding checks, submission and recovery from uncertain outcomes.
