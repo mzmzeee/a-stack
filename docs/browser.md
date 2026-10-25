@@ -81,12 +81,13 @@ a-stack view revoke --all
 
 ## What the view shows
 
-The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It has three tabs: Now, Graph and Agents, and both themes. Now is the default tab. The view remembers the tab that you last used and the theme that you pick in the browser's local storage, so they stay after a browser restart. Until you pick a theme, the view follows the light or dark setting of your system. The storage belongs to the view's address, so a service on a new port starts again from the defaults.
+The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It has three tabs: Now, Graph and Agents, and a light and a dark theme. Now is the default tab. The view remembers the tab that you last used and the theme that you pick in the browser's local storage, so they stay after a browser restart. The theme buttons are Light, Dark and System. System is the default: the view follows the light or dark setting of your system, also from the first paint, without a light flash. The storage belongs to the view's address, so a service on a new port starts again from the defaults.
 
 - The header shows the name of the Workspace folder next to a-stack, for example `my-project`. It comes from the snapshot's `workspace_name`, which is only the last part of the Workspace path, so the home directory never appears in the view or in screenshots. The name is hidden in narrow windows.
 - A shared Task shows the same data in every Agent row. The Unassigned row shows Tasks with no assignee.
-- Progress and Needs you requests are shown separately. When several Tasks need input, the attention button opens a chooser. Viewing a Task never resolves its request.
+- Progress and Needs you requests are shown separately. The Needs you button in the header counts the open requests, such as "Needs you (2)", or says "All clear". When several Tasks need input, it opens a chooser: oldest request first, each with its title, the first part of the question and the age of the last change. Viewing a Task never resolves its request.
 - The chooser buttons keep their identity across unrelated refreshes. If the focused request is resolved somewhere else, the focus moves to a remaining choice, or to the view tab when the chooser is empty.
+- In a window lower than 600px or narrower than 700px, such as a phone or a browser at 200% zoom, the whole page scrolls. Only the tabs stay at the top. In the Graph tab, the footer with the zoom controls stays at the bottom; on Now and Agents, it is at the end of the page.
 - The runtime state has an "unverified" label and the age of its last observation. The age increases also when polls succeed.
 
 ### Now
@@ -95,11 +96,11 @@ The Now tab answers what is happening and what needs you, without panning. It ha
 
 - Needs you: Tasks with an open Needs you request, with the question.
 - Working: Tasks in progress.
-- Waiting: Tasks that have not started. When a Task waits on prerequisites that are not finished, the card says which: "Waits for: X, Y".
+- Waiting: Tasks that have not started. When a Task waits on prerequisites that are not finished, the card names up to three of them, such as "Waits for: X, Y, Z +7 more".
 - Recently finished: finished and cancelled Tasks that are not [archived](tasks.md#archived-tasks), newest first. "Show archive (N)" adds the archived Tasks below them, dimmed. "Hide archive" removes them again.
-- Latest changes: the most recent changes, newest first, such as "Review cart changed to Finished · 4m ago".
+- Latest changes: the most recent changes, newest first. Each shows the Task title (two lines at most), the change on its own line, such as "Changed to Finished" or "Reported: …", and its age. The icon shows the kind of change: a status, a report, file references, Agents, a new Task, an edit, Needs you or the archive.
 
-A Task with an open request is in Needs you, whatever its progress. Each card shows the status, the title, the assigned Agents, the first line of the latest report and the age of the last change, such as `2m ago` or `3h ago`. Inside a column, the newest change comes first. An empty column says so in one line. A long column scrolls inside itself. Click a card, or press Enter on it, to open the details. Search and the status filter work on the board and on the feed.
+A Task with an open request is in Needs you, whatever its progress. Each card shows the status, the title, the assigned Agents, the first line of the latest report and the age of the last change, such as `2m ago` or `3h ago`. Inside a column, the newest change comes first. An empty column says so in one line. A long column scrolls inside itself. A Session with no Tasks says so and suggests to brief an Orchestrator with the a-stack skill; the Agents tab of a Session with no Agents says "No Agents yet". "Clear filters" shows only when a search or a status filter is set. Click a card, or press Enter on it, to open the details. Search and the status filter work on the board and on the feed.
 
 The feed uses the Task's last action (`last_action`) at its `updated_at`, the report time `report_at`, and the differences that the page sees between two polls: progress changes and Needs you requests set or resolved. A change that is not the latest one of its Task shows only if the page was open when it happened. When two changes of one Task come between two polls, the feed shows the time of the later one for both. The page keeps up to 300 changes in memory and shows the latest 12.
 
@@ -109,14 +110,15 @@ A poll moves cards between columns in place. The selection, the focused card and
 
 - Graph arrows point from a prerequisite to its dependent Task. The details also name both directions.
 - Full names wrap above the cards.
+- Every card, also on the Now and Agents tabs, has a left border in its status color: blue for Working, grey for Waiting, green for Finished and light grey for Cancelled. A Task that needs you has a red border and a red ring, so it stands out also at a small zoom.
 - The graph runs left to right with one column per dependency rank. A Task without prerequisites sits one column before its first dependent, so its lines do not cross a column. Three ordering passes put each Task near the Tasks it connects to. Each Task is centered on the lines from its prerequisites, so a chain runs level, and moves down only to keep 28px between cards.
 - A line is a curve from the output port of a card to the left side of the next card. It ends in a small arrowhead. Only a Task with lines out has an output port, a dot on the right edge of the card.
-- Finished and cancelled Tasks are compact blocks: the Agent names, then one line with the status icon and the muted title, two lines at most. They have no status label and no report preview; the details show both. Compact blocks keep 16px between them. A Task that needs you keeps its full card.
+- Finished and cancelled Tasks are compact blocks: the Agent names, then one line with the status icon and the muted title, two lines at most. They have no status label and no report preview; the details show both. Hover a block to see its full title. Compact blocks keep 16px between them. A Task that needs you keeps its full card.
 - Tasks without a line sit in rows below or in columns to the right of the connected graph, whichever lets Fit show them larger.
 - The graph hides a dependency line when another path already connects the two Tasks; the details panel lists every dependency.
 - The graph hides [archived Tasks](tasks.md#archived-tasks) by default. Finished and cancelled Tasks that are not archived stay, so the finished work that a live Task depends on and the last Task of each chain are visible. Lines to or from a hidden archived Task are not drawn, so a Task whose prerequisites are all archived sits in the first column. A full card says how many of its prerequisites are archived and hidden. The Archived (N) toggle in the graph toolbar shows them again, dimmed. The view remembers the toggle in local storage. The service decides which Tasks are archived; the view cannot archive anything.
-- Select a Task, with a click or with Enter, to focus it. Its lines turn the accent color, get thicker and move on top of the others. Its direct prerequisites and dependents stay bright. Other cards fade to 42% and other lines to 22%. Lines that the graph hides because another path connects the Tasks appear dashed while one of their Tasks has the focus. The focus and the accent outline of the Task stay after the details close. Escape, or a click on empty space, clears it.
-- The layout runs again when Tasks or dependencies change, when the Archived toggle changes, or when a card changes size: a new title, a new status, other assigned Agents, Needs you, file references, cancelled prerequisites or hidden archived prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes.
+- Select a Task, with a click or with Enter, to focus it. Its lines turn the accent color, get thicker and move on top of the others. Its direct prerequisites and dependents stay bright. Other cards fade: they take the background color, their titles turn grey and their status border turns grey, but their text keeps its contrast. A Task that needs you never fades. Other lines fade to 22%. Lines that the graph hides because another path connects the Tasks appear dashed while one of their Tasks has the focus. The focus and the accent outline of the Task stay after the details close. Escape, or a click on empty space, clears it.
+- The layout runs again when Tasks or dependencies change, when the Archived toggle changes, or when a card changes size: a new title, a Task that becomes finished or cancelled or opens again, other assigned Agents, Needs you, file references, cancelled prerequisites or hidden archived prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes, a new report or a change between Waiting and Working.
 
 ![A short clip of the Graph tab. Curved lines lead from two Working Tasks to a Token exchange Task and on to a Security review. A click on one Task lights up its lines and fades the Tasks it does not connect to.](images/demo-graph.gif)
 
@@ -128,9 +130,13 @@ The Agents tab shows each Agent with its Tasks in one row. A shared Task shows i
 
 ![A short clip of the Agents tab: 01-orchestrator with no Tasks, then 02-backend with its three finished Tasks, then 03-frontend and 04-reviewer.](images/demo-agents.gif)
 
+### Task details
+
+The details of a Task start with a list of properties: Status, Agents, Ticket, Requires and Required by. Requires names the Task's prerequisites and Required by its dependents, each with its status icon, open Tasks first. A click on one opens its details. Then come the sections that have content, in this order: Needs you (highlighted), Latest report, Description, Reason, Result and File references. Empty sections and an empty Ticket are hidden. Task mail comes last. The footnote at the bottom says that the view is read-only, and gives the read revision and the time of the report.
+
 ### Task mail
 
-The details of a Task have a Task mail section, closed by default, with the number of messages, such as "Task mail (12)". The page loads no mail until you open the section. Then it reads the Task's mail with `POST /v1/mail/read`, 50 messages at a time, oldest first. "Load more" reads the next page from the cursor.
+The details of a Task have a Task mail section at the end, closed by default, with the number of messages, such as "Task mail (12)". The page loads no mail until you open the section. Then it reads the Task's mail with `POST /v1/mail/read`, 50 messages at a time, oldest first. "Load 13 more" reads the next page from the cursor; the number comes from the Task's `mail_count`, at most 50.
 
 - Each message shows the sender's name, the age, with the exact time on hover, and the body as plain text with its line breaks.
 - An `@name` of an Agent in the Session is styled as a mention. The body never becomes HTML, so markup and scripts show as text.
@@ -143,6 +149,7 @@ Reading mail in the view changes nothing. It stores no read position, writes no 
 
 - The arrow keys, Home and End switch between the tabs.
 - In search, Enter moves the focus to the first matching card of the current tab.
+- In the Graph tab, Tab moves through the cards column by column, from top to bottom, in the order of the layout.
 - On a card, Enter opens the details. Escape closes them and returns the focus. In the Graph tab, a second Escape clears the focus highlight.
 - Search looks at Agent names, titles, Ticket references and the short report preview.
 - The status filter includes Cancelled and Needs you.
@@ -155,14 +162,22 @@ Reading mail in the view changes nothing. It stores no read position, writes no 
 
 While the page is visible, it polls the snapshot every two seconds. It sends `If-None-Match` and its known read revision. The service checks authentication and Session access before it returns an empty 304 response for a matching ETag.
 
-When the snapshot has changed, the page loads all pages of Tasks, Agents, assignments and dependencies for that one read revision. It shows the new model only when all collections match the counts in the snapshot. If there is a conflict, it starts the collection again, up to three times, and then backs off.
+When the snapshot has changed, the page loads all pages of Tasks, Agents, assignments and dependencies for that one read revision. Dependencies change only with the snapshot's `graph_revision`, which grows when a Task or a dependency is added or removed. While it stays the same, the page keeps the dependencies that it has and does not load them again. The view reads only their Task IDs. It shows the new model only when all collections match the counts in the snapshot. If there is a conflict, it starts the collection again, up to three times, and then backs off.
 
 - If the service instance changes, the page fetches the public page again to read the new instance ID, and tries again.
 - If an error occurs, the page keeps the last complete model and marks it as saved and stale.
 - The backoff starts at four seconds and grows to thirty seconds.
-- When the page is hidden, polling stops and the current collection is cancelled. When the page is visible again, polling continues.
+- When the page is hidden, for example in a background tab, it polls every 30 seconds. Browsers can slow this down to once a minute in a tab that has been hidden for a long time. When the page is visible again, it polls at once.
 
-The footer shows the version of the local service and the time of the last successful check with it. If the page has been stale for more than thirty seconds, the footer says why. If the service still answered the last request, it says that the service is busy: Task changes keep restarting the collection, and the page shows the last complete view. If the service did not answer, the footer says that the service is unreachable and that you can run `a-stack` again. That is needed only when the service came back on another port. When less than 1 GiB of disk space is free for the a-stack state, the footer says that disk space is low and to run `a-stack storage status`, also on narrow screens. The snapshot answer carries this as the header `X-A-Stack-Low-Disk: 1`, also when it is a 304, so the view needs no extra request. The About panel shows when the snapshot was captured, and its revision. A poll with no changes does not change the report or runtime times.
+### Needs you in a background tab
+
+The tab title counts the open Needs you requests, such as `(2) Needs you · OAuth login – a-stack`, and the tab icon gets a red dot. Without requests, the title is the Session name and `a-stack`. Both update while the tab is hidden, at each poll.
+
+"Notify me" in the footer turns on system notifications. It is off by default. The first time, the browser asks for permission; if notifications are blocked for the page, the button is disabled and says so. The choice is kept in the browser's local storage. When a Task newly needs you and the tab is hidden or not focused, the page shows one notification with the Session name and the number of open requests. It never shows a question or a Task title. A click on it brings the tab forward. Notifications are made by the browser, so the service stores and sends nothing for them.
+
+Until the first snapshot arrives, the page says that it is loading. It shows no columns, so it never says "Nothing needs you" before it knows.
+
+The footer shows the version of the local service and the time of the last successful check with it. If the last successful check is more than ten seconds old and the next one failed, a banner above the view says why, and the tab title starts with "Stale". The view stays, with muted colors. If the service still answered the last request, the banner says that the service is busy: Task changes keep restarting the collection, and the page shows the last complete view. If the service did not answer, the banner says since when, and that you can run `a-stack` again. That is needed only when the service came back on another port. If the first snapshot never arrives, the banner says that the local service does not answer. When the view has no access, the banner says why, and the tab title starts with "No access". When less than 1 GiB of disk space is free for the a-stack state, the footer says that disk space is low and to run `a-stack storage status`, also on narrow screens. The snapshot answer carries this as the header `X-A-Stack-Low-Disk: 1`, also when it is a 304, so the view needs no extra request. The About panel shows when the snapshot was captured, and its revision. A poll with no changes does not change the report or runtime times.
 
 The full description, report, reason, result, question and file references load only for the selected Task. Text from the service is shown as text, also when it contains markup. References can be seen and copied. The page never follows or fetches them.
 
@@ -204,7 +219,25 @@ Curved lines and compact blocks came on 2026-10-25. On the same machine and brow
 
 ² The first load after the browser started. The other four took 1.9–2.0 ms.
 
-With 1,000 Tasks, one wide rank makes one very tall column: in the first v0.1.0 measurement, a canvas of 192,929 px. Archived Tasks are hidden by default, so the graph of a long Session stays close to the size of its open work and the finished Tasks next to it. The view shows every open Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout and ownership scans are simple on purpose, and they can become slow above these sizes. Add indexed client maps or virtualization only when larger measured workloads need them.
+With 1,000 Tasks, one wide rank makes one very tall column: in the first v0.1.0 measurement, a canvas of 192,929 px. Archived Tasks are hidden by default, so the graph of a long Session stays close to the size of its open work and the finished Tasks next to it. The view shows every open Task. There is no virtualization, minimap or automatic Fit. At this size, Fit gives an overview with labels that you cannot read. Use scrolling, search, filters and the Agents tab to find single Tasks. The layout is simple on purpose, and it can become slow above these sizes. Add virtualization only when larger measured workloads need them.
+
+### Render cost
+
+The page draws only the tab that you see. A poll updates that tab; the other tabs update when you open them, and only if something changed. A hidden page draws nothing until it is visible again; it only updates its title and icon. Ages tick every second only on the Now tab and in open Task mail, and the footer says "checked just now" while polls succeed, so an idle page does not lay out every second. Cards that are out of view on the Now and Agents tabs skip layout and paint. The page indexes the assigned Agents, the Tasks of each Agent and the prerequisites of each Task once per snapshot.
+
+Measured on 2026-10-25 with the same machine, agent-browser 0.39.2 and headless Chromium at 1440×900, on a copy of the 2,000-Task performance fixture (20 Agents), with a Chrome trace of the page's main thread:
+
+| Case | Before | After |
+| --- | --- | --- |
+| A report change, Now tab: main thread | 3,945 ms | 462 ms |
+| A status change, Now tab: main thread | 3,164 ms | 414 ms |
+| A report change, Graph tab: main thread | 3,311 ms | 462 ms |
+| A status change, Graph tab: main thread | 2,348 ms | 208 ms |
+| A changed poll: page requests and bytes | 79, 3,273 KB | 54, 2,433 KB |
+| Idle Now tab, 10 s: layouts | 14 (255 ms) | 10 (40 ms) |
+| Reload on the Now tab, 12 s: main thread | 4,299–5,396 ms | 2,317–2,849 ms |
+
+Before, every poll with a change patched all three tabs and laid out the hidden graph again. The bytes are still large because a changed poll loads all Tasks and assignments again.
 
 ## Checks
 

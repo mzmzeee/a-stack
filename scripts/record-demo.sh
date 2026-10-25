@@ -545,7 +545,7 @@ no_fragment shot
 take_screenshots &
 shot_pid=$!
 hold
-wait_for "document.getElementById('attention').textContent.includes('1 needs you')"
+wait_for "document.getElementById('attention').textContent.includes('Needs you (1)')"
 zoom "$(element '#attention')"
 callout "$(element '#attention')" 'Questions for you wait here'
 hold
