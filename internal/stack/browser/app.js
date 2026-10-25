@@ -192,6 +192,7 @@ function reduceEdges(tasks,deps) {
 // straight chain runs level. Tasks without a drawn line go in rows below or columns to the right, whichever Fits larger.
 const cardWidth=274, columnGap=112, padX=28, padY=24, groupGap=96;
 let ports=new Map(), unitSizes=new Map(); // the port height and the height of each card, measured once per layout
+let bends=new Map(); // the x and y where a line that skips columns crosses each of them, by 'prerequisite dependent'
 function layout() {
   const wasHidden=panel.hidden; if(wasHidden){panel.hidden=false;panel.style.visibility='hidden';}
   const tasks=graphTasks, byID=new Map(tasks.map(t=>[t.id,t])), rank=new Map(tasks.map(t=>[t.id,0]));
@@ -206,8 +207,17 @@ function layout() {
   for(const t of tasks){const ns=next.get(t.id);if(ns.length&&!needs.has(t.id))rank.set(t.id,Math.min(...ns.map(id=>rank.get(id)))-1);}
   const cols=[];
   for(const t of tasks) if(linked.has(t.id)) (cols[rank.get(t.id)] ??= []).push(t.id);
+  // A line that skips columns gets a zero-height dummy in each column it crosses. The sweeps order the dummies like
+  // cards, so the line runs through the gaps between cards instead of behind them (dagre and ELK do the same).
+  const dummies=new Map(), long=[];let dn=0;
+  for(const [id,ns] of next)for(const n of ns)if(rank.get(n)-rank.get(id)>1)long.push([id,n]);
+  for(const [a,b] of long){
+    const key=a+' '+b, ns=next.get(a);let from=a;
+    for(let k=rank.get(a)+1;k<rank.get(b);k++){const d='~'+dn++;dummies.set(d,key);(cols[k] ??= []).push(d);if(from===a)ns[ns.indexOf(b)]=d;else next.set(from,[d]);from=d;}
+    next.set(from,[b]);
+  }
   // Barycenter sweeps place each Task near the Tasks it connects to, so fewer lines cross; ties keep the stable Task order.
-  const prev=new Map(tasks.map(t=>[t.id,[]]));for(const [id,ns] of next)for(const n of ns)prev.get(n).push(id);
+  const prev=new Map([...tasks.map(t=>t.id),...dummies.keys()].map(id=>[id,[]]));for(const [id,ns] of next)for(const n of ns)prev.get(n).push(id);
   const order=new Map(), spread=l=>l.forEach((id,i)=>order.set(id,(i+.5)/l.length));cols.forEach(spread);
   const sweep=(l,near)=>{const c=new Map(l.map(id=>{const n=near.get(id);return [id,n.length?n.reduce((s,x)=>s+order.get(x),0)/n.length:order.get(id)];}));l.sort((a,b)=>c.get(a)-c.get(b));spread(l);};
   for(let i=1;i<cols.length;i++)sweep(cols[i],prev);for(let i=cols.length-2;i>=0;i--)sweep(cols[i],next);for(let i=1;i<cols.length;i++)sweep(cols[i],prev);
@@ -215,7 +225,8 @@ function layout() {
   // measuring 2,000 skipped cards one by one takes seconds. The sizes are written with the positions, after all reads.
   const sizes=new Map(), bodies=new Map(), compact=new Set();ports=new Map();unitSizes=sizes;graph.classList.remove('cv','far','farther');
   for(const t of tasks){const c=cards.get(t.id);sizes.set(t.id,c.article.offsetHeight);bodies.set(t.id,c.button.offsetHeight);ports.set(t.id,c.button.offsetTop+c.button.offsetHeight/2);if(c.article.classList.contains('compact'))compact.add(t.id);}
-  const gap=(a,b)=>compact.has(a)&&compact.has(b)?16:28, step=cardWidth+columnGap, pos=new Map();
+  for(const d of dummies.keys()){sizes.set(d,0);ports.set(d,0);}
+  const gap=(a,b)=>dummies.has(a)?(dummies.has(b)?7:12):dummies.has(b)?12:compact.has(a)&&compact.has(b)?16:28, step=cardWidth+columnGap, pos=new Map();
   let h=0;
   cols.forEach((col,k)=>{
     let last=null;
@@ -239,8 +250,10 @@ function layout() {
   const a=loose.length?below():[], b=loose.length?right():[], extra=fitScale(a)>=fitScale(b)?a:b;
   for(const [id,p] of extra)pos.set(id,p);
   const [W,H]=box(extra);
-  positions.clear();
-  for(const [id,p] of pos){const x=padX+p.x,y=padY+p.y;positions.set(id,{x,y});const s=cards.get(id).article.style;s.left=x+'px';s.top=y+'px';s.setProperty('--uh',sizes.get(id)+'px');s.setProperty('--h',bodies.get(id)+'px');}
+  positions.clear();bends=new Map();
+  for(const [id,p] of pos){const x=padX+p.x,y=padY+p.y,key=dummies.get(id);
+    if(key){let b=bends.get(key);if(!b)bends.set(key,b=[]);b.push(x,y);sizes.delete(id);ports.delete(id);continue;}
+    positions.set(id,{x,y});const s=cards.get(id).article.style;s.left=x+'px';s.top=y+'px';s.setProperty('--uh',sizes.get(id)+'px');s.setProperty('--h',bodies.get(id)+'px');}
   // Tab order follows the layout: column by column, top to bottom. A focused card keeps the focus.
   const focused=document.activeElement;let ref=edgesSVG.nextSibling;
   for(const [id] of [...positions].sort((a,b)=>a[1].x-b[1].x||a[1].y-b[1].y)){const n=cards.get(id).article;if(n===ref)ref=n.nextSibling;else place(graph,n,ref);}
@@ -252,11 +265,15 @@ function layout() {
   if(wasHidden){panel.hidden=true;panel.style.visibility='';}
 }
 // A line leaves the output port at the right edge of the card body and ends 2px before the next card, as a cubic curve
-// whose control points sit half the horizontal distance out. The focused Task's lines are drawn last, on top.
+// whose control points sit half the horizontal distance out. A line that skips columns makes that S-curve in each gap
+// and runs straight across each column it crosses. The focused Task's lines are drawn last, on top.
 function curve(e) {
   const a=positions.get(e.prerequisite_id),b=positions.get(e.dependent_id);if(!a||!b)return null;
-  const x1=a.x+cardWidth,y1=a.y+(ports.get(e.prerequisite_id) ?? 0),x2=b.x-2,y2=b.y+(ports.get(e.dependent_id) ?? 0),o=Math.max(Math.abs(x2-x1)/2,24);
-  return `M${x1},${y1}C${x1+o},${y1} ${x2-o},${y2} ${x2},${y2}`;
+  let x=a.x+cardWidth,y=a.y+(ports.get(e.prerequisite_id) ?? 0),d=`M${x},${y}`;
+  const to=(x2,y2)=>{const o=Math.max(Math.abs(x2-x)/2,24);d+=`C${x+o},${y} ${x2-o},${y2} ${x2},${y2}`;x=x2;y=y2;};
+  const via=bends.get(e.prerequisite_id+' '+e.dependent_id) || [];
+  for(let i=0;i<via.length;i+=2){to(via[i],via[i+1]);x+=cardWidth;d+=`H${x}`;}
+  to(b.x-2,b.y+(ports.get(e.dependent_id) ?? 0));return d;
 }
 function drawEdges() {
   const group=edgesSVG.querySelector('g'), lines=document.createDocumentFragment(), front=document.createDocumentFragment(), outs=new Set();

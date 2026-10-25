@@ -114,6 +114,7 @@ A poll moves cards between columns in place. The selection, the focused card and
 - Every card, also on the Now tab, has a left border in its status color: blue for Working, grey for Waiting, green for Finished and light grey for Cancelled. A Task that needs you has a red border and a red ring, so it stands out also at a small zoom.
 - The graph runs left to right with one column per dependency rank. A Task without prerequisites sits one column before its first dependent, so its lines do not cross a column. Three ordering passes put each Task near the Tasks it connects to. Each Task is centered on the lines from its prerequisites, so a chain runs level, and moves down only to keep 28px between cards.
 - A line is a curve from the output port of a card to the left side of the next card. It ends in a small arrowhead. Only a Task with lines out has an output port, a dot on the right edge of the card.
+- A line that skips columns runs through the gaps between the cards, never behind one. The ordering passes give it a place in each column that it crosses, like a card without height, 12px from a card and 7px from another such line. It curves in each gap and runs straight across each column.
 - Finished and cancelled Tasks are compact blocks: the Agent names, then one line with the status icon and the muted title, two lines at most. They have no status label and no report preview; the details show both. Hover a block to see its full title. Compact blocks keep 16px between them. A Task that needs you keeps its full card.
 - Tasks without a line sit in rows below or in columns to the right of the connected graph, whichever lets Fit show them larger.
 - The graph hides a dependency line when another path already connects the two Tasks; the details panel lists every dependency.
@@ -276,6 +277,18 @@ Measured on 2026-10-25 on the same machine, at 1440×900, on the 2,000-Task fixt
 | Layout | 241–262 ms | 241–309 ms |
 
 Before, the zoomed-out graph drew full cards; after, it draws blocks with a title, or without text below 20%. Below 20%, a pan frame is a few milliseconds slower, because every card is on screen and the browser checks each one for content-visibility. The Agents tab of the same Session has 39,619 elements instead of 83,823, because done and most waiting Tasks are folded.
+
+Lines that skip columns run through the gaps since 2026-10-25. Measured the same way, with the page reloaded four times for each build in two alternating rounds:
+
+| Case | Before | After |
+| --- | --- | --- |
+| Layout, 2,000 Tasks | 272–314 ms | 322–344 ms |
+| Lines that run behind a card, 2,000 Tasks (2,134 lines) | 510 | 0 |
+| Graph height, 2,000 Tasks | 47,292 px | 47,540 px |
+| Lines that run behind a card, 150 Tasks (113 lines) | 15 | 0 |
+| Graph height, 150 Tasks | 3,130 px | 3,392 px |
+
+The layout places about 11,000 extra points for these lines at 2,000 Tasks; it reads no card again.
 
 ## Checks
 

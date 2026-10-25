@@ -6,6 +6,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Changed
+
+- In the browser view's Graph, a line that skips columns runs through the gaps between the cards instead of behind them. It curves in each gap and runs straight across each column it crosses. The layout orders these lines like cards, so they also cross each other less. At 2,000 Tasks, no line runs behind a card instead of 510, and the layout takes about 15% longer (322–344 ms instead of 272–314 ms); it never measures a card again.
+
 ## [0.1.6] - 2026-10-25
 
 Upgrading from v0.1.5: run `a-stack update`, then restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`). The first start copies the database to `state.db.pre-v7` (`state.db.pre-v6` from v0.1.4), moves it to schema 8 and prints one line that names the copy. It needs free space of up to three times the size of `state.db`; with less, it stops before it changes anything and says how much it needs. After the upgrade, v0.1.5 cannot open the database. To go back, run `a-stack update --version v0.1.5`, stop the service, and put `state.db.pre-v7` back as `state.db` in a new state directory in the same place, as in [Go back to an older version](docs/install.md#go-back-to-an-older-version); changes made after the upgrade are lost. The database file keeps the pages that the migration freed; a backup and a restore make it small again.
