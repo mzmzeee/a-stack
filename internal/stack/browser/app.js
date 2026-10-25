@@ -61,7 +61,7 @@ function noAccess(text) {
   notice=text;
   if(!model)setText(document.querySelector('.workspace-title h1'),'No access');
   setText(document.querySelector('.workspace-subtitle'),text);
-  updateSource();
+  render();
 }
 // A new link in the same tab replaces the view token and clears an old notice.
 async function connect() {
@@ -295,7 +295,7 @@ const columns=[
   section.dataset.column=c.key;h.id='now-'+c.key;section.setAttribute('aria-labelledby',h.id);head.append(h,count);section.append(head,list,empty);$('now-board').append(section);
   return {...c,section,count,list,emptyNode:empty};
 });
-const doneColumn=columns[3], more=el('button','plain-button now-more');doneColumn.section.append(more);
+const doneColumn=columns[3], more=el('button','plain-button now-more');more.hidden=true;doneColumn.section.append(more);
 more.onclick=()=>{state.allFinished=!state.allFinished;render();};
 const nowCards=new Map();
 const column=t=>t.needs_you?'attention':t.progress==='working'?'working':t.progress==='waiting'?'waiting':'done';
@@ -381,7 +381,14 @@ function render() {
   document.querySelectorAll('[data-view]').forEach(b=>{const active=b.dataset.view===state.view;b.setAttribute('aria-selected',String(active));b.tabIndex=active?0:-1;});
   panel.hidden=state.view!=='graph';agentsPanel.hidden=state.view!=='agents';nowPanel.hidden=state.view!=='now';
   for(const id of ['zoom-controls','archived'])$(id).hidden=state.view!=='graph';
-  if(!model)return;
+  if(!model){
+    // Nothing is known before the first snapshot, so no column may say that nothing needs you.
+    const failed=!!notice||failures>0;
+    $('empty').hidden=false;setText($('empty').querySelector('h2'),failed?'No Session data':'Loading the Session…');
+    setText($('empty').querySelector('p'),failed?'The view shows the Session once the local service answers.':'Reading it from the local service.');
+    $('clear-filters').hidden=true;graph.parentElement.style.visibility='hidden';nowPanel.firstElementChild.style.visibility='hidden';
+    updateSource();return;
+  }
   setText(document.querySelector('.workspace-title h1'),model.snapshot.session.name);
   setText($('project-name'),model.snapshot.workspace_name || '');$('project-name').hidden=!model.snapshot.workspace_name; // the Workspace folder name, never its full path
   setText(document.querySelector('.workspace-subtitle'),`${plural(model.agents.length,'agent')} · ${plural(model.tasks.length,'task')}${model.snapshot.session.closed?' · Closed Session':''}`);
@@ -406,14 +413,22 @@ function age(timestamp) {const seconds=Math.max(0,Math.floor((Date.now()-new Dat
 function runtimeText(a) { return `Runtime: ${a.runtime_attached?(a.runtime_state || 'unknown'):'unbound'} · unverified${a.observed_at?' · '+age(a.observed_at):''}`; }
 function updateRuntimeAges() { if(model)for(const a of model.agents){const r=rows.get(a.id);if(r)setText(r.runtime,runtimeText(a));} }
 function plural(n,word) { return `${n} ${word}${n===1?'':'s'}`; }
-// Stale for 30 s: if the service still answers, it is busy (Task changes keep
-// restarting the collection); if not, a restart on a new port needs a-stack.
-function lost() { return !notice&&stale&&lastSuccess>0&&Date.now()-lastSuccess>30000; }
+// Saved data older than 10 s, or no data at all, gets a banner above the view and "Stale" in the tab title.
+// If the service still answers, it is busy (Task changes keep restarting the collection);
+// if not, a restart on a new port needs a-stack.
+function staleShown() { return stale&&(!model||Date.now()-lastSuccess>10000); }
+const clock=ms=>new Date(ms).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+function updateBanner() {
+  const since=lastSuccess?` since ${clock(lastSuccess)}`:'';
+  const text=notice || (!staleShown()?'':!model?'The local service does not answer. Retrying. If you restarted it, run a-stack again.':answered?`The service is busy${since}: Task changes keep restarting the read. Showing the last complete view.`:`The local service has not answered${since}. Showing saved data. If you restarted it, run a-stack again.`);
+  setText($('banner'),text);$('banner').hidden=!text;document.querySelector('main').classList.toggle('stale',!!text&&!!model);
+}
 // The service sets X-A-Stack-Low-Disk on snapshot answers, 304 included.
 let lowDisk=false;
 function updateHint() {
-  const hint=$('footer-hint');hint.classList.toggle('lost',lost()?!answered:lowDisk);
-  setText(hint,lost()?(answered?'Service busy. Showing the last complete view; it updates when changes pause.':'Service unreachable. If you restarted it, run a-stack again.'):lowDisk?'Disk space is low. Run a-stack storage status.':state.view==='graph'?'Drag to pan. Select a task to see its neighbours.':'Select a task for its report and dependencies.');
+  const hint=$('footer-hint');hint.classList.toggle('lost',lowDisk);
+  setText(hint,lowDisk?'Disk space is low. Run a-stack storage status.':state.view==='graph'?'Drag to pan. Select a task to see its neighbours.':'Select a task for its report and dependencies.');
+  updateBanner();
 }
 function updateSource(message) {
   const service=version?'Local service '+version:'Local service';
@@ -429,7 +444,7 @@ const favicon=document.querySelector('link[rel="icon"]'), plainIcon=favicon.href
 const dotIcon=plainIcon.replace('%3C/svg%3E',"%3Ccircle cx='25' cy='7' r='6.5' fill='%23d93025' stroke='%23ffffff' stroke-width='2'/%3E%3C/svg%3E");
 function updateTitle() {
   const n=model?model.tasks.filter(t=>t.needs_you).length:0;
-  const title=(stale?'Stale · ':'')+(n?`(${n}) Needs you · `:'')+(model?model.snapshot.session.name+' – a-stack':'a-stack');
+  const title=(staleShown()?'Stale · ':'')+(n?`(${n}) Needs you · `:'')+(model?model.snapshot.session.name+' – a-stack':'a-stack');
   if(document.title!==title)document.title=title;
   const href=n?dotIcon:plainIcon;if(favicon.getAttribute('href')!==href)favicon.setAttribute('href',href);
 }
@@ -600,7 +615,7 @@ async function refresh() {
         if(error.status===409&&attempt<2){const shell=await fetch(location.pathname,{cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});if(shell.ok){instance=shell.headers.get('X-A-Stack-Instance') || instance;version=shell.headers.get('X-A-Stack-Version') || version;}continue;}throw error;
       }
     }
-  }catch(error){if(error.name!=='AbortError'){stale=true;failures++;answered=!(error instanceof TypeError)&&error.status!==401&&error.status!==403;if(error.status===401||error.status===403){token='';try{sessionStorage.removeItem(storageKey);}catch{}noAccess(accessEnded);}else updateSource(model?undefined:'Local service unavailable · retrying');}}
+  }catch(error){if(error.name!=='AbortError'){stale=true;failures++;answered=!(error instanceof TypeError)&&error.status!==401&&error.status!==403;if(error.status===401||error.status===403){token='';try{sessionStorage.removeItem(storageKey);}catch{}noAccess(accessEnded);}else if(model)updateSource();else{render();updateSource('Local service unavailable · retrying');}}}
   finally{busy=false;controller=null;schedule();}
 }
 // A hidden tab polls every 30 s, so its title, icon and notification still learn about Needs you; a 304 costs little.

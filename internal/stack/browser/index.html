@@ -30,8 +30,9 @@
     <label class="search"><span data-icon="search"></span><span class="sr-only">Find an agent or task</span><input id="search" type="search" placeholder="Find an agent or task…" autocomplete="off" spellcheck="false"></label>
     <label class="sr-only" for="status-filter">Filter task status</label>
     <select class="status-filter" id="status-filter"><option value="all">All statuses</option><option value="working">Working</option><option value="blocked">Needs you</option><option value="waiting">Waiting</option><option value="finished">Finished</option><option value="cancelled">Cancelled</option></select>
-    <button class="attention-button" id="attention"><span data-icon="attention"></span>Needs you</button>
+    <button class="attention-button" id="attention" disabled><span data-icon="attention"></span>Needs you</button>
   </section>
+  <p class="banner" id="banner" role="status" hidden></p>
   <main>
     <div class="view" id="now-panel" role="tabpanel" aria-labelledby="now-tab" tabindex="0" aria-description="What is happening now. Columns list the Tasks that need you, are working, are waiting, or finished recently. Select a task for details.">
       <div class="now-layout"><div class="now-board" id="now-board"></div><section class="now-column now-feed" aria-labelledby="feed-heading"><header class="now-head"><h2 id="feed-heading">Latest changes</h2></header><ol class="feed-list" id="feed-list"></ol><p class="now-empty" id="feed-empty">No changes yet.</p></section></div>

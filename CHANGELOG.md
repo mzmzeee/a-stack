@@ -29,6 +29,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Fixed
 
+- Before its first snapshot, the browser view said "Nothing needs you" and showed an active Needs you button. It now says that it is loading.
+- A browser view that cannot reach the service shows a banner above the view after ten seconds, and "Stale" in the tab title, also when the first load fails. Before, only a small footer line said so, after thirty seconds.
 - When the service refuses `agent register` or `agent rebind` with an error that is not retryable, the CLI deletes the new credential file that the command wrote. A file that existed before is kept.
 
 ### Security

@@ -59,7 +59,10 @@
   .search input:focus-visible { outline: none; }
   .status-filter { max-width: 150px; height: 38px; padding: 0 28px 0 10px; border: 1px solid var(--line); border-radius: 7px; background-color: var(--surface); font-size: 13px; }
   .attention-button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 6px 12px; border: 1px solid transparent; border-radius: 7px; color: var(--attention); background: var(--attention-bg); font-size: 13px; font-weight: 600; white-space: nowrap; }
-  .attention-button:hover { border-color: currentColor; }
+  .attention-button:hover:not(:disabled) { border-color: currentColor; }
+  .attention-button:disabled { color: var(--muted); background: var(--raised); opacity: 1; }
+  .banner { margin: 0 28px 12px; padding: 10px 14px; border: 1px solid var(--attention); border-radius: 8px; background: var(--attention-bg); color: var(--ink); font-size: 13px; line-height: 19px; font-weight: 550; flex-shrink: 0; }
+  main.stale .view { filter: saturate(.3); }
   main { flex: 1; min-height: 0; position: relative; }
   .view { height: 100%; overflow: auto; overscroll-behavior: contain; scrollbar-color: var(--strong-line) transparent; }
   #graph-panel { display: flex; cursor: grab; user-select: none; }
@@ -146,6 +149,7 @@
     .appbar { gap: 16px; padding-inline: 20px; }
     .project-name { display: none; }
     .workspacebar { padding-inline: 20px; gap: 12px; }
+    .banner { margin-inline: 20px; }
     .search { width: 210px; }
     .agent-row { grid-template-columns: 205px minmax(0, 1fr); gap: 24px; }
     .agent-tasks .task-unit { width: 262px; }
@@ -159,6 +163,7 @@
     .theme-switch { margin-left: auto; }
     .theme-button { padding-inline: 8px; }
     .workspacebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 18px 16px 14px; gap: 14px 10px; }
+    .banner { margin-inline: 16px; }
     .workspace-title { width: auto; margin: 0; }
     h1 { font-size: 20px; }
     .workspace-subtitle { font-size: 12px; }
