@@ -181,6 +181,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if err := validateCommandFlags(cmd, seen); err != nil {
 		return err
 	}
+	if !herdrSupported && (isHerdrCommand(cmd) || seen["herdr-executable"]) {
+		return invalid("Herdr is not supported on Windows; a-stack works without it, and Task mail reaches Agents through mail check")
+	}
 	if err := checkIDs(seen, lifecycle, tasks); err != nil {
 		return err
 	}
