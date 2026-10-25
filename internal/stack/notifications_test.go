@@ -51,12 +51,18 @@ func TestHerdrExecutableHelper(t *testing.T) {
 	}
 	_ = json.NewEncoder(f).Encode(fakeHerdrCall{Args: args, Env: os.Environ()})
 	f.Close()
-	if len(args) == 1 && args[0] == "--version" {
-		if config.Mode == "version" {
-			fmt.Println("herdr 9.9.9")
-		} else {
-			fmt.Println(herdrVersion)
+	if len(args) == 3 && args[0] == "status" && args[1] == "server" && args[2] == "--json" {
+		// The release string is not checked; the protocol and compatibility are.
+		status := map[string]any{"status": "running", "running": true, "version": "9.9.9", "protocol": herdrProtocol, "compatible": true, "endpoint_compatible": true, "socket": "must-not-be-retained"}
+		switch config.Mode {
+		case "version":
+			status["protocol"] = herdrProtocol + 1
+		case "incompatible":
+			status["endpoint_compatible"] = false
+		case "not_running":
+			status = map[string]any{"status": "not_running", "running": false, "protocol": nil}
 		}
+		_ = json.NewEncoder(os.Stdout).Encode(status)
 		os.Exit(0)
 	}
 	if len(args) >= 3 {
@@ -354,7 +360,7 @@ func TestNotificationsPreinputBackoffAndUncertain(t *testing.T) {
 	}
 }
 func TestNotificationsUnavailableMetadataAndVersion(t *testing.T) {
-	for _, mode := range []string{"mismatch", "alias_reused", "pane_changed", "native_changed", "kind_changed", "missing", "malformed", "large", "version", "blocked-state", "unknown", "stopped", "unsupported", "incomplete", "absent"} {
+	for _, mode := range []string{"mismatch", "alias_reused", "pane_changed", "native_changed", "kind_changed", "missing", "malformed", "large", "version", "incompatible", "not_running", "blocked-state", "unknown", "stopped", "unsupported", "incomplete", "absent"} {
 		t.Run(mode, func(t *testing.T) {
 			f := noticeTestFixture(t)
 			f.config.Mode = mode
@@ -773,12 +779,15 @@ func TestNotificationsProductionHarnessSupportPredicate(t *testing.T) {
 		kind, version string
 		want          bool
 	}{
-		{"codex", "0.164.0", true}, {"codex", "0.164.1", false}, {"codex", "0.163.0", false}, {"codex", "0.164.0-dev", false}, {"codex", "", false}, {"pi", "0.164.0", false}, {"claude", "0.164.0", false}, {"Codex", "0.164.0", false}, {"unknown", "0.164.0", false},
+		// The verified minor line from the fixture version up, nothing else.
+		{"codex", "0.164.0", true}, {"codex", "0.164.1", true}, {"codex", "0.164.27", true}, {"codex", "0.165.0", false}, {"codex", "1.164.0", false},
+		{"codex", "0.163.9", false}, {"codex", "0.164.0-dev", false}, {"codex", "0.164", false}, {"codex", "0.164.01", false}, {"codex", "v0.164.0", false},
+		{"codex", "0.164.0.1", false}, {"codex", "", false}, {"pi", "0.164.0", false}, {"claude", "0.164.0", false}, {"Codex", "0.164.0", false}, {"unknown", "0.164.0", false},
 	} {
 		t.Run(test.kind+"/"+test.version, func(t *testing.T) {
 			binding := RuntimeBinding{Harness: test.kind, HarnessVersion: test.version}
 			if verifiedHarness(binding) != test.want || newHerdr("unused").verified(binding) != test.want {
-				t.Fatal("production support widened beyond verified exact pair")
+				t.Fatal("production support differs from the verified minor line")
 			}
 		})
 	}
@@ -787,7 +796,7 @@ func TestNotificationsProductionHarnessSupportPredicate(t *testing.T) {
 	if reason := f.n.adapter.verify(ctx, f.config.Binding); reason != "" {
 		t.Fatal("verified production combination rejected", reason)
 	}
-	for _, pair := range [][2]string{{"codex", "0.164.1"}, {"pi", "0.164.0"}, {"unknown", "0.164.0"}, {"codex", ""}} {
+	for _, pair := range [][2]string{{"codex", "0.165.0"}, {"pi", "0.164.0"}, {"unknown", "0.164.0"}, {"codex", ""}} {
 		binding := f.config.Binding
 		binding.Harness, binding.HarnessVersion = pair[0], pair[1]
 		before := len(f.calls(t))

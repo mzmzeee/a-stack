@@ -44,8 +44,9 @@ def private_json(path, value):
 
 def fake_herdr(config_path, args):
     config = json.loads(Path(config_path).read_text())
-    if args == ['--version']:
-        print('herdr 0.9.5')
+    if args == ['status', 'server', '--json']:
+        print(json.dumps({'status': 'running', 'running': True, 'version': '0.9.5', 'protocol': 22,
+                          'compatible': True, 'endpoint_compatible': True}))
         return 0
     if args[:2] == ['agent', 'get'] and len(args) == 3:
         target_key = 'herdr_alias'

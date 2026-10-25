@@ -12,11 +12,19 @@ To turn on notices, start the service with an installed Herdr executable:
 
 Without this flag, notices are off and mail works as usual. If the integration data is missing or not supported, the notices stay pending with a diagnostic, and a-stack tries again with a bounded backoff. Mail and Task updates still work. a-stack configures no accounts, no background agent launcher and no global Herdr settings.
 
-## Supported combination
+## Supported combinations
 
-Only one combination is turned on: native Codex 0.164.0 with Herdr 0.9.5. It was verified on 2026-10-24 in a dedicated, disposable Linux fixture. The fixture had Herdr client and server 0.9.5 with protocol 22, and the actual native `/status` (gpt-6.1-sol, OpenAI, xhigh, Full Access) through the existing oc/YOLO launcher.
+Notices are turned on for a harness only after a native fixture showed how it queues input. A harness release in the same minor line, from the verified version up, is accepted too:
 
-All other harnesses, unknown versions and even other Codex patch versions stay mail-only. A test-only fixture service allows one exact disposable binding, for isolated checks. Production delivery always needs the complete identity checks below.
+| Harness | Accepted versions | Verified with |
+| --- | --- | --- |
+| Codex | 0.164.0 up to, not including, 0.165 | native Codex 0.164.0, 2026-10-24 ([fixture](#native-codex-fixture)) |
+
+Herdr is accepted when its running server reports private protocol 22, the protocol of Herdr 0.9.5 that the fixtures used, and says that the CLI and the endpoint are compatible (`herdr status server --json`). a-stack does not compare the Herdr release string.
+
+All other harnesses, versions outside these lines and other Herdr protocols stay mail-only. A Codex 0.165 needs a new fixture run before it gets notices. A test-only fixture service allows one exact disposable binding, for isolated checks. Production delivery always needs the complete identity checks below.
+
+The Codex fixture had Herdr client and server 0.9.5 with protocol 22, and the actual native `/status` (gpt-6.1-sol, OpenAI, xhigh, Full Access) through the existing oc/YOLO launcher.
 
 ## Enroll a recipient
 
@@ -40,8 +48,8 @@ Record these values from the real running Agent. Do not guess them, and do not c
 Before a delivery, the adapter checks all of these:
 
 - All binding fields are present.
-- The declared harness and version are the supported pair.
-- The Herdr CLI is version 0.9.5.
+- The declared harness and version are in a supported line.
+- The Herdr server at the recorded endpoint is running, reports protocol 22, and is compatible with the CLI.
 - Herdr's current metadata matches the alias, pane, terminal, harness, and the native session ID and its source.
 
 A target in the state Working, Idle or Done accepts normal queued input. A target that is Blocked, Unknown, stopped, missing or changed does not. a-stack does not wait for the target to be idle.
@@ -50,7 +58,7 @@ Herdr's `agent get` does not report the harness version. So `harness_version` is
 
 ## How a-stack calls Herdr
 
-The service sets `HERDR_SOCKET_PATH` to the recorded endpoint, and it passes the target explicitly in the arguments. It does not pass on inherited Herdr session, pane or machine selectors or unrelated credential variables. Each command is an argument array: the version check, a scoped `agent get`, and `agent prompt PANE NOTICE`. Each process has a deadline of five seconds. Herdr 0.9.5 allows its CLI `--timeout` only together with `--wait`, so a normal submission uses neither flag.
+The service sets `HERDR_SOCKET_PATH` to the recorded endpoint, and it passes the target explicitly in the arguments. It does not pass on inherited Herdr session, pane or machine selectors or unrelated credential variables. Each command is an argument array: the server check `status server --json`, a scoped `agent get`, and `agent prompt PANE NOTICE`. Each process has a deadline of five seconds. Herdr 0.9.5 allows its CLI `--timeout` only together with `--wait`, so a normal submission uses neither flag.
 
 The notice is always this fixed text:
 
