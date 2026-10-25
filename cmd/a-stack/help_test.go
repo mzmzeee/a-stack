@@ -119,7 +119,7 @@ func TestHelpJSONStaysCompatible(t *testing.T) {
 	}
 	old := []string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}
 	old = append(append(append(old, lifecycleCommands...), taskCommands...), mailCommands...)
-	if len(help.Data.Commands) != len(old)+4 || strings.Join(help.Data.Commands[:len(old)], ",") != strings.Join(old, ",") || strings.Join(help.Data.Commands[len(old):], ",") != "new,skill install,skill uninstall,update" {
+	if len(help.Data.Commands) != len(old)+7 || strings.Join(help.Data.Commands[:len(old)], ",") != strings.Join(old, ",") || strings.Join(help.Data.Commands[len(old):], ",") != "new,skill install,skill uninstall,update,service install,service uninstall,service status" {
 		t.Fatalf("commands changed: %v", help.Data.Commands)
 	}
 	added := map[string]bool{"-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true}

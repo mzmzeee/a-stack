@@ -32,6 +32,9 @@ var helpGroups = []helpGroup{
 		{"health", "", "Check the running service"},
 		{"version", "", "Print the version"},
 		{"update", "", "Install the latest release in place of this binary"},
+		{"service install", "", "Keep the service running with systemd"},
+		{"service uninstall", "", "Stop the systemd service and remove its unit"},
+		{"service status", "", "Show the systemd service, linger and health"},
 		{"storage status", "", "Show database and WAL sizes"},
 		{"storage backup", "", "Write a checked backup of the database"},
 	}},
@@ -156,7 +159,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "service install", "service uninstall", "service status")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string

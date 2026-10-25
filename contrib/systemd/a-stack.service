@@ -1,7 +1,8 @@
 # systemd user unit for the a-stack service (a-stack serve).
 #
 # It starts a-stack when your user manager starts and restarts it after a
-# crash. Install it as your own user, without sudo:
+# crash. a-stack service install writes it with the path of your binary and
+# starts it. To install it by hand, as your own user and without sudo:
 #
 #   mkdir -p ~/.config/systemd/user
 #   cp a-stack.service ~/.config/systemd/user/
