@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -590,7 +589,7 @@ func TestBootstrapInterruptedBeforeCredentialCommit(t *testing.T) {
 func TestReadOnlyStorageFailure(t *testing.T) {
 	service, _, c := startTest(t)
 	s := service.Store
-	db, err := sql.Open("sqlite3", (&url.URL{Scheme: "file", Path: s.path}).String()+"?mode=ro&_txlock=immediate&_busy_timeout=5000")
+	db, err := sql.Open("sqlite3", fileURI(s.path)+"?mode=ro&_txlock=immediate&_busy_timeout=5000")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -722,5 +721,22 @@ func TestStatementCacheStartsAfterMigrations(t *testing.T) {
 	}
 	if stats := s.db.Stats(); stats.OpenConnections != 1 || stats.MaxIdleClosed != 1 {
 		t.Fatalf("service did not reuse its one connection: %+v", stats)
+	}
+}
+
+func TestSQLiteURI(t *testing.T) {
+	for _, c := range []struct {
+		path    string
+		windows bool
+		want    string
+	}{
+		{"/home/me/.local/state/a-stack/state.db", false, "file:///home/me/.local/state/a-stack/state.db"},
+		{"/tmp/a b/50%/x?#.db", false, "file:///tmp/a%20b/50%25/x%3F%23.db"},
+		{`C:\Users\me\AppData\Local\a-stack\state.db`, true, "file:///C:/Users/me/AppData/Local/a-stack/state.db"},
+		{`D:\my state\#1\state.db`, true, "file:///D:/my%20state/%231/state.db"},
+	} {
+		if got := sqliteURI(c.path, c.windows); got != c.want {
+			t.Errorf("sqliteURI(%q) = %s, want %s", c.path, got, c.want)
+		}
 	}
 }
