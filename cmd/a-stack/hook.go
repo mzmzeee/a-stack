@@ -28,11 +28,13 @@ func isHookRun(args []string) bool {
 	return len(args) > 0 && args[0] == "hook" && (len(args) == 1 || strings.HasPrefix(args[1], "-"))
 }
 
-type hookFlags struct{ claude, codex bool }
+type hookFlags struct{ claude, codex, noStopGuard, noMailNudge bool }
 
 func (f *hookFlags) register(fs *flag.FlagSet) {
 	fs.BoolVar(&f.claude, "claude", false, "Only Claude Code (default: Claude Code and Codex)")
 	fs.BoolVar(&f.codex, "codex", false, "Only Codex (default: Claude Code and Codex)")
+	fs.BoolVar(&f.noStopGuard, "no-stop-guard", false, "Let the agent stop with a working Task that has no report")
+	fs.BoolVar(&f.noMailNudge, "no-mail-nudge", false, "Do not tell the agent about new Task mail after tool calls")
 }
 
 // hookTimeout bounds one hook run; the harness gets hookTimeoutSeconds.
@@ -51,13 +53,16 @@ var hookEvents = []struct{ event, matcher, state string }{
 
 type hookInput struct {
 	Event            string `json:"hook_event_name"`
+	SessionID        string `json:"session_id"`
 	Cwd              string `json:"cwd"`
 	NotificationType string `json:"notification_type"`
+	StopHookActive   bool   `json:"stop_hook_active"`
 }
 
 type hookIdentity struct {
 	state, credential, agent, runtimeID, worktree string
 	ref                                           stack.Context
+	noStopGuard, noMailNudge                      bool
 }
 
 // runHook handles one hook event. Any failure ends it silently: a hook must
@@ -84,11 +89,27 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 		if text, err := hookReminder(ctx, client, id); err == nil {
 			_, _ = io.WriteString(stdout, text)
 		}
+		if !id.noMailNudge {
+			hookMailNudge(ctx, client, id, in) // reads up to the newest mail
+		}
 		return
+	}
+	// The Stop guard blocks one stop at most: when the agent stops again
+	// right after, stop_hook_active is true.
+	if in.Event == "Stop" && !id.noStopGuard && !in.StopHookActive {
+		if reason, err := hookStopGuard(ctx, client, id); err == nil && reason != "" {
+			_ = json.NewEncoder(stdout).Encode(map[string]string{"decision": "block", "reason": reason})
+			return // the agent goes on, so its state stays working
+		}
 	}
 	for _, e := range hookEvents {
 		if e.event == in.Event && e.state != "" && (e.matcher == "" || e.matcher == in.NotificationType) && id.runtimeID != "" {
 			_ = hookObserve(ctx, client, id, e.state)
+		}
+	}
+	if (in.Event == "PostToolUse" || in.Event == "UserPromptSubmit") && !id.noMailNudge {
+		if text := hookMailNudge(ctx, client, id, in); text != "" {
+			_ = json.NewEncoder(stdout).Encode(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": in.Event, "additionalContext": text}})
 		}
 	}
 }
@@ -178,29 +199,38 @@ func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (s
 // assignedTasks reads the Session's assignments and returns the Agent's Tasks.
 func assignedTasks(ctx context.Context, client *stack.Client, ref stack.Context, agent string) (map[string]bool, error) {
 	mine := map[string]bool{}
-	request := stack.SnapshotPageRequest{Context: ref, Kind: "assignments", Limit: 100}
+	err := sessionPages(ctx, client, stack.SnapshotPageRequest{Context: ref, Kind: "assignments"}, func(a stack.Assignment) {
+		if a.AgentID == agent {
+			mine[a.TaskID] = true
+		}
+	})
+	return mine, err
+}
+
+// sessionPages reads every page of one session page kind, at one read
+// revision, and calls each for every item.
+func sessionPages[T any](ctx context.Context, client *stack.Client, request stack.SnapshotPageRequest, each func(T)) error {
+	request.Limit = 100
 	for {
 		data, err := client.Do(ctx, "POST", "/v1/session/page", request)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		var page struct {
 			Data struct {
-				ReadRevision int64              `json:"read_revision"`
-				Items        []stack.Assignment `json:"items"`
-				Next         string             `json:"next"`
+				ReadRevision int64  `json:"read_revision"`
+				Items        []T    `json:"items"`
+				Next         string `json:"next"`
 			} `json:"data"`
 		}
 		if json.Unmarshal(data, &page) != nil {
-			return nil, invalid("invalid service response")
+			return invalid("invalid service response")
 		}
-		for _, a := range page.Data.Items {
-			if a.AgentID == agent {
-				mine[a.TaskID] = true
-			}
+		for _, item := range page.Data.Items {
+			each(item)
 		}
 		if page.Data.Next == "" {
-			return mine, nil
+			return nil
 		}
 		request.After, request.ReadRevision = page.Data.Next, page.Data.ReadRevision
 	}
@@ -388,6 +418,12 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 	parts = append(parts, "--credential-file", shellQuote(id.credential), "--workspace", id.ref.WorkspaceID, "--session", id.ref.SessionID, "--agent", id.agent)
 	if id.runtimeID != "" {
 		parts = append(parts, "--runtime-id", shellQuote(id.runtimeID))
+	}
+	if h.flags.noStopGuard {
+		parts = append(parts, "--no-stop-guard")
+	}
+	if h.flags.noMailNudge {
+		parts = append(parts, "--no-mail-nudge")
 	}
 	parts = append(parts, "--worktree", shellQuote(id.worktree))
 	return strings.Join(parts, " "), nil
