@@ -18,7 +18,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
-const schemaVersion = 6
+const schemaVersion = 7
 const applicationID = 0x4153544b
 const migration1 = `
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -241,6 +241,14 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 			return storageError()
 		}
 	}
+	if version < 7 {
+		if _, err = tx.ExecContext(ctx, migration7); err != nil {
+			return storageError()
+		}
+		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=7"); err != nil {
+			return storageError()
+		}
+	}
 	if err = tx.Commit(); err != nil {
 		return storageError()
 	}
@@ -277,7 +285,11 @@ func IssueCapability(ctx context.Context, tx *sql.Tx, kind CapabilityKind, subje
 		return Credential{}, failure("invalid_input", "invalid credential scope")
 	}
 	c := Credential{Kind: kind, Token: opaqueID()}
-	_, err := tx.ExecContext(ctx, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id) VALUES(?,?,?,?)", tokenHash(c.Token), kind, subject, session)
+	var expires int64 // view tokens expire; Operator and Agent credentials do not
+	if kind == BrowserCapability {
+		expires = clockNow().Add(ViewTokenAge).Unix()
+	}
+	_, err := tx.ExecContext(ctx, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id,expires_at) VALUES(?,?,?,?,?)", tokenHash(c.Token), kind, subject, session, expires)
 	if err != nil {
 		return Credential{}, storageError()
 	}
@@ -290,8 +302,9 @@ func authenticate(ctx context.Context, q interface {
 	if !validToken(token) {
 		return p, failure("unauthorized", "valid bearer credential required")
 	}
-	err := q.QueryRowContext(ctx, "SELECT kind,subject_id,session_id FROM capabilities WHERE token_hash=?", tokenHash(token)).Scan(&p.Kind, &p.SubjectID, &p.SessionID)
-	if errors.Is(err, sql.ErrNoRows) {
+	var expires int64
+	err := q.QueryRowContext(ctx, "SELECT kind,subject_id,session_id,expires_at FROM capabilities WHERE token_hash=?", tokenHash(token)).Scan(&p.Kind, &p.SubjectID, &p.SessionID, &expires)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && expires != 0 && expires <= clockNow().Unix() {
 		return p, failure("unauthorized", "valid bearer credential required")
 	}
 	if err != nil {

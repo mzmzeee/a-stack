@@ -84,6 +84,8 @@ func acceptedFlags(command string) string {
 		allowed += "workspace session agent limit after "
 	case "notifications drain":
 		allowed += "workspace session limit "
+	case "view revoke":
+		allowed += "workspace session all "
 	case "open":
 		allowed += "workspace session no-browser "
 	case "storage backup":

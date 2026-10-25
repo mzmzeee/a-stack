@@ -473,7 +473,7 @@ class Bench:
         found = from_internal.search(r'const cycleCheckSQL = `(.*?)`', task_columns, from_internal.S)
         cycle_sql = found.group(1) if found else old_cycle_sql
         queries = {
-            'authenticate': ('SELECT kind,subject_id,session_id FROM capabilities WHERE token_hash=?', (tok,)),
+            'authenticate': ('SELECT kind,subject_id,session_id,expires_at FROM capabilities WHERE token_hash=?', (tok,)),
             'load_session': ('SELECT id,workspace_id,name,closed,orchestrator_id,revision,read_revision,graph_revision,created_at,updated_at FROM sessions WHERE id=?', (sess,)),
             'member_check': ('SELECT count(*) FROM agents WHERE id=? AND session_id=? AND workspace_id=?', (agent['id'], sess, self.workspace)),
             'task_in_session (taskColumns)': ('SELECT ' + cols + ' FROM tasks t WHERE t.id=? AND t.session_id=?', (task['id'], sess)),
@@ -800,7 +800,10 @@ class Bench:
     def load(self):
         a = self.args
         view = json.loads(self.cli(['open', '--workspace', self.workspace, '--session', self.session, '--no-browser', '--json'], self.op_file, 'operator')[2])['data']['url']
-        browser_token = urlsplit(view).fragment  # never printed
+        # Like app.js: trade the link's one-time code for a view token (never printed).
+        status, data, _ = self.api.raw('/v1/browser/redeem', {**self.ctx(self.session), 'code': urlsplit(view).fragment}, '')
+        assert status == 200, 'view link not redeemed'
+        browser_token = json.loads(data)['data']['token']
         calls_csv = (self.out / 'cli-calls.csv').open('w')
         calls_csv.write('level,worker,command,t,ms,rc,error,utime_ms,stime_ms\n')
         lock = threading.Lock()

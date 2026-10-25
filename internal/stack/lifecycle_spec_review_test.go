@@ -422,7 +422,7 @@ func TestLifecycleSpecPopulatedV1Upgrade(t *testing.T) {
 	if _, err := db.Exec("INSERT INTO metadata VALUES('database_id',?)", id); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec("PRAGMA user_version=1; PRAGMA application_id=1095980107; CREATE TABLE review_v1_effect(value)"); err != nil {
+	if _, err := db.Exec("PRAGMA user_version=1; PRAGMA application_id=1095980107; CREATE TABLE review_v1_effect(value);" + expiresStandIn); err != nil {
 		t.Fatal(err)
 	}
 	v1 := &Store{db: db, path: path, id: id}
@@ -445,6 +445,9 @@ func TestLifecycleSpecPopulatedV1Upgrade(t *testing.T) {
 	var version int
 	if err := db.QueryRow("PRAGMA user_version").Scan(&version); err != nil || version != 1 {
 		t.Fatal("fixture is not schema v1")
+	}
+	if _, err := db.Exec(dropExpires); err != nil {
+		t.Fatal(err)
 	}
 	if err := db.Close(); err != nil {
 		t.Fatal(err)

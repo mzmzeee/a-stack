@@ -10,9 +10,11 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 - Each Agent has a write budget, so a runaway loop cannot fill the disk. A change costs the size of its request; an Agent can spend 8 MiB at once and 1 MiB more a minute. Past that, a change gets the new error code `rate_limited` (HTTP 429, retryable) with `retry_after_seconds`. A replay of a committed operation ID and the Operator are never limited. In a rerun of the review's reproduction (16 parallel `mail send` loops with 64 KiB bodies from one Agent for 20 seconds), the Agent stored 13,835 messages (925 MB) before and 132 messages (8 MB) now; another Agent could still send.
 - `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
+- `a-stack view revoke --workspace ID --session ID` ends browser view access to one Session, and `--all` to every Session. Open tabs say that they lost access at their next refresh. Only the Operator can run it.
 
 ### Changed
 
+- Schema 7 adds an expiry to credentials and a table of unused view links. It deletes every existing browser credential, because their secrets are in browser histories. **After the upgrade, open views lose access once: run `a-stack` or `a-stack open` again.**
 - The Working status icon turns three times when a Task starts working, then stays still, and waits while the tab is hidden. An endless spin kept the browser busy: about 6.5% of a CPU core with 150 Tasks open.
 - `serve` runs SQLite `PRAGMA quick_check` before it says ready. On a damaged database it stops with exit code 4, names the database file and points to the restore steps. On a 940 MB database the check adds about 0.2 seconds to the start.
 - A state database with a newer or unknown schema also stops `serve` with exit code 4. The message names the schema version it found and the newest one it supports, and says how to get back: update a-stack, or restore a backup. The systemd unit now has `RestartPreventExitStatus=3 4`, so it does not restart in a loop. Download the unit again to get this.
@@ -32,6 +34,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 - Releases are signed. The release workflow signs `SHA256SUMS` with an Ed25519 key and uploads the raw signature as `SHA256SUMS.sig`. `a-stack update` checks it with the public key in the binary before it trusts the checksums, and the install script checks it with OpenSSL 3 when it is installed. For v0.1.5 and later, a missing or wrong signature stops the update or the install, and nothing changes. Older releases have no signature; they install with a warning, only when you name their version.
 - Every release file, `install.sh` included, has a build provenance attestation. The install guide shows how to check a file with `gh attestation verify` and the signature with `openssl`.
+- Only the Operator can open the browser view. `open` with an Agent credential fails with `forbidden`. Before, an Agent could open a view and read the Task mail of Tasks it was not assigned to.
+- A view link works once, within 60 seconds. The page trades the code in its fragment for a view token, which it keeps for the tab, so a reload works. Opening the same link again shows that it expired. A view token works for 30 days. Each new link deletes the expired links and view tokens. `a-stack`, `a-stack -r`, `a-stack new` and `open` print or open a fresh link as before.
 
 ## [0.1.4] - 2026-10-25
 

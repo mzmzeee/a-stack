@@ -288,10 +288,13 @@ class Run:
         return path
 
     def browser(self):
-        view = self.cli('open', *self.context, '--no-browser')['url']
+        # Like app.js, trade a view link's one-time code for a view token. The
+        # redeem endpoint ignores the Operator bearer that api() sends. The
+        # returned link is a second, unused one.
+        code = urlsplit(self.cli('open', *self.context, '--no-browser')['url']).fragment
         credential = self.credentials / 'browser.json'
-        private_json(credential, {'kind': 'browser', 'token': urlsplit(view).fragment})
-        return {'kind': 'browser', 'file': credential}, view
+        private_json(credential, {'kind': 'browser', 'token': self.data('/v1/browser/redeem', {'code': code})['token']})
+        return {'kind': 'browser', 'file': credential}, self.cli('open', *self.context, '--no-browser')['url']
 
 
 @contextlib.contextmanager

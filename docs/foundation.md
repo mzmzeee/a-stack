@@ -29,7 +29,7 @@ There are three kinds of credentials:
 
 - The Operator credential manages Workspaces, Sessions and Agents.
 - An Agent credential belongs to one registered Agent in one Session.
-- A browser credential gives read-only access to one Session. See [Browser view](browser.md).
+- A browser credential, or view token, gives read-only access to one Session for 30 days. Only the Operator makes one, through a one-time view link. See [Keep the URL private](browser.md#keep-the-url-private).
 
 On the first start, the service writes `operator.json` privately and durably. Only then does it store the token hash. If the service crashes between these two steps, the next start uses the same file. After that, if `operator.json` is missing, unsafe or does not match, the service does not start. It never makes a replacement. Keep a copy of the original Operator credential with your backups. Only that original file can recover Operator access.
 
@@ -74,7 +74,7 @@ The CLI never retries a request automatically. Client commands stop normally on 
 
 ## HTTP rules
 
-The service listens only on `127.0.0.1`. Every data request needs the instance ID and a bearer token. The `Host` header must match the bound address. If a request has an `Origin` header, it must match the service URL. The service has no cross-origin access, and it rejects query parameters, so a token can never be in a query string. Clients do not follow redirects and do not use proxy settings from the environment.
+The service listens only on `127.0.0.1`. Every data request needs the instance ID and a bearer token, except `POST /v1/browser/redeem`, which trades the one-time code of a view link for a view token. The `Host` header must match the bound address. If a request has an `Origin` header, it must match the service URL. The service has no cross-origin access, and it rejects query parameters, so a token can never be in a query string. Clients do not follow redirects and do not use proxy settings from the environment.
 
 A browser credential can use only the Session read endpoints and `POST /v1/mail/read` for the Tasks of its Session. It cannot use the `health` or `storage` endpoints. An Agent credential can use `health`, but it cannot read storage status or make backups.
 
@@ -115,6 +115,7 @@ Each schema version added one area:
 4. [Task mail and mention references](mail.md).
 5. [Notice batches and bounded retry diagnostics](notifications.md).
 6. [Archived Tasks and Operator entries in the Task history](tasks.md#archived-tasks).
+7. [One-time view links and expiring view tokens](browser.md#keep-the-url-private). It deletes the older browser credentials.
 
 A storage error returns `storage_unavailable`. A failed commit never returns a successful receipt. If the connection drops during a commit, the outcome is unknown, so the caller must retry with the same operation ID. The CLI marks this case `retryable: true`: when the service is not running, cannot be reached, or the response was cut off.
 
@@ -122,7 +123,7 @@ A storage error returns `storage_unavailable`. A failed commit never returns a s
 
 ## Operation IDs and receipts
 
-Commands that change records take an `--operation-id` of 8 to 128 ASCII letters, digits, underscores or hyphens. (`open` makes its own operation ID. `agent observe` and `storage backup` take none.) The service stores a compact receipt for each change, under the actor's kind and subject and the operation ID.
+Commands that change records take an `--operation-id` of 8 to 128 ASCII letters, digits, underscores or hyphens. (`open` makes its own operation ID. `agent observe`, `storage backup` and `view revoke` take none.) The service stores a compact receipt for each change, under the actor's kind and subject and the operation ID.
 
 - A retry with the same ID and the same payload returns the exact receipt that was committed. It has no new effect.
 - A retry with the same ID but a different name, scope or payload returns only `operation_conflict`. A conflict never returns saved IDs, bodies or receipt data.

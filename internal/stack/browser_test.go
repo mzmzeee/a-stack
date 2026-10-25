@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -15,16 +14,9 @@ func TestBrowserDelegationAssetsAndConditionalRead(t *testing.T) {
 	f := tasksFixture(t)
 	webClient := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
 	f.create(t, "<script>untrusted</script>")
-	client := clientForCredential(t, f, f.a)
-	view, err := client.BrowserURL(ctx, f.ref(0))
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, err := url.Parse(view)
-	if err != nil || !validToken(u.Fragment) || u.RawQuery != "" {
-		t.Fatal("invalid view URL")
-	}
-	secret := u.Fragment
+	client := clientForCredential(t, f, f.operator)
+	u, secret := viewTest(t, f, f.ref(0))
+	code := u.Fragment
 	u.Fragment = ""
 	browser := clientForCredential(t, f, Credential{Kind: BrowserCapability, Token: secret})
 	// A shell is public but contains neither data nor credentials.
@@ -34,7 +26,7 @@ func TestBrowserDelegationAssetsAndConditionalRead(t *testing.T) {
 	}
 	body, _ := io.ReadAll(response.Body)
 	response.Body.Close()
-	if response.StatusCode != 200 || !bytes.Contains(body, []byte("/assets/app.js")) || bytes.Contains(body, []byte(secret)) || bytes.Contains(body, []byte("untrusted")) || !strings.Contains(response.Header.Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+	if response.StatusCode != 200 || !bytes.Contains(body, []byte("/assets/app.js")) || bytes.Contains(body, []byte(secret)) || bytes.Contains(body, []byte(code)) || bytes.Contains(body, []byte("untrusted")) || !strings.Contains(response.Header.Get("Content-Security-Policy"), "frame-ancestors 'none'") {
 		t.Fatal("unsafe or unusable embedded shell")
 	}
 	for _, path := range []string{"/assets/app.js", "/assets/app.css"} {
@@ -44,7 +36,7 @@ func TestBrowserDelegationAssetsAndConditionalRead(t *testing.T) {
 		}
 		b, _ := io.ReadAll(r.Body)
 		r.Body.Close()
-		if r.StatusCode != 200 || len(b) == 0 || bytes.Contains(b, []byte(secret)) || bytes.Contains(b, []byte(f.operator.Token)) {
+		if r.StatusCode != 200 || len(b) == 0 || bytes.Contains(b, []byte(secret)) || bytes.Contains(b, []byte(code)) || bytes.Contains(b, []byte(f.operator.Token)) {
 			t.Fatal("asset exposure")
 		}
 	}
@@ -123,8 +115,16 @@ func TestBrowserDelegationAssetsAndConditionalRead(t *testing.T) {
 	requireCode(t, err, "forbidden")
 	_, err = browser.Do(ctx, "POST", "/v1/mail/list", f.ref(0))
 	requireCode(t, err, "forbidden")
-	_, err = client.BrowserURL(ctx, f.ref(1))
-	requireCode(t, err, "forbidden")
+	// The view link is used up, and only the Operator opens views.
+	if status, _ := redeemTest(t, f, Context{f.workspace, f.sessions[0]}, code); status != 401 {
+		t.Fatal("a view link worked twice", status)
+	}
+	for _, agent := range []Credential{f.orch, f.a} {
+		for i := range 2 {
+			_, err = clientForCredential(t, f, agent).BrowserURL(ctx, f.ref(i))
+			requireCode(t, err, "forbidden")
+		}
+	}
 	// Closing a Session preserves reads and permits a fresh read-only URL.
 	_, err = f.service.Store.ChangeSession(ctx, f.operator.Token, "close", SessionChangeRequest{Context: f.ref(0), OperationID: opaqueID(), ExpectedRevision: 2})
 	if err != nil {
@@ -135,7 +135,7 @@ func TestBrowserDelegationAssetsAndConditionalRead(t *testing.T) {
 	}
 	// Secret never reaches a retained operation payload or receipt.
 	var count int
-	if err = f.service.Store.db.QueryRow("SELECT count(*) FROM operation_receipts WHERE instr(outcome,?)>0 OR instr(body_ref,?)>0", secret, secret).Scan(&count); err != nil || count != 0 {
+	if err = f.service.Store.db.QueryRow("SELECT count(*) FROM operation_receipts WHERE instr(outcome,?)>0 OR instr(body_ref,?)>0 OR instr(outcome,?)>0", secret, secret, code).Scan(&count); err != nil || count != 0 {
 		t.Fatal("secret retained in operation")
 	}
 }
@@ -144,16 +144,18 @@ func TestBrowserCapabilityReplayAndPreviewBoundary(t *testing.T) {
 	f := tasksFixture(t)
 	s := f.service.Store
 	q := BrowserOpenRequest{Context: f.ref(0), OperationID: opaqueID(), CredentialHash: tokenHash(opaqueID())}
-	a, err := s.OpenBrowser(ctx, f.a.Token, q)
+	a, err := s.OpenBrowser(ctx, f.operator.Token, q)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := s.OpenBrowser(ctx, f.a.Token, q)
+	b, err := s.OpenBrowser(ctx, f.operator.Token, q)
 	if err != nil || a != b {
 		t.Fatal("browser delegation replay")
 	}
-	q.CredentialHash = tokenHash(opaqueID())
 	_, err = s.OpenBrowser(ctx, f.a.Token, q)
+	requireCode(t, err, "forbidden")
+	q.CredentialHash = tokenHash(opaqueID())
+	_, err = s.OpenBrowser(ctx, f.operator.Token, q)
 	requireCode(t, err, "operation_conflict")
 	task := f.create(t, "Preview boundary")
 	f.change(t, f.orch.Token, "assign", TaskChangeRequest{TaskID: task.ResourceID, ExpectedRevision: 1, AgentID: f.aID})
