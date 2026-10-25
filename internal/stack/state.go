@@ -178,10 +178,15 @@ const LaunchdLabel = "dev.a-stack"
 
 // ServiceCommand is the shell command that does verb (start, stop or
 // restart) to the service that a-stack service install set up: the systemd
-// user unit on Linux, the launchd agent on macOS. On macOS, stop sends
+// user unit on Linux, the launchd agent on macOS, the Task Scheduler task on
+// Windows. On Windows, the task starts a stopped serve again within a
+// minute; restart is two commands for PowerShell. On macOS, stop sends
 // SIGTERM; serve then exits with 0, and launchd starts it again only after
 // a failure.
 func ServiceCommand(verb string) string {
+	if runtime.GOOS == "windows" {
+		return map[string]string{"start": "schtasks /Run /TN a-stack", "stop": "schtasks /End /TN a-stack", "restart": "schtasks /End /TN a-stack; schtasks /Run /TN a-stack"}[verb]
+	}
 	if runtime.GOOS == "darwin" {
 		action := map[string]string{"start": "kickstart", "stop": "kill TERM", "restart": "kickstart -k"}[verb]
 		return "launchctl " + action + " gui/" + strconv.Itoa(os.Getuid()) + "/" + LaunchdLabel

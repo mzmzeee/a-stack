@@ -65,6 +65,10 @@ var (
 		if runtime.GOOS == "darwin" {
 			return launchdState(stack.LaunchdLabel) == "running"
 		}
+		if runtime.GOOS == "windows" {
+			_, ok := queryTask("a-stack")
+			return ok
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return exec.CommandContext(ctx, "systemctl", "--user", "is-active", "--quiet", "a-stack").Run() == nil

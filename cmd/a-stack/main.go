@@ -242,9 +242,18 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		if credential != "" || kind != "" {
 			return invalid("serve initializes its state Operator credential; credential selection applies to client commands")
 		}
-		return serveForeground(ctx, state, listen, herdrExecutable, func(_ context.Context, service *stack.Service) error {
+		log := detachConsole(state)
+		if log != nil {
+			defer log.Close()
+			stdout = log
+		}
+		err := serveForeground(ctx, state, listen, herdrExecutable, func(_ context.Context, service *stack.Service) error {
 			return json.NewEncoder(stdout).Encode(readyLine(service))
 		})
+		if err != nil && log != nil {
+			writeError(log, err)
+		}
+		return err
 	}
 	if isWatchCommand(cmd) {
 		connect := func() (*stack.Client, error) { return stack.NewClient(state, credential, stack.CapabilityKind(kind)) }
