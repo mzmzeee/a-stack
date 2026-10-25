@@ -349,6 +349,9 @@ func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row 
 		"Work in: " + h.cwd,
 		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register an Agent for each Task that you hand out and brief each Agent.",
 	}, "\n")
+	if session, err := inspectSession(ctx, client, stack.Context{WorkspaceID: row.WorkspaceID, SessionID: row.SessionID}); err == nil && session.StandingOrders != nil {
+		brief += "\n" + strings.TrimSuffix(ordersReminder(session.StandingOrders, "me"), "\n")
+	}
 	fields["orchestrator_id"], fields["orchestrator_credential_file"], fields["brief"] = id, credential, brief
 	if h.noBrowser {
 		// Often a coding agent runs this, so no view secret enters its context.

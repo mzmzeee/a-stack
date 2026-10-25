@@ -132,9 +132,13 @@ func (s *Store) InspectSession(ctx context.Context, token string, ref Context) (
 		return Session{}, failure("forbidden", "browser views use Session snapshot endpoints")
 	}
 	session, err := ReadSession(ctx, tx, p, ref)
-	if err == nil && p.Kind == AgentCapability {
+	if err != nil {
+		return session, err
+	}
+	if p.Kind == AgentCapability {
 		session.YourAgentID = p.SubjectID
 	}
+	session.StandingOrders, err = sessionOrders(ctx, tx, session.WorkspaceID)
 	return session, err
 }
 
@@ -192,6 +196,10 @@ func (s *Service) lifecycleHTTP(w http.ResponseWriter, r *http.Request, token st
 		request = &Context{}
 	case "/v1/session/close", "/v1/session/reopen", "/v1/session/appoint":
 		request = &SessionChangeRequest{}
+	case "/v1/workspace/orders/show":
+		request = &ordersRead{}
+	case "/v1/workspace/orders/set", "/v1/workspace/orders/clear":
+		request = &OrdersRequest{}
 	case "/v1/agent/register":
 		request = &AgentRegisterRequest{}
 	case "/v1/agent/attach", "/v1/agent/rebind":
@@ -218,6 +226,11 @@ func (s *Service) lifecycleHTTP(w http.ResponseWriter, r *http.Request, token st
 		data, err = s.Store.CreateSession(r.Context(), token, *request)
 	case *Context:
 		data, err = s.Store.InspectSession(r.Context(), token, *request)
+	case *ordersRead:
+		data, err = s.Store.ReadOrders(r.Context(), token, Context(*request))
+	case *OrdersRequest:
+		request.Clear = r.URL.Path == "/v1/workspace/orders/clear"
+		data, err = s.Store.ChangeOrders(r.Context(), token, *request)
 	case *ListRequest:
 		action := "workspace.list"
 		if r.URL.Path == "/v1/session/list" {

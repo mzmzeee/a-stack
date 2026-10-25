@@ -8,7 +8,8 @@ Each command prints `{"data": ...}` on stdout. A change returns a receipt: `data
 
 | Command | What you get |
 | --- | --- |
-| `me session inspect` | `data.revision`, `data.graph_revision`, `data.orchestrator_id`, `data.closed`, and your own Agent ID in `data.your_agent_id` |
+| `me session inspect` | `data.revision`, `data.graph_revision`, `data.orchestrator_id`, `data.closed`, your own Agent ID in `data.your_agent_id`, and the Operator's standing orders in `data.standing_orders.body` when there are some |
+| `me workspace orders show` | The standing orders of your Workspace as `data.body` (empty when there are none) |
 | `me session snapshot --known-revision 12` | Counts of Tasks, Agents, dependencies and assignments, or `unchanged: true` if `read_revision` is still 12 |
 | `me agent list` | `data.items[]` with each Agent's `id` and `name`; find your own ID here |
 | `me task list` | `data.items[]` with `id`, `title`, `progress`, `revision`, `unassigned`, `needs_you`, `prerequisite_count`, `quiet` (Working, but no change and no Task mail for 30 minutes) |

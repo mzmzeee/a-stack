@@ -52,6 +52,10 @@ A script keeps working in shells that forget functions between commands. Write i
 
 If `HERDR_PANE_ID` is set in your shell, bind yourself to your pane once, so that a mention can reach you as a short notice: `me herdr bind --agent YOUR_AGENT_ID --expected-revision 1 --operation-id 02-worker-bind-1`. `me session inspect` shows your Agent ID as `your_agent_id`. If it fails with `integration_missing`, tell the Operator the `herdr integration install` command from the message; do not run it yourself. A `conflict` that says the binding is established means you are already bound. Mail works the same without a binding.
 
+## Standing orders
+
+The Operator can give standing orders for the whole Workspace, such as how to sign commits or what never to change. They override your own defaults and your harness's memory, and they apply to every Task. Read them when you start and after a compaction: `me session inspect` shows them as `standing_orders.body` (left out when there are none), and `me workspace orders show` shows them alone. The a-stack hooks also put their first lines in your context. Only the Operator changes them. If your brief contradicts them, ask the one who briefed you.
+
 ## Work loop
 
 Do this for each of your Tasks. `T` is the Task ID, `02-worker` stands for your name, and `R` is the Task's revision (see Rules).

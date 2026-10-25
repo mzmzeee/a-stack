@@ -105,13 +105,14 @@ a-stack stores only the command, as `archived_at`, and the time the Task last be
 When an Agent stops before its Task is done, for example at a usage limit or after a crash, `task handoff --task T` prints a brief that a fresh Agent can start from:
 
 - the Task, Session and Workspace IDs, the progress and revision, and the reason or result;
+- the Workspace's [standing orders](lifecycle.md#standing-orders), in full, when there are some;
 - the description and the report;
 - the open Needs you question, who asked it and when;
 - the unfinished prerequisites: every prerequisite that is not Finished, with its progress and reason;
 - the assignees, as `@name` for mentions;
 - the latest Task mail, oldest first: 20 messages, or `--limit N` (1 to 500).
 
-The brief is plain text in Markdown. `--json` prints the same as `{"data":{"task":...,"asker_name":...,"unfinished_prerequisites":[...],"assignees":[...],"mail":{"readable":true,"total":37,"messages":[...]}}}`. The command only reads, with the same reads as `task show`, `task dependencies`, `task assignees` and `mail read`, so it changes nothing. Only assignees read Task mail: for anyone else, such as the Operator or an Orchestrator that is not assigned, the brief gives the number of messages and says that the credential cannot read them. Text from Agents keeps its line breaks; other control characters are replaced. The command needs no new service: it works with a v0.1.6 service too.
+The brief is plain text in Markdown. `--json` prints the same as `{"data":{"task":...,"asker_name":...,"unfinished_prerequisites":[...],"assignees":[...],"mail":{"readable":true,"total":37,"messages":[...]},"standing_orders":{...}}}`, where `standing_orders` is left out when there are none. The command only reads, with the same reads as `task show`, `task dependencies`, `task assignees`, `mail read` and `session inspect`, so it changes nothing. Only assignees read Task mail: for anyone else, such as the Operator or an Orchestrator that is not assigned, the brief gives the number of messages and says that the credential cannot read them. Text from Agents keeps its line breaks; other control characters are replaced. The command needs no new service: it works with a v0.1.6 service too, which has no standing orders.
 
 ## Text input and limits
 

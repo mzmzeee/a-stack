@@ -67,6 +67,9 @@ type Session struct {
 	UpdatedAt      string  `json:"updated_at"`
 	// YourAgentID is the calling Agent, set only by session inspect.
 	YourAgentID string `json:"your_agent_id,omitempty"`
+	// StandingOrders are the Workspace's standing orders, set only by
+	// session inspect and the snapshot, and only when there are some.
+	StandingOrders *StandingOrders `json:"standing_orders,omitempty"`
 }
 type Agent struct {
 	ID              string `json:"id"`

@@ -15,11 +15,12 @@ import (
 // over a Task. It only reads, with the caller's credential, through the same
 // endpoints as task show, task dependencies, task assignees and mail read.
 type handoff struct {
-	Task          stack.TaskDetail   `json:"task"`
-	AskerName     string             `json:"asker_name,omitempty"`
-	Prerequisites []handoffTask      `json:"unfinished_prerequisites"`
-	Assignees     []stack.Assignment `json:"assignees"`
-	Mail          handoffMail        `json:"mail"`
+	Task          stack.TaskDetail      `json:"task"`
+	AskerName     string                `json:"asker_name,omitempty"`
+	Prerequisites []handoffTask         `json:"unfinished_prerequisites"`
+	Assignees     []stack.Assignment    `json:"assignees"`
+	Mail          handoffMail           `json:"mail"`
+	Orders        *stack.StandingOrders `json:"standing_orders,omitempty"`
 	workspace     string
 }
 type handoffTask struct {
@@ -93,6 +94,11 @@ func taskHandoff(ctx context.Context, client *stack.Client, l lifecycleFlags, f 
 	if err != nil {
 		return err
 	}
+	session, err := inspectSession(ctx, client, ref)
+	if err != nil {
+		return err
+	}
+	h.Orders = session.StandingOrders
 	if machine {
 		return json.NewEncoder(stdout).Encode(map[string]any{"data": h})
 	}
@@ -147,6 +153,9 @@ func (h handoff) text() string {
 	}
 	if t.Quiet {
 		b.WriteString("Quiet: no change and no Task mail for " + quietText() + " or more\n")
+	}
+	if h.Orders != nil {
+		section(&b, "Standing orders", "The Operator's rules for every Agent of the Workspace. They override your own defaults.\n\n"+h.Orders.Body, "")
 	}
 	section(&b, "Description", t.Description, "(none)")
 	section(&b, "Report", t.Report, "(no report yet)")

@@ -151,6 +151,9 @@ func (s *Store) Snapshot(ctx context.Context, token string, r SnapshotRequest) (
 		return SessionSnapshot{}, storageError(err)
 	}
 	snapshot.Counts = counts
+	if snapshot.Session.StandingOrders, err = sessionOrders(ctx, tx, session.WorkspaceID); err != nil {
+		return SessionSnapshot{}, err
+	}
 	return snapshot, nil
 }
 func (s *Store) ShowTask(ctx context.Context, token string, r TaskReadRequest) (TaskDetail, error) {

@@ -2,7 +2,7 @@
 
 Claude Code, Codex and Pi can run a command on events in an agent's session; Pi does it through an a-stack extension. `a-stack hook install` adds such hooks for one Agent. They do four things:
 
-- When a session starts, resumes, is cleared or is compacted, the agent gets a short reminder in its context: its a-stack name and Session, how to run a-stack as itself, its open Tasks with their status, and to run `mail check`. So the agent keeps the a-stack protocol after a compaction.
+- When a session starts, resumes, is cleared or is compacted, the agent gets a short reminder in its context: its a-stack name and Session, how to run a-stack as itself, its open Tasks with their status, to run `mail check`, and the Workspace's [standing orders](lifecycle.md#standing-orders) (the first 8 lines, and the command for the rest). So the agent keeps the a-stack protocol after a compaction.
 - The Agent's runtime state in the Operator's view follows the agent: `working` when you send a prompt and after each tool call, `blocked` when it waits for a permission or an input dialog, and `idle` when it stops.
 - The [Stop guard](#stop-guard) keeps the agent from stopping once while a Task that it set `working` has no report.
 - The [Task mail nudge](#task-mail-nudge) tells the agent when another assignee wrote Task mail, at most every 30 seconds.
