@@ -1,5 +1,6 @@
-// Package stack implements the local service foundation. It runs on Linux and
-// macOS; its advisory flock is held until the database closes.
+// Package stack implements the local service foundation. It runs on Linux,
+// macOS and Windows; its state directory lock is held until the database
+// closes.
 package stack
 
 import (
@@ -14,7 +15,6 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"syscall"
 )
 
 const maxPrivateFile = 4096
@@ -33,11 +33,11 @@ func DefaultStateDir() (string, error) {
 		}
 		return filepath.Join(root, "a-stack"), nil
 	}
-	home, err := os.UserHomeDir()
+	root, err := defaultStateRoot()
 	if err != nil {
-		return "", failure("invalid_input", "cannot find home directory")
+		return "", err
 	}
-	return filepath.Join(home, ".local", "state", "a-stack"), nil
+	return filepath.Join(root, "a-stack"), nil
 }
 func statePath(path string) (string, error) {
 	if !filepath.IsAbs(path) {
@@ -70,19 +70,11 @@ func statePath(path string) (string, error) {
 	}
 	return path, nil
 }
-func checkPrivate(info os.FileInfo, directory bool) error {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || int(stat.Uid) != os.Geteuid() || info.Mode().Perm()&0077 != 0 || (directory && !info.IsDir()) || (!directory && !info.Mode().IsRegular()) {
-		return failure("invalid_input", "state and credential paths must be owned by this user with owner-only permissions and no symlinks")
-	}
-	return nil
-}
 func privateRead(path string) ([]byte, error) {
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
+	f, err := openPrivate(path, false)
 	if err != nil {
 		return nil, failure("invalid_input", "private file is missing or inaccessible")
 	}
-	f := os.NewFile(uintptr(fd), path)
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
@@ -99,17 +91,6 @@ func privateRead(path string) ([]byte, error) {
 		return nil, failure("invalid_input", "private file is too large")
 	}
 	return data, nil
-}
-func syncDir(path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return storageError(err)
-	}
-	defer f.Close()
-	if f.Sync() != nil {
-		return storageError()
-	}
-	return nil
 }
 func writePrivate(path string, v any, replace bool) error {
 	b, err := json.Marshal(v)
@@ -157,7 +138,7 @@ func lockState(path string) (*stateLock, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = os.MkdirAll(dir, 0700); err != nil {
+	if err = MkdirPrivate(dir); err != nil {
 		return nil, storageError(err)
 	}
 	info, err := os.Lstat(dir)
@@ -167,25 +148,9 @@ func lockState(path string) (*stateLock, error) {
 	if err = checkPrivate(info, true); err != nil {
 		return nil, err
 	}
-	fd, err := syscall.Open(filepath.Join(dir, "service.lock"), syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
+	f, err := lockFile(filepath.Join(dir, "service.lock"))
 	if err != nil {
-		return nil, storageError(err)
-	}
-	f := os.NewFile(uintptr(fd), "service.lock")
-	info, err = f.Stat()
-	if err == nil {
-		err = checkPrivate(info, false)
-	}
-	if err != nil {
-		f.Close()
 		return nil, err
-	}
-	if err = syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, ErrStateOwned
-		}
-		return nil, storageError(err)
 	}
 	return &stateLock{dir: dir, file: f}, nil
 }
@@ -211,7 +176,7 @@ func ServiceCommand(verb string) string {
 	return "systemctl --user " + verb + " a-stack"
 }
 
-func (l *stateLock) close() { _ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN); _ = l.file.Close() }
+func (l *stateLock) close() { unlockFile(l.file) }
 
 // Credential is a private credential file. An Agent credential also names its
 // Workspace, Session and Agent; these fields are not secret and give no access.
@@ -279,11 +244,10 @@ func ReadDiscovery(dir string) (Discovery, error) {
 }
 func ensureDatabaseFile(dir string) (string, error) {
 	path := filepath.Join(dir, "state.db")
-	fd, err := syscall.Open(path, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
+	f, err := openPrivate(path, true)
 	if err != nil {
 		return "", storageError(err)
 	}
-	f := os.NewFile(uintptr(fd), path)
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {

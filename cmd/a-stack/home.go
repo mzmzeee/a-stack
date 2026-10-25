@@ -246,7 +246,7 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 		return invalid("this Session already has an Orchestrator; to replace it, see a-stack help session appoint")
 	}
 	credential := h.orchestratorFile()
-	if err := os.MkdirAll(filepath.Dir(credential), 0o700); err != nil {
+	if err := stack.MkdirPrivate(filepath.Dir(credential)); err != nil {
 		return invalid("cannot make the folder " + filepath.Dir(credential))
 	}
 	registerID := operationID()
