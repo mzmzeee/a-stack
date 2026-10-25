@@ -72,7 +72,7 @@ func TestInstallScriptChecksTheSignature(t *testing.T) {
 				sig[0]++
 			}
 			for _, dir := range []string{filepath.Join(mirror, "download", tag), filepath.Join(mirror, "latest", "download")} {
-				files := map[string][]byte{"a-stack_linux_" + runtime.GOARCH + ".tar.gz": archive, "SHA256SUMS": sums}
+				files := map[string][]byte{releaseArchive(runtime.GOOS, runtime.GOARCH): archive, "SHA256SUMS": sums}
 				if c.sig != "missing" {
 					files["SHA256SUMS.sig"] = sig
 				}

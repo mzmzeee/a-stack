@@ -61,11 +61,23 @@ var releaseTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$
 var (
 	executable    = os.Executable
 	serviceActive = func() bool {
+		if runtime.GOOS == "darwin" {
+			return launchdState(stack.LaunchdLabel) == "running"
+		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		return exec.CommandContext(ctx, "systemctl", "--user", "is-active", "--quiet", "a-stack").Run() == nil
 	}
 )
+
+// updateSystems are the systems with release archives.
+var updateSystems = []string{"linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64"}
+
+// releaseArchive names the release archive of a system. The extension
+// belongs to the archive format that extractBinary reads.
+func releaseArchive(goos, goarch string) string {
+	return "a-stack_" + goos + "_" + goarch + ".tar.gz"
+}
 
 func updateFailed(message string) error {
 	return &stack.Error{Code: "integration_unavailable", Message: message, Retryable: true}
@@ -185,7 +197,7 @@ func (r releases) download(tag string) (binary []byte, signed bool, err error) {
 	if sig != nil && !ed25519.Verify(releaseKey, sums, sig) {
 		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "the signature of SHA256SUMS for " + tag + " is not valid; nothing changed"}
 	}
-	name := "a-stack_linux_" + runtime.GOARCH + ".tar.gz"
+	name := releaseArchive(runtime.GOOS, runtime.GOARCH)
 	archive, err := r.get(dir+name, maxArchive, false)
 	if err != nil {
 		return nil, false, err
@@ -287,8 +299,8 @@ func runVersion(binary string) (string, error) {
 
 func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) error {
 	target := release.value
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
-		return invalid("a-stack update supports Linux on amd64 and arm64 only")
+	if !slices.Contains(updateSystems, runtime.GOOS+"/"+runtime.GOARCH) {
+		return invalid("a-stack update supports Linux and macOS on amd64 and arm64 only")
 	}
 	if release.set && !releaseTag.MatchString(target) {
 		return invalid("--version needs a release such as v0.1.3")
@@ -404,7 +416,7 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	data["skills"] = refreshed
 	hint := "If a-stack serve is running, stop it with Ctrl-C and run a-stack serve again."
 	if serviceActive() {
-		hint = "Restart the service: systemctl --user restart a-stack"
+		hint = "Restart the service: " + stack.ServiceCommand("restart")
 	}
 	data["restart_hint"] = hint
 	return write(data, append(lines, hint, "Then run a-stack to open the view.")...)
