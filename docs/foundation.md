@@ -143,20 +143,21 @@ A backup changes no domain records and has no operation receipt. A second backup
 To make a backup while the service runs:
 
 ```sh
-backup_dir="$(mktemp -d)"
-a-stack storage backup --destination "$backup_dir/a-stack.sqlite" --json
+backup_dir="$HOME/a-stack-backups"   # not in /tmp, which can be emptied at boot
+mkdir -p -m 700 "$backup_dir"
+a-stack storage backup --destination "$backup_dir/a-stack-$(date +%Y%m%d-%H%M%S).sqlite" --json
 ```
 
 To restore a completed backup, stop the service first: press Ctrl-C in its terminal, or see [Go back to an older version](install.md#go-back-to-an-older-version) for systemd, launchd and Task Scheduler. Check the backup, move the state directory aside, then copy only the backup and the original Operator credential into a new, private state directory in the same place:
 
 ```sh
-# backup_dir is the private directory of the backup command.
-sqlite3 -readonly "$backup_dir/a-stack.sqlite" 'PRAGMA integrity_check'  # must print ok
+backup="$HOME/a-stack-backups/a-stack-20261025-120000.sqlite"  # the backup to restore
+sqlite3 -readonly "$backup" 'PRAGMA integrity_check'  # must print ok
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/a-stack"
 old_dir="$state_dir.before-restore-$(date +%Y%m%d-%H%M%S)"
 mv "$state_dir" "$old_dir"
 mkdir -m 700 "$state_dir"
-install -m 600 "$backup_dir/a-stack.sqlite" "$state_dir/state.db"
+install -m 600 "$backup" "$state_dir/state.db"
 install -m 600 "$old_dir/operator.json" "$state_dir/operator.json"
 a-stack serve --json
 ```
