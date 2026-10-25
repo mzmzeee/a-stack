@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -207,13 +206,6 @@ func assignedTasks(ctx context.Context, client *stack.Client, ref stack.Context,
 	}
 }
 
-// wellFormedID checks the form of a Workspace, Session or Agent ID before
-// install writes it into a command.
-func wellFormedID(id string) bool {
-	b, err := base64.RawURLEncoding.DecodeString(id)
-	return err == nil && len(b) == 32
-}
-
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // hookSettings returns the settings files to change: Claude Code's
@@ -342,7 +334,7 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 	if id.credential == "" || !filepath.IsAbs(id.credential) {
 		return "", invalid("--credential-file with an absolute path required")
 	}
-	if !wellFormedID(id.ref.WorkspaceID) || !wellFormedID(id.ref.SessionID) {
+	if !stack.ValidID(id.ref.WorkspaceID) || !stack.ValidID(id.ref.SessionID) {
 		return "", invalid("--workspace and --session required")
 	}
 	if (id.agent == "") == (h.name == "") {
@@ -373,7 +365,7 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 			return "", &stack.Error{Code: "not_found", Message: "no Agent with this name in the Session"}
 		}
 	}
-	if !wellFormedID(id.agent) {
+	if !stack.ValidID(id.agent) {
 		return "", invalid("invalid Agent ID")
 	}
 	exe, err := os.Executable()
