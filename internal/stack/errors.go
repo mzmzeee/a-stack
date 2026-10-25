@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"runtime"
 	"strings"
 	"sync"
@@ -72,9 +73,10 @@ func operationError(operation string, err error) *Error {
 // storageLogInterval is how often the same storage error line can be logged.
 const storageLogInterval = 10 * time.Second
 
-// storageLog is quiet until Start points it at stderr, so only the service
-// process logs and CLI output does not change.
+// storageLog is quiet until Start points it at storageLogOutput, so only the
+// service process logs and CLI output does not change. Tests discard it.
 var storageLog = &causeLog{}
+var storageLogOutput io.Writer = os.Stderr
 
 // causeLog writes one line for each error mapped to storage_unavailable, so a
 // code bug can be told apart from a full disk. A line names the operation and

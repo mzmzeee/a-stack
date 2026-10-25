@@ -2,6 +2,7 @@ package stack
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"testing"
 )
@@ -13,5 +14,6 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "TMPDIR is inside a Git checkout: %s\n", os.TempDir())
 		os.Exit(1)
 	}
+	storageLogOutput = io.Discard // TestStorageError* capture it
 	os.Exit(m.Run())
 }
