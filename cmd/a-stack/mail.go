@@ -53,7 +53,7 @@ func mailAllowedFlags(command string) string {
 func readMailCursors(path string) (map[string]string, error) {
 	var reader io.Reader = os.Stdin
 	if path != "-" {
-		file, err := os.Open(path)
+		file, err := stack.Open(path)
 		if os.IsNotExist(err) {
 			return map[string]string{}, nil
 		}

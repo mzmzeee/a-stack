@@ -187,6 +187,17 @@ func Rename(from, to string) error {
 	return err
 }
 
+// Open opens path for reading. On Windows a file that another process is
+// renaming over cannot be opened for a moment, so it retries, like Rename.
+func Open(path string) (*os.File, error) {
+	f, err := os.Open(path)
+	for i := 0; i < 20 && renameBusy(err); i++ {
+		time.Sleep(50 * time.Millisecond)
+		f, err = os.Open(path)
+	}
+	return f, err
+}
+
 // ReplacePrivate replaces path with v as JSON, mode 0600: a synced temporary
 // file is renamed over it. Of two writers at once, the last one wins.
 func ReplacePrivate(path string, v any) error { return writePrivate(path, v, true) }
