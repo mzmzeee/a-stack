@@ -63,12 +63,12 @@ Workspace, Session, Agent, Task and mail commands need explicit Workspace and Se
 | `storage status` | `GET /v1/storage` | Operator |
 | `storage backup --destination ABSOLUTE_FILE` | `POST /v1/storage/backup` with `destination` | Operator |
 
-`a-stack --help` (also `-h` or `help`) lists the commands in groups. `a-stack help COMMAND` or `a-stack COMMAND --help` lists the flags of one command and marks the required ones. The flag list comes from the same table that rejects flags a command does not accept. For a first word such as `task`, the help lists the commands that start with it. `a-stack task` alone prints the same list and exits with 0. With flags, a first word alone is an `invalid_input` error that lists the words that can follow it. `--version` works like `version`. With `--json`, help prints the same `{"data":{"commands":[...],"flags":[...]}}` list for every command.
+`a-stack --help` (also `-h` or `help`) lists the commands in groups. `a-stack help COMMAND` or `a-stack COMMAND --help` lists the flags of one command and marks the required ones. `--workspace` and `--session` are required unless the credential file names them (see [Credential context](lifecycle.md#credential-context)). The flag list comes from the same table that rejects flags a command does not accept. For a first word such as `task`, the help lists the commands that start with it. `a-stack task` alone prints the same list and exits with 0. With flags, a first word alone is an `invalid_input` error that lists the words that can follow it. `--version` works like `version`. With `--json`, help prints the same `{"data":{"commands":[...],"flags":[...]}}` list for every command.
 
 Every command except `open`, `update`, `skill install`, `skill uninstall`, `service install`, `service uninstall`, `service status`, `status`, `watch`, `statusline`, `hook`, `hook install`, `hook uninstall`, the three Operator commands and `--help` prints a JSON `data` object on stdout, also without `--json`. Those commands print plain lines without `--json`. If a command fails, it prints a JSON `error` object on stderr and nothing on stdout. An `invalid_input` message names what is wrong: the unknown or misplaced flag, the bad value, the extra word or the missing text. When a command or flag is close to what you typed, it asks, for example `unknown command tsak list (did you mean task list?)` or `unexpected argument abc for task show (did you mean --task abc?)`. The ID flags `--workspace`, `--session`, `--agent`, `--task`, `--from`, `--to` and `--reference` take IDs only. The CLI rejects any other value before it contacts the service, for example `--agent takes an Agent ID; 01-orch looks like a name; see a-stack agent list`. It never looks a name up. The exit code is 0 for success, 2 when the error code is `invalid_input`, and 1 for all other errors. Two exceptions, for `serve` and the Operator commands that start it:
 
 - Exit code 3: another `serve` already owns the state directory and does not answer them. The error code is still `conflict`.
-- Exit code 4: the state database cannot be used as it is. It failed the integrity check, or it has a newer or unknown schema (see [SQLite](#sqlite)). The error code is `storage_unavailable` with `retryable: false`. A restart cannot help, so the systemd unit does not restart after exit codes 3 and 4.
+- Exit code 4: the state database cannot be used as it is. It failed the integrity check, or it has a newer or unknown schema (see [SQLite](#sqlite)). The error code is `storage_unavailable` with `retryable: false`. A restart cannot help, so the systemd unit does not restart after exit codes 3 and 4. launchd on macOS and Task Scheduler on Windows cannot skip these codes, so they try again every 10 seconds or every minute (see [Start a-stack automatically](install.md#start-a-stack-automatically)).
 
 The CLI never retries a request automatically. Client commands stop normally on SIGINT and SIGTERM, also while they wait for stdin. Only the foreground service catches these signals, so that it can shut down cleanly. The `a-stack -r` picker also catches them, restores the terminal and then ends the same way. If an interrupted change was possibly committed, send it again with the same operation ID and payload to get the original receipt.
 
@@ -105,7 +105,7 @@ The service uses one serialized `database/sql` connection with WAL, `synchronous
 
 A database with a newer schema comes from a newer a-stack, for example after an update to an older version. `serve` then stops with exit code 4. The message names the schema version it found and the newest one it supports. To get back, update a-stack to the newer version with `a-stack update`, or restore a backup made with this version.
 
-Before a migration, `serve` copies the database to `state.db.pre-vN` in the state directory, where N is the old schema version. It uses SQLite `VACUUM INTO`, the file is private (0600), and it is synced to disk. It never replaces an earlier copy: the next copy with the same version is `state.db.pre-vN.2`, and so on. If the copy cannot be written, for example because the disk is full, `serve` stops and does not migrate. The copy is a normal backup: to go back to the older a-stack, restore it as in [Backup and restore](#backup-and-restore). Changes made after the migration are not in it. a-stack never deletes these copies; delete them yourself when you no longer need them.
+Before a migration, `serve` copies the database to `state.db.pre-vN` in the state directory, where N is the old schema version. It uses SQLite `VACUUM INTO` into `state.db.pre-vN.tmp`, the file is private (0600), synced to disk, and renamed to its final name only when it is complete; a crash leaves only the temporary file, which the next start removes. The copy gets the modification time of the database, after its WAL is checkpointed into it. A later start that migrates the same, unchanged database again, because an earlier start failed, uses that copy instead of writing another one. A copy is used again only when its time, schema version and database ID match. It never replaces an earlier copy: the next copy with the same version is `state.db.pre-vN.2`, and so on. If the copy cannot be written, for example because the disk is full, `serve` stops and does not migrate. Before it copies, `serve` checks the free space: the copy needs up to the size of the database, and the migration up to twice that size again, because it rebuilds tables first in the WAL file and then in the database file (see [Update](install.md#update)). With less free space, it stops and says how much it needs. After the migration, it writes one line to stderr that names the copy. The copy is a normal backup: to go back to the older a-stack, restore it as in [Backup and restore](#backup-and-restore). Changes made after the migration are not in it. a-stack never deletes these copies; delete them yourself when you no longer need them.
 
 Each schema version added one area:
 
@@ -120,9 +120,9 @@ Each schema version added one area:
 
 A migration that rebuilds tables leaves the old pages free inside the database file, so the file does not shrink at once: new Tasks and mail use the free pages before the file grows again. A backup is compact, so to get the smaller file at once, make a backup and [restore it](#backup-and-restore). With the 2,000-Task fixture of the [stress test](performance.md), the migration from schema 7 added 2 to 3 seconds to the start (3.4 to 4.2 seconds instead of 1.2 to 1.5 seconds in three runs); the file grew from 91.0 MB to 113.1 MB with 32.0 MB free, and a backup of it is 80.0 MB.
 
-A storage error returns `storage_unavailable`. The answer never says why, but the service writes one line to stderr (the journal under systemd) for each such error, for example `a-stack: storage_unavailable in task.status: SQLite error 13 (database or disk is full), extended code 13`. The line names the operation or Go function, and the Go error type, the SQLite result codes or the system error number. It never contains a body, an ID, a credential or SQL text. The same line is written at most once every 10 seconds, followed by the number of times it was held back, so a retry loop cannot fill the journal. A failed commit never returns a successful receipt. If the connection drops during a commit, the outcome is unknown, so the caller must retry with the same operation ID. The CLI marks this case `retryable: true`: when the service is not running, cannot be reached, or the response was cut off.
+A storage error returns `storage_unavailable`. The answer never says why, but the service writes one line to stderr for each such error, for example `a-stack: storage_unavailable in task.status: SQLite error 13 (database or disk is full), extended code 13`. Under systemd, stderr goes to the journal; under launchd, to `~/Library/Logs/a-stack.log`; under Task Scheduler, to `%LOCALAPPDATA%\a-stack.log`. The line names the operation or Go function, and the Go error type, the SQLite result codes or the system error number. It never contains a body, an ID, a credential or SQL text. The same line is written at most once every 10 seconds, followed by the number of times it was held back, so a retry loop cannot fill the journal. A failed commit never returns a successful receipt. If the connection drops during a commit, the outcome is unknown, so the caller must retry with the same operation ID. The CLI marks this case `retryable: true`: when the service is not running, cannot be reached, or the response was cut off.
 
-`storage status` reports the current sizes of the main database, WAL and SHM files, and `free_bytes`, the free space of the file system that holds them. These sizes can change between two calls. The free space is measured at most 10 seconds earlier. Below 1 GiB, the status also has `low_disk: true` and a `warning`, and the [browser view](browser.md#refresh) footer shows a warning. When the free space cannot be measured, `free_bytes` is absent. a-stack never deletes retained data. The single connection and the backup operation run work one at a time. Add read concurrency only after a measurement shows the need.
+`storage status` reports the current sizes of the main database, WAL and SHM files, and `free_bytes`, the free space of the file system that holds them. These sizes can change between two calls. The free space is measured at most 10 seconds earlier. Below 1 GiB, the status also has `low_disk: true` and a `warning`, and the [browser view](browser.md#footer-and-banners) footer shows a warning. When the free space cannot be measured, `free_bytes` is absent. a-stack never deletes retained data. The single connection and the backup operation run work one at a time. Add read concurrency only after a measurement shows the need.
 
 ## Operation IDs and receipts
 
@@ -143,28 +143,32 @@ A backup changes no domain records and has no operation receipt. A second backup
 To make a backup while the service runs:
 
 ```sh
-backup_dir="$(mktemp -d)"
-a-stack storage backup --destination "$backup_dir/a-stack.sqlite" --json
+backup_dir="$HOME/a-stack-backups"   # not in /tmp, which can be emptied at boot
+mkdir -p -m 700 "$backup_dir"
+a-stack storage backup --destination "$backup_dir/a-stack-$(date +%Y%m%d-%H%M%S).sqlite" --json
 ```
 
-To restore a completed backup, stop the service first. Check the backup, then copy only the backup and the original Operator credential into a new, empty, private directory:
+To restore a completed backup, stop the service first: press Ctrl-C in its terminal, or see [Go back to an older version](install.md#go-back-to-an-older-version) for systemd, launchd and Task Scheduler. Check the backup, move the state directory aside, then copy only the backup and the original Operator credential into a new, private state directory in the same place:
 
 ```sh
-# backup_dir is the private directory of the backup command.
-# Stop the old foreground service with Ctrl-C before you continue.
-sqlite3 -readonly "$backup_dir/a-stack.sqlite" 'PRAGMA integrity_check'  # must print ok
+backup="$HOME/a-stack-backups/a-stack-20261025-120000.sqlite"  # the backup to restore
+sqlite3 -readonly "$backup" 'PRAGMA integrity_check'  # must print ok
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/a-stack"
-restore_dir="$(mktemp -d)"
-install -m 600 "$backup_dir/a-stack.sqlite" "$restore_dir/state.db"
-install -m 600 "$state_dir/operator.json" "$restore_dir/operator.json"
-a-stack serve --state-dir "$restore_dir" --json
+old_dir="$state_dir.before-restore-$(date +%Y%m%d-%H%M%S)"
+mv "$state_dir" "$old_dir"
+mkdir -m 700 "$state_dir"
+install -m 600 "$backup" "$state_dir/state.db"
+install -m 600 "$old_dir/operator.json" "$state_dir/operator.json"
+a-stack serve --json
 ```
+
+Restore into the state directory that the CLI uses, as above, not into a new folder such as one from `mktemp -d`. The CLI, the Agents' helper scripts and the agent hooks look for the service in the state directory they know, and `/tmp` can be emptied at the next boot. If you use another state directory, set `state_dir` to it and give `--state-dir` to `serve`.
 
 A backup is compact: SQLite writes it without the free pages of the database file. The database never shrinks while it runs, because a-stack never deletes retained data and SQLite keeps freed pages for reuse. So restoring a backup is also the way to compact the database, for example after a migration that rebuilt tables.
 
 If the integrity check prints anything but `ok`, do not use that backup; take an older one. Without the `sqlite3` tool, `serve` still runs its own check: it stops with exit code 4 on a damaged copy. The same steps restore a `state.db.pre-vN` copy that `serve` made before a migration.
 
-In another terminal, run `a-stack health --state-dir "$restore_dir" --json` and make sure that the database ID is the original one. Keep the old state directory until you have checked the restored copy.
+In another terminal, run `a-stack health --json` and make sure that the database ID is the original one. Keep the old state directory (`$old_dir`) until you have checked the restored copy.
 
 Never copy only a live main database file. Never mix a backup with old sidecar files, and never delete sidecar files to try a recovery. Keep the Agent credential files that you gave out in a separate place, because the database hashes cannot rebuild their tokens. See [credential delivery and recovery](lifecycle.md#credential-delivery-and-recovery).
 

@@ -65,6 +65,8 @@ type Session struct {
 	ReadRevision   int64   `json:"read_revision"`
 	CreatedAt      string  `json:"created_at"`
 	UpdatedAt      string  `json:"updated_at"`
+	// YourAgentID is the calling Agent, set only by session inspect.
+	YourAgentID string `json:"your_agent_id,omitempty"`
 }
 type Agent struct {
 	ID              string `json:"id"`

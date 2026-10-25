@@ -3,11 +3,13 @@ package stack
 import (
 	"crypto/rand"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func requireUnusable(t *testing.T, err error, want ...string) {
@@ -184,3 +186,147 @@ func TestBackupBeforeMigration(t *testing.T) {
 }
 
 var testDatabaseID = opaqueID()
+
+// schema7Database is a closed schema 7 state directory with one Task, after
+// the statements in extra.
+func schema7Database(t *testing.T, extra string) (path, state string) {
+	t.Helper()
+	f := tasksFixture(t)
+	f.create(t, "Task")
+	path, state = f.service.Store.path, f.service.lock.dir
+	if err := f.service.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+	execFile(t, path, undoMigration8+extra)
+	return path, state
+}
+
+func execFile(t *testing.T, path, statements string) {
+	t.Helper()
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(statements); err != nil {
+		t.Fatal(err)
+	}
+	if err = db.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// copies lists the pre-v7 copies and temporary files next to path.
+func copies(path string) []string {
+	entries, _ := filepath.Glob(path + ".pre-v7*")
+	for i, e := range entries {
+		entries[i] = strings.TrimPrefix(e, path)
+	}
+	return entries
+}
+
+// TestMigrationCopyIsReusedAfterAFailedStart repeats the review: each start
+// that a broken reference stopped wrote another full copy, up to 100. Now the
+// copy of an unchanged database is reused, and a changed one gets a new copy.
+func TestMigrationCopyIsReusedAfterAFailedStart(t *testing.T) {
+	path, state := schema7Database(t, "INSERT INTO task_content VALUES('orphan','missing-task','report','x','missing-agent','now')")
+	for range 3 {
+		_, err := Start(ctx, state, "127.0.0.1:0")
+		var e *Error
+		if !errors.As(err, &e) || !e.DatabaseUnusable() || !strings.Contains(e.Message, "foreign_key_check") {
+			t.Fatalf("start = %v", err)
+		}
+	}
+	if got := copies(path); len(got) != 1 || got[0] != ".pre-v7" {
+		t.Fatal("copies after three failed starts:", got)
+	}
+	execFile(t, path, "DELETE FROM task_content WHERE id='orphan'")
+	service := serveTest(t, state, "127.0.0.1:0")
+	if got := copies(path); len(got) != 2 || got[1] != ".pre-v7.2" {
+		t.Fatal("a changed database got no new copy:", got)
+	}
+	for _, want := range []string{"Migrated the state database from schema 7 to 8 in ", "The copy from before is " + path + ".pre-v7.2; an older a-stack cannot open the database now.", "#go-back-to-an-older-version"} {
+		if !strings.Contains(service.Store.Migrated, want) {
+			t.Fatalf("migration line %q lacks %q", service.Store.Migrated, want)
+		}
+	}
+}
+
+// TestMigrationCopyIsWrittenAtomically repeats the review: a crash during the
+// copy left the file under its final name, and the next open of it rolled it
+// back to an empty file that passes the integrity check. Now the copy is
+// written to state.db.pre-vN.tmp first, and only a copy of this database at
+// this schema version is reused.
+func TestMigrationCopyIsWrittenAtomically(t *testing.T) {
+	path, state := schema7Database(t, "")
+	source, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What a crash left: a cut-off temporary copy with its journal, and an
+	// empty final copy with the database's time, as after the rollback.
+	for _, name := range []string{".pre-v7.tmp", ".pre-v7.tmp-journal", ".pre-v7"} {
+		if err = os.WriteFile(path+name, nil, 0600); err != nil || os.Chtimes(path+name, source.ModTime(), source.ModTime()) != nil {
+			t.Fatal(err)
+		}
+	}
+	serveTest(t, state, "127.0.0.1:0")
+	if got := copies(path); len(got) != 2 || got[0] != ".pre-v7" || got[1] != ".pre-v7.2" {
+		t.Fatal("copies:", got)
+	}
+	if info, err := os.Stat(path + ".pre-v7"); err != nil || info.Size() != 0 {
+		t.Fatal("an earlier file was replaced", err)
+	}
+	db, err := sql.Open("sqlite3", path+".pre-v7.2?mode=ro")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var version int
+	var integrity string
+	if db.QueryRow("PRAGMA user_version").Scan(&version) != nil || version != 7 || db.QueryRow("PRAGMA integrity_check").Scan(&integrity) != nil || integrity != "ok" {
+		t.Fatalf("copy: version %d, %s", version, integrity)
+	}
+}
+
+// TestMigrationNeedsFreeSpace: the copy and the rebuild need up to three times
+// the database size; without it, the start stops before it writes anything.
+func TestMigrationNeedsFreeSpace(t *testing.T) {
+	path, _ := schema7Database(t, "")
+	db, err := sql.Open(driverName, fileURI(path)+"?_journal_mode=WAL")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	s := &Store{db: db, path: path}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	size := uint64(info.Size())
+	free := func(n uint64) {
+		s.disk.mu.Lock()
+		defer s.disk.mu.Unlock()
+		s.disk.free = func(string) (uint64, error) { return n, nil }
+		s.disk.at = time.Time{}
+	}
+	free(3*size - 1)
+	_, err = s.backupBeforeMigration(ctx, 7)
+	requireCode(t, err, "storage_unavailable")
+	if !strings.Contains(err.Error(), "the schema migration of state.db needs about") || !strings.Contains(err.Error(), "free some space and start a-stack again") || len(copies(path)) != 0 {
+		t.Fatal(err, copies(path))
+	}
+	free(3 * size)
+	if name, err := s.backupBeforeMigration(ctx, 7); err != nil || name != path+".pre-v7" {
+		t.Fatal(name, err)
+	}
+	// Reusing the copy needs room only for the rebuild.
+	free(2 * size)
+	if name, err := s.backupBeforeMigration(ctx, 7); err != nil || name != path+".pre-v7" || len(copies(path)) != 1 {
+		t.Fatal(name, err, copies(path))
+	}
+	free(2*size - 1)
+	if _, err = s.backupBeforeMigration(ctx, 7); err == nil {
+		t.Fatal("a migration without room for the rebuild")
+	}
+}

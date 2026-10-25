@@ -8,10 +8,10 @@ Each command prints `{"data": ...}` on stdout. A change returns a receipt: `data
 
 | Command | What you get |
 | --- | --- |
-| `me session inspect` | `data.revision`, `data.graph_revision`, `data.orchestrator_id`, `data.closed` |
+| `me session inspect` | `data.revision`, `data.graph_revision`, `data.orchestrator_id`, `data.closed`, and your own Agent ID in `data.your_agent_id` |
 | `me session snapshot --known-revision 12` | Counts of Tasks, Agents, dependencies and assignments, or `unchanged: true` if `read_revision` is still 12 |
 | `me agent list` | `data.items[]` with each Agent's `id` and `name`; find your own ID here |
-| `me task list` | `data.items[]` with `id`, `title`, `progress`, `revision`, `unassigned`, `needs_you` |
+| `me task list` | `data.items[]` with `id`, `title`, `progress`, `revision`, `unassigned`, `needs_you`, `prerequisite_count` |
 | `me task show --task T` | One Task with `revision`, `progress`, `description`, `report`, `reason`, `result` |
 | `me task assignees --task T` | `data.items[].agent_name` and `agent_id` |
 | `me task history --task T` | Every change of the Task, with the changed texts |
@@ -96,7 +96,7 @@ Always give `mail check` a cursor file in your private folder. The check saves i
 | `not_found` | 1 | The ID does not exist in your Session. |
 | `session_closed` | 1 | The Operator closed the Session. Reads still work. Wait or ask the Operator. |
 | `unauthorized` | 1 | The credential file is wrong or was replaced. Ask the Operator. |
-| `integration_missing` | 1 | Only from `herdr bind`: Herdr sees no Claude Code or Codex session in your pane. Tell the Operator the `herdr integration install` command from the message. |
+| `integration_missing` | 1 | Only from `herdr bind`: Herdr sees no Claude Code, Codex or Pi session in your pane. Tell the Operator the `herdr integration install` command from the message. |
 | `rate_limited` | 1 | You stored too much text in a short time, for example in a loop. Wait `retry_after_seconds`, then retry the same command with the same operation ID. Check that you are not repeating a command by mistake. |
 | `storage_unavailable` | 1 | The service is not running, not reachable or failed, and `retryable` is `true`. Your change may have been made. Retry the same command with the same operation ID later. If the service stays down, ask the Operator to start it. Never start the service yourself. |
 

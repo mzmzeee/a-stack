@@ -12,8 +12,10 @@ func bindFixture(t *testing.T, harnessOutput string) (*noticeFixture, func(strin
 	t.Helper()
 	f := noticeTestFixture(t)
 	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "codex"), []byte("#!/bin/sh\necho '"+harnessOutput+"'\n"), 0700); err != nil {
-		t.Fatal(err)
+	for _, harness := range []string{"codex", "pi"} {
+		if err := os.WriteFile(filepath.Join(bin, harness), []byte("#!/bin/sh\necho '"+harnessOutput+"'\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	env := map[string]string{"HERDR_ENV": "1", "HERDR_PANE_ID": f.config.Binding.PaneID, "HERDR_SOCKET_PATH": f.config.Binding.Endpoint}
@@ -40,6 +42,39 @@ func TestHerdrBindReadsOwnPane(t *testing.T) {
 	f.n.adapter.verified = verifiedHarness
 	if reason := f.n.adapter.verify(ctx, *binding); reason != "" {
 		t.Fatal("bound pane fails the notice check", reason)
+	}
+}
+
+// Herdr reports a Pi pane's session as the path of its session file. Bind
+// keeps the path as the native session; notices stay off until a native Pi
+// fixture verifies them.
+func TestHerdrBindReadsPiPane(t *testing.T) {
+	f, env := bindFixture(t, "1.4.0")
+	f.config.Mode = "pi"
+	f.config.Binding.NativeSessionID = "/home/u/.pi/agent/sessions/--home-u-code--/2026-10-25T12-11-56-744Z_01a172f9.jsonl"
+	f.write(t)
+	binding, err := HerdrBind(ctx, f.n.adapter.executable, "03-worker", env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding.Harness != "pi" || binding.HarnessVersion != "1.4.0" || binding.NativeSessionID != f.config.Binding.NativeSessionID {
+		t.Fatalf("Pi binding %+v", *binding)
+	}
+	if _, reason := f.n.adapter.current(ctx, *binding); reason != "" {
+		t.Fatal("the bound Pi pane does not match its binding:", reason)
+	}
+	f.n.adapter.verified = verifiedHarness
+	if reason := f.n.adapter.verify(ctx, *binding); reason != "unsupported_harness" {
+		t.Fatal("Pi notices are not verified yet:", reason)
+	}
+	for _, mode := range []string{"pi_id", "pi_relative"} {
+		f.config.Mode = mode
+		f.write(t)
+		_, err = HerdrBind(ctx, f.n.adapter.executable, "03-worker", env)
+		requireCode(t, err, "integration_missing")
+		if _, reason := f.n.adapter.current(ctx, *binding); reason != "identity_changed" {
+			t.Fatal(mode, "matched the binding:", reason)
+		}
 	}
 }
 

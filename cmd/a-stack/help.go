@@ -31,7 +31,7 @@ var helpGroups = []helpGroup{
 	{"Agent skill", []helpRow{
 		{"skill install", "", "Install the agent skill in ~/.claude and ~/.agents"},
 		{"skill uninstall", "", "Remove the agent skill from ~/.claude and ~/.agents"},
-		{"hook install", "", "Add a-stack hooks for one Agent to Claude Code and Codex"},
+		{"hook install", "", "Add a-stack hooks for one Agent to Claude Code and Codex, or Pi"},
 		{"hook uninstall", "", "Remove this folder's a-stack hooks"},
 		{"hook", "", "Handle one hook event (run by the harness)"},
 	}},
@@ -298,15 +298,31 @@ var flagValues = map[string]string{
 	"cursor": "CURSOR", "cursor-file": "FILE", "after-task": "TOKEN", "task-limit": "N",
 }
 
+// hookFlagText is the text of shared flags that mean something else in the
+// hook commands.
+var hookFlagText = map[string]string{
+	"project":         "Use .claude and .codex in the current folder, not in your home folder",
+	"name":            "Agent name",
+	"credential-file": "The Agent's credential file",
+}
+
 func flagText(fs *flag.FlagSet, command, name string) string {
 	text := fs.Lookup(name).Usage
+	if hook, ok := hookFlagText[name]; ok && isHookCommand(command) {
+		text = hook
+	}
 	if name == "body" && command != "mail send" {
 		text = "Same as --" + textFlag(command, "")
 		if command == "task status" {
 			text += ", or --summary with --progress finished"
 		}
 	}
-	if flagRequired(command, name) {
+	switch {
+	case !flagRequired(command, name):
+	case name == "workspace" || name == "session":
+		// fillContext takes them from an Agent credential file.
+		text += " (required unless the credential file names it)"
+	default:
 		text += " (required)"
 	}
 	return text

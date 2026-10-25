@@ -377,7 +377,7 @@ func (w *watcher) report(s scopedSession, before map[string]stack.Task, now []st
 		count := countTasks(s, now).NeedsYou
 		body := ""
 		if w.notifyText {
-			body = markupEscape(strings.Join(questions, " / "))
+			body = strings.Join(questions, " / ")
 		}
 		w.desktopNotice(fmt.Sprintf("a-stack: %d needs you in %s", count, printable(s.Name)), body)
 	}
@@ -411,17 +411,24 @@ func (w *watcher) desktopNotice(summary, body string) {
 	if w.notifySend == "" {
 		return
 	}
-	args := []string{"--app-name=a-stack", summary}
-	if body != "" {
-		args = append(args, body)
-	}
-	if runtime.GOOS == "darwin" {
-		// The texts go in as arguments, never into the script.
-		args = []string{"-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", summary, body}
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = exec.CommandContext(ctx, w.notifySend, args...).Run()
+	_ = exec.CommandContext(ctx, w.notifySend, noticeArgs(runtime.GOOS, summary, body)...).Run()
+}
+
+// noticeArgs are the arguments of notify-send, or of osascript on macOS.
+func noticeArgs(goos, summary, body string) []string {
+	if goos == "darwin" {
+		// The texts go in as arguments, never into the script, and macOS
+		// shows them as plain text.
+		return []string{"-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", summary, printable(body)}
+	}
+	// -- keeps a text that starts with - from being read as an option.
+	args := []string{"--app-name=a-stack", "--", summary}
+	if body != "" {
+		args = append(args, markupEscape(body))
+	}
+	return args
 }
 
 // markupEscape keeps notification servers that read a body as markup from

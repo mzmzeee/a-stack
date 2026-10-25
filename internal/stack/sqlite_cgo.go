@@ -15,6 +15,8 @@ import (
 // with cgo; sqlite_nocgo.go lets go vet check this package for another
 // system on Linux, where cgo cannot cross-compile.
 
+const builtWithCgo = true
+
 func init() {
 	sql.Register(driverName, &sqlite3.SQLiteDriver{ConnectHook: func(c *sqlite3.SQLiteConn) error {
 		_, err := c.Exec("PRAGMA journal_size_limit="+strconv.Itoa(JournalSizeLimit), nil)

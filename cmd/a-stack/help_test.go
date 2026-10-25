@@ -69,7 +69,8 @@ func TestHelpPerCommandFollowsAcceptedFlags(t *testing.T) {
 			t.Fatalf("%s: help forms differ", c)
 		}
 		checkWidth(t, c, text)
-		if !strings.Contains(text, "\nUsage: a-stack "+c+" ") || strings.Contains(text, " VALUE") {
+		// An Agent credential file names the Workspace and the Session.
+		if !strings.Contains(text, "\nUsage: a-stack "+c+" ") || strings.Contains(text, " VALUE") || strings.Contains(text, "Workspace ID (required)") || strings.Contains(text, "Session ID (required)") {
 			t.Fatalf("%s help:\n%s", c, text)
 		}
 		for _, name := range strings.Fields(acceptedFlags(c)) {
@@ -86,10 +87,13 @@ func TestHelpPerCommandFollowsAcceptedFlags(t *testing.T) {
 		}
 	}
 	create := helpOutput(t, "task", "create", "--help")
-	for _, want := range []string{"Create a Task.\n", "  --title TEXT             Task title (required)\n", "  --workspace ID           Workspace ID (required)\n", "  --description TEXT       Task description\n", "  --credential-file FILE   "} {
+	for _, want := range []string{"Create a Task.\n", "  --title TEXT             Task title (required)\n", "  --workspace ID           Workspace ID (required unless the credential file\n                           names it)\n", "  --session ID             Session ID (required unless the credential file names\n                           it)\n", "  --description TEXT       Task description\n", "  --credential-file FILE   "} {
 		if !strings.Contains(create, want) {
 			t.Fatalf("task create help misses %q:\n%s", want, create)
 		}
+	}
+	if list := helpOutput(t, "help", "session", "list"); !strings.Contains(list, "Workspace ID (required unless") || strings.Contains(list, "Session ID (required") {
+		t.Fatalf("session list help:\n%s", list)
 	}
 	send := helpOutput(t, "help", "mail", "send")
 	if !strings.Contains(send, "  --task ID                Task ID (required)\n") || !strings.Contains(send, "  --mention NAME  ") || strings.Contains(send, "--body TEXT              Mail text (required)") {
@@ -122,7 +126,7 @@ func TestHelpJSONStaysCompatible(t *testing.T) {
 	if len(help.Data.Commands) != len(old)+16 || strings.Join(help.Data.Commands[:len(old)], ",") != strings.Join(old, ",") || strings.Join(help.Data.Commands[len(old):], ",") != "new,skill install,skill uninstall,update,view revoke,service install,service uninstall,service status,status,watch,hook install,hook uninstall,hook,statusline,herdr bind,herdr focus" {
 		t.Fatalf("commands changed: %v", help.Data.Commands)
 	}
-	added := map[string]bool{"-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true, "--all": true, "--notify": true, "--notify-text": true, "--claude": true, "--codex": true, "--orchestrator": true, "--no-stop-guard": true, "--no-mail-nudge": true}
+	added := map[string]bool{"-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true, "--all": true, "--notify": true, "--notify-text": true, "--claude": true, "--codex": true, "--pi": true, "--orchestrator": true, "--no-stop-guard": true, "--no-mail-nudge": true}
 	before := []string{}
 	for _, f := range help.Data.Flags {
 		if !added[f] {

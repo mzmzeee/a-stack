@@ -113,9 +113,9 @@ func updateSetup(t *testing.T, current string, release *fakeRelease) (exe, log s
 	if err := os.WriteFile(exe, []byte("old"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	oldVersion, oldExecutable, oldActive, oldKey := version, executable, serviceActive, releaseKey
-	version, executable, serviceActive, releaseKey = current, func() (string, error) { return exe, nil }, func() bool { return false }, testKey.Public().(ed25519.PublicKey)
-	t.Cleanup(func() { version, executable, serviceActive, releaseKey = oldVersion, oldExecutable, oldActive, oldKey })
+	oldVersion, oldExecutable, oldActive, oldKey := version, executable, serviceRuns, releaseKey
+	version, executable, serviceRuns, releaseKey = current, func() (string, error) { return exe, nil }, func(string) bool { return false }, testKey.Public().(ed25519.PublicKey)
+	t.Cleanup(func() { version, executable, serviceRuns, releaseKey = oldVersion, oldExecutable, oldActive, oldKey })
 	return exe, log
 }
 
@@ -161,7 +161,7 @@ func TestUpdateReplacesTheBinary(t *testing.T) {
 	}
 	runSkill(t, "skill", "install", "--project")
 	release.latest, release.archives["v0.3.0"] = "v0.3.0", tarGz(t, map[string]string{"./a-stack": fakeBinary("v0.3.0")})
-	serviceActive = func() bool { return true }
+	serviceRuns = func(string) bool { return true }
 	out, _ = runUpdate(t, 0, "--json")
 	var result struct {
 		Data struct {

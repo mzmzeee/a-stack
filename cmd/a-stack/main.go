@@ -352,8 +352,10 @@ func serveForeground(ctx context.Context, state, listen, herdrExecutable string,
 		return err
 	}
 	service.Version = buildVersion()
-	if service.Notice != "" {
-		_, _ = io.WriteString(os.Stderr, service.Notice+"\n")
+	for _, line := range []string{service.Store.Migrated, service.Notice} {
+		if line != "" {
+			_, _ = io.WriteString(os.Stderr, line+"\n")
+		}
 	}
 	if herdrExecutable != "" {
 		if err = service.EnableNotifications(herdrExecutable); err != nil {

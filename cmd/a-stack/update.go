@@ -60,18 +60,19 @@ var releaseTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$
 
 // Tests replace these.
 var (
-	executable    = os.Executable
-	serviceActive = func() bool {
-		if runtime.GOOS == "darwin" {
-			return launchdState(stack.LaunchdLabel) == "running"
+	executable = os.Executable
+	// serviceRuns reports whether the service manager runs exe as the a-stack
+	// service, so that an update of exe needs a restart of the service.
+	// Another a-stack service, such as one of another home folder or one
+	// that runs another binary, is none of its business.
+	serviceRuns = func(exe string) bool {
+		binary, running := serviceProgram()
+		if !running {
+			return false
 		}
-		if runtime.GOOS == "windows" {
-			_, ok := queryTask("a-stack")
-			return ok
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return exec.CommandContext(ctx, "systemctl", "--user", "is-active", "--quiet", "a-stack").Run() == nil
+		a, err := os.Stat(binary)
+		b, errB := os.Stat(exe)
+		return err == nil && errB == nil && os.SameFile(a, b)
 	}
 )
 
@@ -496,7 +497,7 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	}
 	data["skills"] = refreshed
 	hint := "If a-stack serve is running, stop it with Ctrl-C and run a-stack serve again."
-	if serviceActive() {
+	if serviceRuns(exe) {
 		hint = "Restart the service: " + stack.ServiceCommand("restart")
 	}
 	data["restart_hint"] = hint
