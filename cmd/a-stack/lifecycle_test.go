@@ -28,7 +28,7 @@ func TestCLIEnrollmentAppointmentRebindAndLifecycle(t *testing.T) {
 	process := launch(t, dir)
 	root := t.TempDir()
 	private := filepath.Join(root, "credentials")
-	if os.Mkdir(private, 0700) != nil {
+	if stack.MkdirPrivate(private) != nil {
 		t.Fatal("private credential dir")
 	}
 	common := func(args ...string) []string { return append(args, "--state-dir", dir, "--json") }

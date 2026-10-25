@@ -17,9 +17,6 @@ import (
 
 func reviewService(t *testing.T, dir string) (*Service, Credential) {
 	t.Helper()
-	if err := os.Chmod(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
 	s, err := Start(context.Background(), dir, "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -60,7 +57,7 @@ func reviewCount(t *testing.T, db *sql.DB, table string, want int) {
 }
 
 func TestSpecReviewMutationRecovery(t *testing.T) {
-	dir := t.TempDir()
+	dir := privateTestDir(t)
 	s, c := reviewService(t, dir)
 	db := s.Store.db
 	if _, err := db.Exec(`CREATE TABLE review_effects (id INTEGER PRIMARY KEY, value BLOB);
@@ -120,7 +117,7 @@ CREATE TRIGGER review_fail_receipt BEFORE INSERT ON operation_receipts BEGIN SEL
 }
 
 func TestSpecReviewRealDiskFullRollback(t *testing.T) {
-	s, c := reviewService(t, t.TempDir())
+	s, c := reviewService(t, privateTestDir(t))
 	db := s.Store.db
 	if _, err := db.Exec("CREATE TABLE review_effects (value BLOB)"); err != nil {
 		t.Fatal(err)
@@ -196,7 +193,7 @@ func TestSpecReviewMigrationRecovery(t *testing.T) {
 }
 
 func TestSpecReviewBackupAndConfiguration(t *testing.T) {
-	s, c := reviewService(t, t.TempDir())
+	s, c := reviewService(t, privateTestDir(t))
 	db := s.Store.db
 	for pragma, want := range map[string]string{"journal_mode": "wal", "synchronous": "2", "foreign_keys": "1", "busy_timeout": "5000"} {
 		var got string
@@ -215,10 +212,7 @@ func TestSpecReviewBackupAndConfiguration(t *testing.T) {
 	if err != nil || status.WALBytes == 0 {
 		t.Fatalf("expected committed WAL data: %v", err)
 	}
-	backupDir := t.TempDir()
-	if err := os.Chmod(backupDir, 0700); err != nil {
-		t.Fatal(err)
-	}
+	backupDir := privateTestDir(t)
 	destination := filepath.Join(backupDir, "backup.db")
 	backupStatus, err := s.Store.Backup(context.Background(), c.Token, destination)
 	if err != nil || backupStatus.DatabaseID != s.Store.id {
@@ -275,7 +269,7 @@ func reviewHTTP(t *testing.T, s *Service, token, method, path, body string, chun
 }
 
 func TestSpecReviewHTTPAndCapabilities(t *testing.T) {
-	dir := t.TempDir()
+	dir := privateTestDir(t)
 	s, c := reviewService(t, dir)
 	if _, err := NewClient(dir, "", AgentCapability); err == nil {
 		t.Fatal("Agent mode fell back to Operator credential")
@@ -321,7 +315,7 @@ func TestSpecReviewHTTPAndCapabilities(t *testing.T) {
 }
 
 func TestSpecReviewOversizedChunkedGET(t *testing.T) {
-	s, c := reviewService(t, t.TempDir())
+	s, c := reviewService(t, privateTestDir(t))
 	for _, path := range []string{"/v1/health", "/v1/storage"} {
 		t.Run(path, func(t *testing.T) {
 			status, code := reviewHTTP(t, s, c.Token, "GET", path, strings.Repeat("x", MaxRequestBytes+1), true)

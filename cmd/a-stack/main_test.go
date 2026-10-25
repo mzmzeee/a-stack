@@ -134,7 +134,7 @@ func TestCLIRealProcessesCrashRestartBackupRestore(t *testing.T) {
 		t.Fatal("crash restart changed identity")
 	}
 	backupDir := filepath.Join(t.TempDir(), "backups")
-	if os.Mkdir(backupDir, 0700) != nil {
+	if stack.MkdirPrivate(backupDir) != nil {
 		t.Fatal("backup dir")
 	}
 	backup := filepath.Join(backupDir, "saved.db")
@@ -142,7 +142,7 @@ func TestCLIRealProcessesCrashRestartBackupRestore(t *testing.T) {
 	stopServe(t, second, syscall.SIGTERM)
 	commandResult(t, []string{"health", "--state-dir", dir, "--json"}, 1)
 	restoredDir := filepath.Join(t.TempDir(), "restored")
-	if os.Mkdir(restoredDir, 0700) != nil {
+	if stack.MkdirPrivate(restoredDir) != nil {
 		t.Fatal("restore dir")
 	}
 	saved, err := os.ReadFile(backup)

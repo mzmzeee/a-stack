@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"strings"
 	"syscall"
@@ -58,7 +59,7 @@ func TestStorageErrorNamesFunctionAndErrorClass(t *testing.T) {
 	got := buf.String()
 	for _, want := range []string{
 		"in stack.TestStorageErrorNamesFunctionAndErrorClass: cause not recorded\n",
-		"in stack.TestStorageErrorNamesFunctionAndErrorClass: *fs.PathError, errno 28 (no space left on device)\n",
+		fmt.Sprintf("in stack.TestStorageErrorNamesFunctionAndErrorClass: *fs.PathError, errno %d (%s)\n", syscall.ENOSPC, syscall.ENOSPC.Error()),
 		"in stack.TestStorageErrorNamesFunctionAndErrorClass: *errors.errorString\n",
 	} {
 		if !strings.Contains(got, want) {

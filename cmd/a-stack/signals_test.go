@@ -59,7 +59,7 @@ func TestCLIReportOpenStdinTerminatesOnSignalsWithoutMutation(t *testing.T) {
 	session := mutation(operator, "/v1/session/create", stack.SessionCreateRequest{OperationID: "cancel-session", WorkspaceID: workspace.ResourceID, Name: "Cancellation"})
 	ref := stack.Context{WorkspaceID: workspace.ResourceID, SessionID: session.ResourceID}
 	private := filepath.Join(root, "credentials")
-	if os.Mkdir(private, 0700) != nil {
+	if stack.MkdirPrivate(private) != nil {
 		t.Fatal("private credential directory")
 	}
 	credential := filepath.Join(private, "agent.json")

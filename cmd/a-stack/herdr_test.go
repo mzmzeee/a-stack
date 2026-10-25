@@ -46,7 +46,7 @@ func TestCLIHerdrBindAndFocusRefusals(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "state")
 	launch(t, dir)
 	private := filepath.Join(t.TempDir(), "credentials")
-	if os.Mkdir(private, 0700) != nil {
+	if stack.MkdirPrivate(private) != nil {
 		t.Fatal("private credential dir")
 	}
 	common := func(args ...string) []string { return append(args, "--state-dir", dir, "--json") }

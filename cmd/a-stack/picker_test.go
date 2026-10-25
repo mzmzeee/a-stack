@@ -1,6 +1,7 @@
 package main
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -81,7 +82,7 @@ func TestPickerSortFilterAndRows(t *testing.T) {
 		t.Fatal("folder filter")
 	}
 	line := formatRow(rows[1], true, "/home/u", now, 70)
-	if utf8.RuneCountInString(line) != 70 || !strings.HasPrefix(line, "> Alpha  ~/code/alpha  open  3 tasks, 1 needs you") || !strings.HasSuffix(line, " 2h") {
+	if utf8.RuneCountInString(line) != 70 || !strings.HasPrefix(line, "> Alpha  "+filepath.Join("~", "code", "alpha")+"  open  3 tasks, 1 needs you") || !strings.HasSuffix(line, " 2h") {
 		t.Fatalf("row %q", line)
 	}
 	line = formatRow(rows[0], false, "/home/u", now, 40)

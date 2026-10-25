@@ -1,0 +1,2 @@
+# Embedded templates and release scripts must have the same bytes on every OS.
+* text=auto eol=lf

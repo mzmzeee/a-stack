@@ -14,8 +14,8 @@ import (
 // A database with a newer schema stops serve with exit code 4, which the
 // systemd unit lists in RestartPreventExitStatus, and prints no ready line.
 func TestServeExitsFourForANewerSchema(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.Chmod(dir, 0o700); err != nil {
+	dir := filepath.Join(t.TempDir(), "state")
+	if err := stack.MkdirPrivate(dir); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(dir, "state.db")

@@ -58,7 +58,7 @@ func mailCheckFixture(t *testing.T, n int) (tasks []string, send func(task, body
 	session := mutate(operator, "/v1/session/create", stack.SessionCreateRequest{OperationID: op(), WorkspaceID: workspace.ResourceID, Name: "Check"})
 	ref := stack.Context{WorkspaceID: workspace.ResourceID, SessionID: session.ResourceID}
 	private := filepath.Join(root, "private")
-	if os.Mkdir(private, 0700) != nil {
+	if stack.MkdirPrivate(private) != nil {
 		t.Fatal("private")
 	}
 	file := filepath.Join(private, "orch.json")

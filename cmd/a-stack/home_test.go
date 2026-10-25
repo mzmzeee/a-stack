@@ -230,7 +230,7 @@ func TestCLIShortcutParsing(t *testing.T) {
 
 func TestCLIShortcutsReportLockedStateWithoutService(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "state")
-	if err := os.Mkdir(dir, 0700); err != nil {
+	if err := stack.MkdirPrivate(dir); err != nil {
 		t.Fatal(err)
 	}
 	// This stands for a serve that holds the lock but is still starting or hangs.
@@ -359,7 +359,7 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 		t.Fatal(err)
 	}
 	stdout.Reset()
-	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), `"existing_orchestrator":true`) || !strings.Contains(stdout.String(), legacy) {
+	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), `"existing_orchestrator":true`) || json.Unmarshal(stdout.Bytes(), &made) != nil || made.Data.Credential != legacy {
 		t.Fatalf("hand-off from the v0.1.5 path: exit %d %s %s", code, stdout.String(), stderr.String())
 	}
 	// A worker's credential file, where v0.1.5 kept Orchestrators' files, does

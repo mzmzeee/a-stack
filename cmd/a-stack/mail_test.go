@@ -50,7 +50,7 @@ func TestCLIMailInputIndependentCursorsRemovalAndRejoin(t *testing.T) {
 	session := mutate(operator, "/v1/session/create", stack.SessionCreateRequest{OperationID: "mail-cli-session", WorkspaceID: workspace.ResourceID, Name: "Mail"})
 	ref := stack.Context{WorkspaceID: workspace.ResourceID, SessionID: session.ResourceID}
 	private := filepath.Join(root, "credentials")
-	if os.Mkdir(private, 0700) != nil {
+	if stack.MkdirPrivate(private) != nil {
 		t.Fatal("credentials")
 	}
 	enroll := func(name string) (string, stack.Receipt) {

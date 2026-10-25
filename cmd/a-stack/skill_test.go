@@ -70,7 +70,7 @@ func checkInstalled(t *testing.T, folder string) {
 		if d.IsDir() {
 			want = fs.ModeDir | 0o755
 		}
-		if err == nil && info.Mode() != want {
+		if err == nil && (info.Mode().Type() != want.Type() || posixModes && info.Mode().Perm() != want.Perm()) {
 			t.Fatalf("%s has mode %v, want %v", path, info.Mode(), want)
 		}
 		return err
@@ -165,7 +165,8 @@ func TestSkillInstallProjectAndJSON(t *testing.T) {
 		t.Fatalf("--project wrote to the home folder: %v", entries)
 	}
 	out = runSkill(t, "skill", "uninstall", "--project", "--json")
-	if !strings.Contains(out, `"removed":["`+want[0]+`","`+want[1]+`"]`) {
+	var removed struct{ Data struct{ Removed []string } }
+	if json.Unmarshal([]byte(out), &removed) != nil || !reflect.DeepEqual(removed.Data.Removed, want) {
 		t.Fatalf("uninstall json %s", out)
 	}
 }
@@ -179,7 +180,8 @@ func TestSkillInstallRefreshWritesOnlyExistingCopies(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(claude, "old"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if out := runSkill(t, "skill", "install", "--refresh", "--json"); !strings.Contains(out, `"installed":["`+claude+`"]`) {
+	var refreshed struct{ Data struct{ Installed []string } }
+	if out := runSkill(t, "skill", "install", "--refresh", "--json"); json.Unmarshal([]byte(out), &refreshed) != nil || !reflect.DeepEqual(refreshed.Data.Installed, []string{claude}) {
 		t.Fatalf("output %q", out)
 	}
 	checkInstalled(t, claude)

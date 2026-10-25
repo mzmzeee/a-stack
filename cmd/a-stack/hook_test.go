@@ -25,7 +25,7 @@ func hookHome(t *testing.T) string {
 	t.Setenv("CODEX_HOME", "")
 	t.Setenv("PI_CODING_AGENT_DIR", "")
 	t.Setenv("USERPROFILE", home)                           // the home folder on Windows
-	t.Setenv("XDG_CACHE_HOME", "")                          // the mail nudge keeps its cursor files in ~/.cache
+	t.Setenv("XDG_CACHE_HOME", "")                          // use the platform cache below the test home
 	t.Setenv("LOCALAPPDATA", filepath.Join(home, ".cache")) // and on Windows there
 	return home
 }
@@ -483,7 +483,7 @@ func TestHookStopGuardBlocksOnlyTheAgentThatSetTheTaskWorking(t *testing.T) {
 // next hook run, and does not report the rest of the old mail as new.
 func TestHookMailNudgeFirstCheckThatRunsOutReportsNoOldMail(t *testing.T) {
 	f := newTeam(t)
-	home := hookHome(t)
+	hookHome(t)
 	peerFile := filepath.Join(filepath.Dir(f.workerFile), "peer.json")
 	peer := f.receipt(f.orchFile, f.scoped("agent", "register", "--name", "03-peer", "--new-credential-file", peerFile, "--operation-id", "catch-peer")...).ResourceID
 	f.taskChange(f.orchFile, "catch-assign", 2, "assign", "--agent", peer)
@@ -494,7 +494,7 @@ func TestHookMailNudgeFirstCheckThatRunsOutReportsNoOldMail(t *testing.T) {
 	t.Cleanup(func() { catchUpPages = 20 })
 	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}, noStopGuard: true}
 	sum := sha256.Sum256([]byte("abc"))
-	file := filepath.Join(hookCacheDir(filepath.Join(home, ".cache"), f.worker), hex.EncodeToString(sum[:16])+".json")
+	file := filepath.Join(hookCacheDir(testUserCacheDir(t), f.worker), hex.EncodeToString(sum[:16])+".json")
 	later := func() {
 		old := time.Now().Add(-mailNudgeEvery - time.Second)
 		if os.Chtimes(file, old, old) != nil {
@@ -533,7 +533,7 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	f.run(f.workerFile, f.scoped("mail", "check", "--cursor-file", own)...)
 	ownBefore, _ := os.ReadFile(own)
 	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}, noStopGuard: true}
-	dir := hookCacheDir(filepath.Join(home, ".cache"), f.worker)
+	dir := hookCacheDir(testUserCacheDir(t), f.worker)
 	sum := sha256.Sum256([]byte("abc"))
 	file := filepath.Join(dir, hex.EncodeToString(sum[:16])+".json")
 	later := func(path string) {
@@ -604,4 +604,13 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
 		t.Fatalf("cursor files: %v", entries)
 	}
+}
+
+func testUserCacheDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }

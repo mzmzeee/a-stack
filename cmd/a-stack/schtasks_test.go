@@ -186,7 +186,8 @@ func TestSchtasksInstallFailures(t *testing.T) {
 	f, _, state := schtasksSetup(t)
 	serviceWait = 0
 	_, errout := runService(t, 1, "install", "--state-dir", state)
-	if !strings.Contains(errout, "does not answer; see schtasks /Query /TN a-stack-S-1-5-21-1234 /V /FO LIST and "+serviceLog(state)) {
+	var failure struct{ Error struct{ Message string } }
+	if json.Unmarshal([]byte(errout), &failure) != nil || !strings.Contains(failure.Error.Message, "does not answer; see schtasks /Query /TN a-stack-S-1-5-21-1234 /V /FO LIST and "+serviceLog(state)) {
 		t.Fatalf("stderr %s", errout)
 	}
 	f.task = ""

@@ -38,7 +38,7 @@ func TestCLITasksSharedGraphAttentionAndClosedSession(t *testing.T) {
 	start()
 	project := filepath.Join(root, "project")
 	private := filepath.Join(root, "credentials")
-	if os.Mkdir(project, 0700) != nil || os.Mkdir(private, 0700) != nil {
+	if os.Mkdir(project, 0700) != nil || stack.MkdirPrivate(private) != nil {
 		t.Fatal("fixture directories")
 	}
 	invoke := func(actor string, want int, args ...string) json.RawMessage {

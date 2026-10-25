@@ -21,7 +21,7 @@ type taskReviewFixture struct {
 
 func taskReviewSetup(t *testing.T) taskReviewFixture {
 	t.Helper()
-	service, op := reviewService(t, t.TempDir())
+	service, op := reviewService(t, privateTestDir(t))
 	f := taskReviewFixture{service: service, op: op}
 	f.ref = lifecycleReviewSession(t, service.Store, op, "")
 	for i, name := range []string{"review-orchestrator", "review-worker-a", "review-worker-b"} {

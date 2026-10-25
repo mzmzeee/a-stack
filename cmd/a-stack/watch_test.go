@@ -40,7 +40,7 @@ func newTeam(t *testing.T) *team {
 		<-done
 	})
 	private := filepath.Join(root, "credentials")
-	if os.Mkdir(f.project, 0700) != nil || os.Mkdir(private, 0700) != nil {
+	if os.Mkdir(f.project, 0700) != nil || stack.MkdirPrivate(private) != nil {
 		t.Fatal("fixture directories")
 	}
 	f.project, _ = filepath.EvalSymlinks(f.project)

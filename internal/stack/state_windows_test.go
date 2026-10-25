@@ -29,6 +29,12 @@ func daclOf(t *testing.T, path string) string {
 		t.Fatalf("GetNamedSecurityInfoW %s: error %d", path, r)
 	}
 	defer syscall.LocalFree(syscall.Handle(descriptor))
+	return descriptorDACL(t, descriptor)
+}
+
+func descriptorDACL(t *testing.T, descriptor uintptr) string {
+	t.Helper()
+	const daclInformation = 4
 	var text *uint16
 	var size uint32
 	if r, _, e := procSDToString.Call(descriptor, 1, daclInformation, uintptr(unsafe.Pointer(&text)), uintptr(unsafe.Pointer(&size))); r == 0 {
@@ -68,6 +74,20 @@ func TestMkdirPrivateACL(t *testing.T) {
 		t.Fatal("a second MkdirPrivate:", err)
 	}
 	sid := currentSID(t)
+	// Windows may render the current SID as an SDDL alias such as LA.
+	// Normalize the expected trustees with the same native conversion.
+	sddl, _ := syscall.UTF16PtrFromString("D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;" + sid + ")")
+	var descriptor uintptr
+	if r, _, e := procConvertStringSD.Call(uintptr(unsafe.Pointer(sddl)), 1, uintptr(unsafe.Pointer(&descriptor)), 0); r == 0 {
+		t.Fatal(e)
+	}
+	defer syscall.LocalFree(syscall.Handle(descriptor))
+	acePattern := regexp.MustCompile(`\(([^)]*)\)`)
+	expected := map[string]bool{}
+	for _, ace := range acePattern.FindAllStringSubmatch(descriptorDACL(t, descriptor), -1) {
+		fields := strings.Split(ace[1], ";")
+		expected[fields[len(fields)-1]] = true
+	}
 	if got := daclOf(t, dir); !strings.Contains(strings.SplitN(got, "(", 2)[0], "P") {
 		t.Fatalf("state folder DACL is not protected: %s", got)
 	}
@@ -77,13 +97,13 @@ func TestMkdirPrivateACL(t *testing.T) {
 	}
 	for _, path := range []string{dir, file} {
 		got := daclOf(t, path)
-		aces := regexp.MustCompile(`\(([^)]*)\)`).FindAllStringSubmatch(got, -1)
+		aces := acePattern.FindAllStringSubmatch(got, -1)
 		if len(aces) != 3 {
 			t.Fatalf("credential file access list %s, want 3 entries", got)
 		}
 		for _, ace := range aces {
 			fields := strings.Split(ace[1], ";")
-			if trustee := fields[len(fields)-1]; fields[0] != "A" || fields[2] != "FA" || trustee != "SY" && trustee != "BA" && trustee != sid {
+			if trustee := fields[len(fields)-1]; fields[0] != "A" || fields[2] != "FA" || !expected[trustee] {
 				t.Fatalf("credential file access list %s has the entry %s", got, ace[0])
 			}
 		}

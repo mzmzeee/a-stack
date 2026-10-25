@@ -40,7 +40,7 @@ func lifecycleReviewAgent(t *testing.T, s *Store, issuer Credential, ref Context
 
 func TestLifecycleSpecAuthorityContextAndReplacement(t *testing.T) {
 	ctx := context.Background()
-	service, operator := reviewService(t, t.TempDir())
+	service, operator := reviewService(t, privateTestDir(t))
 	s := service.Store
 	ref := lifecycleReviewSession(t, s, operator, "")
 	other := lifecycleReviewSession(t, s, operator, ref.WorkspaceID)
@@ -118,7 +118,7 @@ func TestLifecycleSpecAuthorityContextAndReplacement(t *testing.T) {
 
 func TestLifecycleSpecClosureRaceAndReplay(t *testing.T) {
 	ctx := context.Background()
-	service, operator := reviewService(t, t.TempDir())
+	service, operator := reviewService(t, privateTestDir(t))
 	s := service.Store
 	ref := lifecycleReviewSession(t, s, operator, "")
 	_, worker := lifecycleReviewAgent(t, s, operator, ref, "worker")
@@ -193,7 +193,7 @@ func TestLifecycleSpecClosureRaceAndReplay(t *testing.T) {
 
 func TestLifecycleSpecBindingRebindAndClosedObservation(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
+	dir := privateTestDir(t)
 	service, operator := reviewService(t, dir)
 	s := service.Store
 	ref := lifecycleReviewSession(t, s, operator, "")
@@ -267,14 +267,11 @@ func TestLifecycleSpecBindingRebindAndClosedObservation(t *testing.T) {
 
 func TestLifecycleSpecDurableEnrollment(t *testing.T) {
 	ctx := context.Background()
-	service, operator := reviewService(t, t.TempDir())
+	service, operator := reviewService(t, privateTestDir(t))
 	s := service.Store
 	ref := lifecycleReviewSession(t, s, operator, "")
 	request := AgentRegisterRequest{Context: ref, OperationID: opaqueID(), Name: "durable-worker"}
-	parent := t.TempDir()
-	if err := os.Chmod(parent, 0700); err != nil {
-		t.Fatal(err)
-	}
+	parent := privateTestDir(t)
 	path := filepath.Join(parent, "worker.json")
 	hash, err := PrepareAgentCredential(path, s.id, "agent register", request.OperationID, request)
 	if err != nil {
@@ -365,7 +362,7 @@ func TestLifecycleSpecDurableEnrollment(t *testing.T) {
 }
 
 func TestLifecycleSpecHTTPDispatch(t *testing.T) {
-	dir := t.TempDir()
+	dir := privateTestDir(t)
 	service, operator := reviewService(t, dir)
 	ref := lifecycleReviewSession(t, service.Store, operator, "")
 	other := lifecycleReviewSession(t, service.Store, operator, ref.WorkspaceID)
@@ -399,10 +396,7 @@ func TestLifecycleSpecHTTPDispatch(t *testing.T) {
 
 func TestLifecycleSpecPopulatedV1Upgrade(t *testing.T) {
 	ctx := context.Background()
-	dir := t.TempDir()
-	if err := os.Chmod(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
+	dir := privateTestDir(t)
 	path, err := ensureDatabaseFile(dir)
 	if err != nil {
 		t.Fatal(err)

@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"net/url"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
 func TestOpenPrintsScopedURLWhenLaunchFails(t *testing.T) {
@@ -38,7 +39,7 @@ func TestOpenPrintsScopedURLWhenLaunchFails(t *testing.T) {
 	}
 	// Only the Operator opens views and revokes them.
 	private := filepath.Join(t.TempDir(), "credentials")
-	if os.Mkdir(private, 0700) != nil {
+	if stack.MkdirPrivate(private) != nil {
 		t.Fatal("private credential dir")
 	}
 	agentFile := filepath.Join(private, "agent.json")

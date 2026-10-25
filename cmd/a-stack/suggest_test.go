@@ -104,7 +104,7 @@ func TestCLIBodyAliasAndOneTrailingNewline(t *testing.T) {
 		<-done
 	})
 	project, private := filepath.Join(root, "project"), filepath.Join(root, "credentials")
-	if os.Mkdir(project, 0700) != nil || os.Mkdir(private, 0700) != nil {
+	if os.Mkdir(project, 0700) != nil || stack.MkdirPrivate(private) != nil {
 		t.Fatal("fixture directories")
 	}
 	var ws, se string
