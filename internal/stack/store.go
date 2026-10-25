@@ -49,6 +49,8 @@ type Store struct {
 	disk          diskSpace
 	marksMu       sync.Mutex
 	marks         map[string]archiveMarkState // by Session ID
+	// Migrated is one line for stderr after a schema migration, else empty.
+	Migrated string
 }
 
 // stmtCacheSize bounds the prepared statements the driver keeps. Past it, the
@@ -112,13 +114,18 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 	if db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version) != nil || db.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app) != nil {
 		return nil, storageError()
 	}
+	backup := ""
 	if version > 0 && version < schemaVersion && app == applicationID {
-		if err = s.backupBeforeMigration(ctx, version); err != nil {
+		if backup, err = s.backupBeforeMigration(ctx, version); err != nil {
 			return nil, err
 		}
 	}
+	started := time.Now()
 	if err = s.migrate(ctx, migration1); err != nil {
 		return nil, err
+	}
+	if backup != "" {
+		s.Migrated = fmt.Sprintf("Migrated the state database from schema %d to %d in %.1f s. The copy from before is %s; an older a-stack cannot open the database now. To go back: %s", version, schemaVersion, time.Since(started).Seconds(), backup, goBackDocs)
 	}
 	// Close the connection that ran the migrations, and with it every statement
 	// it cached against the old schema. The pool opens a fresh one on demand.
@@ -135,39 +142,116 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 }
 
 const restoreDocs = "https://github.com/mzmzeee/a-stack/blob/main/docs/foundation.md#backup-and-restore"
+const goBackDocs = "https://github.com/mzmzeee/a-stack/blob/main/docs/install.md#go-back-to-an-older-version"
 
 // backupBeforeMigration copies the database at schema version to
 // state.db.pre-vN with VACUUM INTO before a migration changes it. It never
 // replaces an earlier copy: the next one is state.db.pre-vN.2, and so on.
-func (s *Store) backupBeforeMigration(ctx context.Context, version int) error {
-	base := s.path + ".pre-v" + strconv.Itoa(version)
-	for n := 1; n <= 100; n++ {
-		name := base
-		if n > 1 {
-			name += "." + strconv.Itoa(n)
-		}
-		f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if errors.Is(err, os.ErrExist) {
-			continue
-		}
-		if err != nil {
-			break
-		}
-		// VACUUM INTO accepts the empty file, which keeps the owner-only mode.
-		_, err = s.db.ExecContext(ctx, "VACUUM main INTO ?", name)
-		if err == nil {
-			err = f.Sync()
-		}
-		if closeErr := f.Close(); err == nil {
-			err = closeErr
-		}
-		if err == nil && syncDir(filepath.Dir(s.path)) == nil {
-			return nil
-		}
-		os.Remove(name)
-		break
+//
+// A start that fails after the copy, and is tried again, reuses it. Each copy
+// gets the modification time of the database it was made from, after the WAL
+// is folded into the file, so a later change to the database means a new
+// copy. The copy is written under a temporary name and renamed when it is
+// complete, so a crash never leaves a cut-off copy under the final name.
+func (s *Store) backupBeforeMigration(ctx context.Context, version int) (string, error) {
+	var busy, frames, moved int
+	folded := s.db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &frames, &moved) == nil && busy == 0
+	source, err := os.Stat(s.path)
+	if err != nil {
+		return "", storageError(err)
 	}
-	return failure("storage_unavailable", fmt.Sprintf("cannot write %s.pre-v%d, the backup before the schema migration; check free space and permissions in the state directory", filepath.Base(s.path), version))
+	var id string
+	if err = s.db.QueryRowContext(ctx, "SELECT value FROM metadata WHERE key='database_id'").Scan(&id); err != nil {
+		return "", storageError(err)
+	}
+	base := s.path + ".pre-v" + strconv.Itoa(version)
+	name := ""
+	for n := 1; n <= 100; n++ {
+		next := base
+		if n > 1 {
+			next += "." + strconv.Itoa(n)
+		}
+		info, err := os.Lstat(next)
+		if errors.Is(err, os.ErrNotExist) {
+			if name == "" {
+				name = next
+			}
+		} else if err == nil && folded && info.Mode().IsRegular() && info.ModTime().Equal(source.ModTime()) && copyOf(ctx, next, version, id) {
+			if err = s.migrationSpace(source.Size(), false); err != nil {
+				return "", err
+			}
+			return next, nil
+		}
+	}
+	cannot := failure("storage_unavailable", fmt.Sprintf("cannot write %s.pre-v%d, the backup before the schema migration; check free space and permissions in the state directory", filepath.Base(s.path), version))
+	if name == "" {
+		return "", cannot
+	}
+	if err = s.migrationSpace(source.Size(), true); err != nil {
+		return "", err
+	}
+	// Only one serve holds the state directory, so a temporary file left
+	// there belongs to an earlier start that stopped.
+	tmp := base + ".tmp"
+	os.Remove(tmp)
+	os.Remove(tmp + "-journal")
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return "", cannot
+	}
+	// VACUUM INTO accepts the empty file, which keeps the owner-only mode.
+	_, err = s.db.ExecContext(ctx, "VACUUM main INTO ?", tmp)
+	if err == nil {
+		err = f.Sync()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Chtimes(tmp, source.ModTime(), source.ModTime())
+	}
+	if err == nil {
+		err = Rename(tmp, name)
+	}
+	if err == nil && syncDir(filepath.Dir(s.path)) == nil {
+		return name, nil
+	}
+	os.Remove(tmp)
+	return "", cannot
+}
+
+// copyOf reports whether the file at name is an a-stack database at schema
+// version with the database ID id.
+func copyOf(ctx context.Context, name string, version int, id string) bool {
+	db, err := sql.Open("sqlite3", fileURI(name)+"?mode=ro")
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+	var v, app int
+	var got string
+	return db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&v) == nil && v == version &&
+		db.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app) == nil && app == applicationID &&
+		db.QueryRowContext(ctx, "SELECT value FROM metadata WHERE key='database_id'").Scan(&got) == nil && got == id
+}
+
+// migrationSpace refuses a migration while the state directory has less free
+// space than it needs. The migration rebuilds the Task text and mail tables,
+// which hold most of the data: the new tables go into the WAL first, and the
+// checkpoint then grows the file by as much, so the migration needs up to
+// twice the database size, and the copy, unless reused, once more. When the
+// free space cannot be measured, the migration tries anyway.
+func (s *Store) migrationSpace(size int64, withCopy bool) error {
+	need := 2 * uint64(size)
+	if withCopy {
+		need += uint64(size)
+	}
+	free, err := s.disk.get(s.path)
+	if err != nil || free >= need {
+		return nil
+	}
+	mb := func(n uint64) string { return strconv.FormatUint((n+999_999)/1_000_000, 10) + " MB" }
+	return failure("storage_unavailable", fmt.Sprintf("the schema migration of %s needs about %s of free space in the state directory (for a copy of the database and to rebuild its tables), but only %s is free; free some space and start a-stack again", filepath.Base(s.path), mb(need), mb(free)))
 }
 func sqliteSupported(version string) bool {
 	parts := strings.Split(version, ".")
