@@ -10,7 +10,7 @@ To turn on notices, start the service with an installed Herdr executable:
 a-stack serve --state-dir "$state_dir" --herdr-executable /absolute/path/to/herdr --json
 ```
 
-Without this flag, notices are off and mail works as usual. If the integration data is missing or not supported, the notices stay pending with a diagnostic, and a-stack tries again with a bounded backoff. Mail and Task updates still work. a-stack configures no accounts, no background agent launcher and no global Herdr settings.
+Without this flag, notices are off and mail works as usual. Herdr does not run on Windows; there, `--herdr-executable` and the `herdr` commands stop with an error, and mail works as usual. If the integration data is missing or not supported, the notices stay pending with a diagnostic, and a-stack tries again with a bounded backoff. Mail and Task updates still work. a-stack configures no accounts, no background agent launcher and no global Herdr settings.
 
 ## Supported combinations
 

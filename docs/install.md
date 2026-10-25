@@ -1,8 +1,8 @@
 # Install
 
-a-stack runs on Linux and macOS, on x86-64 (`amd64`) and ARM64 (`arm64`). The Linux release binaries are statically linked. They do not need other libraries. The macOS release binaries run on macOS 12 or later and use only the libraries that come with macOS.
+a-stack runs on Linux, macOS and Windows, on x86-64 (`amd64`) and ARM64 (`arm64`). The Linux release binaries are statically linked. They do not need other libraries. The macOS release binaries run on macOS 12 or later and use only the libraries that come with macOS. The Windows release binaries run on Windows 10 or later and use only the libraries that come with Windows.
 
-On both systems, a-stack keeps its data in `~/.local/state/a-stack`, or in `$XDG_STATE_HOME/a-stack` when `XDG_STATE_HOME` is set. macOS uses the same folder as Linux, so the commands in these guides and the agent skill work the same on both.
+On Linux and macOS, a-stack keeps its data in `~/.local/state/a-stack`, or in `$XDG_STATE_HOME/a-stack` when `XDG_STATE_HOME` is set. macOS uses the same folder as Linux, so the commands in these guides and the agent skill work the same on both. On Windows, the folder is `%LOCALAPPDATA%\a-stack`; see [On Windows](#on-windows).
 
 ## Install script
 
@@ -38,23 +38,49 @@ less install.sh
 sh install.sh
 ```
 
+### Install script for Windows
+
+In PowerShell (Windows PowerShell 5.1 or PowerShell 7), run:
+
+```powershell
+irm https://github.com/mzmzeee/a-stack/releases/latest/download/install.ps1 | iex
+```
+
+The script does these steps:
+
+1. It finds the archive for your processor, `a-stack_windows_amd64.zip` or `a-stack_windows_arm64.zip`.
+2. It downloads the archive and the release's `SHA256SUMS` file.
+3. It compares the SHA-256 checksum. If it is not correct, it stops and installs nothing. It does not check the signature of `SHA256SUMS`, because PowerShell cannot check an Ed25519 signature; to check it, see [How releases are verified](#how-releases-are-verified). `a-stack update` checks the signature of every later update.
+4. It installs `a-stack.exe` in `%LOCALAPPDATA%\Programs\a-stack`, without administrator rights. If a-stack runs from there, the old binary moves aside to `a-stack.exe.old`, which the next start of a-stack removes.
+5. It adds this folder to your user `PATH`. Open a new terminal to use it.
+
+The script takes the same variables as `install.sh`, `A_STACK_VERSION` and `A_STACK_INSTALL_DIR`, and also `A_STACK_NO_PATH=1`, which leaves your `PATH` as it is:
+
+```powershell
+$env:A_STACK_VERSION = 'v0.1.6'; irm https://github.com/mzmzeee/a-stack/releases/latest/download/install.ps1 | iex
+```
+
+To read the script before you run it, download it with `irm https://github.com/mzmzeee/a-stack/releases/latest/download/install.ps1 -OutFile install.ps1`, read it, then run `powershell -ExecutionPolicy Bypass -File install.ps1`.
+
 ## Manual download
 
 1. Open the [releases page](https://github.com/mzmzeee/a-stack/releases).
-2. Download the archive for your system, `SHA256SUMS` and `SHA256SUMS.sig`. The archives are `a-stack_linux_amd64.tar.gz` and `a-stack_linux_arm64.tar.gz` for Linux, and `a-stack_darwin_arm64.tar.gz` (Apple silicon) and `a-stack_darwin_amd64.tar.gz` (Intel) for macOS.
+2. Download the archive for your system, `SHA256SUMS` and `SHA256SUMS.sig`. The archives are `a-stack_linux_amd64.tar.gz` and `a-stack_linux_arm64.tar.gz` for Linux, `a-stack_darwin_arm64.tar.gz` (Apple silicon) and `a-stack_darwin_amd64.tar.gz` (Intel) for macOS, and `a-stack_windows_amd64.zip` and `a-stack_windows_arm64.zip` for Windows.
 3. Check the archive, either with the release signature or with the GitHub attestation. See [How releases are verified](#how-releases-are-verified). Then check the checksum:
 
    ```sh
    sha256sum --check --ignore-missing SHA256SUMS
    ```
 
-   On macOS, use `shasum -a 256 --check --ignore-missing SHA256SUMS`.
+   On macOS, use `shasum -a 256 --check --ignore-missing SHA256SUMS`. On Windows, in PowerShell, compare `(Get-FileHash a-stack_windows_amd64.zip).Hash` with the line of the archive in `SHA256SUMS`; the case of the letters does not matter.
 
 4. Unpack the binary into a folder on your `PATH`:
 
    ```sh
    tar -xzf a-stack_linux_amd64.tar.gz -C ~/.local/bin a-stack
    ```
+
+   On Windows, unpack `a-stack.exe` from the zip into a folder on your `PATH`, such as `%LOCALAPPDATA%\Programs\a-stack`, with `Expand-Archive a-stack_windows_amd64.zip -DestinationPath $env:LOCALAPPDATA\Programs\a-stack`.
 
 ## Go install
 
@@ -64,7 +90,7 @@ With Go installed, you can build and install a release with one command:
 CGO_ENABLED=1 go install github.com/mzmzeee/a-stack/cmd/a-stack@latest
 ```
 
-- It needs a C compiler, such as `gcc`, or on macOS the Xcode command line tools (`xcode-select --install`), because SQLite is built in with cgo. Without one, the build fails.
+- It needs a C compiler, such as `gcc`, on macOS the Xcode command line tools (`xcode-select --install`), or on Windows a MinGW-w64 `gcc` on the `PATH`, because SQLite is built in with cgo. Without one, the build fails.
 - It needs Go 1.27.3 or later. An older `go` downloads that version itself, unless `GOTOOLCHAIN=local` is set.
 - It installs the binary in `$(go env GOBIN)`, or `~/go/bin` when `GOBIN` is not set. Make sure that folder is on your `PATH`.
 - The build takes about a minute. `a-stack version` shows the release, such as `v0.1.4`. Use `@vX.Y.Z` instead of `@latest` for another version.
@@ -74,7 +100,7 @@ CGO_ENABLED=1 go install github.com/mzmzeee/a-stack/cmd/a-stack@latest
 
 ## Package managers
 
-An AUR package (`a-stack-bin`) and a Homebrew formula for Linux are prepared in [`contrib/`](../contrib/README.md), but not published yet. Both install the release binary and check it against the release's `SHA256SUMS`. If you install a-stack with a package manager, update it with that package manager: `a-stack update` cannot replace a binary in `/usr/bin`.
+An AUR package (`a-stack-bin`), a Homebrew formula for Linux and a Scoop manifest for Windows are prepared in [`contrib/`](../contrib/README.md), but not published yet. They install the release binary and check it against the release's `SHA256SUMS`. If you install a-stack with a package manager, update it with that package manager: `a-stack update` cannot replace a binary in `/usr/bin`, and on Windows it refuses to replace a binary in a Scoop or WinGet folder and names `scoop update a-stack` or `winget upgrade a-stack` instead.
 
 ## How releases are verified
 
@@ -88,7 +114,8 @@ MCowBQYDK2VwAyEANkJiNRRt3iLovFX+EVrAxA1Z7a3diAw6F3PhyC9+D08=
 
 - `a-stack update` checks the signature before it trusts `SHA256SUMS`. A missing or wrong signature stops the update, and nothing changes.
 - The install script checks it with OpenSSL 3 or later. Without OpenSSL 3, it says that it did not check the signature, links to this section and checks only the checksum. macOS has LibreSSL, not OpenSSL 3. To check the signature there too, install OpenSSL 3 with Homebrew (`brew install openssl@3`) and run the script with it first on your `PATH`: `curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | PATH="$(brew --prefix openssl@3)/bin:$PATH" sh`.
-- Releases up to v0.1.4 have no signature. Both accept them with a warning, but only when you name such a version: `a-stack update --version v0.1.4` or `A_STACK_VERSION=v0.1.4`. For v0.1.5 and later, a missing signature is an error.
+- The Windows install script, `install.ps1`, checks only the checksum. To check the signature on Windows, use `openssl` from Git for Windows (`C:\Program Files\Git\usr\bin\openssl.exe`, OpenSSL 3) as shown below.
+- Releases up to v0.1.4 have no signature. `a-stack update` and `install.sh` accept them with a warning, but only when you name such a version: `a-stack update --version v0.1.4` or `A_STACK_VERSION=v0.1.4`. For v0.1.5 and later, a missing signature is an error.
 
 To check a signature by hand, save the public key above as `a-stack-release.pem` and run:
 
@@ -143,6 +170,7 @@ Your data stays in the state directory when you update. The service needs a rest
    - `a-stack update --version v0.1.2` installs that release, also an older one. For an older version it prints a warning: an older a-stack may not open the current database. See [Go back to an older version](#go-back-to-an-older-version).
    - A build from source has no release version. It updates only with `--version`.
    - If you cannot write to the binary's folder, the command stops and names the folder. Install a-stack in a folder that you own with the install script and `A_STACK_INSTALL_DIR`.
+   - On Windows, it downloads the `.zip` archive. Windows cannot replace a running `a-stack.exe`, so the update renames it to `a-stack.exe.old` and puts the new binary in its place; the next start of a-stack removes the old file. If the binary is in a Scoop or WinGet folder, the update stops and names `scoop update a-stack` or `winget upgrade a-stack`.
    - `A_STACK_BASE_URL` names a release mirror, as for the install script.
 
    Releases up to v0.1.3 do not have `a-stack update`. To update them, or as the other way, run the install script again:
@@ -158,6 +186,7 @@ Your data stays in the state directory when you update. The service needs a rest
    - If you started `a-stack serve` by hand, press Ctrl-C in its terminal and run `a-stack serve` again.
    - If systemd runs the service, run `systemctl --user restart a-stack`.
    - If launchd runs the service on macOS, run `launchctl kickstart -k gui/$(id -u)/dev.a-stack`.
+   - If Task Scheduler runs the service on Windows, run `schtasks /End /TN a-stack` and then `schtasks /Run /TN a-stack`.
 
 4. If the open browser tab does not find the service again, open the view again. This command opens your last Session:
 
@@ -171,14 +200,14 @@ When the new version has a new database schema, the first start migrates the dat
 
 ### Go back to an older version
 
-An older a-stack cannot open a database that a newer one migrated. `a-stack serve` then stops with exit code 4 and a message that names the schema version it found and the newest one it supports. The systemd unit does not restart it. launchd on macOS tries again every 10 seconds, and each try writes the same message to the log. To get back:
+An older a-stack cannot open a database that a newer one migrated. `a-stack serve` then stops with exit code 4 and a message that names the schema version it found and the newest one it supports. The systemd unit does not restart it. launchd on macOS tries again every 10 seconds, and Task Scheduler on Windows every minute; each try writes the same message to the log. To get back:
 
 - Update to the newer version again: `a-stack update`, or `a-stack update --version vX.Y.Z`.
 - Or, to stay on the older version, restore the `state.db.pre-vN` copy or a backup made with the older version, as in [Backup and restore](foundation.md#backup-and-restore). Changes made after that copy are lost.
 
 ## Start a-stack automatically
 
-If you start a-stack with `a-stack`, `a-stack new` or `a-stack -r`, the service runs in that terminal. When you close the terminal, a-stack stops. On Linux with systemd, a user service can run `a-stack serve` for you instead. systemd starts it when your user manager starts, and starts it again if it crashes. You do not need `sudo`. On macOS, the same command sets up a launchd agent; see [On macOS with launchd](#on-macos-with-launchd).
+If you start a-stack with `a-stack`, `a-stack new` or `a-stack -r`, the service runs in that terminal. When you close the terminal, a-stack stops. On Linux with systemd, a user service can run `a-stack serve` for you instead. systemd starts it when your user manager starts, and starts it again if it crashes. You do not need `sudo`. On macOS, the same command sets up a launchd agent; see [On macOS with launchd](#on-macos-with-launchd). On Windows, it sets up a Task Scheduler task; see [On Windows with Task Scheduler](#on-windows-with-task-scheduler).
 
 Run this command:
 
@@ -315,12 +344,57 @@ launchctl kickstart gui/$(id -u)/dev.a-stack      # start again
 
 After `kill TERM`, the service exits with 0, so launchd does not start it again until you log in again or run `kickstart`.
 
+### On Windows with Task Scheduler
+
+On Windows, `a-stack service install` sets up a Task Scheduler task named `a-stack`. Task Scheduler starts it when you log in, and starts it again within a minute after it stops. You do not need administrator rights. The task runs only while you are logged in, with your normal rights, also on battery, and without a time limit.
+
+It does these steps:
+
+1. It checks that no `a-stack serve` runs for the state directory outside Task Scheduler. If one runs, it stops and changes nothing. Press Ctrl-C in the terminal of that service, then run the command again.
+2. It creates the task with `schtasks /Create`. The task runs the `a-stack.exe` that you ran, with its real path, and the state directory that the CLI uses. If the task exists and differs, it replaces the task and says `Updated`. If the service runs already, it prints the commands that restart it.
+3. If the service does not run, it starts the task with `schtasks /Run /TN a-stack`.
+4. It waits until the service answers, and prints its URL. If the service does not answer, read the log and the output of `schtasks /Query /TN a-stack /V /FO LIST`.
+
+The service started by Task Scheduler has no terminal. It leaves its console window and writes its output, such as the ready line with the URL, to a log file next to the state directory: `%LOCALAPPDATA%\a-stack.log` for the default state directory. At each start, it empties the log when the log is larger than 1 MiB. A console window can show for a moment when the task starts.
+
+The task names the state directory with `--state-dir`. Run `a-stack service install` again after you move the binary or change the state directory.
+
+Task Scheduler cannot skip exit codes 3 (another `a-stack serve` owns the state directory) and 4 (the database is damaged or has a newer schema), so it tries again every minute, and the log shows the error each time. Stop the other `a-stack serve`, or see [Go back to an older version](#go-back-to-an-older-version).
+
+`a-stack service status` shows the task, whether it is enabled, the binary and the state directory in the task, the log file and the result of `a-stack health`. With `--json`, `unit` is the task name and `installed` and `enabled` say whether the task exists and is enabled.
+
+`a-stack service uninstall` stops the task and deletes it. It never touches the state directory or the log.
+
+To control the service by hand:
+
+```powershell
+schtasks /End /TN a-stack; schtasks /Run /TN a-stack   # restart
+schtasks /Change /TN a-stack /DISABLE; schtasks /End /TN a-stack   # stop and keep it stopped
+schtasks /Change /TN a-stack /ENABLE; schtasks /Run /TN a-stack    # start again
+```
+
+`schtasks /End` alone stops the service only until the task starts it again, within a minute.
+
+## On Windows
+
+a-stack is built for Windows 10 or later, on x64 and Arm. These things differ from Linux and macOS:
+
+- The state directory is `%LOCALAPPDATA%\a-stack`, or `%XDG_STATE_HOME%\a-stack` when `XDG_STATE_HOME` is set. a-stack creates it, and the folders of Agent credentials, with an access list that only your account, SYSTEM and the Administrators group can use, and that does not take the rights of the parent folder. Files inside get the same access. A folder that exists already keeps its access list. Windows has no file modes, so a-stack does not check the modes of files as it does on Linux and macOS.
+- A second `a-stack serve` for the same state directory stops with `conflict`, as on Linux: the running service keeps `service.lock` open, and Windows does not let another process open it.
+- The service runs from Task Scheduler; see [On Windows with Task Scheduler](#on-windows-with-task-scheduler).
+- `a-stack` opens the view in your default browser.
+- The hooks name paths with `/`, such as `C:/Users/you/...`, so that Git Bash, which Claude Code uses for hooks on Windows, can run them.
+- Herdr does not run on Windows, so the `herdr` commands and `--herdr-executable` stop with an error that says so. Agents get Task mail with `mail check`.
+- `a-stack watch --notify` shows no desktop notices on Windows yet; it says so and works without them.
+
+Windows support is new. The CI runs the tests on Windows x64 and starts the release binaries on Windows x64 and Arm, but these things were not yet tried on a real Windows machine: the access list of a state directory that you name with `--state-dir`, the view picker in the terminals, the Task Scheduler task across a logon and after a crash, `a-stack update` over a running service, Windows Defender and SmartScreen with the unsigned binary, and the hooks with Claude Code and Codex. Please [open an issue](https://github.com/mzmzeee/a-stack/issues) when something does not work.
+
 ## Requirements
 
 You need these only to build from source:
 
-- Linux, or macOS 12 or later
-- Go 1.27.3 with cgo (`CGO_ENABLED=1`) and a C compiler. On macOS, install the Xcode command line tools with `xcode-select --install`.
+- Linux, macOS 12 or later, or Windows 10 or later
+- Go 1.27.3 with cgo (`CGO_ENABLED=1`) and a C compiler. On macOS, install the Xcode command line tools with `xcode-select --install`. On Windows, put a MinGW-w64 `gcc`, such as the one from [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) or MSYS2, on your `PATH`.
 
 SQLite 3.53.4 is built into the binary from `github.com/mattn/go-sqlite3`. Do not build with the `libsqlite3` tag.
 
@@ -336,13 +410,13 @@ This binary uses your system's C library. To build the static release binary, se
 
 ## Uninstall
 
-If you set up the systemd user service or the launchd agent, stop it and remove the unit or the plist:
+If you set up the systemd user service, the launchd agent or the Task Scheduler task, stop it and remove the unit, the plist or the task:
 
 ```sh
 a-stack service uninstall
 ```
 
-On macOS, also remove the log if you do not need it: `rm ~/Library/Logs/a-stack.log`.
+On macOS, also remove the log if you do not need it: `rm ~/Library/Logs/a-stack.log`. On Windows, the log is `%LOCALAPPDATA%\a-stack.log`.
 
 If you added a drop-in, remove it too: `rm -rf ~/.config/systemd/user/a-stack.service.d`. Without `a-stack service`, run these commands:
 
@@ -361,4 +435,6 @@ Remove the binary:
 rm ~/.local/bin/a-stack
 ```
 
-This does not remove your data. The data stays in the state directory, `~/.local/state/a-stack` (or `$XDG_STATE_HOME/a-stack`). Remove that directory only if you do not need the data or the Operator credential again.
+On Windows, remove the folder of the install script with `Remove-Item -Recurse $env:LOCALAPPDATA\Programs\a-stack`, and remove it from your user `PATH` in Settings, under "Edit environment variables for your account". Delete the hook cursor files with `Remove-Item -Recurse $env:LOCALAPPDATA\a-stack-hooks` if they exist.
+
+This does not remove your data. The data stays in the state directory, `~/.local/state/a-stack` (or `$XDG_STATE_HOME/a-stack`; on Windows `%LOCALAPPDATA%\a-stack`). Remove that directory only if you do not need the data or the Operator credential again.

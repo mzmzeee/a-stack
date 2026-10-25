@@ -77,7 +77,7 @@ a-stack: New Task mail on "Build the parser"; run mail check.
 
 The note names only the Task titles: no sender and no mail text. The agent then reads the mail as usual, with its own `mail check --cursor-file`.
 
-The hook keeps its own mail cursor file, so it never moves the Agent's cursor file. There is one per Agent and harness session: `~/.cache/a-stack/hooks/AGENT_ID/HASH.json` (below `$XDG_CACHE_HOME` when set; on macOS below `~/Library/Caches`), where `HASH` comes from the harness session ID. The folder has mode 0700 and the files 0600. The hook removes files unused for 7 days. Deleting the folder is safe.
+The hook keeps its own mail cursor file, so it never moves the Agent's cursor file. There is one per Agent and harness session: `~/.cache/a-stack/hooks/AGENT_ID/HASH.json` (below `$XDG_CACHE_HOME` when set; on macOS below `~/Library/Caches`; on Windows `%LOCALAPPDATA%\a-stack-hooks\AGENT_ID\HASH.json`), where `HASH` comes from the harness session ID. The folder has mode 0700 and the files 0600. The hook removes files unused for 7 days. Deleting the folder is safe.
 
 - At `SessionStart`, or at the first check of a harness session, the hook reads up to the newest message and says nothing about earlier mail. The reminder already says to run `mail check`.
 - Each check moves the cursor past the messages it saw, so the hook names a message once. Mail the Agent sent itself is skipped.
