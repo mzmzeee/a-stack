@@ -67,7 +67,7 @@ The script installs the `a-stack` binary in `~/.local/bin`. It checks the downlo
 
 To update, run `a-stack update` and restart the service. See [Update](docs/install.md#update).
 
-To start a-stack at boot and restart it after a crash, see [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
+To start a-stack at boot and restart it after a crash, run `a-stack service install`. See [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
 
 ## Quick start
 
@@ -80,7 +80,7 @@ a-stack -r           # pick another Session
 
 ![The a-stack -r picker in a terminal: three Sessions with their folders, open or closed, Task counts and one needs you. Tab switches between this folder and all folders.](docs/images/picker.png)
 
-If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C. If the service already runs, for example as a [systemd service](docs/install.md#start-a-stack-automatically), they use it and return.
+If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C or close the terminal. To keep it running, run `a-stack service install`. If the service already runs, for example as a [systemd service](docs/install.md#start-a-stack-automatically), they use it and return.
 
 The Task graph is empty at first. To hand the Session to an Orchestrator agent that registers the other Agents and plans the Tasks, see [Hand your Session to an Orchestrator](docs/getting-started.md#hand-your-session-to-an-orchestrator). To try a whole team on throwaway state first, follow [Getting started](docs/getting-started.md).
 

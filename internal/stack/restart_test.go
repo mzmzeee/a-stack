@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -36,17 +35,11 @@ func serveTest(t *testing.T, dir, address string) *Service {
 func TestRestartReusesPortSoAnOpenBrowserTabRecovers(t *testing.T) {
 	f := tasksFixture(t)
 	f.create(t, "Survives restart")
-	view, err := clientForCredential(t, f, f.a).BrowserURL(ctx, f.ref(0))
-	if err != nil {
-		t.Fatal(err)
-	}
-	u, err := url.Parse(view)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The open tab keeps its origin, credential and the old instance ID.
-	tab := clientForCredential(t, f, Credential{Kind: BrowserCapability, Token: u.Fragment})
+	u, token := viewTest(t, f, f.ref(0))
+	// The open tab keeps its origin, view token and the old instance ID.
+	tab := clientForCredential(t, f, Credential{Kind: BrowserCapability, Token: token})
 	old := f.service.Discovery
+	var err error
 	if err = f.service.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
@@ -170,7 +163,7 @@ func TestOwnedStateAndStoppedServiceMessages(t *testing.T) {
 	}
 	_, err := NewClient(dir, "", "")
 	requireCode(t, err, "storage_unavailable")
-	if !strings.Contains(err.Error(), "start it with a-stack serve, or systemctl --user start a-stack") {
+	if e, ok := err.(*Error); !ok || !e.Retryable || !strings.Contains(e.Message, "start it with a-stack serve (or systemctl --user start a-stack), or ask the Operator to start it") {
 		t.Fatal("stopped service message", err)
 	}
 }

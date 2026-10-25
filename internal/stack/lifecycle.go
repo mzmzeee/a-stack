@@ -370,7 +370,7 @@ func installAgentHash(ctx context.Context, tx *sql.Tx, hash, subject, session st
 	if exists != 0 {
 		return failure("conflict", "credential hash already registered")
 	}
-	_, err := tx.ExecContext(ctx, "INSERT INTO capabilities VALUES(?,'agent',?,?)", hash, subject, session)
+	_, err := tx.ExecContext(ctx, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id) VALUES(?,'agent',?,?)", hash, subject, session)
 	return err
 }
 func agentInSession(ctx context.Context, tx *sql.Tx, id, session string) (Agent, error) {

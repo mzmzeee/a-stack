@@ -368,7 +368,7 @@ class Bench:
         mailable = [t for t in tasks if t['assignees']]
         weights = [1 / (1 + j) ** 0.8 for j in range(len(mailable))]
         rng.shuffle(mailable)
-        plan = rng.choices(mailable, weights=weights, k=n_messages)
+        plan = rng.choices(mailable, weights=weights, k=n_messages) if mailable else []
         counter = {'n': 0}
         lock = threading.Lock()
         t1 = time.monotonic()
@@ -473,7 +473,7 @@ class Bench:
         found = from_internal.search(r'const cycleCheckSQL = `(.*?)`', task_columns, from_internal.S)
         cycle_sql = found.group(1) if found else old_cycle_sql
         queries = {
-            'authenticate': ('SELECT kind,subject_id,session_id FROM capabilities WHERE token_hash=?', (tok,)),
+            'authenticate': ('SELECT kind,subject_id,session_id,expires_at FROM capabilities WHERE token_hash=?', (tok,)),
             'load_session': ('SELECT id,workspace_id,name,closed,orchestrator_id,revision,read_revision,graph_revision,created_at,updated_at FROM sessions WHERE id=?', (sess,)),
             'member_check': ('SELECT count(*) FROM agents WHERE id=? AND session_id=? AND workspace_id=?', (agent['id'], sess, self.workspace)),
             'task_in_session (taskColumns)': ('SELECT ' + cols + ' FROM tasks t WHERE t.id=? AND t.session_id=?', (task['id'], sess)),
@@ -496,7 +496,7 @@ class Bench:
             'receipt_lookup': ('SELECT digest,operation_id,resource_id,revision,outcome,body_ref,received_at FROM operation_receipts WHERE actor=? AND operation_id=?', ('agent:' + agent['id'], 'x')),
             'dependency_cycle_check': (cycle_sql, (first_task, sess, last_task)),
             'dependency_cycle_check_v0.1.2': (old_cycle_sql, (first_task, sess, last_task)),
-            'dependency_cycle_check_late_task': (cycle_sql, (self.tasks[-200]['id'], sess, first_task)),
+            'dependency_cycle_check_late_task': (cycle_sql, (self.tasks[-min(200, len(self.tasks))]['id'], sess, first_task)),
             'mail_check_assigned_tasks_join': ('SELECT x.task_id FROM task_assignees x WHERE x.session_id=? AND x.agent_id=? AND x.task_id>? ORDER BY x.task_id LIMIT ?', (sess, agent['id'], '', 101)),
             # Harness-only batched reads: one statement per page or per collection instead of one per item.
             'page_tasks_batched (harness-only)': ('SELECT ' + cols + ' FROM tasks t WHERE t.session_id=? AND t.id>? ORDER BY t.id LIMIT ?', (sess, '', 101)),
@@ -800,7 +800,10 @@ class Bench:
     def load(self):
         a = self.args
         view = json.loads(self.cli(['open', '--workspace', self.workspace, '--session', self.session, '--no-browser', '--json'], self.op_file, 'operator')[2])['data']['url']
-        browser_token = urlsplit(view).fragment  # never printed
+        # Like app.js: trade the link's one-time code for a view token (never printed).
+        status, data, _ = self.api.raw('/v1/browser/redeem', {**self.ctx(self.session), 'code': urlsplit(view).fragment}, '')
+        assert status == 200, 'view link not redeemed'
+        browser_token = json.loads(data)['data']['token']
         calls_csv = (self.out / 'cli-calls.csv').open('w')
         calls_csv.write('level,worker,command,t,ms,rc,error,utime_ms,stime_ms\n')
         lock = threading.Lock()

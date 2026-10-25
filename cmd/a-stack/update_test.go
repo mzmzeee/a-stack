@@ -4,7 +4,10 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"net/http"
@@ -42,12 +45,25 @@ func tarGz(t *testing.T, files map[string]string) []byte {
 	return buf.Bytes()
 }
 
+// testKey signs the fake releases; updateSetup makes update trust it.
+var testKey = ed25519.NewKeyFromSeed(bytes.Repeat([]byte{7}, ed25519.SeedSize))
+
 // fakeRelease serves releases like GitHub: /latest redirects to the tag of
-// latest, and /download/TAG/ has the archive and SHA256SUMS.
+// latest, and /download/TAG/ has the archive, SHA256SUMS and SHA256SUMS.sig.
+// sig is "" for a good signature, "bad" or "missing".
 type fakeRelease struct {
 	latest   string
 	archives map[string][]byte
 	badSum   bool
+	sig      string
+}
+
+func (f *fakeRelease) sums(archive []byte) []byte {
+	sum := sha256.Sum256(archive)
+	if f.badSum {
+		sum[0]++
+	}
+	return []byte(hex.EncodeToString(sum[:]) + "  a-stack_linux_" + runtime.GOARCH + ".tar.gz\nabc  install.sh\n")
 }
 
 func (f *fakeRelease) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -64,11 +80,13 @@ func (f *fakeRelease) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case file == name:
 		_, _ = w.Write(archive)
 	case file == "SHA256SUMS":
-		sum := sha256.Sum256(archive)
-		if f.badSum {
-			sum[0]++
+		_, _ = w.Write(f.sums(archive))
+	case file == "SHA256SUMS.sig" && f.sig != "missing":
+		sig := ed25519.Sign(testKey, f.sums(archive))
+		if f.sig == "bad" {
+			sig[0]++
 		}
-		_, _ = w.Write([]byte(hex.EncodeToString(sum[:]) + "  " + name + "\nabc  install.sh\n"))
+		_, _ = w.Write(sig)
 	default:
 		http.NotFound(w, r)
 	}
@@ -92,9 +110,9 @@ func updateSetup(t *testing.T, current string, release *fakeRelease) (exe, log s
 	if err := os.WriteFile(exe, []byte("old"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	oldVersion, oldExecutable, oldActive := version, executable, serviceActive
-	version, executable, serviceActive = current, func() (string, error) { return exe, nil }, func() bool { return false }
-	t.Cleanup(func() { version, executable, serviceActive = oldVersion, oldExecutable, oldActive })
+	oldVersion, oldExecutable, oldActive, oldKey := version, executable, serviceActive, releaseKey
+	version, executable, serviceActive, releaseKey = current, func() (string, error) { return exe, nil }, func() bool { return false }, testKey.Public().(ed25519.PublicKey)
+	t.Cleanup(func() { version, executable, serviceActive, releaseKey = oldVersion, oldExecutable, oldActive, oldKey })
 	return exe, log
 }
 
@@ -241,12 +259,84 @@ func TestUpdateHTTPSOnlyWithoutMirror(t *testing.T) {
 	if r.base != defaultReleases || r.client.CheckRedirect(&http.Request{URL: plain}, nil) == nil {
 		t.Fatal("a redirect to http is allowed without a mirror")
 	}
-	if _, err := r.get("http://example.com/a", 10); err == nil {
+	if _, err := r.get("http://example.com/a", 10, false); err == nil {
 		t.Fatal("an http URL is allowed without a mirror")
 	}
 	for _, v := range [][2]string{{"v0.2.0", "v0.1.9"}, {"v1.0.0", "v1.0.0-rc.1"}, {"v1.0.0-rc.2", "v1.0.0-rc.1"}, {"v0.0.1", "dev"}} {
 		if !newer(v[0], v[1]) || newer(v[1], v[0]) {
 			t.Fatalf("newer(%s, %s)", v[0], v[1])
 		}
+	}
+}
+
+func TestUpdateChecksTheReleaseSignature(t *testing.T) {
+	archives := map[string][]byte{}
+	for _, tag := range []string{"v0.1.4", "v0.1.5", "v0.2.0"} {
+		archives[tag] = tarGz(t, map[string]string{"a-stack": fakeBinary(tag)})
+	}
+	for _, c := range []struct {
+		name, sig, tag, want string
+	}{
+		{"bad signature", "bad", "v0.2.0", "signature of SHA256SUMS for v0.2.0 is not valid"},
+		{"missing on a signed release", "missing", "v0.1.5", "release v0.1.5 has no SHA256SUMS.sig"},
+		{"bad signature on an old release", "bad", "v0.1.4", "signature of SHA256SUMS for v0.1.4 is not valid"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			exe, _ := updateSetup(t, "v0.1.0", &fakeRelease{latest: "v0.2.0", archives: archives, sig: c.sig})
+			out, errout := runUpdate(t, 1, "--version", c.tag)
+			if out != "" || !strings.Contains(errout, c.want) || !strings.Contains(errout, "nothing changed") {
+				t.Fatalf("stdout=%q stderr=%s", out, errout)
+			}
+			checkFile(t, exe, "old")
+		})
+	}
+
+	// A release from before signing installs with a warning. A signed one
+	// has no warning.
+	exe, _ := updateSetup(t, "v0.1.0", &fakeRelease{latest: "v0.2.0", archives: archives, sig: "missing"})
+	out, _ := runUpdate(t, 0, "--version", "v0.1.4")
+	if !strings.Contains(out, "\nWarning: a-stack v0.1.4 has no release signature, as every release before v0.1.5; only its SHA-256 checksum was checked.\n") {
+		t.Fatalf("output %q", out)
+	}
+	checkFile(t, exe, fakeBinary("v0.1.4"))
+	updateSetup(t, "v0.1.4", &fakeRelease{latest: "v0.2.0", archives: archives})
+	out, _ = runUpdate(t, 0, "--json")
+	var result struct {
+		Data struct {
+			Version  string
+			Signed   bool
+			Warnings []string
+		} `json:"data"`
+	}
+	if json.Unmarshal([]byte(out), &result) != nil || result.Data.Version != "v0.2.0" || !result.Data.Signed || result.Data.Warnings == nil || len(result.Data.Warnings) != 0 {
+		t.Fatalf("json %s", out)
+	}
+}
+
+func TestUpdateWarnsThatAnOlderVersionMayNotOpenTheDatabase(t *testing.T) {
+	release := &fakeRelease{latest: "v0.2.0", archives: map[string][]byte{"v0.1.5": tarGz(t, map[string]string{"a-stack": fakeBinary("v0.1.5")})}}
+	exe, _ := updateSetup(t, "v0.2.0", release)
+	out, _ := runUpdate(t, 0, "--version", "v0.1.5")
+	if !strings.Contains(out, "\nWarning: a-stack v0.1.5 is older than v0.2.0 and may not open the current database: serve then stops with exit code 4. To go back, run a-stack update --version v0.2.0, or restore the state.db.pre-vN copy") {
+		t.Fatalf("output %q", out)
+	}
+	checkFile(t, exe, fakeBinary("v0.1.5"))
+}
+
+// install.sh checks the signature with the same key as update.
+func TestInstallScriptHasTheReleaseKey(t *testing.T) {
+	script, err := os.ReadFile("../../install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, block, _ := strings.Cut(string(script), "-----BEGIN PUBLIC KEY-----\n")
+	block, _, _ = strings.Cut(block, "\n-----END PUBLIC KEY-----")
+	der, err := base64.StdEncoding.DecodeString(block)
+	if err != nil {
+		t.Fatal("install.sh has no PEM public key", err)
+	}
+	key, err := x509.ParsePKIXPublicKey(der)
+	if k, ok := key.(ed25519.PublicKey); err != nil || !ok || !k.Equal(releaseKey) {
+		t.Fatal("install.sh and update use different release keys", err)
 	}
 }

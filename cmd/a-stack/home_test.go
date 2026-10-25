@@ -202,15 +202,15 @@ func TestCLIBareStartsServiceAndKeepsItRunning(t *testing.T) {
 	}
 	reader = bufio.NewReader(stdout)
 	lines := []string{}
-	for len(lines) < 3 {
+	for len(lines) < 4 {
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			t.Fatalf("output %q: %v", lines, err)
 		}
 		lines = append(lines, line)
 	}
-	u, err := url.Parse(strings.TrimSpace(lines[2]))
-	if !strings.HasPrefix(lines[0], "The a-stack service is running at http://127.0.0.1:") || !strings.Contains(lines[1], `"Started"`) || err != nil || len(u.Fragment) != 43 {
+	u, err := url.Parse(strings.TrimSpace(lines[3]))
+	if !strings.HasPrefix(lines[0], "The a-stack service is running at http://127.0.0.1:") || lines[1] != closeHint+"\n" || !strings.Contains(lines[2], `"Started"`) || err != nil || len(u.Fragment) != 43 {
 		t.Fatalf("started open output %q", lines)
 	}
 	if command.Process.Signal(syscall.SIGINT) != nil {

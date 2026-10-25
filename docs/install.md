@@ -12,9 +12,10 @@ The script does these steps:
 
 1. It finds the archive for your processor.
 2. It downloads the archive and the release's `SHA256SUMS` file.
-3. It compares the checksum. If the checksum is not correct, it stops and installs nothing.
-4. It installs the binary in `~/.local/bin`, without `sudo`.
-5. It tells you if this folder is not on your `PATH`.
+3. It checks the signature of `SHA256SUMS` with OpenSSL 3, if OpenSSL 3 is installed. See [How releases are verified](#how-releases-are-verified).
+4. It compares the checksum. If the signature or the checksum is not correct, it stops and installs nothing.
+5. It installs the binary in `~/.local/bin`, without `sudo`.
+6. It tells you if this folder is not on your `PATH`.
 
 To change the version or the folder, set these variables:
 
@@ -38,8 +39,8 @@ sh install.sh
 ## Manual download
 
 1. Open the [releases page](https://github.com/mzmzeee/a-stack/releases).
-2. Download `a-stack_linux_amd64.tar.gz` or `a-stack_linux_arm64.tar.gz`, and `SHA256SUMS`.
-3. Check the archive:
+2. Download `a-stack_linux_amd64.tar.gz` or `a-stack_linux_arm64.tar.gz`, `SHA256SUMS` and `SHA256SUMS.sig`.
+3. Check the archive, either with the release signature or with the GitHub attestation. See [How releases are verified](#how-releases-are-verified). Then check the checksum:
 
    ```sh
    sha256sum --check --ignore-missing SHA256SUMS
@@ -50,6 +51,36 @@ sh install.sh
    ```sh
    tar -xzf a-stack_linux_amd64.tar.gz -C ~/.local/bin a-stack
    ```
+
+## How releases are verified
+
+The release workflow on GitHub Actions builds every release. It signs the `SHA256SUMS` file with an Ed25519 key that only the workflow can use, and uploads the signature as `SHA256SUMS.sig`. The file has the raw 64-byte signature. The public key is in `install.sh` and in the `a-stack` binary:
+
+```text
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEANkJiNRRt3iLovFX+EVrAxA1Z7a3diAw6F3PhyC9+D08=
+-----END PUBLIC KEY-----
+```
+
+- `a-stack update` checks the signature before it trusts `SHA256SUMS`. A missing or wrong signature stops the update, and nothing changes.
+- The install script checks it with OpenSSL 3 or later. Without OpenSSL 3, it prints one line that it did not check the signature, and checks only the checksum.
+- Releases up to v0.1.4 have no signature. Both accept them with a warning, but only when you name such a version: `a-stack update --version v0.1.4` or `A_STACK_VERSION=v0.1.4`. For v0.1.5 and later, a missing signature is an error.
+
+To check a signature by hand, save the public key above as `a-stack-release.pem` and run:
+
+```sh
+openssl pkeyutl -verify -pubin -inkey a-stack-release.pem -rawin -in SHA256SUMS -sigfile SHA256SUMS.sig
+```
+
+It prints `Signature Verified Successfully`. Then check the archive with `sha256sum --check --ignore-missing SHA256SUMS`.
+
+Releases also have GitHub build provenance attestations: since v0.1.5 for every file, `install.sh` included, and before that for the archives. With the [GitHub CLI](https://cli.github.com/), check a downloaded file like this:
+
+```sh
+gh attestation verify a-stack_linux_amd64.tar.gz --repo mzmzeee/a-stack
+```
+
+It shows that the file was built by the a-stack release workflow from the tagged commit.
 
 ## Check the installation
 
@@ -80,12 +111,12 @@ Your data stays in the state directory when you update. The service needs a rest
    a-stack update
    ```
 
-   It downloads the latest release and the release's `SHA256SUMS` file over HTTPS and compares the checksum. If the checksum is not correct, it stops and changes nothing. It then checks that the new binary runs and replaces the `a-stack` binary that you ran, in one step, with the same file mode. It prints the old and the new version, for example `Updated a-stack v0.1.3 -> v0.1.4 in /home/you/.local/bin/a-stack`, or `a-stack v0.1.4 is already the latest version`. It needs no service and no credential, and it never uses `sudo`.
+   It downloads the latest release and the release's `SHA256SUMS` and `SHA256SUMS.sig` files over HTTPS. It checks the [signature](#how-releases-are-verified) and the checksum. If one of them is not correct, it stops and changes nothing. It then checks that the new binary runs and replaces the `a-stack` binary that you ran, in one step, with the same file mode. It syncs the new file and its folder to disk, so a power cut cannot leave an empty binary. It prints the old and the new version, for example `Updated a-stack v0.1.3 -> v0.1.4 in /home/you/.local/bin/a-stack`, or `a-stack v0.1.4 is already the latest version`. It needs no service and no credential, and it never uses `sudo`.
 
    If you installed the agent skill with `a-stack skill install`, the update also updates those copies, in your home folder and in the current folder. It does not create new ones.
 
    - `a-stack update --check` only compares the versions. When a newer release exists, it prints `a-stack v0.1.4 is available; you have v0.1.3. Run a-stack update to install it.` Otherwise it says that your version is the latest. It exits with 0 in both cases. With `--json`, `update_available` is `true` or `false`.
-   - `a-stack update --version v0.1.2` installs that release, also an older one.
+   - `a-stack update --version v0.1.2` installs that release, also an older one. For an older version it prints a warning: an older a-stack may not open the current database. See [Go back to an older version](#go-back-to-an-older-version).
    - A build from source has no release version. It updates only with `--version`.
    - If you cannot write to the binary's folder, the command stops and names the folder. Install a-stack in a folder that you own with the install script and `A_STACK_INSTALL_DIR`.
    - `A_STACK_BASE_URL` names a release mirror, as for the install script.
@@ -109,15 +140,54 @@ Your data stays in the state directory when you update. The service needs a rest
    a-stack
    ```
 
-During the restart, Agent commands fail with `storage_unavailable` for a few seconds. An Agent can run the same command again with the same operation ID. a-stack makes the change only one time.
+During the restart, Agent commands fail with `storage_unavailable` and `retryable: true` for a few seconds. An Agent can run the same command again with the same operation ID. a-stack makes the change only one time.
+
+When the new version has a new database schema, the first start migrates the database. Before that, it writes a private copy of the database, `state.db.pre-vN`, in the state directory (N is the old schema version).
+
+### Go back to an older version
+
+An older a-stack cannot open a database that a newer one migrated. `a-stack serve` then stops with exit code 4 and a message that names the schema version it found and the newest one it supports. The systemd unit does not restart it. To get back:
+
+- Update to the newer version again: `a-stack update`, or `a-stack update --version vX.Y.Z`.
+- Or, to stay on the older version, restore the `state.db.pre-vN` copy or a backup made with the older version, as in [Backup and restore](foundation.md#backup-and-restore). Changes made after that copy are lost.
 
 ## Start a-stack automatically
 
-On Linux with systemd, a user service can run `a-stack serve` for you. systemd starts it when your user manager starts, and starts it again if it crashes. You do not need `sudo`.
+If you start a-stack with `a-stack`, `a-stack new` or `a-stack -r`, the service runs in that terminal. When you close the terminal, a-stack stops. On Linux with systemd, a user service can run `a-stack serve` for you instead. systemd starts it when your user manager starts, and starts it again if it crashes. You do not need `sudo`.
+
+Run this command:
+
+```sh
+a-stack service install
+```
+
+It does these steps:
+
+1. It checks that no `a-stack serve` runs for the state directory outside systemd. If one runs, it stops and changes nothing. Press Ctrl-C in the terminal of that service, then run the command again. Only one service can use a state directory.
+2. It writes the unit `~/.config/systemd/user/a-stack.service` (or below `$XDG_CONFIG_HOME`). The unit runs the `a-stack` binary that you ran, with its real path, and the state directory that the CLI uses. If the unit exists and differs, it replaces the unit and says `Updated`. If systemd runs the service already, it tells you to restart the service to use the new unit.
+3. It runs `systemctl --user daemon-reload` and `systemctl --user enable --now a-stack`.
+4. It waits until the service answers, and prints its URL. If the service does not answer, read the log with `journalctl --user -u a-stack`.
+5. It checks linger. Without linger, systemd starts your user services only when you log in, and stops them when you log out. If linger is off, the command prints the command that turns it on, and does not run it:
+
+   ```sh
+   loginctl enable-linger "$USER"
+   ```
+
+Run `a-stack service install` again after you move the binary or change `XDG_STATE_HOME`. It changes nothing when the unit is up to date.
+
+`a-stack service status` shows whether the unit file exists, whether it is enabled and active, the binary and the state directory in the unit, linger, and the result of `a-stack health`. `--json` prints the same as one JSON object.
+
+`a-stack service uninstall` stops and disables the service, removes the unit file and runs `systemctl --user daemon-reload`. It never touches the state directory.
+
+To read the service's log, run `journalctl --user -u a-stack`. At each start, the service writes one ready line with its URL.
+
+### Set up the unit by hand
+
+Releases up to v0.1.4 do not have `a-stack service`. You can also set up the unit by hand.
 
 The unit runs `~/.local/bin/a-stack`. If you installed the binary in another folder, change the path in the `ExecStart` line.
 
-1. Stop any `a-stack serve` that you started by hand. Only one service can use a state directory. A second one stops with `conflict`. The unit then shows as failed with exit code 3 and does not restart.
+1. Stop any `a-stack serve` that you started by hand. A second service stops with `conflict`. The unit then shows as failed with exit code 3 and does not restart. It also does not restart after exit code 4, when the database is damaged or has a newer schema.
 
    Press Ctrl-C in the terminal where `a-stack serve` runs. If you closed that terminal, run this command:
 
@@ -164,11 +234,9 @@ The unit runs `~/.local/bin/a-stack`. If you installed the binary in another fol
    loginctl enable-linger "$USER"
    ```
 
-   Without linger, systemd starts your user services only when you log in, and stops them when you log out.
-
-To read the service's log, run `journalctl --user -u a-stack`. At each start, the service writes one ready line with its URL.
-
 ### Use the same state directory as the CLI
+
+`a-stack service install` writes the CLI's state directory into the unit, so you need this only for a unit that you set up by hand.
 
 The unit uses the default state directory, `~/.local/state/a-stack`. It sets this folder with `--state-dir` and does not read `XDG_STATE_HOME`. The systemd user manager can have a different environment than your shell. At boot, it usually does not have the variables that your desktop session sets.
 
@@ -214,7 +282,13 @@ This binary uses your system's C library. To build the static release binary, se
 
 ## Uninstall
 
-If you set up the systemd user service, stop it and remove the unit and any drop-in:
+If you set up the systemd user service, stop it and remove the unit:
+
+```sh
+a-stack service uninstall
+```
+
+If you added a drop-in, remove it too: `rm -rf ~/.config/systemd/user/a-stack.service.d`. Without `a-stack service`, run these commands:
 
 ```sh
 systemctl --user disable --now a-stack

@@ -150,7 +150,7 @@ Good to know: a dependency A → B means that B depends on A. Dependency changes
 operator open --workspace "$workspace_id" --session "$session_id" --no-browser
 ```
 
-Open the `url` from the output in your browser. The view shows the Task graph and the Agents, and it updates while you do the next steps. Without `--no-browser`, `open` starts your browser for you.
+Open the `url` from the output in your browser within a minute; the link works once. The view shows the Task graph and the Agents, and it updates while you do the next steps. Without `--no-browser`, `open` starts your browser for you.
 
 Keep the URL private, because it works like a credential. The view is read-only. It can show Task mail, but it cannot send mail or change anything. For more, see [Browser view](browser.md).
 

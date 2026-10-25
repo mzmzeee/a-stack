@@ -48,7 +48,7 @@ func (h *home) run(ctx context.Context) error {
 		if h.machine {
 			err = json.NewEncoder(h.stdout).Encode(readyLine(service))
 		} else {
-			_, err = fmt.Fprintf(h.stdout, "The a-stack service is running at %s. Press Ctrl-C to stop it.\n", service.Discovery.URL)
+			_, err = fmt.Fprintf(h.stdout, "The a-stack service is running at %s. Press Ctrl-C to stop it.\n%s\n", service.Discovery.URL, closeHint)
 		}
 		if err != nil {
 			return err
@@ -73,6 +73,10 @@ func (h *home) run(ctx context.Context) error {
 	}
 	return err
 }
+
+// closeHint follows the ready line when a shortcut starts the service in
+// the foreground.
+const closeHint = "Closing this terminal stops a-stack. To keep it running, run: a-stack service install"
 
 // errStateBusy exits with 3, like stack.ErrStateOwned.
 var errStateBusy = &stack.Error{Code: "conflict", Message: "another a-stack serve owns this state directory but does not answer yet; wait a moment or stop it (Ctrl-C in its terminal, or systemctl --user stop a-stack)"}
