@@ -6,6 +6,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- Homebrew and Scoop packages. Install with `brew install mzmzeee/tap/a-stack` on macOS and Linux, or `scoop bucket add mzmzeee https://github.com/mzmzeee/scoop-bucket` and `scoop install mzmzeee/a-stack` on Windows. See [Package managers](docs/install.md#package-managers).
+
 ### Changed
 
 - The README demo GIF is 2.9 MB instead of 7.4 MB, at the same pace, and the demo images show the release version instead of a development build. `scripts/record-demo.sh` drops frames that do not change, keeps fewer frames while the view zooms, uses 64 colors and compresses with gifsicle, which it now needs.

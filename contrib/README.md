@@ -6,7 +6,7 @@
 - `homebrew/a-stack.rb`: a Homebrew formula for Linux and macOS, from the release archives.
 - `scoop/a-stack.json`: a Scoop manifest for Windows, from the release archives.
 
-The packages install the release binary of one version and check it against that release's `SHA256SUMS`. They are not published yet. The steps below publish them; nothing in this repository does it automatically.
+The packages install the release binary of one version and check it against that release's `SHA256SUMS`. The Homebrew formula is published in [mzmzeee/homebrew-tap](https://github.com/mzmzeee/homebrew-tap) and the Scoop manifest in [mzmzeee/scoop-bucket](https://github.com/mzmzeee/scoop-bucket). Each of those repositories has a workflow that installs the package on GitHub's macOS, Linux or Windows machines on every push. The AUR package is not published yet. Nothing in this repository publishes automatically; the steps are below.
 
 ## Update a package to a new release
 
@@ -14,7 +14,7 @@ After the release workflow has published `vX.Y.Z`:
 
 1. Download its checksums: `curl -fsSL -O https://github.com/mzmzeee/a-stack/releases/download/vX.Y.Z/SHA256SUMS`. Check the signature first, as in [How releases are verified](../docs/install.md#how-releases-are-verified).
 2. In `aur/PKGBUILD`, set `pkgver=X.Y.Z` and `pkgrel=1`. Copy the sums of `a-stack.service`, `a-stack_linux_amd64.tar.gz` and `a-stack_linux_arm64.tar.gz` from `SHA256SUMS`. The LICENSE sum changes only when the license file changes (`sha256sum LICENSE`). Or run `updpkgsums` from `pacman-contrib`, which downloads the files and writes all sums.
-3. In `homebrew/a-stack.rb`, set `version` and the four `url`s to the new version, and the four archive sums.
+3. In `homebrew/a-stack.rb`, set the four `url`s to the new version, and the four archive sums. Homebrew reads the version from the URLs; `brew audit --strict` refuses a `version` line that repeats it.
 4. In `scoop/a-stack.json`, set `version` and both `url`s to the new version, and the sums of `a-stack_windows_amd64.zip` and `a-stack_windows_arm64.zip`. Or, on Windows with Scoop, run `& "$(scoop prefix scoop)\bin\checkver.ps1" -Dir contrib\scoop -App a-stack -Update`, which finds the latest release and takes the sums from its `SHA256SUMS`.
 5. Commit the files here.
 
@@ -38,10 +38,10 @@ The first push creates the package. namcap warns that the binary lacks PIE and f
 
 ## Publish the Homebrew tap
 
-Once, create a public GitHub repository `mzmzeee/homebrew-tap`. Then, for each version:
+For each version:
 
 ```sh
-git clone git@github.com:mzmzeee/homebrew-tap.git
+git clone https://github.com/mzmzeee/homebrew-tap.git
 mkdir -p homebrew-tap/Formula
 cp /path/to/a-stack/contrib/homebrew/a-stack.rb homebrew-tap/Formula/
 cd homebrew-tap
@@ -56,12 +56,10 @@ Users then run `brew install mzmzeee/tap/a-stack`. The formula covers Linux and 
 
 ## Publish the Scoop bucket
 
-No release has Windows archives yet, so the manifest has the version 0.1.6 and placeholder sums of zeros. Before the first publish, set the version and sums of the first release with Windows archives, as in step 4 above. `scoop install` refuses the placeholder sums.
-
-Once, create a public GitHub repository `mzmzeee/scoop-bucket`. Then, for each version, on Windows:
+For each version, on Windows:
 
 ```powershell
-git clone git@github.com:mzmzeee/scoop-bucket.git
+git clone https://github.com/mzmzeee/scoop-bucket.git
 New-Item -ItemType Directory -Force scoop-bucket\bucket
 Copy-Item \path\to\a-stack\contrib\scoop\a-stack.json scoop-bucket\bucket\
 scoop install .\scoop-bucket\bucket\a-stack.json   # downloads the archive and checks its sum
@@ -73,4 +71,4 @@ git commit -m "a-stack: Update to version X.Y.Z"
 git push
 ```
 
-Users then run `scoop bucket add mzmzeee https://github.com/mzmzeee/scoop-bucket` and `scoop install mzmzeee/a-stack`. Scoop puts the binary in `~\scoop\apps\a-stack\` and a shim on the PATH. For the service, users run `a-stack service install`. Users update with `scoop update a-stack`; `a-stack update` refuses to replace a binary in a Scoop folder and names that command. Scoop cannot replace a running binary, so users stop the service first (disable and end the task named by `a-stack service status`) and enable/run it again after the update. See the [Windows service commands](../docs/install.md#on-windows-with-task-scheduler). This has not been tried on Windows yet.
+Users then run `scoop bucket add mzmzeee https://github.com/mzmzeee/scoop-bucket` and `scoop install mzmzeee/a-stack`. Scoop puts the binary in `~\scoop\apps\a-stack\` and a shim on the PATH. For the service, users run `a-stack service install`. Users update with `scoop update a-stack`; `a-stack update` refuses to replace a binary in a Scoop folder and names that command. Scoop cannot replace a running binary, so users stop the service first (disable and end the task named by `a-stack service status`) and enable/run it again after the update. See the [Windows service commands](../docs/install.md#on-windows-with-task-scheduler).
