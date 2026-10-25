@@ -157,10 +157,10 @@ jobs:
           path: dist
           merge-multiple: true
       - run: |
-          cp install.sh contrib/systemd/a-stack.service dist/
+          cp install.sh install.ps1 contrib/systemd/a-stack.service dist/
           tar -czf dist/a-stack-skill.tar.gz -C skills a-stack
           cd dist
-          sha256sum a-stack_linux_*.tar.gz a-stack_darwin_*.tar.gz a-stack_windows_*.zip install.sh a-stack.service a-stack-skill.tar.gz > SHA256SUMS
+          sha256sum a-stack_linux_*.tar.gz a-stack_darwin_*.tar.gz a-stack_windows_*.zip install.sh install.ps1 a-stack.service a-stack-skill.tar.gz > SHA256SUMS
           cat SHA256SUMS
       # SHA256SUMS.sig is the raw 64-byte Ed25519 signature of SHA256SUMS. The
       # check uses the public key in install.sh, which a-stack update also has.
