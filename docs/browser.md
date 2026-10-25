@@ -123,7 +123,9 @@ A poll moves cards between columns in place. The selection, the focused card and
 - A minimap at the bottom right of the graph, 200×130 pixels (140×91 on a phone), shows every card as a block in its status color, with a ring around Needs you, and a box around the part you see. Click or drag on it to move the view there. It is hidden while the whole graph fits the panel. The Minimap button in the footer of the Graph tab, or `m` in the graph, turns it off or on. The button shows which, also while the graph fits, and the view remembers it in local storage. The minimap is for the pointer only: screen readers skip it, and it never takes the focus.
 - The layout runs again when Tasks or dependencies change, when the Archived toggle changes, or when a card changes size: a new title, a Task that becomes finished or cancelled or opens again, other assigned Agents, Needs you, file references, cancelled prerequisites or hidden archived prerequisites. It uses the panel size at that moment. Resizing the window alone does not move cards, and neither does a poll without changes, a new report or a change between Waiting and Working.
 
-![A short clip of the Graph tab. Curved lines lead from two Working Tasks to a Token exchange Task and on to a Security review. A click on one Task lights up its lines and fades the Tasks it does not connect to.](images/demo-graph.gif)
+![A short clip of the Graph tab. Curved lines connect prerequisites, and selecting a Task highlights its lines. A larger graph shows dragging the minimap, title blocks below 50% zoom, and colored blocks with a Needs you ring below 30%.](images/demo-graph.gif)
+
+![A larger graph at 40% zoom. Cards become blocks with titles and status colors; the minimap shows the full graph and the visible region.](images/graph-overview.png)
 
 ![A short clip of finished work in the Graph tab. A finished Task shrinks to one line. When the Task after it finishes too, the finished Tasks fold into Archived (2), and the toggle shows them again, dimmed.](images/demo-archive.gif)
 
@@ -139,7 +141,7 @@ The Agents tab shows one card per Agent, in a grid of columns at least 400px wid
 - A poll updates the cards and rows in place, so the focus and the scroll position stay.
 - A Session with no Agents says "No Agents yet".
 
-![A short clip of the Agents tab: 01-orchestrator with no Tasks, then 02-backend with its three finished Tasks, then 03-frontend and 04-reviewer.](images/demo-agents.gif)
+![A short clip of the Agents tab: a summary and status chips, 02-backend’s waiting and finished Task folds opening and closing, and switching between Most urgent first and By name.](images/demo-agents.gif)
 
 ### Task details
 

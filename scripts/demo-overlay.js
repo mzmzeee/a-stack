@@ -138,12 +138,14 @@
         if (side === 'below' || side === 'above') {
           bx = Math.min(Math.max(r.left + r.width / 2 - b.width / 2 + 60, 12), w - b.width - 12);
           by = side === 'below' ? r.bottom + gap : r.top - gap - b.height;
+          by = Math.min(Math.max(by, 12), h - b.height - 12);
           ax = bx + Math.min(40, b.width / 4);
           ay = side === 'below' ? by : by + b.height;
           tx = Math.min(Math.max(ax + 30, r.left + 20), r.right - 20);
           ty = side === 'below' ? r.bottom + pad + 8 : r.top - pad - 8;
         } else {
           bx = side === 'right' ? r.right + gap : r.left - gap - b.width;
+          bx = Math.min(Math.max(bx, 12), w - b.width - 12);
           by = Math.min(Math.max(r.top + r.height / 2 - b.height / 2 + 40, 12), h - b.height - 12);
           ax = side === 'right' ? bx : bx + b.width;
           ay = by + b.height / 2;
