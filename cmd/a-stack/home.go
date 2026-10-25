@@ -299,7 +299,7 @@ func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row 
 		"Workspace: " + row.WorkspaceID + "   Session: " + row.SessionID,
 		"Your name: " + h.orchestrator + "   Your private folder: make one with mktemp -d",
 		"Work in: " + h.cwd,
-		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register one Agent per Task and brief each one.",
+		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register an Agent for each Task that you hand out and brief each Agent.",
 	}, "\n")
 	fields["orchestrator_id"], fields["orchestrator_credential_file"], fields["brief"] = id, credential, brief
 	after := []string{"Start your coding agent in this folder and give it this brief, with your goal:", "", brief, ""}

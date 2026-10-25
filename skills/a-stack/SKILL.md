@@ -67,7 +67,7 @@ A finished Task stays in the Operator's graph until it is archived. The Orchestr
 
 When you wait for another Task, set `--progress waiting --reason 'Waits for the API Task'`.
 
-If an a-stack hook stops you from stopping because a Task is still Working without a report, write the report and finish, or set Waiting with a reason. If it says there is new Task mail, run your `mail check`.
+If an a-stack hook blocks you from stopping, write the report and finish, or set Waiting with a reason. If it says there is new Task mail, run your `mail check`.
 
 When only the Operator can decide, ask one clear question with `me task attention set --task T --question 'Which release gets this?' --expected-revision R --operation-id 02-worker-ask-1`. Then stop, and say in your conversation that you wait for the Operator's answer. After the answer, run `task attention resolve` with a `--note` (see [references/commands.md](references/commands.md)).
 

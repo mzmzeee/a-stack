@@ -2,7 +2,7 @@
 
 The Orchestrator coordinates the Session's team. It registers Agents, creates Tasks, assigns Agents and adds dependencies. Only the Operator appoints the Orchestrator, closes the Session and answers Needs you questions.
 
-The Operator follows the Session through its Task graph, so plan the work as a graph. Every piece of work is a Task, your own included, and every Task is linked to the Tasks it comes from and leads to. A graph of unlinked Tasks tells the Operator nothing about the order of the work.
+The Operator follows the Session through its Task graph, so plan the work as a graph. Every piece of work is a Task, your own included, and every Task is linked to the Tasks it comes from and leads to. Unlinked Tasks do not show the Operator the order of the work.
 
 Set up `me` as [SKILL.md](../SKILL.md) shows, with your own credential. If nobody gave you one, make it yourself with `a-stack new --orchestrator 01-orchestrator --no-browser --json` (see SKILL.md); do not ask the Operator for IDs. For each command's flags, see [commands.md](commands.md).
 
@@ -49,7 +49,7 @@ me dependency add --from A --to B --expected-revision G --operation-id orch-dep-
 - a-stack rejects a duplicate, a dependency of a Task on itself and a cycle.
 - Link what the work really depends on. For example: an audit or a research Task to each fix or build that it leads to, a build to its review, and every Task that goes into a release to the release Task.
 - Only a starting point, such as the first audit, has no prerequisite. Before you brief anyone, run `me task list` and look at `prerequisite_count`: a Task with 0 that is not a starting point is missing a link.
-- A dependency does not block anything. Say in B's description that B waits for A, so that its assignee sets Waiting until A is Finished.
+- A dependency does not block anything. The skill has each assignee run `task dependencies` before it starts and wait while a prerequisite is open.
 
 ## 4. Brief each Agent
 
@@ -77,7 +77,7 @@ Workspace: WORKSPACE_ID   Session: SESSION_ID
 State directory: /private/state   (only if not the default)
 Your name: 02-worker   Your private folder: /tmp/work/02-worker/
 Work in: /path/to/worktree
-Tasks: A_ID (do first), B_ID (depends on A; set it Waiting until A is Finished)
+Tasks: A_ID (do first), B_ID (depends on A)
 Other assignees you can @mention: 01-orchestrator
 ```
 
@@ -92,7 +92,7 @@ When a Task shows `needs_you`, the Operator must answer. You cannot answer for t
 
 ## 6. Change the plan
 
-- When new work turns up, create a Task for it and link it at once, also when you do the work yourself. Work without a Task is invisible to the Operator.
+- When new work turns up, create a Task for it and link it at once, also when you do the work yourself, so that the Operator sees it.
 - Change the title, description or Ticket with `task edit`.
 - Move work with `task unassign` and `task assign`.
 - To reopen a Finished or Cancelled Task, assign yourself, then run `task reopen --reason`. Only an assignee can reopen.
