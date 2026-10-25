@@ -15,6 +15,10 @@ const readPageBudget = 768 << 10
 type SnapshotRequest struct {
 	Context
 	KnownRevision int64 `json:"known_revision,omitempty"`
+	// knownMark is the archive mark of the caller's snapshot ETag, when it
+	// sent one; -1 for an ETag without one.
+	knownMark    int64
+	hasKnownMark bool
 }
 type SnapshotCounts struct {
 	Tasks        int `json:"tasks"`
@@ -30,6 +34,7 @@ type SessionSnapshot struct {
 	WorkspaceName string          `json:"workspace_name"`
 	Unchanged     bool            `json:"unchanged"`
 	Counts        *SnapshotCounts `json:"counts,omitempty"`
+	archiveMark   int64           // in the ETag; see Store.archiveMark
 }
 type TaskReadRequest struct {
 	Context
@@ -131,7 +136,12 @@ func (s *Store) Snapshot(ctx context.Context, token string, r SnapshotRequest) (
 	if err = tx.QueryRowContext(ctx, `SELECT path FROM workspaces WHERE id=?`, session.WorkspaceID).Scan(&workspacePath); err != nil {
 		return SessionSnapshot{}, storageError(err)
 	}
-	snapshot := SessionSnapshot{Source: "local-service", CapturedAt: now(), Session: session, WorkspaceName: filepath.Base(workspacePath), Unchanged: r.KnownRevision == session.ReadRevision}
+	mark, err := s.archiveMark(ctx, tx, session)
+	if err != nil {
+		return SessionSnapshot{}, err
+	}
+	unchanged := r.KnownRevision == session.ReadRevision && (!r.hasKnownMark || r.knownMark == mark)
+	snapshot := SessionSnapshot{Source: "local-service", CapturedAt: now(), Session: session, WorkspaceName: filepath.Base(workspacePath), Unchanged: unchanged, archiveMark: mark}
 	if snapshot.Unchanged {
 		return snapshot, nil
 	}

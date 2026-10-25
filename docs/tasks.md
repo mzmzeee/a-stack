@@ -79,7 +79,7 @@ An archived Task is a Finished or Cancelled Task that the browser view hides by 
 
 `task archive` works only on a Finished or Cancelled Task that the command has not archived yet. `task unarchive` undoes only the command. It cannot keep a Task visible against the chain or age rule. Both need an operation ID and the Task revision. They raise the revision and write a history entry, `task.archive` or `task.unarchive`. Assignees that are not the Orchestrator get `forbidden`, and so does the browser view. `task reopen` clears the archive and the end time, so a reopened Task is visible again.
 
-a-stack stores only the command, as `archived_at`, and the time the Task last became Finished or Cancelled, as `ended_at`. It computes the chain and age rules in Go each time it reads a Task, so `task show`, `task list` and the browser view agree. Passing the age limit does not change the Session read revision. A polling view shows the change with the next change in the Session, or after a reload.
+a-stack stores only the command, as `archived_at`, and the time the Task last became Finished or Cancelled, as `ended_at`. It computes the chain and age rules in Go each time it reads a Task, so `task show`, `task list` and the browser view agree. Passing the age limit does not change the Session read revision. The snapshot ETag also counts the Tasks that the age rule archives, so an open browser view shows the change at its next poll, also in a quiet Session.
 
 ## Reports, edits and history
 

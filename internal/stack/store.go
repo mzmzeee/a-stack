@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mattn/go-sqlite3"
@@ -47,6 +48,8 @@ type Store struct {
 	noticeWake    func()
 	budget        writeBudget
 	disk          diskSpace
+	marksMu       sync.Mutex
+	marks         map[string]archiveMarkState // by Session ID
 }
 
 // stmtCacheSize bounds the prepared statements the driver keeps. Past it, the

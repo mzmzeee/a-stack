@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -270,12 +271,35 @@ func (s *Service) redeemHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": map[string]string{"token": token}})
 }
+
+// snapshotTag is the ETag of a snapshot: its Session, read revision and archive
+// mark.
+func snapshotTag(snapshot SessionSnapshot) string {
+	return fmt.Sprintf(`"%s:%d:%d"`, snapshot.Session.ID, snapshot.Session.ReadRevision, snapshot.archiveMark)
+}
+
+// knownArchiveMark reads the archive mark from the snapshot ETag that the
+// view sends back. An ETag without one, from an older service, gives -1, so
+// that the next answer is a full one with the new ETag.
+func knownArchiveMark(r *http.Request, q *SnapshotRequest) {
+	tag := r.Header.Get("If-None-Match")
+	if tag == "" {
+		return
+	}
+	q.hasKnownMark, q.knownMark = true, -1
+	parts := strings.Split(strings.Trim(tag, `"`), ":")
+	if len(parts) == 3 {
+		if mark, err := strconv.ParseInt(parts[2], 10, 64); err == nil {
+			q.knownMark = mark
+		}
+	}
+}
 func snapshotConditional(w http.ResponseWriter, r *http.Request, data any) bool {
 	snapshot, ok := data.(SessionSnapshot)
 	if !ok {
 		return false
 	}
-	tag := fmt.Sprintf(`"%s:%d"`, snapshot.Session.ID, snapshot.Session.ReadRevision)
+	tag := snapshotTag(snapshot)
 	w.Header().Set("ETag", tag)
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Header.Get("If-None-Match") == tag {

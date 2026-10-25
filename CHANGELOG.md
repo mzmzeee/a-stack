@@ -32,6 +32,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Fixed
 
+- An open browser view of a quiet Session now hides a Task when it becomes 24 hours old (the age rule), at its next poll. Before, it showed the Task until something else changed or the page was reloaded. The snapshot ETag now includes the number of Tasks that the age rule archives.
 - A second Ctrl-C (or SIGTERM) while `serve` waits up to 10 seconds for open requests ends it at once. Before, the second signal was ignored.
 - When the service refuses `agent register` or `agent rebind` with an error that is not retryable, the CLI deletes the new credential file that the command wrote. A file that existed before is kept.
 
