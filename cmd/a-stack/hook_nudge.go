@@ -19,6 +19,10 @@ import (
 // session; hookFilesKept is how long an unused cursor file stays.
 const mailNudgeEvery, hookFilesKept = 30 * time.Second, 7 * 24 * time.Hour
 
+// catchUpPages bounds the mail check pages of one first check; a test
+// lowers it.
+var catchUpPages = 20
+
 // hookCacheDir is the folder of one Agent's hook cursor files in the user
 // cache folder. On Windows that is %LOCALAPPDATA%, where a-stack is the
 // default state directory, so the hook files get a folder of their own.
@@ -27,6 +31,22 @@ func hookCacheDir(cache, agent string) string {
 		return filepath.Join(cache, "a-stack-hooks", agent)
 	}
 	return filepath.Join(cache, "a-stack", "hooks", agent)
+}
+
+// hookCacheFile is the path of one of the Agent's hook files for a harness
+// session, the mail nudge's cursor file or the Stop guard's marker, and makes
+// its folder.
+func hookCacheFile(agent, session, suffix string) (string, bool) {
+	cache, err := os.UserCacheDir()
+	if err != nil || session == "" || !stack.ValidID(agent) {
+		return "", false
+	}
+	dir := hookCacheDir(cache, agent)
+	if os.MkdirAll(dir, 0o700) != nil {
+		return "", false
+	}
+	sum := sha256.Sum256([]byte(session))
+	return filepath.Join(dir, hex.EncodeToString(sum[:16])+suffix), true
 }
 
 // hookMailNudge peeks at new Task mail and returns a notice that names the
@@ -38,34 +58,34 @@ func hookCacheDir(cache, agent string) string {
 // seconds. The cursor moves past each message, so no message is reported
 // twice, and the notice holds no sender and no text.
 func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, in hookInput) string {
-	cache, err := os.UserCacheDir()
-	if err != nil || in.SessionID == "" || !stack.ValidID(id.agent) {
+	file, ok := hookCacheFile(id.agent, in.SessionID, ".json")
+	if !ok {
 		return ""
 	}
-	dir := hookCacheDir(cache, id.agent)
-	if os.MkdirAll(dir, 0o700) != nil {
-		return ""
-	}
+	dir := filepath.Dir(file)
 	release, ok := tryLock(dir)
 	if !ok {
 		return "" // another hook run of this Agent checks right now
 	}
 	defer release()
-	sum := sha256.Sum256([]byte(in.SessionID))
-	file := filepath.Join(dir, hex.EncodeToString(sum[:16])+".json")
 	info, err := os.Stat(file)
 	first := err != nil
 	if !first && (in.Event == "SessionStart" || time.Since(info.ModTime()) < mailNudgeEvery) {
 		return ""
 	}
+	// The first check reads into a file of its own, which becomes the cursor
+	// file only once it has read up to the newest message. A first check that
+	// runs out of time goes on at the next hook run, and still reports nothing.
+	cursor := file
 	if first {
 		pruneHookFiles(dir)
+		cursor = strings.TrimSuffix(file, ".json") + ".first.json"
 	}
 	news := map[string]bool{}
-	for range 20 {
-		data, err := mailCheck(ctx, client, stack.MailCheckRequest{Context: id.ref}, file, true)
+	for range catchUpPages {
+		data, err := mailCheck(ctx, client, stack.MailCheckRequest{Context: id.ref}, cursor, true)
 		if e, ok := err.(*stack.Error); ok && e.Code == "invalid_input" {
-			_ = os.Remove(file) // a cursor that no longer fits: start again
+			_ = os.Remove(cursor) // a cursor that no longer fits: start again
 		} else if err != nil {
 			now := time.Now()
 			_ = os.Chtimes(file, now, now) // wait 30 seconds before trying again
@@ -82,6 +102,9 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 					news[page.TaskID] = true
 				}
 			}
+		}
+		if first && !out.Data.More {
+			_ = stack.Rename(cursor, file)
 		}
 		if !first || !out.Data.More {
 			break
@@ -107,12 +130,12 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 	return "a-stack: New Task mail on " + strings.Join(titles, ", ") + "; run mail check."
 }
 
-// pruneHookFiles removes the cursor files of harness sessions unused for
-// hookFilesKept.
+// pruneHookFiles removes the cursor files and Stop guard markers of harness
+// sessions unused for hookFilesKept.
 func pruneHookFiles(dir string) {
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
-		if info, err := e.Info(); err == nil && strings.HasSuffix(e.Name(), ".json") && time.Since(info.ModTime()) > hookFilesKept {
+		if info, err := e.Info(); err == nil && (strings.HasSuffix(e.Name(), ".json") || strings.HasSuffix(e.Name(), ".stop")) && time.Since(info.ModTime()) > hookFilesKept {
 			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}
