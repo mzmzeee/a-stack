@@ -15,6 +15,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Changed
 
+- In a short or narrow window, the browser view page scrolls and only the tabs stay at the top, so the view gets the height. At 720×450 (200% zoom), the Graph now gets 324 of 450 pixels instead of 202; on a 375×812 phone, 667 instead of 477.
 - The browser view has a System theme button next to Light and Dark, and follows the system theme from the first paint, so a dark system no longer sees a light flash. Mentions in Task mail no longer break inside a name, card shadows are visible, the theme buttons are labelled "Theme", and duplicate CSS rules are gone.
 - The browser view's feed keeps the change on its own line, so a long title no longer hides it, and each kind of change has its own icon. The Needs you chooser lists the oldest request first, with the question and its age. A waiting card names up to three blockers and "+N more". A compact block in the Graph shows its full title on hover.
 - The Needs you button says "Needs you (2)", or "All clear" in neutral colors. An empty Session suggests to brief an Orchestrator with the a-stack skill, and the Agents tab of a Session with no Agents says "No Agents yet". "Clear filters" shows only when a filter is set.

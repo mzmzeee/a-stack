@@ -85,6 +85,7 @@ The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It has three 
 - A shared Task shows the same data in every Agent row. The Unassigned row shows Tasks with no assignee.
 - Progress and Needs you requests are shown separately. The Needs you button in the header counts the open requests, such as "Needs you (2)", or says "All clear". When several Tasks need input, it opens a chooser: oldest request first, each with its title, the first part of the question and the age of the last change. Viewing a Task never resolves its request.
 - The chooser buttons keep their identity across unrelated refreshes. If the focused request is resolved somewhere else, the focus moves to a remaining choice, or to the view tab when the chooser is empty.
+- In a window lower than 600px or narrower than 700px, such as a phone or a browser at 200% zoom, the whole page scrolls. Only the tabs stay at the top. In the Graph tab, the footer with the zoom controls stays at the bottom; on Now and Agents, it is at the end of the page.
 - The runtime state has an "unverified" label and the age of its last observation. The age increases also when polls succeed.
 
 ### Now
