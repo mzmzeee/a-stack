@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mzmzeee/a-stack/contrib/pi"
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
@@ -22,6 +23,7 @@ func hookHome(t *testing.T) string {
 	t.Setenv("HOME", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", "")
+	t.Setenv("PI_CODING_AGENT_DIR", "")
 	t.Setenv("USERPROFILE", home)                           // the home folder on Windows
 	t.Setenv("XDG_CACHE_HOME", "")                          // the mail nudge keeps its cursor files in ~/.cache
 	t.Setenv("LOCALAPPDATA", filepath.Join(home, ".cache")) // and on Windows there
@@ -170,6 +172,68 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 		if _, errout, code := f.run("", bad...); code == 0 || !json.Valid([]byte(errout)) {
 			t.Fatalf("%v: %d %s", bad, code, errout)
 		}
+	}
+}
+
+// --pi writes the hook list and the extension into Pi's agent folder, and
+// nothing else. Uninstall removes both once no folder has hooks left.
+func TestHookInstallPiWritesTheExtension(t *testing.T) {
+	f := newTeam(t)
+	home := hookHome(t)
+	t.Chdir(f.project)
+	agentDir := filepath.Join(home, ".pi", "agent")
+	list, extension := filepath.Join(agentDir, "a-stack-hooks.json"), filepath.Join(agentDir, "extensions", "a-stack.ts")
+	install := []string{"hook", "install", "--pi", "--credential-file", f.workerFile}
+	out, errout, code := f.run("", install...)
+	if code != 0 || out != "Installed the a-stack hooks for "+f.project+" in:\n  "+list+"\n  "+extension+"\nWithout --runtime-id the hooks record no runtime state; the reminder, Stop guard and mail nudge still work.\nPi loads the extension when it starts; in a running Pi, run /reload.\n" {
+		t.Fatalf("install --pi: %d %q %s", code, out, errout)
+	}
+	s := readSettings(t, list)
+	exe, _ := os.Executable()
+	want := quotePath(exe) + " hook --state-dir " + quotePath(f.state) + " --credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace + " --session " + f.session + " --agent " + f.worker + " --worktree " + quotePath(f.project)
+	if _, ok := s.Hooks["Notification"]; ok || len(s.Hooks) != 5 || commands(s, "Stop")[0] != want || commands(s, "PermissionRequest")[0] != want {
+		t.Fatalf("Pi hook list: %+v", s.Hooks)
+	}
+	if data, err := os.ReadFile(extension); err != nil || string(data) != pi.Extension || !strings.HasPrefix(string(data), pi.Header) {
+		t.Fatalf("extension: %v", err)
+	}
+	for _, other := range []string{".claude", ".codex"} {
+		if _, err := os.Stat(filepath.Join(home, other)); !os.IsNotExist(err) {
+			t.Fatalf("--pi wrote %s", other)
+		}
+	}
+	// A second folder shares the extension; uninstalling one keeps it.
+	other := t.TempDir()
+	if _, errout, code = f.run("", append(install, "--worktree", other)...); code != 0 {
+		t.Fatalf("second folder: %s", errout)
+	}
+	if out = runSkill(t, "hook", "uninstall", "--pi"); out != "Removed the a-stack hooks for "+f.project+" from:\n  "+list+"\n" {
+		t.Fatalf("uninstall of one folder: %q", out)
+	}
+	if _, err := os.Stat(extension); err != nil || len(readSettings(t, list).Hooks) != 5 {
+		t.Fatal("the other folder lost its Pi hooks")
+	}
+	if out = runSkill(t, "hook", "uninstall", "--pi", "--worktree", other); out != "Removed the a-stack hooks for "+other+" from:\n  "+list+"\n  "+extension+"\n" {
+		t.Fatalf("uninstall of the last folder: %q", out)
+	}
+	if entries, err := os.ReadDir(agentDir); err != nil || len(entries) != 1 || entries[0].Name() != "extensions" {
+		t.Fatalf("left in the agent folder: %v %v", entries, err)
+	}
+	// PI_CODING_AGENT_DIR moves both files; another a-stack.ts stays.
+	custom := filepath.Join(home, "pi-agent")
+	t.Setenv("PI_CODING_AGENT_DIR", custom)
+	if os.MkdirAll(filepath.Join(custom, "extensions"), 0o700) != nil || os.WriteFile(filepath.Join(custom, "extensions", "a-stack.ts"), []byte("// mine\n"), 0o600) != nil {
+		t.Fatal("fixture")
+	}
+	if _, errout, code = f.run("", install...); code != 1 || !strings.Contains(errout, "not the a-stack Pi extension") {
+		t.Fatalf("a foreign a-stack.ts: %d %s", code, errout)
+	}
+	t.Setenv("PI_CODING_AGENT_DIR", "relative")
+	if _, errout, code = f.run("", install...); code != 2 || !strings.Contains(errout, "PI_CODING_AGENT_DIR must be absolute") {
+		t.Fatalf("relative agent folder: %d %s", code, errout)
+	}
+	if _, errout, code = f.run("", append(install, "--project")...); code != 2 || !strings.Contains(errout, "--pi has no --project") {
+		t.Fatalf("--project --pi: %d %s", code, errout)
 	}
 }
 
