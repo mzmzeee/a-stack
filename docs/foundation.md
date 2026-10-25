@@ -17,9 +17,9 @@ The state directory holds these files:
 | `service.json` | The discovery file for clients. |
 | `operator.json` | The Operator credential. |
 
-Before `serve` opens `state.db`, it takes a nonblocking `flock` on `service.lock`. The lock file stays in place. The service holds the lock until HTTP has stopped and SQLite has closed. A second `serve` on the same directory fails with `conflict`. If the process is killed, the kernel releases the lock, and the next start lets SQLite recover its write-ahead log (WAL). Do not delete the lock file or the SQLite sidecar files.
+Before `serve` opens `state.db`, it takes a nonblocking `flock` on `service.lock`. The lock file stays in place. The service holds the lock until HTTP has stopped and SQLite has closed. A second `serve` on the same directory fails with `conflict`. If the process is killed, the kernel releases the lock, and the next start lets SQLite recover its write-ahead log (WAL). Do not delete the lock file or the SQLite sidecar files. On Windows, the service holds `service.lock` open with no sharing instead of a `flock`, with the same result.
 
-The state directory must belong to the current operating system account and give no access to group or others. The database, discovery and credential files must be private to that account too. a-stack rejects symlinked files and unsafe permissions. It also rejects a state directory inside a Git checkout, also when a symlink in a parent directory leads there. Use a local filesystem. Network filesystems are not supported.
+The state directory must belong to the current operating system account and give no access to group or others. The database, discovery and credential files must be private to that account too. a-stack rejects symlinked files and unsafe permissions. It also rejects a state directory inside a Git checkout, also when a symlink in a parent directory leads there. Use a local filesystem. Network filesystems are not supported. Windows has no file modes: there a-stack creates the state directory with a protected access list for your account, SYSTEM and the Administrators group, and rejects symlinks and other reparse points, but it does not check the access list of a directory that exists already.
 
 ## Credentials
 

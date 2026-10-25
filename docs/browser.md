@@ -14,7 +14,7 @@ a-stack open --workspace WORKSPACE_ID --session SESSION_ID --no-browser --json
 
 `open` accepts the usual `--state-dir`, `--credential-file` and `--as` flags. Only the Operator can open the view, also for a closed Session. With an Agent credential, `open` fails with `forbidden`, because the view reads the Task mail of every Task in its Session. The view reads the Session metadata and that Task mail. It cannot open another view, send or check mail, or use the write, storage or runtime endpoints.
 
-`open` prints the URL before it starts the browser with `xdg-open` on Linux or `open` on macOS. If that fails, the command still succeeds, the URL is on stdout, and stderr shows a fixed message. Open a printed URL within a minute: it works once, for 60 seconds (see [Keep the URL private](#keep-the-url-private)). With `--json`, the output is `{"data":{"url":"..."}}`.
+`open` prints the URL before it starts the browser with `xdg-open` on Linux, `open` on macOS, or the default browser of Windows (through `ShellExecute`). If that fails, the command still succeeds, the URL is on stdout, and stderr shows a fixed message. Open a printed URL within a minute: it works once, for 60 seconds (see [Keep the URL private](#keep-the-url-private)). With `--json`, the output is `{"data":{"url":"..."}}`.
 
 ## Open the last Session
 

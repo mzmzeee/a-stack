@@ -5,17 +5,11 @@ import (
 	"encoding/json"
 	"github.com/mzmzeee/a-stack/internal/stack"
 	"io"
-	"os/exec"
-	"runtime"
 )
 
-var launchBrowser = func(url string) error {
-	opener := "xdg-open"
-	if runtime.GOOS == "darwin" {
-		opener = "open"
-	}
-	return exec.Command(opener, url).Run()
-}
+// launchBrowser opens a URL in the default browser: see browser_unix.go and
+// browser_windows.go. Tests replace it.
+var launchBrowser = openURL
 
 func openBrowser(ctx context.Context, client *stack.Client, ref stack.Context, machine, noBrowser bool, stdout, stderr io.Writer) error {
 	return openView(ctx, client, ref, viewNotes{}, machine, noBrowser, stdout, stderr)

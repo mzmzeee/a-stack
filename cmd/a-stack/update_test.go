@@ -101,6 +101,7 @@ func updateSetup(t *testing.T, current string, release *fakeRelease) (exe, log s
 	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
 		t.Skip("update supports amd64 and arm64")
 	}
+	unixOnly(t, "the fake release binaries are shell scripts; update_zip_test.go has the Windows steps")
 	server := httptest.NewServer(release)
 	t.Cleanup(server.Close)
 	t.Setenv("A_STACK_BASE_URL", server.URL)

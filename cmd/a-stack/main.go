@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -21,6 +22,9 @@ import (
 var version string
 
 func main() {
+	if runtime.GOOS == "windows" {
+		removeOldBinaries()
+	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
@@ -78,7 +82,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	var state, credential, kind, listen, destination, herdrExecutable, orchestrator string
 	var machine, help, noBrowser, resume, project, refresh, check, all bool
 	var release versionFlag
-	fs.StringVar(&state, "state-dir", "", "State directory (default ~/.local/state/a-stack)")
+	fs.StringVar(&state, "state-dir", "", "State directory (default "+stateDirDefault+")")
 	fs.StringVar(&credential, "credential-file", "", "Credential file (default: operator.json)")
 	fs.StringVar(&kind, "as", "", "Credential kind: operator, agent or browser")
 	fs.StringVar(&listen, "listen", "", "Loopback address (default: the last port, else a free one)")
@@ -181,6 +185,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if err := validateCommandFlags(cmd, seen); err != nil {
 		return err
 	}
+	if !herdrSupported && (isHerdrCommand(cmd) || seen["herdr-executable"]) {
+		return invalid("Herdr is not supported on Windows; a-stack works without it, and Task mail reaches Agents through mail check")
+	}
 	if err := checkIDs(seen, lifecycle, tasks); err != nil {
 		return err
 	}
@@ -235,9 +242,18 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		if credential != "" || kind != "" {
 			return invalid("serve initializes its state Operator credential; credential selection applies to client commands")
 		}
-		return serveForeground(ctx, state, listen, herdrExecutable, func(_ context.Context, service *stack.Service) error {
+		log := detachConsole(state)
+		if log != nil {
+			defer log.Close()
+			stdout = log
+		}
+		err := serveForeground(ctx, state, listen, herdrExecutable, func(_ context.Context, service *stack.Service) error {
 			return json.NewEncoder(stdout).Encode(readyLine(service))
 		})
+		if err != nil && log != nil {
+			writeError(log, err)
+		}
+		return err
 	}
 	if isWatchCommand(cmd) {
 		connect := func() (*stack.Client, error) { return stack.NewClient(state, credential, stack.CapabilityKind(kind)) }

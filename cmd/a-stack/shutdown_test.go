@@ -14,6 +14,7 @@ import (
 // The first Ctrl-C waits up to 10 seconds for open requests; a second one ends
 // serve at once.
 func TestServeSecondInterruptExitsAtOnce(t *testing.T) {
+	unixOnly(t, "no SIGINT to another process")
 	dir := filepath.Join(t.TempDir(), "state")
 	server := launch(t, dir)
 	data, err := os.ReadFile(filepath.Join(dir, "service.json"))

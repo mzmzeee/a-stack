@@ -111,7 +111,7 @@ func TestBackupBeforeMigration(t *testing.T) {
 	check := func(name string) {
 		t.Helper()
 		info, err := os.Lstat(name)
-		if err != nil || info.Mode().Perm() != 0600 {
+		if err != nil || posixModes && info.Mode().Perm() != 0600 {
 			t.Fatalf("backup %s: %v %v", name, info, err)
 		}
 		db, err := sql.Open("sqlite3", name+"?mode=ro")

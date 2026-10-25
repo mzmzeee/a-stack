@@ -171,9 +171,9 @@ func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (s
 	}
 	command := "a-stack"
 	if id.state != "" {
-		command += " --state-dir " + shellQuote(id.state)
+		command += " --state-dir " + quotePath(id.state)
 	}
-	fmt.Fprintf(&b, "\nRun a-stack as yourself: %s --as agent --credential-file %s --workspace %s --session %s COMMAND\n", command, shellQuote(id.credential), id.ref.WorkspaceID, id.ref.SessionID)
+	fmt.Fprintf(&b, "\nRun a-stack as yourself: %s --as agent --credential-file %s --workspace %s --session %s COMMAND\n", command, quotePath(id.credential), id.ref.WorkspaceID, id.ref.SessionID)
 	open := 0
 	for _, t := range tasks {
 		if !mine[t.ID] || t.Progress == "finished" || t.Progress == "cancelled" {
@@ -237,6 +237,11 @@ func sessionPages[T any](ctx context.Context, client *stack.Client, request stac
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+// quotePath is shellQuote for a path with forward slashes. On Windows,
+// Claude Code runs hook commands in Git Bash, which mangles backslashes;
+// a-stack reads C:/folder as C:\folder.
+func quotePath(path string) string { return shellQuote(filepath.ToSlash(path)) }
 
 // hookSettings returns the settings files to change: Claude Code's
 // settings.json (settings.local.json in a project, so it is not committed)
@@ -411,11 +416,11 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", invalid("cannot find the a-stack binary")
 	}
-	parts := []string{shellQuote(exe), "hook"}
+	parts := []string{quotePath(exe), "hook"}
 	if id.state != "" {
-		parts = append(parts, "--state-dir", shellQuote(id.state))
+		parts = append(parts, "--state-dir", quotePath(id.state))
 	}
-	parts = append(parts, "--credential-file", shellQuote(id.credential), "--workspace", id.ref.WorkspaceID, "--session", id.ref.SessionID, "--agent", id.agent)
+	parts = append(parts, "--credential-file", quotePath(id.credential), "--workspace", id.ref.WorkspaceID, "--session", id.ref.SessionID, "--agent", id.agent)
 	if id.runtimeID != "" {
 		parts = append(parts, "--runtime-id", shellQuote(id.runtimeID))
 	}
@@ -425,13 +430,13 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 	if h.flags.noMailNudge {
 		parts = append(parts, "--no-mail-nudge")
 	}
-	parts = append(parts, "--worktree", shellQuote(id.worktree))
+	parts = append(parts, "--worktree", quotePath(id.worktree))
 	return strings.Join(parts, " "), nil
 }
 
 // isOurs reports whether a hook command is an a-stack hook for worktree.
 func isOurs(command, worktree string) bool {
-	return strings.Contains(command, "' hook ") && strings.HasSuffix(command, " --worktree "+shellQuote(worktree))
+	return strings.Contains(command, "' hook ") && strings.HasSuffix(command, " --worktree "+quotePath(worktree))
 }
 
 // mergeHooks removes the worktree's a-stack hooks from file and, when
@@ -562,5 +567,5 @@ func writeAtomic(file string, data []byte, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), file)
+	return stack.Rename(tmp.Name(), file)
 }

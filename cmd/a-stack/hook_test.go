@@ -22,7 +22,9 @@ func hookHome(t *testing.T) string {
 	t.Setenv("HOME", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", "")
-	t.Setenv("XDG_CACHE_HOME", "") // the mail nudge keeps its cursor files in ~/.cache
+	t.Setenv("USERPROFILE", home)                           // the home folder on Windows
+	t.Setenv("XDG_CACHE_HOME", "")                          // the mail nudge keeps its cursor files in ~/.cache
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, ".cache")) // and on Windows there
 	return home
 }
 
@@ -83,7 +85,7 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 	}
 	ours := commands(s, "Stop")[1]
 	exe, _ := os.Executable()
-	want := shellQuote(exe) + " hook --state-dir " + shellQuote(f.state) + " --credential-file " + shellQuote(f.workerFile) + " --workspace " + f.workspace + " --session " + f.session + " --agent " + f.worker + ` --runtime-id 'it'\''s-me' --worktree ` + shellQuote(f.project)
+	want := quotePath(exe) + " hook --state-dir " + quotePath(f.state) + " --credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace + " --session " + f.session + " --agent " + f.worker + ` --runtime-id 'it'\''s-me' --worktree ` + quotePath(f.project)
 	if ours != want {
 		t.Fatalf("hook command\n got %s\nwant %s", ours, want)
 	}
@@ -107,10 +109,10 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 	if c := commands(readSettings(t, claude), "Stop"); len(c) != 2 || c[1] != want {
 		t.Fatalf("install from the credential context: %v", c)
 	}
-	if info, err := os.Stat(claude); err != nil || info.Mode().Perm() != 0644 {
+	if info, err := os.Stat(claude); err != nil || posixModes && info.Mode().Perm() != 0644 {
 		t.Fatal("install changed the file mode")
 	}
-	if info, err := os.Stat(codex); err != nil || info.Mode().Perm() != 0600 {
+	if info, err := os.Stat(codex); err != nil || posixModes && info.Mode().Perm() != 0600 {
 		t.Fatal("new hooks file is not private")
 	}
 
@@ -122,7 +124,7 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 	if out, _, _ = f.run("", install...); !strings.Contains(out, "Installed") {
 		t.Fatalf("reinstall: %q", out)
 	}
-	if c := commands(readSettings(t, claude), "Stop"); len(c) != 3 || c[0] != "say done" || !strings.HasSuffix(c[1], " --no-stop-guard --no-mail-nudge --worktree "+shellQuote(other)) || c[2] != want {
+	if c := commands(readSettings(t, claude), "Stop"); len(c) != 3 || c[0] != "say done" || !strings.HasSuffix(c[1], " --no-stop-guard --no-mail-nudge --worktree "+quotePath(other)) || c[2] != want {
 		t.Fatalf("after reinstall: %v", c)
 	}
 	if out = runSkill(t, "hook", "uninstall"); !strings.Contains(out, "Removed the a-stack hooks for "+f.project+" from:\n  "+claude+"\n  "+codex+"\n") {
@@ -214,7 +216,7 @@ func TestHookRecordsRuntimeStateAndPrintsTheReminder(t *testing.T) {
 	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, runtimeID: "worker-runtime", worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}}
 
 	text := hookEvent(t, id, "SessionStart", `,"source":"compact"`)
-	for _, want := range []string{"a-stack: you are the Agent 02-worker in the a-stack Session \"Build\"", "--credential-file " + shellQuote(f.workerFile) + " --workspace " + f.workspace, "Your open Tasks:\n- Build the parser (Task " + f.task + "): working, waits for the Operator's answer\n", "Run mail check now"} {
+	for _, want := range []string{"a-stack: you are the Agent 02-worker in the a-stack Session \"Build\"", "--credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace, "Your open Tasks:\n- Build the parser (Task " + f.task + "): working, waits for the Operator's answer\n", "Run mail check now"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("reminder misses %q:\n%s", want, text)
 		}
@@ -346,7 +348,7 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	f.run(f.workerFile, f.scoped("mail", "check", "--cursor-file", own)...)
 	ownBefore, _ := os.ReadFile(own)
 	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}, noStopGuard: true}
-	dir := filepath.Join(home, ".cache", "a-stack", "hooks", f.worker)
+	dir := hookCacheDir(filepath.Join(home, ".cache"), f.worker)
 	sum := sha256.Sum256([]byte("abc"))
 	file := filepath.Join(dir, hex.EncodeToString(sum[:16])+".json")
 	later := func(path string) {
@@ -360,10 +362,10 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	if text := hookEvent(t, id, "SessionStart", ""); !strings.Contains(text, "Run mail check now") || strings.Contains(text, "New Task mail") {
 		t.Fatalf("SessionStart: %q", text)
 	}
-	if info, err := os.Stat(file); err != nil || info.Mode().Perm() != 0600 {
+	if info, err := os.Stat(file); err != nil || posixModes && info.Mode().Perm() != 0600 {
 		t.Fatalf("cursor file: %v", err)
 	}
-	if info, err := os.Stat(dir); err != nil || info.Mode().Perm() != 0700 {
+	if info, err := os.Stat(dir); err != nil || posixModes && info.Mode().Perm() != 0700 {
 		t.Fatalf("cursor folder: %v", err)
 	}
 	later(file)

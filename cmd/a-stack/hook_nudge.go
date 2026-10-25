@@ -7,9 +7,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
@@ -18,6 +18,16 @@ import (
 // mailNudgeEvery is the least time between two mail checks of one harness
 // session; hookFilesKept is how long an unused cursor file stays.
 const mailNudgeEvery, hookFilesKept = 30 * time.Second, 7 * 24 * time.Hour
+
+// hookCacheDir is the folder of one Agent's hook cursor files in the user
+// cache folder. On Windows that is %LOCALAPPDATA%, where a-stack is the
+// default state directory, so the hook files get a folder of their own.
+func hookCacheDir(cache, agent string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(cache, "a-stack-hooks", agent)
+	}
+	return filepath.Join(cache, "a-stack", "hooks", agent)
+}
 
 // hookMailNudge peeks at new Task mail and returns a notice that names the
 // Tasks where someone else wrote, or "". It keeps its own mail cursor file
@@ -32,18 +42,15 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 	if err != nil || in.SessionID == "" || !stack.ValidID(id.agent) {
 		return ""
 	}
-	dir := filepath.Join(cache, "a-stack", "hooks", id.agent)
+	dir := hookCacheDir(cache, id.agent)
 	if os.MkdirAll(dir, 0o700) != nil {
 		return ""
 	}
-	lock, err := os.Open(dir)
-	if err != nil {
-		return ""
-	}
-	defer lock.Close()
-	if syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
+	release, ok := tryLock(dir)
+	if !ok {
 		return "" // another hook run of this Agent checks right now
 	}
+	defer release()
 	sum := sha256.Sum256([]byte(in.SessionID))
 	file := filepath.Join(dir, hex.EncodeToString(sum[:16])+".json")
 	info, err := os.Stat(file)

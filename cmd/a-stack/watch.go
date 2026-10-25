@@ -230,7 +230,11 @@ func (w *watcher) watch(ctx context.Context) error {
 		if runtime.GOOS == "darwin" {
 			tool = "osascript"
 		}
-		if path, err := exec.LookPath(tool); err == nil {
+		if runtime.GOOS == "windows" {
+			if w.notifier == nil {
+				_, _ = io.WriteString(w.stderr, "Desktop notices are not available on Windows yet; watch shows no desktop notices.\n")
+			}
+		} else if path, err := exec.LookPath(tool); err == nil {
 			w.notifySend = path
 		} else if w.notifier == nil {
 			_, _ = io.WriteString(w.stderr, tool+" is not installed; watch shows no desktop notices.\n")

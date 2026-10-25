@@ -53,3 +53,58 @@ jobs:
           "$RUNNER_TEMP/a-stack" version
           go vet ./...
           go test -count=1 ./...
+
+  # The Windows build: go build, vet and test with cgo and the MinGW-w64 gcc
+  # of the runner image. The release workflow cross-builds the archives with
+  # llvm-mingw and runs them on Windows x64 and Arm.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: "1"
+        run: |
+          # Tests keep private state in the temporary folder. Use a long
+          # Windows path, not the 8.3 short name in the default TEMP.
+          tmp="$RUNNER_TEMP\\a-stack-check"
+          mkdir -p "$tmp"
+          export TMP="$tmp" TEMP="$tmp"
+          gcc --version
+          go build -o "$RUNNER_TEMP\\a-stack.exe" ./cmd/a-stack
+          "$RUNNER_TEMP\\a-stack.exe" version
+          go vet ./...
+          go test -count=1 ./...
+      # install.ps1 from a local mirror, in Windows PowerShell 5.1 and in
+      # PowerShell 7: an install, then a reinstall over the binary.
+      - env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: "1"
+        run: |
+          mirror="$RUNNER_TEMP/mirror/download/v0.0.1"
+          mkdir -p "$mirror" "$RUNNER_TEMP/zip"
+          go build -ldflags "-X main.version=v0.0.1" -o "$RUNNER_TEMP/zip/a-stack.exe" ./cmd/a-stack
+          (cd "$RUNNER_TEMP/zip" && 7z a -tzip "$mirror/a-stack_windows_amd64.zip" a-stack.exe >/dev/null)
+          (cd "$mirror" && sha256sum a-stack_windows_amd64.zip > SHA256SUMS)
+          python -m http.server 8765 --bind 127.0.0.1 --directory "$RUNNER_TEMP/mirror" &
+          server=$!
+          sleep 2
+          export A_STACK_BASE_URL=http://127.0.0.1:8765 A_STACK_VERSION=v0.0.1 A_STACK_NO_PATH=1
+          for shell in powershell pwsh; do
+            export A_STACK_INSTALL_DIR="$RUNNER_TEMP\\install-$shell"
+            "$shell" -NoProfile -NonInteractive -File install.ps1
+            "$shell" -NoProfile -NonInteractive -File install.ps1 | tee "$RUNNER_TEMP/again.txt"
+            grep -q "already installed" "$RUNNER_TEMP/again.txt"
+            test "$("$A_STACK_INSTALL_DIR\\a-stack.exe" version)" = '{"data":{"version":"v0.0.1"}}'
+          done
+          kill "$server"

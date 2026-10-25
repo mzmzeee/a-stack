@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -9,6 +11,9 @@ import (
 	"unicode"
 	"unicode/utf8"
 )
+
+// errPickerCancelled is the runPicker error when the Operator cancels.
+var errPickerCancelled = errors.New("picker cancelled")
 
 // sessionRow is one Session as the Operator shortcuts list it. It holds IDs and
 // names only, never credentials.
@@ -67,13 +72,30 @@ func shortenHome(path, home string) string {
 	if home == "" || home == "/" {
 		return path
 	}
-	if path == home {
-		return "~"
-	}
-	if strings.HasPrefix(path, home+"/") {
-		return "~" + path[len(home):]
+	if rest, ok := pathBelow(path, home, windowsPaths); ok {
+		return "~" + rest
 	}
 	return path
+}
+
+// windowsPaths is true on Windows, where paths use \ and either case.
+var windowsPaths = runtime.GOOS == "windows"
+
+// pathBelow returns the rest of path after root, such as /sub, when path is
+// root or a path below it. With windows, / and \ both separate, and case
+// does not matter.
+func pathBelow(path, root string, windows bool) (rest string, ok bool) {
+	sep, equal := "/", func(a, b string) bool { return a == b }
+	if windows {
+		sep, equal = `\`, strings.EqualFold
+		path, root = strings.ReplaceAll(path, "/", sep), strings.ReplaceAll(root, "/", sep)
+	}
+	root = strings.TrimSuffix(root, sep)
+	if len(path) < len(root) || !equal(path[:len(root)], root) {
+		return "", false
+	}
+	rest = path[len(root):]
+	return rest, rest == "" || strings.HasPrefix(rest, sep)
 }
 
 // printable keeps names and paths from the service from moving the cursor or

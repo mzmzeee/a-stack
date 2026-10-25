@@ -17,6 +17,7 @@ import (
 // without "launchctl" and with gui/UID written as gui/U.
 func launchdSetup(t *testing.T) (f *fakeSystemd, exe, state, file string) {
 	t.Helper()
+	unixOnly(t, "launchd agents hold Unix paths")
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
 	t.Setenv("HOME", home)

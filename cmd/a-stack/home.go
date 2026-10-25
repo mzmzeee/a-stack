@@ -269,7 +269,7 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 	if _, err := os.Lstat(credential); err == nil {
 		return errOrchestratorFile(credential)
 	}
-	if err := os.MkdirAll(filepath.Dir(credential), 0o700); err != nil {
+	if err := stack.MkdirPrivate(filepath.Dir(credential)); err != nil {
 		return invalid("cannot make the folder " + filepath.Dir(credential))
 	}
 	registerID := operationID()
@@ -442,7 +442,8 @@ func (h *home) sessions(ctx context.Context, client *stack.Client) ([]sessionRow
 }
 
 func within(dir, root string) bool {
-	return dir != "" && root != "" && (dir == root || strings.HasPrefix(dir, strings.TrimSuffix(root, "/")+"/"))
+	_, ok := pathBelow(dir, root, windowsPaths)
+	return dir != "" && root != "" && ok
 }
 
 func later(t time.Time, stamp string) time.Time {

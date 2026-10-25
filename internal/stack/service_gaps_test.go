@@ -49,6 +49,9 @@ func TestBackupRejectsUnsafeDestinationsWithoutPublishingFiles(t *testing.T) {
 		{"unknown token", opaqueID(), filepath.Join(private, "unknown.db"), "unauthorized"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.name == "public directory" {
+				unixOnly(t, "a backup folder is private by its access list")
+			}
 			_, err := s.Store.Backup(ctx, tc.token, tc.destination)
 			requireCode(t, err, tc.code)
 			if tc.destination != existing && tc.destination != filepath.Join(state, "state.db") {

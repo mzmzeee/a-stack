@@ -1,0 +1,35 @@
+{
+    "version": "0.1.6",
+    "description": "Keep an eye on your AI coding agents",
+    "homepage": "https://github.com/mzmzeee/a-stack",
+    "license": "MIT",
+    "notes": [
+        "To keep a-stack running, run: a-stack service install",
+        "Update with scoop update a-stack, not a-stack update."
+    ],
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/mzmzeee/a-stack/releases/download/v0.1.6/a-stack_windows_amd64.zip",
+            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        "arm64": {
+            "url": "https://github.com/mzmzeee/a-stack/releases/download/v0.1.6/a-stack_windows_arm64.zip",
+            "hash": "0000000000000000000000000000000000000000000000000000000000000000"
+        }
+    },
+    "bin": "a-stack.exe",
+    "checkver": "github",
+    "autoupdate": {
+        "architecture": {
+            "64bit": {
+                "url": "https://github.com/mzmzeee/a-stack/releases/download/v$version/a-stack_windows_amd64.zip"
+            },
+            "arm64": {
+                "url": "https://github.com/mzmzeee/a-stack/releases/download/v$version/a-stack_windows_arm64.zip"
+            }
+        },
+        "hash": {
+            "url": "$baseurl/SHA256SUMS"
+        }
+    }
+}

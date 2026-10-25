@@ -6,7 +6,7 @@ Keep an eye on your AI coding agents.
 [![Latest release](https://img.shields.io/github/v/release/mzmzeee/a-stack)](https://github.com/mzmzeee/a-stack/releases/latest)
 [![Downloads](https://img.shields.io/github/downloads/mzmzeee/a-stack/total)](https://github.com/mzmzeee/a-stack/releases)
 [![Go version](https://img.shields.io/github/go-mod/go-version/mzmzeee/a-stack)](go.mod)
-[![Platform: Linux and macOS, amd64 | arm64](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20amd64%20%7C%20arm64-blue)](docs/install.md)
+[![Platform: Linux, macOS and Windows, amd64 | arm64](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows%20amd64%20%7C%20arm64-blue)](docs/install.md)
 [![License: MIT](https://img.shields.io/github/license/mzmzeee/a-stack)](LICENSE)
 
 When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
@@ -15,7 +15,7 @@ When several Agents work on one project, you soon lose track of who is doing wha
 - **Your data stays here.** One binary and one SQLite file, reachable only from `127.0.0.1`. No account, no cloud, no telemetry. View links work once, and releases are signed.
 - **Nothing is lost when a session ends.** Reports, Task mail and answered questions stay after an Agent compacts, crashes or hits its limit, so a new Agent can pick up where the last one stopped.
 
-Works with Claude Code and Codex (with hooks), [Herdr](https://herdr.dev) (optional) and any agent with a shell. Runs on Linux; macOS and Windows are coming.
+Works with Claude Code and Codex (with hooks), [Herdr](https://herdr.dev) (optional, not on Windows) and any agent with a shell. Runs on Linux, macOS and Windows.
 
 ![Demo in seven captioned steps, with a terminal above the browser view and an arrow on each change. 1, a-stack new creates a Session for an OAuth login and opens the Now tab. 2, the Orchestrator adds four Tasks, which wait in the Waiting column. 3, the Agents 02-backend and 03-frontend start work, and their Tasks move to Working. 4, 02-backend sends Task mail to @03-frontend, 03-frontend replies, and the Task details show both messages with the mention highlighted. 5, 02-backend asks "GitHub or Google first?", the Task moves to Needs you and the button says 1 needs you. 6, after the answer the Task is Working again. 7, a-stack -r picks another Session, which also has a question for you.](docs/images/demo.gif)
 
@@ -28,7 +28,7 @@ Works with Claude Code and Codex (with hooks), [Herdr](https://herdr.dev) (optio
 5. When an Agent needs your input, it marks its Task as Needs you, with a question.
 6. You follow the work in a read-only browser view.
 
-The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It runs on Linux and macOS, keeps all data on your computer and accepts connections only on `127.0.0.1`.
+The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It runs on Linux, macOS and Windows, keeps all data on your computer and accepts connections only on `127.0.0.1`.
 
 If your Agents run in [Herdr](https://herdr.dev), a-stack can also tell an Agent to check its mail when another Agent mentions it. This is optional.
 
@@ -71,9 +71,15 @@ curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.s
 
 The script works on Linux and macOS, on `amd64` and `arm64`. It installs the `a-stack` binary in `~/.local/bin`. It checks the download against the release checksums before it installs. For other versions, other folders, a manual download, `go install` (it needs a C compiler) or a build from source, see [Install](docs/install.md).
 
+On Windows, run this in PowerShell instead. It installs `a-stack.exe` in `%LOCALAPPDATA%\Programs\a-stack`, adds that folder to your user `PATH` and checks the download against the release checksums. Windows support is new; see [On Windows](docs/install.md#on-windows) for what differs and what is not yet tried on a real Windows machine.
+
+```powershell
+irm https://github.com/mzmzeee/a-stack/releases/latest/download/install.ps1 | iex
+```
+
 To update, run `a-stack update` and restart the service. See [Update](docs/install.md#update).
 
-To start a-stack at login and restart it after a crash, run `a-stack service install`. It uses systemd on Linux and launchd on macOS. See [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
+To start a-stack at login and restart it after a crash, run `a-stack service install`. It uses systemd on Linux, launchd on macOS and Task Scheduler on Windows. See [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
 
 ## Quick start
 
@@ -86,7 +92,7 @@ a-stack -r           # pick another Session
 
 ![The a-stack -r picker in a terminal: three Sessions with their folders, open or closed, Task counts and one needs you. Tab switches between this folder and all folders.](docs/images/picker.png)
 
-If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C or close the terminal. To keep it running, run `a-stack service install`. If the service already runs, for example as a [systemd or launchd service](docs/install.md#start-a-stack-automatically), they use it and return.
+If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C or close the terminal. To keep it running, run `a-stack service install`. If the service already runs, for example as a [systemd, launchd or Task Scheduler service](docs/install.md#start-a-stack-automatically), they use it and return.
 
 The Task graph is empty at first. `a-stack new --orchestrator 01-orchestrator` also registers and appoints an Orchestrator and prints a brief to give your coding agent. With the skill installed, you can instead ask your coding agent to be the Orchestrator, and it runs that command itself. To hand the Session to an Orchestrator agent that registers the other Agents and plans the Tasks, see [Hand your Session to an Orchestrator](docs/getting-started.md#hand-your-session-to-an-orchestrator). To try a whole team on throwaway state first, follow [Getting started](docs/getting-started.md).
 

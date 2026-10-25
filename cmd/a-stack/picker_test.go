@@ -13,6 +13,9 @@ func TestPickerAgesPathsAndPrintableText(t *testing.T) {
 			t.Fatalf("relativeAge(%v)=%q want %q", d, got, want)
 		}
 	}
+	old := windowsPaths
+	windowsPaths = false
+	defer func() { windowsPaths = old }()
 	for _, c := range [][3]string{{"/home/a/code/x", "/home/a", "~/code/x"}, {"/home/a", "/home/a", "~"}, {"/home/ab/x", "/home/a", "/home/ab/x"}, {"/srv/x", "", "/srv/x"}, {"/x", "/", "/x"}} {
 		if got := shortenHome(c[0], c[1]); got != c[2] {
 			t.Fatalf("shortenHome(%q,%q)=%q", c[0], c[1], got)
@@ -23,6 +26,33 @@ func TestPickerAgesPathsAndPrintableText(t *testing.T) {
 	}
 	if !within("/p/a/sub", "/p/a") || !within("/p/a", "/p/a") || within("/p/ab", "/p/a") || !within("/x", "/") || within("", "/p") {
 		t.Fatal("within")
+	}
+}
+
+func TestPathBelowOnWindows(t *testing.T) {
+	for _, c := range []struct {
+		path, root, rest string
+		ok               bool
+	}{
+		{`C:\Users\me\code\x`, `C:\Users\me`, `\code\x`, true},
+		{`c:\users\ME\code`, `C:\Users\me`, `\code`, true},
+		{`C:\Users\me`, `C:\Users\me\`, ``, true},
+		{`C:/Users/me/code`, `C:\Users\me`, `\code`, true},
+		{`C:\Users\me\code`, `C:/Users/me`, `\code`, true},
+		{`C:\Users\meg\code`, `C:\Users\me`, ``, false},
+		{`D:\Users\me\code`, `C:\Users\me`, ``, false},
+		{`C:\x`, `C:\`, `\x`, true},
+	} {
+		if rest, ok := pathBelow(c.path, c.root, true); ok != c.ok || ok && rest != c.rest {
+			t.Errorf("pathBelow(%q, %q) = %q, %v", c.path, c.root, rest, ok)
+		}
+	}
+	// On Linux and macOS case matters and \ is a plain character.
+	if _, ok := pathBelow("/Home/a/x", "/home/a", false); ok {
+		t.Fatal("case ignored")
+	}
+	if _, ok := pathBelow(`/home/a\x`, "/home/a", false); ok {
+		t.Fatal(`\ read as a separator`)
 	}
 }
 

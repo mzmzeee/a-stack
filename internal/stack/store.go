@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,11 +68,23 @@ const JournalSizeLimit = 8 << 20
 // the driver has no DSN parameter for it. sqlite_cgo.go registers it.
 const driverName = "sqlite3-a-stack"
 
+// fileURI is the SQLite URI of a database file.
+func fileURI(path string) string { return sqliteURI(path, runtime.GOOS == "windows") }
+
+// sqliteURI writes a Windows path as file:///C:/folder/state.db: SQLite
+// refuses a URI with any host but an empty one or localhost, and the
+// backslashes of C:\folder would become part of a host.
+func sqliteURI(path string, windows bool) string {
+	if windows {
+		path = "/" + strings.ReplaceAll(path, `\`, "/")
+	}
+	return (&url.URL{Scheme: "file", Path: path}).String()
+}
+
 func openStore(ctx context.Context, path string) (*Store, error) {
-	u := url.URL{Scheme: "file", Path: path}
 	// The driver keeps up to stmtCacheSize single-statement queries prepared on
 	// the one connection, so hot queries are not compiled again on every call.
-	db, err := sql.Open(driverName, u.String()+"?_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate&_stmt_cache_size="+strconv.Itoa(stmtCacheSize))
+	db, err := sql.Open(driverName, fileURI(path)+"?_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate&_stmt_cache_size="+strconv.Itoa(stmtCacheSize))
 	if err != nil {
 		return nil, storageError(err)
 	}
@@ -617,7 +630,7 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	if _, err = conn.ExecContext(ctx, "VACUUM main INTO ?", staging); err != nil {
 		return empty, storageError(err)
 	}
-	backup, err := sql.Open("sqlite3", (&url.URL{Scheme: "file", Path: staging}).String()+"?mode=ro&_busy_timeout=5000")
+	backup, err := sql.Open("sqlite3", fileURI(staging)+"?mode=ro&_busy_timeout=5000")
 	if err != nil {
 		return empty, storageError(err)
 	}

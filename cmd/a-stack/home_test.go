@@ -183,11 +183,9 @@ func TestCLIBareStartsServiceAndKeepsItRunning(t *testing.T) {
 	}
 	// A second serve on the owned state directory exits 3 (systemd RestartPreventExitStatus).
 	commandResult(t, []string{"serve", "--state-dir", dir, "--json"}, 3)
-	if command.Process.Signal(syscall.SIGTERM) != nil {
-		t.Fatal("terminate")
-	}
-	if err = command.Wait(); err != nil || stderr.Len() != 0 {
-		t.Fatalf("shutdown: %v %s", err, stderr.String())
+	stopServe(t, command, syscall.SIGTERM)
+	if stderr.Len() != 0 {
+		t.Fatalf("shutdown: %s", stderr.String())
 	}
 	commandResult(t, []string{"health", "--state-dir", dir, "--json"}, 1)
 	// With a Session, a start opens it after the ready line, and the URL
@@ -215,11 +213,9 @@ func TestCLIBareStartsServiceAndKeepsItRunning(t *testing.T) {
 	if !strings.HasPrefix(lines[0], "The a-stack service is running at http://127.0.0.1:") || lines[1] != closeHint+"\n" || !strings.Contains(lines[2], `"Started"`) || err != nil || len(u.Fragment) != 43 {
 		t.Fatalf("started open output %q", lines)
 	}
-	if command.Process.Signal(syscall.SIGINT) != nil {
-		t.Fatal("interrupt")
-	}
-	if err = command.Wait(); err != nil || stderr.Len() != 0 {
-		t.Fatalf("shutdown: %v %s", err, stderr.String())
+	stopServe(t, command, syscall.SIGINT)
+	if stderr.Len() != 0 {
+		t.Fatalf("shutdown: %s", stderr.String())
 	}
 }
 
@@ -238,14 +234,7 @@ func TestCLIShortcutsReportLockedStateWithoutService(t *testing.T) {
 		t.Fatal(err)
 	}
 	// This stands for a serve that holds the lock but is still starting or hangs.
-	lock, err := os.OpenFile(filepath.Join(dir, "service.lock"), os.O_CREATE|os.O_RDWR, 0600)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer lock.Close()
-	if err = syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		t.Fatal(err)
-	}
+	defer holdStateLock(t, filepath.Join(dir, "service.lock"))()
 	t.Chdir(t.TempDir())
 	for _, args := range [][]string{{}, {"-r"}, {"new"}} {
 		var stdout, stderr bytes.Buffer
@@ -260,6 +249,7 @@ func TestCLIShortcutsReportLockedStateWithoutService(t *testing.T) {
 }
 
 func TestCLIStartedServiceStopsCleanlyOnHangup(t *testing.T) {
+	unixOnly(t, "no SIGHUP")
 	dir := filepath.Join(t.TempDir(), "state")
 	t.Chdir(t.TempDir())
 	command := child(t, "--state-dir", dir, "--json", "--no-browser")
@@ -302,7 +292,9 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	root := t.TempDir()
 	dir := filepath.Join(root, "state")
 	launch(t, dir)
-	t.Setenv("HOME", t.TempDir())
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
 	t.Chdir(t.TempDir())
 	var stdout, stderr bytes.Buffer
 	if code := run([]string{"new", "--orchestrator", "bad name", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "--orchestrator takes an Agent name") {
@@ -325,7 +317,7 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 		t.Fatalf("hand-off result %+v", got)
 	}
 	info, err := os.Stat(got.Credential)
-	if err != nil || info.Mode().Perm() != 0o600 {
+	if err != nil || posixModes && info.Mode().Perm() != 0o600 {
 		t.Fatalf("credential file %v %v", info, err)
 	}
 	credential, err := stack.ReadCredential(got.Credential)

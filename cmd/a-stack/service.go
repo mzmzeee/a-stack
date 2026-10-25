@@ -20,7 +20,8 @@ import (
 
 // Tests replace these, so that they never run the real systemctl or
 // launchctl. serviceOS picks the service manager: launchd on macOS (see
-// launchd.go), systemd otherwise.
+// launchd.go), Task Scheduler on Windows (see schtasks.go), systemd
+// otherwise.
 var (
 	runCommand = func(name string, args ...string) (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -214,14 +215,23 @@ func serviceCommand(command, state string, machine bool, stdout io.Writer) error
 		return invalid("cannot find home directory")
 	}
 	var file string
-	if serviceOS == "darwin" {
+	switch serviceOS {
+	case "darwin":
 		unit, file = launchdLabel(unit), launchdFile(unit, home)
-	} else if file, err = unitFile(unit, home); err != nil {
-		return err
+	case "windows": // a task has no file of its own
+	default:
+		if file, err = unitFile(unit, home); err != nil {
+			return err
+		}
 	}
-	data := map[string]any{"unit": unit, "unit_file": file}
+	data := map[string]any{"unit": unit}
+	if file != "" {
+		data["unit_file"] = file
+	}
 	var lines []string
 	switch {
+	case serviceOS == "windows":
+		lines, err = schtasksCommand(command, unit, state, data)
 	case serviceOS == "darwin":
 		lines, err = launchdCommand(command, unit, file, state, home, data)
 	case command == "service install":
@@ -363,7 +373,7 @@ func writeFileAtomic(file, content string) error {
 	if err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), file)
+	return stack.Rename(tmp.Name(), file)
 }
 
 func serviceUninstall(unit, file string, data map[string]any) ([]string, error) {

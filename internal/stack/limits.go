@@ -3,7 +3,6 @@ package stack
 import (
 	"math"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -83,26 +82,19 @@ func (b *writeBudget) charge(agent string, cost int) {
 // diskSpace caches the free bytes of the file system that holds the database.
 type diskSpace struct {
 	mu    sync.Mutex
-	free  func(path string) (uint64, error) // nil means statfsFree
+	free  func(path string) (uint64, error) // nil means diskFree
 	at    time.Time
 	bytes uint64
 	err   error
 }
 
-func statfsFree(path string) (uint64, error) {
-	var st syscall.Statfs_t
-	if err := syscall.Statfs(path, &st); err != nil {
-		return 0, err
-	}
-	return uint64(st.Bavail) * uint64(st.Bsize), nil
-}
 func (d *diskSpace) get(path string) (uint64, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.at.IsZero() || time.Since(d.at) >= diskCheckInterval {
 		free := d.free
 		if free == nil {
-			free = statfsFree
+			free = diskFree
 		}
 		d.bytes, d.err = free(path)
 		d.at = time.Now()
