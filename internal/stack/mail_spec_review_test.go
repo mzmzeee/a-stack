@@ -66,7 +66,7 @@ func TestMailSpecAuthorityRetentionAndSuppression(t *testing.T) {
 	for _, c := range []Credential{f.op, browser, f.creds[0]} {
 		_, err := s.ReadMail(ctx, c.Token, MailReadRequest{Context: f.ref, TaskID: task.ResourceID})
 		if c.Kind == BrowserCapability {
-			// ADR 0003 amendment: the Session's browser view reads Task mail, read-only.
+			// The Session's browser view reads Task mail, read-only.
 			if err != nil {
 				t.Fatal("browser view mail read", err)
 			}

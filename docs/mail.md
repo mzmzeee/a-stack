@@ -46,7 +46,7 @@ Mail does not change the Task's progress or the Task revision. A send raises the
 
 ### Browser reads
 
-The [browser view](browser.md#task-mail) credential can use `read` for any Task of its own Session, also a Task with no assignee. It gets the same messages, cursor and limits as an assignee. It cannot use `send` or `check`, and it gets `forbidden` for another Session. A browser read stores no read position, writes no receipt and makes no notice. [ADR 0003](adr/0003-retained-task-mail.md) records this change. The Operator CLI credential still has no mail access.
+The [browser view](browser.md#task-mail) credential can use `read` for any Task of its own Session, also a Task with no assignee. It gets the same messages, cursor and limits as an assignee. It cannot use `send` or `check`, and it gets `forbidden` for another Session. A browser read stores no read position, writes no receipt and makes no notice. The Operator CLI credential still has no mail access.
 
 ## Read positions
 

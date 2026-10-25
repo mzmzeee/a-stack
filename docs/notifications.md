@@ -84,7 +84,7 @@ A storage failure never records a successful outcome that was not committed. Rec
 
 After a failure, a-stack waits 5, 10, 20 and then 30 seconds before it tries the target again. A timer wakes the dispatcher every five seconds, and each commit wakes it at once. A closed Session pauses new claims. When the Session is reopened, its pending notices can be sent again. Nothing resets a final state.
 
-A notice that has passed the final preflight can still finish during a concurrent close, rebind or removal. Herdr 0.9.5 has no atomic check that the expected Agent is still in the pane between the lookup and the input, so this race remains. That is why notices stay generic, and why each later mail read checks the current assignment again. See the [tagged Herdr prompt contract](https://github.com/herdrdev/herdr/blob/v0.9.5/docs/next/website/src/content/docs/agent-automation.mdx) and [ADR 0004](adr/0004-herdr-notifications.md).
+A notice that has passed the final preflight can still finish during a concurrent close, rebind or removal. Herdr 0.9.5 has no atomic check that the expected Agent is still in the pane between the lookup and the input, so this race remains. That is why notices stay generic, and why each later mail read checks the current assignment again. See the [tagged Herdr prompt contract](https://github.com/herdrdev/herdr/blob/v0.9.5/docs/next/website/src/content/docs/agent-automation.mdx).
 
 ## Diagnostics and maintenance
 

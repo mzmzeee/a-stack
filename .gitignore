@@ -4,3 +4,12 @@
 __pycache__/
 node_modules/
 /dist/
+
+# Internal notes, kept locally and out of the public repo
+/AGENTS.md
+/CLAUDE.md
+/GLOSSARY.md
+/docs/adr/
+/docs/agents/
+/docs/research/
+/prototypes/
