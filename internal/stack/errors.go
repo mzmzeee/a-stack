@@ -14,6 +14,7 @@ type Error struct {
 	Message         string    `json:"message"`
 	Retryable       bool      `json:"retryable"`
 	CurrentRevision *int64    `json:"current_revision,omitempty"`
+	RetryAfter      int64     `json:"retry_after_seconds,omitempty"`
 }
 
 func (e *Error) Error() string            { return e.Code + ": " + e.Message }
@@ -40,6 +41,8 @@ func statusCode(e *Error) int {
 		return http.StatusNotFound
 	case "conflict", "operation_conflict", "session_closed":
 		return http.StatusConflict
+	case "rate_limited":
+		return http.StatusTooManyRequests
 	default:
 		return http.StatusServiceUnavailable
 	}

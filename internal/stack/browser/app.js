@@ -391,9 +391,11 @@ function plural(n,word) { return `${n} ${word}${n===1?'':'s'}`; }
 // Stale for 30 s: if the service still answers, it is busy (Task changes keep
 // restarting the collection); if not, a restart on a new port needs a-stack.
 function lost() { return stale&&lastSuccess>0&&Date.now()-lastSuccess>30000; }
+// The service sets X-A-Stack-Low-Disk on snapshot answers, 304 included.
+let lowDisk=false;
 function updateHint() {
-  const hint=$('footer-hint');hint.classList.toggle('lost',lost()&&!answered);
-  setText(hint,lost()?(answered?'Service busy. Showing the last complete view; it updates when changes pause.':'Service unreachable. If you restarted it, run a-stack again.'):state.view==='graph'?'Drag to pan. Select a task to see its neighbours.':'Select a task for its report and dependencies.');
+  const hint=$('footer-hint');hint.classList.toggle('lost',lost()?!answered:lowDisk);
+  setText(hint,lost()?(answered?'Service busy. Showing the last complete view; it updates when changes pause.':'Service unreachable. If you restarted it, run a-stack again.'):lowDisk?'Disk space is low. Run a-stack storage status.':state.view==='graph'?'Drag to pan. Select a task to see its neighbours.':'Select a task for its report and dependencies.');
 }
 function updateSource(message) {
   const service=version?'Local service '+version:'Local service';
@@ -523,9 +525,10 @@ async function loadDetail() {
 }
 async function request(endpoint,payload,headers={},signal) {
   const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+token,'X-A-Stack-Instance':instance,...headers},body:JSON.stringify({...context,...payload}),credentials:'omit',cache:'no-store',redirect:'error',signal});
-  if(response.status===304)return {unchanged:true,etag:response.headers.get('ETag')};
+  const low=response.headers.get('X-A-Stack-Low-Disk')==='1';
+  if(response.status===304)return {unchanged:true,etag:response.headers.get('ETag'),low};
   if(!response.ok){const error=new Error('Read unavailable');error.status=response.status;throw error;}
-  const result=await response.json();if(!result.data)throw new Error('Invalid read response');return {...result,etag:response.headers.get('ETag')};
+  const result=await response.json();if(!result.data)throw new Error('Invalid read response');return {...result,etag:response.headers.get('ETag'),low};
 }
 async function pages(kind,revision,task_id,signal) {
   const items=[];let after='';
@@ -544,7 +547,7 @@ async function refresh() {
           for(const [key,items]of Object.entries({tasks,agents,assignments,dependencies}))if(items.length!==manifest.data.counts[key])throw new Error('Incomplete collection');
           model={snapshot:manifest.data,tasks:tasks.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0),agents:agents.sort((a,b)=>a.name<b.name?-1:a.name>b.name?1:0),assignments,dependencies:dependencies.sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)};etag=manifest.etag || '';render();
         }
-        lastSuccess=Date.now();stale=false;failures=0;updateSource();if(state.selected)loadDetail();break;
+        lastSuccess=Date.now();stale=false;failures=0;lowDisk=manifest.low;updateSource();if(state.selected)loadDetail();break;
       }catch(error){
         if(error.status===409&&attempt<2){const shell=await fetch(location.pathname,{cache:'no-store',credentials:'omit',redirect:'error',signal:controller.signal});if(shell.ok){instance=shell.headers.get('X-A-Stack-Instance') || instance;version=shell.headers.get('X-A-Stack-Version') || version;}continue;}throw error;
       }
