@@ -28,6 +28,9 @@ type lifecycleFlags struct {
 	revision                                                                                                          int64
 	limit                                                                                                             int
 	clearRuntime                                                                                                      bool
+	// afters has each --after: task create takes several prerequisites; the
+	// other commands take one cursor, after.
+	afters []string
 }
 
 func (f *lifecycleFlags) register(fs *flag.FlagSet) {
@@ -36,7 +39,7 @@ func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.operationID, "operation-id", "", "Your ID for this change: 8–128 letters, digits, _ or -; reuse it to retry")
 	fs.StringVar(&f.path, "path", "", "Absolute project folder")
 	fs.StringVar(&f.name, "name", "", "Session or Agent name")
-	fs.StringVar(&f.agent, "agent", "", "Agent ID")
+	fs.StringVar(&f.agent, "agent", "", "Agent ID, or its name in the Session")
 	fs.StringVar(&f.worktree, "worktree", "", "Absolute working folder of the Agent")
 	fs.StringVar(&f.newCredential, "new-credential-file", "", "New private credential file for the Agent")
 	fs.StringVar(&f.runtimeID, "runtime-id", "", "ID of the running instance")
@@ -45,7 +48,10 @@ func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.state, "runtime-state", "", "unknown, working, idle, done, stopped or blocked")
 	fs.Int64Var(&f.revision, "expected-revision", 0, "Current revision of the resource")
 	fs.IntVar(&f.limit, "limit", 0, "Page size: 1 to 100, mail 1 to 500")
-	fs.StringVar(&f.after, "after", "", "Continue after this ID or cursor")
+	fs.Func("after", "Continue after this ID or cursor", func(value string) error {
+		f.after, f.afters = value, append(f.afters, value)
+		return nil
+	})
 }
 
 // acceptedFlags lists the flags a command accepts, space-separated with a
@@ -266,8 +272,79 @@ func fillContext(c stack.Credential, f *lifecycleFlags, command string) error {
 		if *field.flag == "" {
 			*field.flag = field.saved
 		} else if *field.flag != field.saved {
-			return invalid("--" + field.name + " does not match the one in the credential file")
+			return invalid("--" + field.name + " does not match the " + map[string]string{"workspace": "Workspace", "session": "Session"}[field.name] + " of the credential file")
 		}
+	}
+	return nil
+}
+
+// missingContext is the error of a command that has no Workspace or Session.
+var missingContext = invalid("explicit --workspace and --session required; the Operator finds them with a-stack workspace list and a-stack session list --workspace ID")
+
+// legacyContext is the error when neither the credential file nor the service
+// can name the Agent's Workspace and Session.
+var legacyContext = invalid("this credential file is from before a-stack v0.1.5 and does not name its Workspace and Session, and the service is too old to look them up: add --workspace WORKSPACE_ID --session SESSION_ID; the one who briefed you has them, and the Operator finds them with a-stack workspace list and a-stack session list --workspace WORKSPACE_ID")
+
+// loadContext asks the service for the Workspace and Session of an Agent
+// credential file that does not name them, which is a file from before
+// v0.1.5, when the command takes them and the flags do not give both. The
+// service stores the Session of each credential, so the token is enough. The
+// file stays as it is.
+func loadContext(ctx context.Context, client *stack.Client, f lifecycleFlags, command string) error {
+	c := &client.Credential
+	if c.Kind != stack.AgentCapability || c.WorkspaceID != "" && c.SessionID != "" || f.workspace != "" && f.session != "" || !strings.Contains(acceptedFlags(command), " session ") {
+		return nil
+	}
+	data, err := client.Do(ctx, "GET", "/v1/credential", nil)
+	var e *stack.Error
+	if errors.As(err, &e) && e.Code == "not_found" {
+		return legacyContext // a service before v0.1.7 has no such read
+	}
+	if err != nil {
+		return err
+	}
+	var envelope struct {
+		Data stack.CredentialContext `json:"data"`
+	}
+	if json.Unmarshal(data, &envelope) != nil || !stack.ValidID(envelope.Data.WorkspaceID) || !stack.ValidID(envelope.Data.SessionID) {
+		return legacyContext
+	}
+	c.WorkspaceID, c.SessionID = envelope.Data.WorkspaceID, envelope.Data.SessionID
+	return nil
+}
+
+// agentIDs replaces each Agent name in values with the ID of the Agent of
+// that name in the Session, with one agent list. An Agent ID stays as it is.
+// Names are unique in a Workspace, and the service checks the IDs, so the
+// lookup authorizes nothing (ADR 0002).
+func agentIDs(ctx context.Context, client *stack.Client, ref stack.Context, flagName string, values ...*string) error {
+	var agents []stack.Agent
+	for _, value := range values {
+		if stack.ValidID(*value) {
+			continue
+		}
+		if ref.WorkspaceID == "" || ref.SessionID == "" {
+			return missingContext
+		}
+		if agents == nil {
+			var err error
+			if agents, err = listPages[stack.Agent](ctx, client, "/v1/agent/list", ref); err != nil {
+				return err
+			}
+		}
+		id := ""
+		for _, agent := range agents {
+			if agent.Name == *value {
+				if id != "" {
+					return invalid("--" + flagName + " " + *value + " names more than one Agent; give the Agent ID from a-stack agent list")
+				}
+				id = agent.ID
+			}
+		}
+		if id == "" {
+			return invalid("--" + flagName + " " + *value + " is no Agent of this Session; see a-stack agent list")
+		}
+		*value = id
 	}
 	return nil
 }

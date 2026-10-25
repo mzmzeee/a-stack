@@ -59,7 +59,8 @@ func TestCLITasksSharedGraphAttentionAndClosedSession(t *testing.T) {
 			}
 			return errout.Bytes()
 		}
-		if errout.Len() != 0 {
+		// task create may hint that the new Task has no prerequisites.
+		if errout.Len() != 0 && !(args[1] == "create" && strings.HasPrefix(errout.String(), "a-stack: hint: ")) {
 			t.Fatal("CLI success diagnostics")
 		}
 		var envelope struct {

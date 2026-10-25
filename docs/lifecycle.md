@@ -2,7 +2,7 @@
 
 This page describes how the Operator sets up a team and how Agents get their credentials. It also covers runtime bindings, and Session close and reopen.
 
-The service gives each Workspace, Session and Agent a stable opaque ID. The CLI always sends these IDs explicitly, from flags or from an Agent credential file that names them (see [Credential context](#credential-context)). The current directory never selects a Workspace or a Session, and lifecycle commands never look up an Agent by its name. There is one exception: the three Operator commands `a-stack`, `a-stack -r` and `a-stack new` use the current folder as a default or a filter, and their output shows the folder they used. No other command and no Agent command uses the current directory. See [Open the last Session](browser.md#open-the-last-session).
+The service gives each Workspace, Session and Agent a stable opaque ID. The CLI always sends these IDs explicitly, from flags, from an Agent credential file that names them, or from the service for an Agent credential (see [Credential context](#credential-context)). The current directory never selects a Workspace or a Session, and lifecycle commands never look up an Agent by its name. There is one exception: the three Operator commands `a-stack`, `a-stack -r` and `a-stack new` use the current folder as a default or a filter, and their output shows the folder they used. No other command and no Agent command uses the current directory. See [Open the last Session](browser.md#open-the-last-session).
 
 ## Workspaces, Sessions and Agents
 
@@ -85,7 +85,7 @@ If an Agent loses its token, the Operator recovers access with `agent rebind`. T
 
 When a command runs with an Agent credential file that has these fields, the CLI takes `--workspace` and `--session` from the file if they are not given. A flag that is given must name the same ID, or the command fails with `invalid_input` before it sends anything. The context still comes only from a file that the caller names, never from the current folder or from environment variables, which child processes and subagents would inherit.
 
-Credential files from before v0.1.5 have no context. They keep working with explicit `--workspace` and `--session`.
+Credential files from before v0.1.5 have only the kind and the token. For such a file, the CLI asks the service which Workspace and Session the token belongs to (`GET /v1/credential`, which returns `kind`, `workspace_id`, `session_id`, `agent_id` and `agent_name` of the caller's own credential), and fills in `--workspace` and `--session` the same way. The service stores the Session of each token, so the token alone is enough, and the file stays as it is. A service before v0.1.7 has no such read; then the command fails with `invalid_input` and a message that says which flags to add and that the Operator finds the IDs with `a-stack workspace list` and `a-stack session list --workspace WORKSPACE_ID`. Explicit `--workspace` and `--session` keep working with every file. `hook install` still needs them for such a file.
 
 ## Runtime bindings
 

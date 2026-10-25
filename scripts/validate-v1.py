@@ -171,7 +171,9 @@ class Run:
             error = json.loads(result.stderr)['error']
             check(error['code'] == expect, 'CLI rejection ' + ' '.join(map(str, args[:2])) + ': expected ' + expect + ', got ' + error['code'])
             return error
-        check(result.returncode == 0 and not result.stderr, 'CLI operation failed: ' + ' '.join(map(str, args[:2])))
+        # task create may print one hint line when the new Task has no prerequisite.
+        quiet = not result.stderr or args[:2] == ('task', 'create') and result.stderr.startswith(b'a-stack: hint: ') and result.stderr.count(b'\n') == 1
+        check(result.returncode == 0 and quiet, 'CLI operation failed: ' + ' '.join(map(str, args[:2])))
         return json.loads(result.stdout)['data']
 
     def api(self, path, payload=None, actor=None, expect=None, headers=None):

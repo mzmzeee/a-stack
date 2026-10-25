@@ -141,7 +141,49 @@ func (s *Store) InspectSession(ctx context.Context, token string, ref Context) (
 	session.StandingOrders, err = sessionOrders(ctx, tx, session.WorkspaceID)
 	return session, err
 }
+
+// CredentialContext is what the service stores for a credential: its kind, and
+// for an Agent its Workspace, Session and Agent. These IDs are not secret.
+type CredentialContext struct {
+	Kind        CapabilityKind `json:"kind"`
+	WorkspaceID string         `json:"workspace_id,omitempty"`
+	SessionID   string         `json:"session_id,omitempty"`
+	AgentID     string         `json:"agent_id,omitempty"`
+	AgentName   string         `json:"agent_name,omitempty"`
+}
+
+// ReadCredentialContext returns the caller's own context. The CLI uses it for
+// a credential file from before v0.1.5, which does not name its Session.
+func (s *Store) ReadCredentialContext(ctx context.Context, token string) (CredentialContext, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return CredentialContext{}, storageError(err)
+	}
+	defer tx.Rollback()
+	p, err := authenticate(ctx, tx, token)
+	if err != nil || p.Kind != AgentCapability {
+		return CredentialContext{Kind: p.Kind}, err
+	}
+	agent, err := agentInSession(ctx, tx, p.SubjectID, p.SessionID)
+	if err != nil {
+		return CredentialContext{}, err
+	}
+	return CredentialContext{Kind: p.Kind, WorkspaceID: agent.WorkspaceID, SessionID: agent.SessionID, AgentID: agent.ID, AgentName: agent.Name}, nil
+}
 func (s *Service) lifecycleHTTP(w http.ResponseWriter, r *http.Request, token string) bool {
+	if r.URL.Path == "/v1/credential" {
+		if r.Method != http.MethodGet {
+			writeError(w, failure("invalid_input", "GET required"))
+			return true
+		}
+		data, err := s.Store.ReadCredentialContext(r.Context(), token)
+		if err != nil {
+			writeError(w, err)
+		} else {
+			writeJSON(w, http.StatusOK, map[string]any{"data": data})
+		}
+		return true
+	}
 	var request any
 	switch r.URL.Path {
 	case "/v1/workspace/create":
