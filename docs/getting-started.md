@@ -142,7 +142,7 @@ operator open --workspace "$workspace_id" --session "$session_id" --no-browser
 
 Open the `url` from the output in your browser within a minute; the link works once. The view shows the Task graph and the Agents, and it updates while you do the next steps. Without `--no-browser`, `open` starts your browser for you.
 
-Keep the URL private, because it works like a credential. The view is read-only. It can show Task mail, but it cannot send mail or change anything. For more, see [Browser view](browser.md).
+Keep the URL private, because it works like a credential. The view is read-only, except that it can answer a Needs you question. It can show Task mail, but it cannot send other mail or change anything else. For more, see [Browser view](browser.md).
 
 ## 7. Share Task mail (assignees)
 
@@ -175,15 +175,23 @@ revision="$(as_agent "$worker_a_credential" task attention set --task "$task_a" 
   --expected-revision "$revision" --operation-id demo-question-a | field data.revision)"
 ```
 
-You answer the Agent in your usual conversation with it. Then the Agent resolves the question:
+Answer it from the CLI. `task show` prints the open question with its `id`, and `answer` takes that ID:
 
 ```bash
-revision="$(as_agent "$worker_a_credential" task attention resolve --task "$task_a" \
-  --note 'Operator selected the next release' \
-  --expected-revision "$revision" --operation-id demo-resolve-a | field data.revision)"
+question_id="$(operator task show --workspace "$workspace_id" --session "$session_id" \
+  --task "$task_a" | field data.question.id)"
+revision="$(operator answer --workspace "$workspace_id" --session "$session_id" --task "$task_a" \
+  --question-id "$question_id" --text 'Ship it in the next release.' \
+  --operation-id demo-answer-a | field data.revision)"
 ```
 
-Needs you goes away in the browser view. Only `task attention resolve` clears a question. Viewing or finishing the Task does not clear it.
+The answer resolves the question, and Needs you goes away in the browser view. The Agent gets the answer as Task mail from the Operator:
+
+```bash
+as_agent "$worker_a_credential" mail check --cursor-file "$credential_dir/worker-a-mail.json"
+```
+
+You can also answer the Agent in your usual conversation with it. Then the Agent resolves the question itself with `task attention resolve --note TEXT`. Only `answer` and `task attention resolve` clear a question. Viewing or finishing the Task does not clear it.
 
 ## 9. Finish the Task (assignee)
 
@@ -383,7 +391,7 @@ Work in: /home/you/code/my-project
 Goal: add OAuth login. Plan the Tasks, link each one to the Tasks it depends on, register an Agent for each Task that you hand out and brief each Agent.
 ```
 
-The Orchestrator registers the other Agents with its own credential and writes their briefs, as the skill's orchestrator reference shows. Watch the work in the view; `a-stack` opens it again at any time. Answer a Needs you question in your conversation with the Agent that asks it. Never put a credential file's contents, or the part of the view URL after `#`, in a brief.
+The Orchestrator registers the other Agents with its own credential and writes their briefs, as the skill's orchestrator reference shows. Watch the work in the view; `a-stack` opens it again at any time. Answer a Needs you question with `a-stack answer`, or in your conversation with the Agent that asks it. Never put a credential file's contents, or the part of the view URL after `#`, in a brief.
 
 ## Next steps
 

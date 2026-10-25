@@ -103,7 +103,7 @@ func TestMigration8RowidTablesKeepReadsAndConstraints(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(undoMigration8); err != nil {
+	if _, err = db.Exec(undoMigration9 + undoMigration8); err != nil {
 		t.Fatal(err)
 	}
 	var old string
@@ -114,7 +114,7 @@ func TestMigration8RowidTablesKeepReadsAndConstraints(t *testing.T) {
 
 	f.service = serveTest(t, state, "127.0.0.1:0")
 	s = f.service.Store
-	if countTest(t, s, "PRAGMA user_version") != 8 || countTest(t, s, "PRAGMA foreign_keys") != 1 {
+	if countTest(t, s, "PRAGMA user_version") != schemaVersion || countTest(t, s, "PRAGMA foreign_keys") != 1 {
 		t.Fatal("not migrated, or foreign keys stay off")
 	}
 	if _, err = os.Stat(path + ".pre-v7"); err != nil {
@@ -142,9 +142,9 @@ func TestMigration8RowidTablesKeepReadsAndConstraints(t *testing.T) {
 		"mention moved to another Task":        "UPDATE mail_mentions SET task_id='" + tasks[1] + "' WHERE message_id='" + message + "'",
 		"mention of no message":                "INSERT INTO mail_mentions VALUES('missing','" + tasks[0] + "','" + f.aID + "','self','now')",
 		"text without an ID":                   "INSERT INTO task_content VALUES(NULL,'" + tasks[0] + "','report','x','" + f.aID + "','now')",
-		"message without an ID":                "INSERT INTO mail_messages VALUES(NULL,'" + tasks[0] + "',99,'" + f.aID + "','now','x')",
-		"second message ID":                    "INSERT INTO mail_messages VALUES('" + message + "','" + tasks[1] + "',99,'" + f.aID + "','now','x')",
-		"second sequence":                      "INSERT INTO mail_messages VALUES('new-id','" + tasks[0] + "',1,'" + f.aID + "','now','x')",
+		"message without an ID":                "INSERT INTO mail_messages(id,task_id,sequence,sender_id,received_at,body) VALUES(NULL,'" + tasks[0] + "',99,'" + f.aID + "','now','x')",
+		"second message ID":                    "INSERT INTO mail_messages(id,task_id,sequence,sender_id,received_at,body) VALUES('" + message + "','" + tasks[1] + "',99,'" + f.aID + "','now','x')",
+		"second sequence":                      "INSERT INTO mail_messages(id,task_id,sequence,sender_id,received_at,body) VALUES('new-id','" + tasks[0] + "',1,'" + f.aID + "','now','x')",
 		"text of no Task":                      "INSERT INTO task_content VALUES('new-id','missing','report','x','" + f.aID + "','now')",
 	} {
 		if _, err = s.db.Exec(statement); err == nil || !strings.Contains(err.Error(), "constraint failed") {
@@ -173,7 +173,7 @@ func TestMigration8RefusesBrokenReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err = db.Exec(undoMigration8 + "INSERT INTO task_content VALUES('orphan','missing-task','report','x','missing-agent','now')"); err != nil {
+	if _, err = db.Exec(undoMigration9 + undoMigration8 + "INSERT INTO task_content VALUES('orphan','missing-task','report','x','missing-agent','now')"); err != nil {
 		t.Fatal(err)
 	}
 	db.Close()

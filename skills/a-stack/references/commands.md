@@ -42,7 +42,7 @@ me task reference remove --task T --reference REFERENCE_ID --expected-revision R
 - Waiting needs `--reason`. Finished needs `--summary`. Cancelled needs `--reason`.
 - A Finished or Cancelled Task needs `task reopen` before its progress changes again. Reopening sets it to Waiting.
 - Finishing does not ask the other assignees or check the prerequisites. It marks the whole shared Task as done.
-- A Task has at most one open question. Only `task attention resolve` closes it.
+- A Task has at most one open question. `task attention resolve` closes it, and so does the Operator's answer from `a-stack answer` or the browser view. That answer arrives as Task mail from the Operator and raises the Task's revision. `task show` then shows it in `answered_question` (`question`, `answer`, `resolved_at`).
 - A file reference is a path or URL that people can copy. a-stack never reads the file. `task reference remove` takes the reference `id` from `task references`.
 
 ### Long text
@@ -73,9 +73,10 @@ me mail check --cursor-file /your/private/folder/mail.json
 
 - `@name` in the body, and each `--mention NAME` (without `@`, repeatable), must be a current assignee of T. Otherwise the whole send fails. Check with `me task assignees --task T`.
 - The receipt of a send has the message ID in `resource_id` and its sequence number in `revision`.
-- `mail read` returns `data.messages[]` (`id`, `sequence`, `sender_id`, `sender_name`, `received_at`, `body`, `mention_ids`), `data.cursor` and `data.more`. Give the cursor back with `--cursor "$cursor"` to read only newer messages.
+- `mail read` returns `data.messages[]` (`id`, `sequence`, `sender_kind` for Operator mail, `sender_id`, `sender_name`, `received_at`, `body`, `mention_ids`), `data.cursor` and `data.more`. Give the cursor back with `--cursor "$cursor"` to read only newer messages.
 - `mail check` reads all your Tasks at once: `data.tasks[]`, each with `task_id`, `messages`, `cursor` and `more`, and `data.more`.
 - `sender_name` is the sender's Agent name. Mail reads include your own messages; find your own ID in `me agent list`.
+- Mail with `sender_kind: "operator"`, `sender_name: "Operator"` and an empty `sender_id` is the Operator's answer to the Task's Needs you question. It mentions every assignee. The question is already resolved; do not resolve it again.
 
 ### Read only new mail with a cursor file
 

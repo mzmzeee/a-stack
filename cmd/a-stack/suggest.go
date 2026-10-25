@@ -183,6 +183,7 @@ func checkIDs(command string, seen map[string]bool, l lifecycleFlags, t taskFlag
 		{"from", t.from, "a Task ID", "a-stack task list"},
 		{"to", t.to, "a Task ID", "a-stack task list"},
 		{"reference", t.reference, "a reference ID", "a-stack task references"},
+		{"question-id", t.questionID, "a question ID", "a-stack task show"},
 	}
 	if command == "task create" {
 		for _, after := range l.afters {

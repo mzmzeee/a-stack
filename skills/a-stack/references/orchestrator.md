@@ -91,7 +91,7 @@ Other assignees you can @mention: 01-orchestrator
 - `me task show --task T` shows the report, and `me task history --task T` shows every change.
 - `me mail check --cursor-file /your/private/folder/mail.json` reads the new mail of the Tasks that you are assigned to.
 
-When a Task shows `needs_you`, the Operator must answer. You cannot answer for the Operator.
+When a Task shows `needs_you`, the Operator must answer. You cannot answer for the Operator. The Operator answers with `a-stack answer` or in the browser view, and the Task's assignees get the answer as Task mail from the Operator.
 
 ## 6. Change the plan
 

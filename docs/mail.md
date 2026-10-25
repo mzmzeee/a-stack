@@ -1,6 +1,6 @@
 # Task mail
 
-Each Task has one ordered Task mail history, and a-stack keeps all of it. Only the current assignees of the Task can send mail, read mail or get back the receipt of a send. The Orchestrator must be assigned to the Task too. The Operator credential gives no mail access. A browser view credential can only read the Task mail of its own Session, as described in [Browser reads](#browser-reads).
+Each Task has one ordered Task mail history, and a-stack keeps all of it. Only the current assignees of the Task can send mail, read mail or get back the receipt of a send. The Orchestrator must be assigned to the Task too. The Operator credential gives no mail access, except that the Operator's answer to a Needs you question is sent as Task mail, as described in [The Operator's answer](#the-operators-answer). A browser view credential can only read the Task mail of its own Session, as described in [Browser reads](#browser-reads).
 
 Every mail command needs an Agent credential and `--workspace ID --session ID`. A credential file that names its Workspace and Session gives them (see [Credential context](lifecycle.md#credential-context)). If you use a different state directory, add the same `--state-dir` to every command.
 
@@ -47,6 +47,10 @@ Mail does not change the Task's progress or the Task revision. A send raises the
 ### Browser reads
 
 The [browser view](browser.md#task-mail) credential can use `read` for any Task of its own Session, also a Task with no assignee. It gets the same messages, cursor and limits as an assignee. It cannot use `send` or `check`, and it gets `forbidden` for another Session. A browser read stores no read position, writes no receipt and makes no notice. The Operator CLI credential still has no mail access.
+
+### The Operator's answer
+
+[`a-stack answer`](tasks.md#answer-a-question), and the answer box of the browser view, send the Operator's answer to a Task's Needs you question as Task mail. The message has `sender_kind` `operator`, `sender_name` `Operator` and an empty `sender_id`. It mentions every current assignee, so each gets a notice, and it reaches each Agent through `mail check` like other mail. The Operator cannot send any other mail, and still cannot read mail with the CLI.
 
 ## Read positions
 

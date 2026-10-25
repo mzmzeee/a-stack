@@ -8,7 +8,7 @@ The current Orchestrator defines the work. It creates Tasks, edits their title, 
 
 The current assignees do the work. An assignee is an Agent that is assigned to the Task. Assignees update the progress, the report, the file references and the Operator questions.
 
-The Orchestrator must assign itself to a Task before it can do assignee actions on it. The Operator never acts as an assignee. When the Operator replaces the Orchestrator, the old Agent loses its graph authority immediately, but it keeps its assignee authority. A runtime state of unknown, idle or done changes no authority and no Task progress.
+The Operator answers Needs you questions. The Orchestrator must assign itself to a Task before it can do assignee actions on it. The Operator never acts as an assignee. When the Operator replaces the Orchestrator, the old Agent loses its graph authority immediately, but it keeps its assignee authority. A runtime state of unknown, idle or done changes no authority and no Task progress.
 
 | Command | Who | Purpose |
 | --- | --- | --- |
@@ -20,6 +20,7 @@ The Orchestrator must assign itself to a Task before it can do assignee actions 
 | `task archive`, `task unarchive` | Orchestrator or Operator | Archive a Finished or Cancelled Task, or undo it. |
 | `task report` | Assignee | Replace the shared report. |
 | `task attention set`, `task attention resolve` | Assignee | Ask or resolve an Operator question. |
+| `answer` | Operator | Answer the open Operator question. The assignees get the answer as Task mail. |
 | `task reference add`, `task reference remove` | Assignee | Add or remove a file reference. |
 | `task list`, `task show`, `task history`, `task assignees`, `task references`, `task dependencies`, `dependency history`, `session snapshot`, `session page` | Operator or Session Agent | Read Tasks and the Task graph. |
 
@@ -123,6 +124,7 @@ Instead of a text flag, you can give `--body TEXT` or `--body-file FILE`. They s
 | `task status --progress finished` | Result summary |
 | Other `task status`, `task reopen` | Reason |
 | `task attention set`, `task attention resolve` | Question or note |
+| `answer` | The answer |
 
 `--body-file -` reads stdin. Give only one of the text flag, `--body` and `--body-file`. `task status` with `--progress waiting` or `cancelled` needs a reason, and with `--progress finished` a summary; without it, the error says which flag is missing, such as `--reason is required for --progress waiting`. A text error names its field, such as `title is required` or `reason exceeds 2048 bytes`.
 
@@ -130,6 +132,7 @@ Instead of a text flag, you can give `--body TEXT` or `--body-file FILE`. They s
 | --- | --- |
 | Description, report | 64 KiB of UTF-8 |
 | Reason, result, question, resolution note | 2,048 bytes |
+| Answer | 4,096 bytes |
 | Title | 256 bytes |
 | Ticket reference | 1,024 bytes |
 
@@ -140,6 +143,24 @@ a-stack rejects text that is too long. It never cuts it. A nonempty Ticket refer
 `task attention set --question TEXT` asks the Operator one explicit question. The Task then shows Needs you. A question is separate from the progress. A Task can have one open question at a time. A second request gets a conflict with `current_question` and the revision.
 
 `task attention resolve --note TEXT` closes the question. It needs the current Task revision and a nonempty note. Viewing the Task, finishing or cancelling it, runtime observations and Session closure never clear the question. Waiting for a dependency never creates a Needs you question.
+
+### Answer a question
+
+The Operator can answer the open question from the CLI:
+
+```sh
+a-stack task show --workspace "$workspace" --session "$session" --task "$task"
+a-stack answer --workspace "$workspace" --session "$session" --task "$task" \
+  --question-id "$question" --text 'Google first, then GitHub.' --operation-id answer-login-1
+```
+
+`task show` prints the open question with its `id` under `question`. `--question-id` takes that ID. For a longer answer, use `--body-file FILE`, or `--body-file -` for stdin. An answer is plain UTF-8 text of 4,096 bytes at most.
+
+In one operation, `answer` saves the answer on the question, resolves the question, raises the Task's revision and sends the answer as Task mail from the Operator. The mail mentions every current assignee, so each one gets the usual [notice](notifications.md), and the mail nudge of the [hooks](hooks.md#task-mail-nudge) tells the Agent. An Agent that restarts finds the answer with `mail check`. The history entry is `task.answer` with `actor_kind` `operator`.
+
+The question ID is the guard. A question never changes, and a new question gets a new ID. So `answer` fails with `conflict` when the Task has no open question, because it was answered or resolved, and when the open question is not the one you read; the error then has `current_question`. A report or another change in the meantime does not stop the answer. A retry with the same operation ID returns the first receipt, and a new operation ID after a lost answer gets the `conflict`, so the Agents never get the answer twice. Only the Operator can answer: Agents, also the Orchestrator, get `forbidden`. The [browser view](browser.md#task-details) can send the same answer.
+
+`task show` shows the latest answered question as `answered_question`, with `question`, `answer` and `resolved_at`. Its `resolver_id` is empty, because the Operator is not an Agent. A question that an Agent resolved keeps its `note` and `resolver_id`.
 
 ## File references
 
