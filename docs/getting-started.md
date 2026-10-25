@@ -61,17 +61,14 @@ operator() {
 as_agent() {
   local credential_file="$1"
   shift
-  "$bin" --state-dir "$state_dir" --as agent --credential-file "$credential_file" \
-    --workspace "$workspace_id" --session "$session_id" --json "$@"
+  "$bin" --state-dir "$state_dir" --as agent --credential-file "$credential_file" --json "$@"
 }
 session_revision() {
   operator session inspect --workspace "$workspace_id" --session "$session_id" | field data.revision
 }
-task_revision() { as_agent "$1" task show --task "$2" | field data.revision; }
-graph_revision() { as_agent "$1" session inspect | field data.graph_revision; }
 ```
 
-`field data.resource_id` prints one value from a JSON response. `operator` runs a command as the Operator. `as_agent FILE` runs a command as the Agent that owns the credential file. The last three helpers read the current revision that a change needs.
+`field data.resource_id` prints one value from a JSON response. `operator` runs a command as the Operator. `as_agent FILE` runs a command as the Agent that owns the credential file. The file names the Agent's Workspace and Session, so Agent commands need no `--workspace` or `--session`. `session_revision` reads the Session revision that the Operator's changes need.
 
 Each command prints a `data` JSON object on stdout when it succeeds. When it fails, it prints an `error` JSON object on stderr and exits with a nonzero code. Stop if you see an error.
 
@@ -129,20 +126,21 @@ task_b="$(as_agent "$orchestrator_credential" task create --title 'B: review' \
   --operation-id demo-task-b | field data.resource_id)"
 task_c="$(as_agent "$orchestrator_credential" task create --title 'C: document' \
   --operation-id demo-task-c | field data.resource_id)"
-as_agent "$orchestrator_credential" task assign --task "$task_a" --agent "$worker_a_id" \
-  --expected-revision "$(task_revision "$orchestrator_credential" "$task_a")" --operation-id demo-assign-a
+revision="$(as_agent "$orchestrator_credential" task assign --task "$task_a" --agent "$worker_a_id" \
+  --expected-revision 1 --operation-id demo-assign-a | field data.revision)"
 as_agent "$orchestrator_credential" task assign --task "$task_a" --agent "$worker_b_id" \
-  --expected-revision "$(task_revision "$orchestrator_credential" "$task_a")" --operation-id demo-assign-b
-as_agent "$orchestrator_credential" dependency add --from "$task_a" --to "$task_b" \
-  --expected-revision "$(graph_revision "$orchestrator_credential")" --operation-id demo-edge-ab
+  --expected-revision "$revision" --operation-id demo-assign-b
+graph="$(as_agent "$orchestrator_credential" session inspect | field data.graph_revision)"
+graph="$(as_agent "$orchestrator_credential" dependency add --from "$task_a" --to "$task_b" \
+  --expected-revision "$graph" --operation-id demo-edge-ab | field data.revision)"
 as_agent "$orchestrator_credential" dependency add --from "$task_a" --to "$task_c" \
-  --expected-revision "$(graph_revision "$orchestrator_credential")" --operation-id demo-edge-ac
+  --expected-revision "$graph" --operation-id demo-edge-ac
 as_agent "$worker_a_credential" task list
 ```
 
 The list shows the three Tasks with `"progress":"waiting"`. Tasks B and C have no assignee, so they have `"unassigned":true`.
 
-Good to know: a dependency A → B means that B depends on A. Dependency changes need the Session's `graph_revision`. Task changes need the Task's `revision`. For all Task commands, see [Tasks and the Task graph](tasks.md).
+Good to know: a dependency A → B means that B depends on A. Task changes need the Task's `revision`, and dependency changes need the Session's `graph_revision`. A new Task has revision 1, and the receipt of each change has the new revision in `data.revision`, so the next change can use it without reading the Task again. If someone else changed the Task in between, the change fails with `conflict`, and you read it again. For all Task commands, see [Tasks and the Task graph](tasks.md).
 
 ## 6. Watch the Session in your browser (Operator)
 
@@ -156,12 +154,13 @@ Keep the URL private, because it works like a credential. The view is read-only.
 
 ## 7. Share Task mail (assignees)
 
-Agent `02-worker` checks its mail, starts the work and writes to Agent `03-worker`. Then `03-worker` answers, and both Agents read the Task mail.
+Agent `02-worker` reads the Task, checks its mail, starts the work and writes to Agent `03-worker`. Then `03-worker` answers, and both Agents read the Task mail.
 
 ```bash
-as_agent "$worker_a_credential" mail check
-as_agent "$worker_a_credential" task status --task "$task_a" --progress working \
-  --expected-revision "$(task_revision "$worker_a_credential" "$task_a")" --operation-id demo-start-a
+revision="$(as_agent "$worker_a_credential" task show --task "$task_a" | field data.revision)"
+as_agent "$worker_a_credential" mail check --cursor-file "$credential_dir/worker-a-mail.json"
+revision="$(as_agent "$worker_a_credential" task status --task "$task_a" --progress working \
+  --expected-revision "$revision" --operation-id demo-start-a | field data.revision)"
 mail_receipt="$(as_agent "$worker_a_credential" mail send --task "$task_a" \
   --body 'Ready to coordinate with @03-worker' --operation-id demo-mail-a)"
 as_agent "$worker_b_credential" mail send --task "$task_a" \
@@ -172,24 +171,24 @@ as_agent "$worker_b_credential" mail read --task "$task_a"
 
 Both reads show the same two messages. A read does not remove messages for the other Agent.
 
-Good to know: Agents check their mail when they start or resume a Task, between large steps, and before they finish the Task. A mention such as `@03-worker` must use the exact name of a current assignee. Only the assignees of a Task can read its mail, so the Orchestrator must assign itself to take part. To read only new messages, an Agent keeps a cursor map. For cursors and size limits, see [Task mail](mail.md).
+Good to know: Agents check their mail when they start or resume a Task, between large steps, and before they finish the Task. The cursor file in the Agent's private folder keeps how far it has read, so the next `mail check` with that file shows only new messages. A mention such as `@03-worker` must use the exact name of a current assignee. Only the assignees of a Task can read its mail, so the Orchestrator must assign itself to take part. For cursors and size limits, see [Task mail](mail.md).
 
 ## 8. Ask the Operator a question (assignee)
 
 Agent `02-worker` needs a decision from you. It asks a question, and the Task shows Needs you in the browser view.
 
 ```bash
-as_agent "$worker_a_credential" task attention set --task "$task_a" \
+revision="$(as_agent "$worker_a_credential" task attention set --task "$task_a" \
   --question 'Which release should include this?' \
-  --expected-revision "$(task_revision "$worker_a_credential" "$task_a")" --operation-id demo-question-a
+  --expected-revision "$revision" --operation-id demo-question-a | field data.revision)"
 ```
 
 You answer the Agent in your usual conversation with it. Then the Agent resolves the question:
 
 ```bash
-as_agent "$worker_a_credential" task attention resolve --task "$task_a" \
+revision="$(as_agent "$worker_a_credential" task attention resolve --task "$task_a" \
   --note 'Operator selected the next release' \
-  --expected-revision "$(task_revision "$worker_a_credential" "$task_a")" --operation-id demo-resolve-a
+  --expected-revision "$revision" --operation-id demo-resolve-a | field data.revision)"
 ```
 
 Needs you goes away in the browser view. Only `task attention resolve` clears a question. Viewing or finishing the Task does not clear it.
@@ -199,29 +198,29 @@ Needs you goes away in the browser view. Only `task attention resolve` clears a 
 Agent `02-worker` writes the report, adds a file reference, checks its mail one more time and marks the Task finished.
 
 ```bash
-as_agent "$worker_a_credential" task report --task "$task_a" \
+revision="$(as_agent "$worker_a_credential" task report --task "$task_a" \
   --report 'Implementation and checks recorded' \
-  --expected-revision "$(task_revision "$worker_a_credential" "$task_a")" --operation-id demo-report-a
-as_agent "$worker_a_credential" task reference add --task "$task_a" --location docs/results.md \
-  --expected-revision "$(task_revision "$worker_a_credential" "$task_a")" --operation-id demo-reference-a
-as_agent "$worker_a_credential" mail check
-as_agent "$worker_a_credential" task status --task "$task_a" --progress finished \
+  --expected-revision "$revision" --operation-id demo-report-a | field data.revision)"
+revision="$(as_agent "$worker_a_credential" task reference add --task "$task_a" --location docs/results.md \
+  --expected-revision "$revision" --operation-id demo-reference-a | field data.revision)"
+as_agent "$worker_a_credential" mail check --cursor-file "$credential_dir/worker-a-mail.json"
+revision="$(as_agent "$worker_a_credential" task status --task "$task_a" --progress finished \
   --summary 'Whole shared Task completed' \
-  --expected-revision "$(task_revision "$worker_a_credential" "$task_a")" --operation-id demo-finish-a
+  --expected-revision "$revision" --operation-id demo-finish-a | field data.revision)"
 ```
 
-Task A is now Finished. Tasks B and C do not change.
+Task A is now Finished. Tasks B and C do not change. This `mail check` shows the two messages of step 7, which the check in step 7 had not seen. Another check with the same file would show none.
 
 Good to know: an assignee marks a Task finished only when the whole shared Task is complete. The other assignees do not need to approve it. A file reference is a path or URL that people can see and copy. a-stack does not read the file, so the file in this example does not need to exist.
 
 If the work must change, any assignee can reopen a Finished or Cancelled Task, or cancel a Task. Both need a reason. Reopening sets the Task to Waiting.
 
 ```bash
-as_agent "$worker_a_credential" task reopen --task "$task_a" --reason 'Reconsider the approach' \
-  --expected-revision "$(task_revision "$worker_a_credential" "$task_a")" --operation-id demo-reopen-a
+revision="$(as_agent "$worker_a_credential" task reopen --task "$task_a" --reason 'Reconsider the approach' \
+  --expected-revision "$revision" --operation-id demo-reopen-a | field data.revision)"
 as_agent "$worker_a_credential" task status --task "$task_a" --progress cancelled \
   --reason 'Approach abandoned' \
-  --expected-revision "$(task_revision "$worker_a_credential" "$task_a")" --operation-id demo-cancel-a
+  --expected-revision "$revision" --operation-id demo-cancel-a
 ```
 
 Task A is now Cancelled. Its report, results and history stay.
@@ -296,6 +295,99 @@ Send the same command again, with the same operation ID and the same flags. Do n
 If a `conflict` shows that the revision changed, your change is out of date. Read the current state and think again about the change. Then send it with the current revision and a new operation ID.
 
 `agent register` writes the new credential file before it sends the request. If you are not sure that a registration worked, keep that file and run the same command again. For lost credentials, see [credential recovery](lifecycle.md#credential-delivery-and-recovery).
+
+## Hand your Session to an Orchestrator
+
+The guide above uses throwaway state. For your own project, `a-stack new` makes the Workspace and the Session, and the view starts empty. Then you, the Operator, register one Agent, appoint it as the Orchestrator and brief it. The Orchestrator registers the other Agents and plans the Tasks.
+
+One command does all of this:
+
+```sh
+cd ~/code/my-project
+a-stack new --orchestrator 01-orchestrator
+```
+
+It makes the Session (or opens the open Session of this folder's name), registers `01-orchestrator` with a credential file in `~/.local/state/a-stack-agents/`, appoints it, opens the view and prints a brief:
+
+```text
+Start your coding agent in this folder and give it this brief, with your goal:
+
+You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.
+Credential file: /home/you/.local/state/a-stack-agents/01-orchestrator.json
+Workspace: 8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ   Session: 1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
+Your name: 01-orchestrator   Your private folder: make one with mktemp -d
+Work in: /home/you/code/my-project
+Goal: <describe the goal>. Plan the Tasks, register one Agent per Task and brief each one.
+```
+
+Replace the goal line, and run `a-stack skill install` once if your coding agent does not have the skill yet. The command refuses, before it makes anything, when the credential file already exists, and it refuses a Session that already has an Orchestrator. The brief names the credential file only by its path.
+
+### The same steps by hand
+
+These commands use the default state directory, like `a-stack new`.
+
+Find the IDs of the Session. In the project folder, `a-stack -r --json` lists your Sessions; yours has `"current_folder":true`:
+
+```sh
+cd ~/code/my-project
+a-stack -r --json
+```
+
+```text
+{"data":{"folder":"/home/you/code/my-project","sessions":[{"workspace_id":"8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ","workspace_path":"/home/you/code/my-project","session_id":"1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4","name":"my-project","closed":false,"tasks":0,"needs_you":0,"changed_at":"2026-10-25T08:52:45.507299788Z","current_folder":true}]}}
+```
+
+Register the Orchestrator. Its credential file must be in a private folder outside every Git checkout:
+
+```sh
+workspace_id=8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ
+session_id=1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
+mkdir -p -m 700 ~/.local/state/a-stack-agents
+a-stack agent register --workspace "$workspace_id" --session "$session_id" \
+  --name 01-orchestrator --new-credential-file ~/.local/state/a-stack-agents/01-orchestrator.json \
+  --operation-id register-orchestrator-1
+```
+
+```text
+{"data":{"operation_id":"register-orchestrator-1","resource_id":"pgsSLxMbbGGfPx5N_7ZixIkS2iKBmBMnYBoS-Xv-2PE","revision":1,"outcome":"registered","received_at":"2026-10-25T08:52:45.581246599Z"}}
+```
+
+`resource_id` is the new Agent's ID. Appoint it. A new Session has revision 1; if you get `conflict`, use the `current_revision` from the error and a new operation ID:
+
+```sh
+orchestrator_id=pgsSLxMbbGGfPx5N_7ZixIkS2iKBmBMnYBoS-Xv-2PE
+a-stack session appoint --workspace "$workspace_id" --session "$session_id" \
+  --agent "$orchestrator_id" --expected-revision 1 --operation-id appoint-orchestrator-1
+```
+
+```text
+{"data":{"operation_id":"appoint-orchestrator-1","resource_id":"1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4","revision":2,"outcome":"appointed","received_at":"2026-10-25T08:52:45.621302893Z"}}
+```
+
+Install the agent skill once, so that your coding agents know the work loop:
+
+```sh
+a-stack skill install
+```
+
+```text
+Installed the a-stack skill v0.1.5 in:
+  ~/.claude/skills/a-stack
+  ~/.agents/skills/a-stack
+```
+
+Start your coding agent in the project folder and give it this brief, with your values and your goal:
+
+```text
+You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.
+Credential file: /home/you/.local/state/a-stack-agents/01-orchestrator.json
+Workspace: 8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ   Session: 1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
+Your name: 01-orchestrator   Your private folder: /tmp/work/01-orchestrator/
+Work in: /home/you/code/my-project
+Goal: add OAuth login. Plan the Tasks, register one Agent per Task and brief each one.
+```
+
+The Orchestrator registers the other Agents with its own credential and writes their briefs, as the skill's orchestrator reference shows. Watch the work in the view; `a-stack` opens it again at any time. Answer a Needs you question in your conversation with the Agent that asks it. Never put a credential file's contents, or the part of the view URL after `#`, in a brief.
 
 ## Next steps
 

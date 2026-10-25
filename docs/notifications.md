@@ -7,7 +7,7 @@ Task mail always works through ordinary mail checks. A mention notice is an opti
 To turn on notices, start the service with an installed Herdr executable:
 
 ```sh
-./a-stack serve --state-dir "$state_dir" --herdr-executable /absolute/path/to/herdr --json
+a-stack serve --state-dir "$state_dir" --herdr-executable /absolute/path/to/herdr --json
 ```
 
 Without this flag, notices are off and mail works as usual. If the integration data is missing or not supported, the notices stay pending with a diagnostic, and a-stack tries again with a bounded backoff. Mail and Task updates still work. a-stack configures no accounts, no background agent launcher and no global Herdr settings.
@@ -118,11 +118,11 @@ A notice that has passed the final preflight can still finish during a concurren
 ## Diagnostics and maintenance
 
 ```sh
-./a-stack notifications status --state-dir "$state_dir" \
+a-stack notifications status --state-dir "$state_dir" \
   --workspace "$workspace_id" --session "$session_id" --json
 # An Agent gives its own private credential and sees only its own delivery state.
 # Operator-only maintenance pass, with 4 recipient checks by default and 16 at most:
-./a-stack notifications drain --state-dir "$state_dir" \
+a-stack notifications drain --state-dir "$state_dir" \
   --workspace "$workspace_id" --session "$session_id" --limit 4 --json
 ```
 
@@ -137,10 +137,10 @@ The HTTP endpoints are authenticated `POST /v1/notifications/status` and `POST /
 The Operator can show a bound Agent's pane in Herdr:
 
 ```sh
-./a-stack herdr focus --workspace "$workspace_id" --session "$session_id" --agent 02-worker --json
+a-stack herdr focus --workspace "$workspace_id" --session "$session_id" --agent "$worker_id" --json
 ```
 
-`--agent` takes the Agent's name or ID. The service runs it, because only the service can read bindings, so it needs `--herdr-executable` like notices do. It first checks the binding against Herdr's current metadata, as before a notice, but it also accepts a Blocked agent and a harness outside the supported lines. Then it runs `herdr agent focus PANE`, and `herdr tab focus TAB` if that fails. The answer is `{"focused": "agent"}` or `{"focused": "tab"}`, never the binding. A changed or missing pane gets `integration_unavailable`, and nothing is focused. Only the Operator can run it; the HTTP endpoint is `POST /v1/herdr/focus` with `agent`.
+`--agent` takes the Agent ID, like every other command. The service runs it, because only the service can read bindings, so it needs `--herdr-executable` like notices do. It first checks the binding against Herdr's current metadata, as before a notice, but it also accepts a Blocked agent and a harness outside the supported lines. Then it runs `herdr agent focus PANE`, and `herdr tab focus TAB` if that fails. The answer is `{"focused": "agent"}` or `{"focused": "tab"}`, never the binding. A changed or missing pane gets `integration_unavailable`, and nothing is focused. Only the Operator can run it; the HTTP endpoint is `POST /v1/herdr/focus` with `agent_id`.
 
 ## Measurements and limits
 

@@ -1,0 +1,31 @@
+# Maintainer: mzmzeee <mooataz10@hotmail.com>
+#
+# AUR package a-stack-bin: the release binary of a-stack. See
+# contrib/README.md for how to publish a new version.
+
+pkgname=a-stack-bin
+pkgver=0.1.4
+pkgrel=1
+pkgdesc='Keep an eye on your AI coding agents: a local Task graph, Task mail and a read-only browser view'
+arch=('x86_64' 'aarch64')
+url='https://github.com/mzmzeee/a-stack'
+license=('MIT')
+provides=('a-stack')
+conflicts=('a-stack')
+options=('!debug')
+source=("a-stack-$pkgver.service::$url/releases/download/v$pkgver/a-stack.service"
+        "LICENSE-$pkgver::https://raw.githubusercontent.com/mzmzeee/a-stack/v$pkgver/LICENSE")
+source_x86_64=("a-stack-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/a-stack_linux_amd64.tar.gz")
+source_aarch64=("a-stack-$pkgver-aarch64.tar.gz::$url/releases/download/v$pkgver/a-stack_linux_arm64.tar.gz")
+sha256sums=('b377f11bdfb9c5a53dca8ff79f6cf645223a4a631206d4cbe54bf85c937326e3'
+            'a9b85fd5f10a0de80267e54dbd1518eda8fa488103d29a9695d06bb10ba130af')
+sha256sums_x86_64=('be8c73261bbab152fb52ea58f6e2c23ab092f2041f7e76146987b71a380d29fa')
+sha256sums_aarch64=('982ac6a72fb2c52a2141eea319a2e48632edc36a72af05ff2e59f9925caf5534')
+
+package() {
+  install -Dm755 a-stack "$pkgdir/usr/bin/a-stack"
+  # The release unit runs ~/.local/bin/a-stack; the package installs /usr/bin.
+  sed 's|%h/\.local/bin/a-stack|/usr/bin/a-stack|' "a-stack-$pkgver.service" > a-stack.service
+  install -Dm644 a-stack.service "$pkgdir/usr/lib/systemd/user/a-stack.service"
+  install -Dm644 "LICENSE-$pkgver" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

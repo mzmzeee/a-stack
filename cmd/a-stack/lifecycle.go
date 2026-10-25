@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"io/fs"
@@ -32,7 +33,7 @@ type lifecycleFlags struct {
 func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.workspace, "workspace", "", "Workspace ID")
 	fs.StringVar(&f.session, "session", "", "Session ID")
-	fs.StringVar(&f.operationID, "operation-id", "", "Your ID for this change; reuse it to retry")
+	fs.StringVar(&f.operationID, "operation-id", "", "Your ID for this change: 8–128 letters, digits, _ or -; reuse it to retry")
 	fs.StringVar(&f.path, "path", "", "Absolute project folder")
 	fs.StringVar(&f.name, "name", "", "Session or Agent name")
 	fs.StringVar(&f.agent, "agent", "", "Agent ID")
@@ -46,26 +47,27 @@ func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 	fs.IntVar(&f.limit, "limit", 0, "Page size: 1 to 100, mail 1 to 500")
 	fs.StringVar(&f.after, "after", "", "Continue after this ID or cursor")
 }
-func validateCommandFlags(command string, seen map[string]bool) error {
-	allowed := acceptedFlags(command)
-	for name := range seen {
-		if !strings.Contains(allowed, " "+name+" ") {
-			return invalid("flag does not apply to this command; use --help")
-		}
-	}
-	return nil
-}
 
 // acceptedFlags lists the flags a command accepts, space-separated with a
 // space at both ends. Help uses the same list.
 func acceptedFlags(command string) string {
 	// No service and no credential.
-	if command == "skill install" {
+	if command == "version" {
+		return " json help "
+	} else if command == "skill install" {
 		return " project refresh json help "
 	} else if command == "skill uninstall" {
 		return " project json help "
 	} else if command == "update" {
 		return " check version json help "
+	} else if command == "statusline" {
+		return " state-dir help "
+	} else if command == "hook" {
+		return " state-dir credential-file workspace session agent runtime-id worktree help "
+	} else if command == "hook install" {
+		return " claude codex project state-dir credential-file workspace session agent name runtime-id worktree json help "
+	} else if command == "hook uninstall" {
+		return " claude codex project worktree json help "
 	} else if command == "service install" || command == "service status" {
 		return " state-dir json help "
 	} else if command == "service uninstall" {
@@ -77,7 +79,7 @@ func acceptedFlags(command string) string {
 	if command == "" {
 		allowed += "no-browser resume r "
 	} else if command == "new" {
-		allowed += "no-browser "
+		allowed += "no-browser orchestrator "
 	} else if command == "serve" {
 		allowed += "listen herdr-executable "
 	} else {
@@ -120,6 +122,10 @@ func acceptedFlags(command string) string {
 		allowed += "workspace session operation-id expected-revision agent runtime-id runtime-file clear-runtime new-credential-file "
 	case "agent observe":
 		allowed += "workspace session agent expected-revision runtime-id runtime-state "
+	case "watch":
+		allowed += "session all notify notify-text "
+	case "status":
+		allowed += "session all "
 	}
 	if isTaskCommand(command) {
 		allowed += "workspace session " + taskAllowedFlags(command) + " "
@@ -191,7 +197,11 @@ func lifecycleCall(ctx context.Context, client *stack.Client, command string, f 
 		}
 		r := stack.AgentBindingRequest{Context: ref, OperationID: f.operationID, AgentID: f.agent, ExpectedRevision: f.revision, Runtime: binding}
 		if command == "agent rebind" {
-			hash, err := stack.PrepareAgentCredential(f.newCredential, client.Discovery.DatabaseID, command, f.operationID, r)
+			name, err := agentName(ctx, client, ref, f.agent)
+			if err != nil {
+				return nil, err
+			}
+			hash, err := stack.PrepareRebindCredential(f.newCredential, client.Discovery.DatabaseID, r, name)
 			if err != nil {
 				return nil, err
 			}
@@ -204,4 +214,54 @@ func lifecycleCall(ctx context.Context, client *stack.Client, command string, f 
 		return nil, invalid("unknown lifecycle command")
 	}
 	return client.Do(ctx, "POST", "/v1/"+strings.ReplaceAll(command, " ", "/"), body)
+}
+
+// agentName looks up an Agent's name for its new credential file. It returns ""
+// for an unknown ID, which the rebind itself then rejects.
+func agentName(ctx context.Context, client *stack.Client, ref stack.Context, id string) (string, error) {
+	after := ""
+	for {
+		data, err := client.Do(ctx, "POST", "/v1/agent/list", stack.ListRequest{Context: ref, Limit: 100, After: after})
+		if err != nil {
+			return "", err
+		}
+		var page struct {
+			Data struct {
+				Items []stack.Agent `json:"items"`
+				Next  string        `json:"next"`
+			} `json:"data"`
+		}
+		if json.Unmarshal(data, &page) != nil {
+			return "", invalid("unexpected agent list response")
+		}
+		for _, agent := range page.Data.Items {
+			if agent.ID == id {
+				return agent.Name, nil
+			}
+		}
+		if page.Data.Next == "" {
+			return "", nil
+		}
+		after = page.Data.Next
+	}
+}
+
+// fillContext takes --workspace and --session from an Agent credential file
+// that names them. A flag that is given must name the same ID.
+func fillContext(c stack.Credential, f *lifecycleFlags, command string) error {
+	allowed := acceptedFlags(command)
+	for _, field := range []struct {
+		flag        *string
+		saved, name string
+	}{{&f.workspace, c.WorkspaceID, "workspace"}, {&f.session, c.SessionID, "session"}} {
+		if field.saved == "" || !strings.Contains(allowed, " "+field.name+" ") {
+			continue
+		}
+		if *field.flag == "" {
+			*field.flag = field.saved
+		} else if *field.flag != field.saved {
+			return invalid("--" + field.name + " does not match the one in the credential file")
+		}
+	}
+	return nil
 }

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"os"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
@@ -21,11 +20,15 @@ func herdrRequest(ctx context.Context, client *stack.Client, command string, f l
 		return nil, invalid("explicit --workspace, --session and --agent required")
 	}
 	if command == "herdr focus" {
-		return client.Do(ctx, "POST", "/v1/herdr/focus", stack.HerdrFocusRequest{Context: ref, Agent: f.agent})
+		return client.Do(ctx, "POST", "/v1/herdr/focus", stack.HerdrFocusRequest{Context: ref, AgentID: f.agent})
 	}
+	// The pane gets the Agent's own name.
 	name, err := agentName(ctx, client, ref, f.agent)
 	if err != nil {
 		return nil, err
+	}
+	if name == "" {
+		return nil, &stack.Error{Code: "not_found", Message: "Agent not found in this Session"}
 	}
 	if executable == "" {
 		executable = "herdr"
@@ -35,30 +38,4 @@ func herdrRequest(ctx context.Context, client *stack.Client, command string, f l
 		return nil, err
 	}
 	return client.Do(ctx, "POST", "/v1/agent/attach", stack.AgentBindingRequest{Context: ref, OperationID: f.operationID, AgentID: f.agent, ExpectedRevision: f.revision, Runtime: binding})
-}
-
-// agentName finds the Agent's own name, which herdr bind uses for its pane.
-func agentName(ctx context.Context, client *stack.Client, ref stack.Context, id string) (string, error) {
-	after := ""
-	for {
-		data, err := client.Do(ctx, "POST", "/v1/agent/list", stack.ListRequest{Context: ref, Limit: 100, After: after})
-		if err != nil {
-			return "", err
-		}
-		var page struct {
-			Data stack.Page[stack.Agent] `json:"data"`
-		}
-		if json.Unmarshal(data, &page) != nil {
-			return "", invalid("unreadable Agent list")
-		}
-		for _, agent := range page.Data.Items {
-			if agent.ID == id {
-				return agent.Name, nil
-			}
-		}
-		if page.Data.Next == "" || page.Data.Next == after {
-			return "", &stack.Error{Code: "not_found", Message: "Agent not found in this Session"}
-		}
-		after = page.Data.Next
-	}
 }

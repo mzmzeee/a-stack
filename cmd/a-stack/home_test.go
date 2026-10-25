@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
 type shortcutResult struct {
@@ -25,6 +27,7 @@ type shortcutResult struct {
 	OtherOpenSessions  *int   `json:"other_open_sessions"`
 	WorkspaceOperation string `json:"workspace_operation_id"`
 	SessionOperation   string `json:"session_operation_id"`
+	ExistingSession    bool   `json:"existing_session"`
 }
 
 // shortcut runs an Operator shortcut in this process, with a fake opener.
@@ -78,6 +81,15 @@ func TestCLIShortcutsWithRunningService(t *testing.T) {
 	second, _, _ := shortcut(t, "new", "Second build", "--state-dir", dir, "--json", "--no-browser")
 	if second.WorkspaceID != first.WorkspaceID || second.WorkspaceOperation != "" || second.SessionName != "Second build" || second.SessionID == first.SessionID {
 		t.Fatalf("new did not reuse the Workspace: %+v", second)
+	}
+	// The same name again opens the open Session of that name.
+	again, _, _ := shortcut(t, "new", "--state-dir", dir, "--json", "--no-browser")
+	if again.SessionID != first.SessionID || !again.ExistingSession || again.SessionOperation != "" || first.ExistingSession {
+		t.Fatalf("new made a second Session of the same name: %+v", again)
+	}
+	_, out, _ = shortcut(t, "new", "Second build", "--state-dir", dir, "--no-browser")
+	if !strings.HasPrefix(out, "The Session \"Second build\" already exists in this folder. To make another one, run: a-stack new NAME\nOpening the Session \"Second build\"") {
+		t.Fatalf("plain new of an existing name %q", out)
 	}
 	t.Chdir(beta)
 	_, out, _ = shortcut(t, "new", "--state-dir", dir, "--no-browser")
@@ -283,5 +295,65 @@ func TestCLIStartedServiceStopsCleanlyOnHangup(t *testing.T) {
 	}
 	if _, err = os.Stat(filepath.Join(dir, "service.json")); !os.IsNotExist(err) {
 		t.Fatalf("service.json left behind: %v", err)
+	}
+}
+
+func TestCLINewHandsOffToOrchestrator(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, "state")
+	launch(t, dir)
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+	var stdout, stderr bytes.Buffer
+	if code := run([]string{"new", "--orchestrator", "bad name", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "--orchestrator takes an Agent name") {
+		t.Fatalf("bad name: exit %d %s", code, stderr.String())
+	}
+	var made struct {
+		Data struct {
+			shortcutResult
+			OrchestratorID string `json:"orchestrator_id"`
+			Credential     string `json:"orchestrator_credential_file"`
+			Brief          string `json:"brief"`
+		} `json:"data"`
+	}
+	stdout.Reset()
+	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 0 || json.Unmarshal(stdout.Bytes(), &made) != nil {
+		t.Fatalf("new --orchestrator: exit %d %s %s", code, stdout.String(), stderr.String())
+	}
+	got := made.Data
+	if got.Credential != filepath.Join(root, "a-stack-agents", "01-orch.json") || !stack.ValidID(got.OrchestratorID) || got.SessionOperation == "" {
+		t.Fatalf("hand-off result %+v", got)
+	}
+	info, err := os.Stat(got.Credential)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("credential file %v %v", info, err)
+	}
+	credential, err := stack.ReadCredential(got.Credential)
+	if err != nil || credential.Token == "" || strings.Contains(got.Brief, credential.Token) || strings.Contains(stdout.String(), credential.Token) {
+		t.Fatal("the brief or the output leaks the credential")
+	}
+	for _, want := range []string{got.Credential, got.WorkspaceID, got.SessionID, "01-orch", "orchestrator reference"} {
+		if !strings.Contains(got.Brief, want) {
+			t.Fatalf("brief lacks %q: %s", want, got.Brief)
+		}
+	}
+	// The new credential names its Session, which now has this Orchestrator.
+	stdout.Reset()
+	if code := run([]string{"session", "inspect", "--as", "agent", "--credential-file", got.Credential, "--state-dir", dir}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), `"orchestrator_id":"`+got.OrchestratorID+`"`) {
+		t.Fatalf("inspect as the Orchestrator: %s %s", stdout.String(), stderr.String())
+	}
+	// Again: the credential file exists, so nothing is made.
+	stdout.Reset()
+	stderr.Reset()
+	if code := run([]string{"new", "other", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "already exists") {
+		t.Fatalf("existing credential file: exit %d %s", code, stderr.String())
+	}
+	// The same Session with another name: it already has an Orchestrator.
+	stderr.Reset()
+	if code := run([]string{"new", "--orchestrator", "02-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "already has an Orchestrator") {
+		t.Fatalf("second Orchestrator: exit %d %s", code, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(root, "a-stack-agents", "02-orch.json")); !os.IsNotExist(err) {
+		t.Fatal("a refused hand-off left a credential file")
 	}
 }

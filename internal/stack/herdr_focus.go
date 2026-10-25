@@ -11,8 +11,7 @@ import (
 
 type HerdrFocusRequest struct {
 	Context
-	// Agent is the Agent's name or ID in the Session.
-	Agent string `json:"agent"`
+	AgentID string `json:"agent_id"`
 }
 
 // focus shows the bound pane in the Operator's Herdr after the same identity
@@ -45,7 +44,7 @@ func (s *Service) herdrFocus(ctx context.Context, token string, r HerdrFocusRequ
 	}
 	var binding string
 	if err = operator(p); err == nil {
-		err = tx.QueryRowContext(ctx, "SELECT COALESCE(binding,'') FROM agents WHERE session_id=? AND (id=? OR name=?) ORDER BY id=? DESC LIMIT 1", session.ID, r.Agent, r.Agent, r.Agent).Scan(&binding)
+		err = tx.QueryRowContext(ctx, "SELECT COALESCE(binding,'') FROM agents WHERE session_id=? AND id=?", session.ID, r.AgentID).Scan(&binding)
 		if errors.Is(err, sql.ErrNoRows) {
 			err = failure("not_found", "Agent not found in this Session")
 		} else if err != nil {
@@ -77,8 +76,8 @@ func (s *Service) herdrHTTP(w http.ResponseWriter, r *http.Request, token string
 		err = requestJSON(w, r, &q)
 	}
 	var data map[string]string
-	if err == nil && q.Agent == "" {
-		err = failure("invalid_input", "agent required")
+	if err == nil && q.AgentID == "" {
+		err = failure("invalid_input", "agent_id required")
 	}
 	if err == nil {
 		data, err = s.herdrFocus(r.Context(), token, q)

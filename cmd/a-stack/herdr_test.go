@@ -43,7 +43,7 @@ func TestCLIHerdrBindAndFocusRefusals(t *testing.T) {
 	if json.Unmarshal(stderr, &failure) != nil || failure.Error.Code != "integration_unavailable" {
 		t.Fatal("bind without Herdr", string(stderr))
 	}
-	focus := append([]string{"herdr", "focus", "--agent", "02-worker"}, ref...)
+	focus := append([]string{"herdr", "focus", "--agent", worker.ResourceID}, ref...)
 	_, stderr = commandResult(t, common(focus...), 1)
 	if json.Unmarshal(stderr, &failure) != nil || failure.Error.Code != "integration_unavailable" {
 		t.Fatal("focus without --herdr-executable", string(stderr))

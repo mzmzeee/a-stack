@@ -7,9 +7,9 @@ The browser view shows one Session: its Task graph, its Agents and the details o
 Run `serve` in one terminal. Then open one Workspace and Session by its IDs, or use one of the [shorter commands](#open-the-last-session):
 
 ```sh
-./a-stack open --workspace WORKSPACE_ID --session SESSION_ID
+a-stack open --workspace WORKSPACE_ID --session SESSION_ID
 # Print the URL, but do not start xdg-open:
-./a-stack open --workspace WORKSPACE_ID --session SESSION_ID --no-browser --json
+a-stack open --workspace WORKSPACE_ID --session SESSION_ID --no-browser --json
 ```
 
 `open` accepts the usual `--state-dir`, `--credential-file` and `--as` flags. Only the Operator can open the view, also for a closed Session. With an Agent credential, `open` fails with `forbidden`, because the view reads the Task mail of every Task in its Session. The view reads the Session metadata and that Task mail. It cannot open another view, send or check mail, or use the write, storage or runtime endpoints.
@@ -53,6 +53,8 @@ The picker uses raw terminal input and plain ANSI escapes, and it restores the t
 ### Make a Session with `a-stack new`
 
 `a-stack new` uses the Workspace whose folder is exactly the current folder, after it resolves symlinks. If there is none, it creates one. Then it creates a Session named NAME, or named after the folder. Then it opens the view.
+
+If that Workspace already has an open Session with the same name, `a-stack new` makes no second one. It says so and opens the existing Session (in JSON, `"existing_session":true` and no `session_operation_id`). To make another Session in the same folder, give it a new name: `a-stack new NAME`. A closed Session of the same name does not count; to open it, run `a-stack -r`.
 
 a-stack asks the caller to make the operation IDs. Here the CLI is the caller: it makes a random ID (`cli-` and 22 characters) for each change and prints it, in JSON as `workspace_operation_id` and `session_operation_id`. If the outcome of a change is unknown, the error names the command and the operation ID to send the same change again.
 

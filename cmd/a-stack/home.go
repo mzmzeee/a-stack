@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 // or SIGHUP.
 type home struct {
 	state, mode, name          string
+	orchestrator               string
 	resume, machine, noBrowser bool
 	stdout, stderr             io.Writer
 	cwd, homeDir               string
@@ -159,11 +161,20 @@ func (h *home) resumeSession(ctx context.Context, client *stack.Client) error {
 }
 
 // create reuses the Workspace of exactly this folder or makes it, then makes a
-// Session. The CLI is the caller that generates the operation IDs, and it
+// Session, unless an open Session of that name exists there. The CLI is the caller that generates the operation IDs, and it
 // prints them so that a change with an unknown outcome can be sent again.
 func (h *home) create(ctx context.Context, client *stack.Client) error {
 	if h.cwd == "" {
 		return invalid("cannot read the current folder")
+	}
+	// Check --orchestrator before anything is made.
+	if h.orchestrator != "" {
+		if !orchestratorName.MatchString(h.orchestrator) {
+			return invalid("--orchestrator takes an Agent name: up to 64 letters, digits, _ or -, starting with a letter or digit")
+		}
+		if _, err := os.Lstat(h.orchestratorFile()); err == nil {
+			return invalid(h.orchestratorFile() + " already exists; choose another --orchestrator name")
+		}
 	}
 	workspaces, err := listPages[stack.Workspace](ctx, client, "/v1/workspace/list", stack.Context{})
 	if err != nil {
@@ -175,8 +186,28 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 			row.WorkspaceID = w.ID
 		}
 	}
+	row.Name = h.name
+	if row.Name == "" {
+		row.Name = filepath.Base(h.cwd)
+	}
 	fields := map[string]any{}
 	before := []string{}
+	if row.WorkspaceID != "" {
+		// A second `a-stack new` opens the open Session of the same name
+		// instead of making a twin. Another name makes a new Session.
+		sessions, err := listPages[stack.Session](ctx, client, "/v1/session/list", stack.Context{WorkspaceID: row.WorkspaceID})
+		if err != nil {
+			return err
+		}
+		for _, s := range sessions {
+			if !s.Closed && s.Name == row.Name {
+				row.SessionID = s.ID
+				fields["existing_session"] = true
+				before = append(before, fmt.Sprintf("The Session %q already exists in this folder. To make another one, run: a-stack new NAME", printable(row.Name)))
+				return h.handOff(ctx, client, row, fields, before)
+			}
+		}
+	}
 	if row.WorkspaceID == "" {
 		id := operationID()
 		receipt, err := mutate(ctx, client, "/v1/workspace/create", stack.WorkspaceCreateRequest{OperationID: id, Path: h.cwd}, "workspace create from this folder", id)
@@ -187,10 +218,6 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 		fields["workspace_operation_id"] = id
 		before = append(before, fmt.Sprintf("Created the Workspace %s (operation ID %s).", printable(shortenHome(h.cwd, h.homeDir)), id))
 	}
-	row.Name = h.name
-	if row.Name == "" {
-		row.Name = filepath.Base(h.cwd)
-	}
 	id := operationID()
 	receipt, err := mutate(ctx, client, "/v1/session/create", stack.SessionCreateRequest{OperationID: id, WorkspaceID: row.WorkspaceID, Name: row.Name}, "session create --workspace "+row.WorkspaceID+" with the same name", id)
 	if err != nil {
@@ -199,7 +226,92 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 	row.SessionID = receipt.ResourceID
 	fields["session_operation_id"] = id
 	before = append(before, fmt.Sprintf("Created the Session %q (operation ID %s).", printable(row.Name), id))
-	return h.openWith(ctx, client, row, fields, before, nil)
+	return h.handOff(ctx, client, row, fields, before)
+}
+
+// handOff opens the Session. With --orchestrator it first registers that Agent
+// with a credential file in a-stack-agents next to the state directory, appoints
+// it and prints a brief to paste into the coding agent. The brief names only
+// paths and IDs, never the credential.
+func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow, fields map[string]any, before []string) error {
+	if h.orchestrator == "" {
+		return h.openWith(ctx, client, row, fields, before, nil)
+	}
+	ref := stack.Context{WorkspaceID: row.WorkspaceID, SessionID: row.SessionID}
+	session, err := inspectSession(ctx, client, ref)
+	if err != nil {
+		return err
+	}
+	if session.OrchestratorID != nil {
+		return invalid("this Session already has an Orchestrator; to replace it, see a-stack help session appoint")
+	}
+	credential := h.orchestratorFile()
+	if err := os.MkdirAll(filepath.Dir(credential), 0o700); err != nil {
+		return invalid("cannot make the folder " + filepath.Dir(credential))
+	}
+	registerID := operationID()
+	data, err := lifecycleRequest(ctx, client, "agent register", lifecycleFlags{workspace: row.WorkspaceID, session: row.SessionID, operationID: registerID, name: h.orchestrator, newCredential: credential})
+	if err != nil {
+		return err
+	}
+	var receipt struct {
+		Data stack.Receipt `json:"data"`
+	}
+	if json.Unmarshal(data, &receipt) != nil {
+		return invalid("unexpected agent register response")
+	}
+	appointID := operationID()
+	if _, err := lifecycleRequest(ctx, client, "session appoint", lifecycleFlags{workspace: row.WorkspaceID, session: row.SessionID, operationID: appointID, revision: session.Revision, agent: receipt.Data.ResourceID}); err != nil {
+		return err
+	}
+	brief := strings.Join([]string{
+		"You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.",
+		"Credential file: " + credential,
+		"Workspace: " + row.WorkspaceID + "   Session: " + row.SessionID,
+		"Your name: " + h.orchestrator + "   Your private folder: make one with mktemp -d",
+		"Work in: " + h.cwd,
+		"Goal: <describe the goal>. Plan the Tasks, register one Agent per Task and brief each one.",
+	}, "\n")
+	fields["orchestrator_id"], fields["orchestrator_credential_file"], fields["brief"] = receipt.Data.ResourceID, credential, brief
+	fields["register_operation_id"], fields["appoint_operation_id"] = registerID, appointID
+	before = append(before, fmt.Sprintf("Registered %s and appointed it as the Orchestrator (operation IDs %s, %s).", printable(h.orchestrator), registerID, appointID))
+	after := []string{"Start your coding agent in this folder and give it this brief, with your goal:", "", brief, ""}
+	if !skillInstalled(h.homeDir) {
+		after = append(after, "Install the agent skill first, if your agent does not have it: a-stack skill install")
+	}
+	return h.openWith(ctx, client, row, fields, before, after)
+}
+
+// orchestratorName is the service's Agent name rule.
+var orchestratorName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
+
+// orchestratorFile is the new Orchestrator's credential file, in a private
+// a-stack-agents folder next to the state directory.
+func (h *home) orchestratorFile() string {
+	return filepath.Join(filepath.Dir(h.state), "a-stack-agents", h.orchestrator+".json")
+}
+
+func inspectSession(ctx context.Context, client *stack.Client, ref stack.Context) (stack.Session, error) {
+	data, err := client.Do(ctx, "POST", "/v1/session/inspect", ref)
+	if err != nil {
+		return stack.Session{}, err
+	}
+	var answer struct {
+		Data stack.Session `json:"data"`
+	}
+	if json.Unmarshal(data, &answer) != nil {
+		return stack.Session{}, invalid("unexpected session inspect response")
+	}
+	return answer.Data, nil
+}
+
+func skillInstalled(homeDir string) bool {
+	for _, dir := range []string{".claude", ".agents"} {
+		if _, err := os.Stat(filepath.Join(homeDir, dir, "skills", "a-stack", "SKILL.md")); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 const noSessionHint = "No Session yet. To create a Workspace for this folder and a Session, run: a-stack new"

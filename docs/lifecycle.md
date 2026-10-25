@@ -2,7 +2,7 @@
 
 This page describes how the Operator sets up a team and how Agents get their credentials. It also covers runtime bindings, and Session close and reopen.
 
-The service gives each Workspace, Session and Agent a stable opaque ID. The CLI always sends these IDs explicitly. The current directory never selects a Workspace or a Session, and lifecycle commands never look up an Agent by its name. There is one exception: the three Operator commands `a-stack`, `a-stack -r` and `a-stack new` use the current folder as a default or a filter, and their output shows the folder they used. No other command and no Agent command uses the current directory. See [Open the last Session](browser.md#open-the-last-session).
+The service gives each Workspace, Session and Agent a stable opaque ID. The CLI always sends these IDs explicitly, from flags or from an Agent credential file that names them (see [Credential context](#credential-context)). The current directory never selects a Workspace or a Session, and lifecycle commands never look up an Agent by its name. There is one exception: the three Operator commands `a-stack`, `a-stack -r` and `a-stack new` use the current folder as a default or a filter, and their output shows the folder they used. No other command and no Agent command uses the current directory. See [Open the last Session](browser.md#open-the-last-session).
 
 ## Workspaces, Sessions and Agents
 
@@ -23,17 +23,17 @@ IDs and private runtime bindings are separate from display names and from Herdr 
 Start the service as the [README](../README.md) shows. These examples use the default state directory. If you use a different one, give the same `--state-dir ABSOLUTE_DIR` to every command.
 
 ```sh
-./a-stack workspace create --path /absolute/project --operation-id project-create-1 --json
+a-stack workspace create --path /absolute/project --operation-id project-create-1 --json
 # Set workspace_id to data.resource_id from this receipt.
-./a-stack session create --workspace "$workspace_id" --name "Build" \
+a-stack session create --workspace "$workspace_id" --name "Build" \
   --operation-id session-create-1 --json
 # Set session_id to data.resource_id from this receipt.
 credential_dir="$(mktemp -d)"
-./a-stack agent register --workspace "$workspace_id" --session "$session_id" \
+a-stack agent register --workspace "$workspace_id" --session "$session_id" \
   --name 01-orchestrator --new-credential-file "$credential_dir/orchestrator.json" \
   --operation-id orchestrator-register-1 --json
 # Set orchestrator_id to data.resource_id from this receipt.
-./a-stack session appoint --workspace "$workspace_id" --session "$session_id" \
+a-stack session appoint --workspace "$workspace_id" --session "$session_id" \
   --agent "$orchestrator_id" --expected-revision 1 --operation-id appoint-initial-1 --json
 ```
 
@@ -44,7 +44,7 @@ When the Operator replaces the Orchestrator, the old Agent loses the Orchestrato
 The Operator or the current Orchestrator can register more Agents in an open Session. This example uses only the Orchestrator's credential:
 
 ```sh
-./a-stack agent register --as agent --credential-file "$credential_dir/orchestrator.json" \
+a-stack agent register --as agent --credential-file "$credential_dir/orchestrator.json" \
   --workspace "$workspace_id" --session "$session_id" --name 02-worker \
   --new-credential-file "$credential_dir/worker.json" --operation-id worker-register-1 --json
 ```
@@ -53,14 +53,12 @@ Give the new Agent its private `worker.json`, the Workspace, Session and Agent I
 
 These scopes prevent accidental use of the wrong API permissions. They do not protect files from a hostile process: a trusted local process can still read other files of the same operating system account.
 
-An Agent gives its credential and its context in every call:
+An Agent gives its credential in every call. The credential file names its Workspace and Session, so the Agent can leave out `--workspace` and `--session`:
 
 ```sh
-./a-stack session inspect --as agent --credential-file "$credential_dir/worker.json" \
-  --workspace "$workspace_id" --session "$session_id" --json
-./a-stack agent attach --as agent --credential-file "$credential_dir/worker.json" \
-  --workspace "$workspace_id" --session "$session_id" --agent "$worker_id" \
-  --runtime-id explicit-runtime-instance-id --expected-revision 1 \
+a-stack session inspect --as agent --credential-file "$credential_dir/worker.json" --json
+a-stack agent attach --as agent --credential-file "$credential_dir/worker.json" \
+  --agent "$worker_id" --runtime-id explicit-runtime-instance-id --expected-revision 1 \
   --operation-id worker-attach-1 --json
 ```
 
@@ -81,12 +79,20 @@ If you lose a response, run the same command again, with the same operation ID, 
 
 If an Agent loses its token, the Operator recovers access with `agent rebind`. The rebind needs a new operation ID, the current Agent revision and a different new credential file name. The rebind replaces the stored hash, makes all old tokens of that Agent invalid, and changes or clears the runtime binding. The Agent keeps its ID and its history. Keep all credential files that you gave out separately from the database backups, because the hashes cannot rebuild them.
 
+### Credential context
+
+`agent register` and `agent rebind` also write three fields into the new credential file: `workspace_id`, `session_id` and `agent_name`. They are not secret, and they give no access: the service still finds the Agent from the token alone. A rebind looks up the Agent's name with `agent list` before it writes the file.
+
+When a command runs with an Agent credential file that has these fields, the CLI takes `--workspace` and `--session` from the file if they are not given. A flag that is given must name the same ID, or the command fails with `invalid_input` before it sends anything. The context still comes only from a file that the caller names, never from the current folder or from environment variables, which child processes and subagents would inherit.
+
+Credential files from before v0.1.5 have no context. They keep working with explicit `--workspace` and `--session`.
+
 ## Runtime bindings
 
 A runtime binding links an Agent registration to the running process that acts as that Agent. Only the Agent's own credential can attach a binding to its new, unbound registration. After that, only the Operator can change the binding, with `agent rebind`:
 
 ```sh
-./a-stack agent rebind --workspace "$workspace_id" --session "$session_id" \
+a-stack agent rebind --workspace "$workspace_id" --session "$session_id" \
   --agent "$worker_id" --expected-revision 2 --runtime-id replacement-instance \
   --new-credential-file "$credential_dir/worker-replacement.json" \
   --operation-id worker-rebind-1 --json

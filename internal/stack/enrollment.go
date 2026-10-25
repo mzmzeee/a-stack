@@ -17,9 +17,24 @@ type Enrollment struct {
 	DatabaseID  string `json:"database_id"`
 }
 
+// PrepareAgentCredential writes the new credential file before the request is
+// sent. The file also names the Workspace, the Session and, for a register, the
+// Agent, so that the CLI can fill in --workspace and --session from it.
 func PrepareAgentCredential(path, databaseID, action, operationID string, request any) (string, error) {
-	if !filepath.IsAbs(path) || !validToken(databaseID) || !validOperationID(operationID) {
-		return "", failure("invalid_input", "new private credential filename and operation ID required")
+	return prepareAgentCredential(path, databaseID, action, operationID, request, "")
+}
+
+// PrepareRebindCredential is PrepareAgentCredential for agent rebind, whose
+// request names the Agent only by ID; name is the Agent's name for the file.
+func PrepareRebindCredential(path, databaseID string, r AgentBindingRequest, name string) (string, error) {
+	return prepareAgentCredential(path, databaseID, "agent rebind", r.OperationID, r, name)
+}
+func prepareAgentCredential(path, databaseID, action, operationID string, request any, name string) (string, error) {
+	if !validOperationID(operationID) {
+		return "", failure("invalid_input", OperationIDRule)
+	}
+	if !filepath.IsAbs(path) || !validToken(databaseID) {
+		return "", failure("invalid_input", "new credential file must be an absolute file name")
 	}
 	parent, err := os.Lstat(filepath.Dir(path))
 	if err != nil {
@@ -41,7 +56,18 @@ func PrepareAgentCredential(path, databaseID, action, operationID string, reques
 		if _, err = statePath(path); err != nil {
 			return "", err
 		}
-		credential := Credential{Kind: AgentCapability, Token: opaqueID(), Enrollment: &enrollment}
+		credential := Credential{Kind: AgentCapability, Token: opaqueID(), AgentName: name, Enrollment: &enrollment}
+		switch r := request.(type) {
+		case AgentRegisterRequest:
+			credential.WorkspaceID, credential.SessionID, credential.AgentName = r.WorkspaceID, r.SessionID, r.Name
+		case AgentBindingRequest:
+			credential.WorkspaceID, credential.SessionID = r.WorkspaceID, r.SessionID
+		}
+		// The service rejects a bad ID or name with its own message; the file
+		// then keeps no context rather than one that ReadCredential refuses.
+		if !validContext(credential) {
+			credential.WorkspaceID, credential.SessionID, credential.AgentName = "", "", ""
+		}
 		if err = writePrivate(path, credential, false); err != nil {
 			var e *Error
 			if !errors.As(err, &e) || e.Code != "conflict" {
