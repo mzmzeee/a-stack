@@ -135,21 +135,11 @@ func TestCLIEnrollmentAppointmentRebindAndLifecycle(t *testing.T) {
 	if opened.Revision != 4 {
 		t.Fatal("reopen revision")
 	}
-	if process.Process.Signal(syscall.SIGTERM) != nil {
-		t.Fatal("stop")
-	}
-	if process.Wait() != nil {
-		t.Fatal("stop failure")
-	}
+	stopServe(t, process, syscall.SIGTERM)
 	restarted := launch(t, dir)
 	if receiptResult(t, rebind) != rebound {
 		t.Fatal("restarted rebind receipt changed")
 	}
 	commandResult(t, workerArgs(newFile, "session", "inspect"), 0)
-	if restarted.Process.Signal(syscall.SIGTERM) != nil {
-		t.Fatal("stop restarted")
-	}
-	if restarted.Wait() != nil {
-		t.Fatal("restart stop failure")
-	}
+	stopServe(t, restarted, syscall.SIGTERM)
 }

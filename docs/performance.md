@@ -34,6 +34,21 @@ Single operations, median of 3 rounds:
 | One full refresh of the browser view | 225 ms | 85 ms |
 | Worst-case `dependency add` (cycle check) | 70 ms | 0.76 ms |
 
+## Storage size
+
+Schema 8 stores Task texts and Task mail in rowid tables, and new Tasks no longer store an empty description or the fixed "Not started" reason. Measured with the database of the stress test after its runs, and with a smaller Session that has realistic long texts:
+
+| Database | Backup before | Backup after |
+| --- | ---: | ---: |
+| 2,000 Tasks, 50,000 short mail messages | 91.0 MB | 80.0 MB (12% smaller) |
+| 500 Tasks, two 1–3 KB report versions each, 10 mail messages each (2 of them 1–3 KB) | 18.5 MB | 14.6 MB (21% smaller) |
+
+- Task texts take 9.0 MB instead of 16.2 MB, and the mail indexes 5.3 MB instead of 9.4 MB, in the first database.
+- A new Task with no description takes about 1,060 bytes instead of 1,820; with a short description, about 1,460 instead of 1,840.
+- The migration to schema 8 added 2 to 3 seconds to the start of the first database. It leaves the freed pages in the file (113.1 MB with 32.0 MB free); a backup and restore gives the compact file.
+- A `--quick` run of the stress test in turns with the old code showed no slowdown: 193–200 instead of 133–155 commands per second with 1 Agent, and a typical `mail check` of 4.2 ms instead of 6.5–6.9 ms. Quick runs are noisy, so these show only that nothing got slower.
+- After a burst of writes, SQLite truncates the WAL file back to at most 8 MiB.
+
 ## What changed
 
 - SQLite keeps prepared statements in a cache instead of preparing each query again.

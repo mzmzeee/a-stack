@@ -105,7 +105,9 @@ The body, the sequence number, the resolved mentions and the compact receipt com
 Schema version 4 adds two tables:
 
 - `mail_messages` has one row per message, with a unique `(task_id, sequence)`.
-- `mail_mentions` has one row per message and recipient, with a foreign key to the message and its Task. Each row is also a compact durable outbox entry for a notice. It contains no body.
+- `mail_mentions` has one row per message and recipient, with a foreign key to the message. A trigger checks that the row names the message's Task. Each row is also a compact durable outbox entry for a notice. It contains no body.
+
+Schema version 8 rebuilds `mail_messages` as a rowid table, so a long body is stored in the table page instead of an overflow page of its own. Before, a foreign key to the message ID and the Task ID needed a second unique index on `(id, task_id)`; the trigger does that check with the primary key.
 
 A mention row has a notice state: `pending`, `submitting`, `submitted`, `uncertain` or `suppressed`, or `self`, which makes no notice. `state_at` records the time of the last state change. The pending index starts with the state, the recipient and the message. The membership index starts with the Task, the recipient, the state and the message.
 

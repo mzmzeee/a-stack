@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/tar"
+	"archive/zip"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -59,13 +60,61 @@ var releaseTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$
 
 // Tests replace these.
 var (
-	executable    = os.Executable
-	serviceActive = func() bool {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		return exec.CommandContext(ctx, "systemctl", "--user", "is-active", "--quiet", "a-stack").Run() == nil
+	executable = os.Executable
+	// serviceRuns reports whether the service manager runs exe as the a-stack
+	// service, so that an update of exe needs a restart of the service.
+	// Another a-stack service, such as one of another home folder or one
+	// that runs another binary, is none of its business.
+	serviceRuns = func(exe string) bool {
+		binary, running := serviceProgram()
+		if !running {
+			return false
+		}
+		a, err := os.Stat(binary)
+		b, errB := os.Stat(exe)
+		return err == nil && errB == nil && os.SameFile(a, b)
 	}
 )
+
+// updateSystems are the systems with release archives.
+var updateSystems = []string{"linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64", "windows/amd64", "windows/arm64"}
+
+// releaseArchive names the release archive of a system: a .zip on Windows,
+// else a .tar.gz. The extension belongs to the archive format that
+// extractBinary reads.
+func releaseArchive(goos, goarch string) string {
+	if goos == "windows" {
+		return "a-stack_" + goos + "_" + goarch + ".zip"
+	}
+	return "a-stack_" + goos + "_" + goarch + ".tar.gz"
+}
+
+// installHint is how to install a-stack in a folder of your own.
+func installHint(goos string) string {
+	if goos == "windows" {
+		return "irm " + defaultReleases + "/latest/download/install.ps1 | iex"
+	}
+	return "curl -fsSL " + installScript + " | A_STACK_INSTALL_DIR=~/.local/bin sh"
+}
+
+// packageUpdate is the command that updates an a-stack that Scoop or
+// WinGet installed on Windows, or "" for any other path.
+func packageUpdate(exe string) string {
+	p := strings.ToLower(strings.ReplaceAll(exe, "/", `\`))
+	for _, root := range []string{os.Getenv("SCOOP"), os.Getenv("SCOOP_GLOBAL")} {
+		root = strings.TrimRight(strings.ToLower(strings.ReplaceAll(root, "/", `\`)), `\`)
+		if root != "" && strings.HasPrefix(p, root+`\apps\`) {
+			return "scoop update a-stack"
+		}
+	}
+	switch {
+	case strings.Contains(p, `\scoop\apps\`):
+		return "scoop update a-stack"
+	case strings.Contains(p, `\winget\packages\`):
+		return "winget upgrade a-stack"
+	}
+	return ""
+}
 
 func updateFailed(message string) error {
 	return &stack.Error{Code: "integration_unavailable", Message: message, Retryable: true}
@@ -185,7 +234,7 @@ func (r releases) download(tag string) (binary []byte, signed bool, err error) {
 	if sig != nil && !ed25519.Verify(releaseKey, sums, sig) {
 		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "the signature of SHA256SUMS for " + tag + " is not valid; nothing changed"}
 	}
-	name := "a-stack_linux_" + runtime.GOARCH + ".tar.gz"
+	name := releaseArchive(runtime.GOOS, runtime.GOARCH)
 	archive, err := r.get(dir+name, maxArchive, false)
 	if err != nil {
 		return nil, false, err
@@ -194,17 +243,32 @@ func (r releases) download(tag string) (binary []byte, signed bool, err error) {
 	if !slices.Contains(strings.Split(string(sums), "\n"), hex.EncodeToString(sum[:])+"  "+name) {
 		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "checksum mismatch for " + name + "; nothing changed"}
 	}
-	binary, err = extractBinary(archive)
+	binary, err = extractBinary(archive, runtime.GOOS)
 	return binary, sig != nil, err
 }
 
-// extractBinary returns the a-stack file of a release archive. It refuses an
-// archive with an absolute path or a path that leaves the archive.
-func extractBinary(archive []byte) ([]byte, error) {
-	bad := &stack.Error{Code: "integration_unavailable", Message: "the release archive is not valid; nothing changed"}
+var (
+	badArchive    = &stack.Error{Code: "integration_unavailable", Message: "the release archive is not valid; nothing changed"}
+	unsafeArchive = &stack.Error{Code: "integration_unavailable", Message: "the release archive has an unsafe path; nothing changed"}
+)
+
+// unsafeEntry reports whether an archive entry name is absolute or leaves
+// the archive. With windows, a \ or a drive letter is unsafe too.
+func unsafeEntry(name string, windows bool) bool {
+	clean := path.Clean(name)
+	return path.IsAbs(name) || clean == ".." || strings.HasPrefix(clean, "../") || windows && strings.ContainsAny(name, `\:`)
+}
+
+// extractBinary returns the a-stack file of the release archive of goos:
+// a-stack.exe in a .zip on Windows, else a-stack in a .tar.gz. It refuses an
+// archive with an unsafe path.
+func extractBinary(archive []byte, goos string) ([]byte, error) {
+	if goos == "windows" {
+		return extractZip(archive)
+	}
 	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
-		return nil, bad
+		return nil, badArchive
 	}
 	tr := tar.NewReader(io.LimitReader(gz, 4*maxArchive))
 	var binary []byte
@@ -214,24 +278,54 @@ func extractBinary(archive []byte) ([]byte, error) {
 			break
 		}
 		if err != nil {
-			return nil, bad
+			return nil, badArchive
 		}
-		name := path.Clean(h.Name)
-		if path.IsAbs(h.Name) || name == ".." || strings.HasPrefix(name, "../") {
-			return nil, &stack.Error{Code: "integration_unavailable", Message: "the release archive has an unsafe path; nothing changed"}
+		if unsafeEntry(h.Name, false) {
+			return nil, unsafeArchive
 		}
-		if name != "a-stack" {
+		if path.Clean(h.Name) != "a-stack" {
 			continue
 		}
 		if binary != nil || h.Typeflag != tar.TypeReg || h.Size > maxArchive {
-			return nil, bad
+			return nil, badArchive
 		}
 		if binary, err = io.ReadAll(io.LimitReader(tr, maxArchive)); err != nil {
-			return nil, bad
+			return nil, badArchive
 		}
 	}
 	if binary == nil {
-		return nil, bad
+		return nil, badArchive
+	}
+	return binary, nil
+}
+
+func extractZip(archive []byte) ([]byte, error) {
+	zr, err := zip.NewReader(bytes.NewReader(archive), int64(len(archive)))
+	if err != nil {
+		return nil, badArchive
+	}
+	var binary []byte
+	for _, f := range zr.File {
+		if unsafeEntry(f.Name, true) {
+			return nil, unsafeArchive
+		}
+		if path.Clean(f.Name) != "a-stack.exe" {
+			continue
+		}
+		if binary != nil || !f.Mode().IsRegular() || f.UncompressedSize64 > maxArchive {
+			return nil, badArchive
+		}
+		rc, err := f.Open()
+		if err != nil {
+			return nil, badArchive
+		}
+		binary, err = io.ReadAll(io.LimitReader(rc, maxArchive))
+		if closeErr := rc.Close(); err != nil || closeErr != nil {
+			return nil, badArchive
+		}
+	}
+	if binary == nil {
+		return nil, badArchive
 	}
 	return binary, nil
 }
@@ -267,11 +361,13 @@ func newer(a, b string) bool {
 func runVersion(binary string) (string, error) {
 	var out []byte
 	var err error
-	for range 5 { // a just-written binary can be busy while another process forks
+	// A just-written binary can be busy while another process forks, or on
+	// Windows while an antivirus scans it (a sharing violation, error 32).
+	for range 5 {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		out, err = exec.CommandContext(ctx, binary, "version").Output()
 		cancel()
-		if !errors.Is(err, syscall.ETXTBSY) {
+		if !errors.Is(err, syscall.ETXTBSY) && !(runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(32))) {
 			break
 		}
 		time.Sleep(100 * time.Millisecond)
@@ -287,8 +383,8 @@ func runVersion(binary string) (string, error) {
 
 func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) error {
 	target := release.value
-	if runtime.GOOS != "linux" || runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
-		return invalid("a-stack update supports Linux on amd64 and arm64 only")
+	if !slices.Contains(updateSystems, runtime.GOOS+"/"+runtime.GOARCH) {
+		return invalid("a-stack update supports Linux, macOS and Windows on amd64 and arm64 only")
 	}
 	if release.set && !releaseTag.MatchString(target) {
 		return invalid("--version needs a release such as v0.1.3")
@@ -324,11 +420,19 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	}
 
 	exe, err := executable()
+	if err == nil && runtime.GOOS == "windows" {
+		if manager := packageUpdate(exe); manager != "" {
+			return &stack.Error{Code: "forbidden", Message: "a package manager installed " + exe + "; update it with: " + manager}
+		}
+	}
 	if err == nil {
-		exe, err = filepath.EvalSymlinks(exe)
+		exe, err = stack.ResolvePath(exe)
 	}
 	if err != nil {
 		return updateFailed("cannot find the running a-stack binary")
+	}
+	if manager := packageUpdate(exe); manager != "" && runtime.GOOS == "windows" {
+		return &stack.Error{Code: "forbidden", Message: "a package manager installed " + exe + "; update it with: " + manager}
 	}
 	data := map[string]any{"previous": current, "version": current, "path": exe, "updated": false}
 	if target == "" {
@@ -344,9 +448,10 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	// Check the folder before the download, and write next to the binary
 	// so that the rename replaces it in one step.
 	dir := filepath.Dir(exe)
-	tmp, err := os.CreateTemp(dir, ".a-stack-update-")
+	// Windows runs only a file named .exe.
+	tmp, err := os.CreateTemp(dir, ".a-stack-update-*"+filepath.Ext(exe))
 	if err != nil {
-		return &stack.Error{Code: "forbidden", Message: "cannot write to " + dir + "; install a-stack in a folder you own instead: curl -fsSL " + installScript + " | A_STACK_INSTALL_DIR=~/.local/bin sh"}
+		return &stack.Error{Code: "forbidden", Message: "cannot write to " + dir + "; install a-stack in a folder you own instead: " + installHint(runtime.GOOS)}
 	}
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
@@ -374,8 +479,8 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	if got, err := runVersion(tmp.Name()); err != nil || got != target {
 		return updateFailed("the downloaded a-stack " + target + " does not run on this system; nothing changed")
 	}
-	if err = os.Rename(tmp.Name(), exe); err != nil {
-		return updateFailed("cannot replace " + exe + "; nothing changed")
+	if err = replaceBinary(tmp.Name(), exe, runtime.GOOS == "windows"); err != nil {
+		return updateFailed("cannot replace " + exe + ": " + err.Error())
 	}
 	if err = syncDir(dir); err != nil {
 		return updateFailed("replaced " + exe + " with a-stack " + target + ", but cannot sync " + dir + " to disk")
@@ -403,15 +508,60 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	}
 	data["skills"] = refreshed
 	hint := "If a-stack serve is running, stop it with Ctrl-C and run a-stack serve again."
-	if serviceActive() {
-		hint = "Restart the service: systemctl --user restart a-stack"
+	if serviceRuns(exe) {
+		hint = "Restart the service: " + stack.ServiceCommand("restart")
 	}
 	data["restart_hint"] = hint
 	return write(data, append(lines, hint, "Then run a-stack to open the view.")...)
 }
 
-// syncDir makes a rename in dir durable.
+// replaceBinary renames the new binary tmp over exe. Windows cannot replace
+// a running .exe, but it can rename it: there exe moves aside to exe.old
+// first, and back when tmp cannot take its place. The next a-stack start
+// removes it (removeOldBinaries). An exe.old that still runs, from an
+// earlier update, cannot be replaced; then the old binary gets a name of
+// its own.
+func replaceBinary(tmp, exe string, windows bool) error {
+	if !windows {
+		return os.Rename(tmp, exe)
+	}
+	old := exe + ".old"
+	if err := os.Remove(old); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		old = exe + "." + strconv.FormatInt(time.Now().UnixNano(), 36) + ".old"
+	}
+	if err := stack.Rename(exe, old); err != nil {
+		return err
+	}
+	if err := stack.Rename(tmp, exe); err != nil {
+		if restoreErr := stack.Rename(old, exe); restoreErr != nil {
+			return errors.Join(err, errors.New("rollback failed; restore "+old+" to "+exe), restoreErr)
+		}
+		return err
+	}
+	return nil
+}
+
+// removeOldBinaries removes, on Windows, the old binaries that update moved
+// aside next to the running one. One that still runs stays until next time.
+func removeOldBinaries() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	entries, _ := os.ReadDir(filepath.Dir(exe))
+	for _, e := range entries {
+		if name := e.Name(); strings.HasPrefix(name, filepath.Base(exe)+".") && strings.HasSuffix(name, ".old") {
+			_ = os.Remove(filepath.Join(filepath.Dir(exe), name))
+		}
+	}
+}
+
+// syncDir makes a rename in dir durable. Windows cannot flush a folder,
+// and NTFS journals its renames.
 func syncDir(dir string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
 	f, err := os.Open(dir)
 	if err != nil {
 		return err

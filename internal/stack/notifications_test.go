@@ -74,6 +74,17 @@ func TestHerdrExecutableHelper(t *testing.T) {
 		}
 	}
 	agent := map[string]any{"name": config.Binding.HerdrAlias, "pane_id": config.Binding.PaneID, "terminal_id": config.Binding.TerminalID, "tab_id": "w1:t2", "agent": "codex", "agent_status": config.Status, "agent_session": map[string]any{"agent": "codex", "kind": "id", "source": "herdr:codex", "value": config.Binding.NativeSessionID}, "cwd": "must-not-be-retained", "terminal_title": "must-not-be-retained"}
+	// Herdr's Pi integration reports the session file's path, not an ID.
+	switch config.Mode {
+	case "pi", "pi_id", "pi_relative":
+		session := map[string]any{"agent": "pi", "kind": "path", "source": "herdr:pi", "value": config.Binding.NativeSessionID}
+		if config.Mode == "pi_id" {
+			session["kind"] = "id"
+		} else if config.Mode == "pi_relative" {
+			session["value"] = "sessions/relative.jsonl"
+		}
+		agent["agent"], agent["agent_session"] = "pi", session
+	}
 	if len(args) == 3 && args[0] == "agent" && args[1] == "get" {
 		switch config.Mode {
 		case "mismatch":
@@ -173,6 +184,7 @@ type noticeFixture struct {
 
 func noticeTestFixture(t *testing.T) *noticeFixture {
 	t.Helper()
+	unixOnly(t, "the fake Herdr is a shell script, and a-stack refuses Herdr on Windows")
 	f := mailFixture(t)
 	dir := t.TempDir()
 	executable, err := os.Executable()

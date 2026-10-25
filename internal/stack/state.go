@@ -1,5 +1,6 @@
-// Package stack implements the local service foundation. Linux is the initial
-// supported platform; its advisory flock is held until the database closes.
+// Package stack implements the local service foundation. It runs on Linux,
+// macOS and Windows; its state directory lock is held until the database
+// closes.
 package stack
 
 import (
@@ -11,11 +12,60 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
-	"syscall"
+	"time"
 )
 
 const maxPrivateFile = 4096
+
+// OpenServiceLog validates the directory and the opened file before truncating
+// a large log. The Windows console uses this before the service starts.
+func OpenServiceLog(dir string) (*os.File, error) {
+	if _, err := statePath(dir); err != nil {
+		return nil, err
+	}
+	if err := MkdirPrivate(dir); err != nil {
+		return nil, err
+	}
+	if err := checkPrivateDirectory(dir); err != nil {
+		return nil, err
+	}
+	f, err := openPrivate(filepath.Join(dir, "service.log"), true)
+	if err != nil {
+		return nil, err
+	}
+	info, err := f.Stat()
+	if err == nil {
+		err = checkPrivate(info, false)
+	}
+	if err == nil && info.Size() > 1<<20 {
+		err = f.Truncate(0)
+	}
+	closeErr := f.Close()
+	if err != nil {
+		return nil, err
+	}
+	if closeErr != nil {
+		return nil, closeErr
+	}
+	// Reopen with append-only writes so concurrent startup attempts cannot
+	// overwrite each other's output. Both opens reject links and unsafe ACLs.
+	f, err = openPrivateAppend(filepath.Join(dir, "service.log"))
+	if err != nil {
+		return nil, err
+	}
+	info, err = f.Stat()
+	if err == nil {
+		err = checkPrivate(info, false)
+	}
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	return f, nil
+}
 
 func opaqueID() string {
 	var b [32]byte
@@ -31,22 +81,25 @@ func DefaultStateDir() (string, error) {
 		}
 		return filepath.Join(root, "a-stack"), nil
 	}
-	home, err := os.UserHomeDir()
+	root, err := defaultStateRoot()
 	if err != nil {
-		return "", failure("invalid_input", "cannot find home directory")
+		return "", err
 	}
-	return filepath.Join(home, ".local", "state", "a-stack"), nil
+	return filepath.Join(root, "a-stack"), nil
 }
 func statePath(path string) (string, error) {
-	if !filepath.IsAbs(path) {
-		return "", failure("invalid_input", "state directory must be absolute")
+	if !filepath.IsAbs(path) || !localStatePath(path) {
+		return "", failure("invalid_input", "state directory must be an absolute local filesystem path")
 	}
 	path = filepath.Clean(path)
 	// Resolve existing ancestors too: a symlink must not bypass the checkout guard.
 	probe := path
 	for {
-		resolved, err := filepath.EvalSymlinks(probe)
+		resolved, err := ResolvePath(probe)
 		if err == nil {
+			if !localStatePath(resolved) {
+				return "", failure("invalid_input", "state directory must be on a local filesystem")
+			}
 			for p := resolved; ; p = filepath.Dir(p) {
 				if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
 					return "", failure("invalid_input", "application state and generated credentials must be outside project checkouts")
@@ -58,7 +111,7 @@ func statePath(path string) (string, error) {
 			break
 		}
 		if !os.IsNotExist(err) {
-			return "", storageError()
+			return "", storageError(err)
 		}
 		next := filepath.Dir(probe)
 		if next == probe {
@@ -68,55 +121,36 @@ func statePath(path string) (string, error) {
 	}
 	return path, nil
 }
-func checkPrivate(info os.FileInfo, directory bool) error {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || int(stat.Uid) != os.Geteuid() || info.Mode().Perm()&0077 != 0 || (directory && !info.IsDir()) || (!directory && !info.Mode().IsRegular()) {
-		return failure("invalid_input", "state and credential paths must be owned by this user with owner-only permissions and no symlinks")
-	}
-	return nil
-}
 func privateRead(path string) ([]byte, error) {
-	fd, err := syscall.Open(path, syscall.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_CLOEXEC|syscall.O_NONBLOCK, 0)
+	f, err := openPrivate(path, false)
 	if err != nil {
 		return nil, failure("invalid_input", "private file is missing or inaccessible")
 	}
-	f := os.NewFile(uintptr(fd), path)
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	if err = checkPrivate(info, false); err != nil {
 		return nil, err
 	}
 	data, err := io.ReadAll(io.LimitReader(f, maxPrivateFile+1))
 	if err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	if len(data) > maxPrivateFile {
 		return nil, failure("invalid_input", "private file is too large")
 	}
 	return data, nil
 }
-func syncDir(path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return storageError()
-	}
-	defer f.Close()
-	if f.Sync() != nil {
-		return storageError()
-	}
-	return nil
-}
 func writePrivate(path string, v any, replace bool) error {
 	b, err := json.Marshal(v)
 	if err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".a-stack-*")
 	if err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	tmp := f.Name()
 	defer os.Remove(tmp)
@@ -128,7 +162,7 @@ func writePrivate(path string, v any, replace bool) error {
 		return storageError()
 	}
 	if replace {
-		err = os.Rename(tmp, path)
+		err = Rename(tmp, path)
 	} else {
 		err = os.Link(tmp, path)
 	}
@@ -136,9 +170,21 @@ func writePrivate(path string, v any, replace bool) error {
 		return failure("conflict", "private file already exists")
 	}
 	if err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	return syncDir(filepath.Dir(path))
+}
+
+// Rename renames from to to, also over a file. On Windows that fails while
+// another process has the target open without delete sharing, as Go opens
+// files; Rename then tries again for up to a second.
+func Rename(from, to string) error {
+	err := os.Rename(from, to)
+	for i := 0; i < 20 && renameBusy(err); i++ {
+		time.Sleep(50 * time.Millisecond)
+		err = os.Rename(from, to)
+	}
+	return err
 }
 
 // ReplacePrivate replaces path with v as JSON, mode 0600: a synced temporary
@@ -155,44 +201,51 @@ func lockState(path string) (*stateLock, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = os.MkdirAll(dir, 0700); err != nil {
-		return nil, storageError()
+	if err = MkdirPrivate(dir); err != nil {
+		return nil, storageError(err)
 	}
-	info, err := os.Lstat(dir)
-	if err != nil {
-		return nil, storageError()
-	}
-	if err = checkPrivate(info, true); err != nil {
+	if err = checkPrivateDirectory(dir); err != nil {
 		return nil, err
 	}
-	fd, err := syscall.Open(filepath.Join(dir, "service.lock"), syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
+	f, err := lockFile(filepath.Join(dir, "service.lock"))
 	if err != nil {
-		return nil, storageError()
-	}
-	f := os.NewFile(uintptr(fd), "service.lock")
-	info, err = f.Stat()
-	if err == nil {
-		err = checkPrivate(info, false)
-	}
-	if err != nil {
-		f.Close()
 		return nil, err
-	}
-	if err = syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		f.Close()
-		if errors.Is(err, syscall.EWOULDBLOCK) {
-			return nil, ErrStateOwned
-		}
-		return nil, storageError()
 	}
 	return &stateLock{dir: dir, file: f}, nil
 }
 
 // ErrStateOwned means another serve holds the state directory lock. The CLI
 // gives it its own exit code so that systemd does not restart in a loop.
-var ErrStateOwned = failure("conflict", "another a-stack serve is already running for this state directory; stop it (Ctrl-C in its terminal, or systemctl --user stop a-stack) or use it")
+var ErrStateOwned = failure("conflict", "another a-stack serve is already running for this state directory; stop it (Ctrl-C in its terminal, or "+ServiceCommand("stop")+") or use it")
 
-func (l *stateLock) close() { _ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN); _ = l.file.Close() }
+// LaunchdLabel names the launchd agent that a-stack service install writes
+// on macOS.
+const LaunchdLabel = "dev.a-stack"
+
+// ServiceCommand is the shell command that does verb (start, stop or
+// restart) to the service that a-stack service install set up: the systemd
+// user unit on Linux, the launchd agent on macOS, the Task Scheduler task on
+// Windows. On Windows, the task starts a stopped serve again within a
+// minute; stop disables the task too, and restart gives instructions for both
+// cmd.exe and PowerShell. On macOS, stop sends
+// SIGTERM; serve then exits with 0, and launchd starts it again only after
+// a failure.
+func ServiceCommand(verb string) string {
+	if runtime.GOOS == "windows" {
+		name, err := WindowsTaskName()
+		if err != nil {
+			return "a-stack service status"
+		}
+		return windowsServiceCommand(verb, name)
+	}
+	if runtime.GOOS == "darwin" {
+		action := map[string]string{"start": "kickstart", "stop": "kill TERM", "restart": "kickstart -k"}[verb]
+		return "launchctl " + action + " gui/" + strconv.Itoa(os.Getuid()) + "/" + LaunchdLabel
+	}
+	return "systemctl --user " + verb + " a-stack"
+}
+
+func (l *stateLock) close() { unlockFile(l.file) }
 
 // Credential is a private credential file. An Agent credential also names its
 // Workspace, Session and Agent; these fields are not secret and give no access.
@@ -229,8 +282,8 @@ func ReadCredential(path string) (Credential, error) {
 }
 
 // An Agent never starts the service, so the hint also tells it whom to ask.
-const (
-	startHint          = "start it with a-stack serve (or systemctl --user start a-stack), or ask the Operator to start it; then run the same command again"
+var (
+	startHint          = "start it with a-stack serve (or " + ServiceCommand("start") + "), or ask the Operator to start it; then run the same command again"
 	serviceDown        = "the a-stack service is not running; " + startHint
 	serviceUnreachable = "cannot reach the a-stack service; if it stopped, " + startHint
 )
@@ -260,28 +313,36 @@ func ReadDiscovery(dir string) (Discovery, error) {
 }
 func ensureDatabaseFile(dir string) (string, error) {
 	path := filepath.Join(dir, "state.db")
-	fd, err := syscall.Open(path, syscall.O_CREAT|syscall.O_RDWR|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
+	f, err := openPrivate(path, true)
 	if err != nil {
-		return "", storageError()
+		return "", storageError(err)
 	}
-	f := os.NewFile(uintptr(fd), path)
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
-		return "", storageError()
+		return "", storageError(err)
 	}
 	if err = checkPrivate(info, false); err != nil {
 		return "", err
 	}
 	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
-		info, err = os.Lstat(path + suffix)
+		_, err = os.Lstat(path + suffix)
 		if os.IsNotExist(err) {
 			continue
 		}
 		if err != nil {
-			return "", storageError()
+			return "", storageError(err)
 		}
-		if err = checkPrivate(info, false); err != nil {
+		sidecar, openErr := openPrivate(path+suffix, false)
+		if openErr != nil {
+			return "", storageError(openErr)
+		}
+		info, err = sidecar.Stat()
+		if err == nil {
+			err = checkPrivate(info, false)
+		}
+		sidecar.Close()
+		if err != nil {
 			return "", err
 		}
 	}

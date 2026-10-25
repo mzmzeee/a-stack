@@ -1,15 +1,43 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
+func TestCLIHerdrRefusedOnWindows(t *testing.T) {
+	old := herdrSupported
+	herdrSupported = false
+	t.Cleanup(func() { herdrSupported = old })
+	dir := filepath.Join(t.TempDir(), "state")
+	for _, args := range [][]string{
+		{"herdr", "focus"},
+		{"serve", "--herdr-executable", "herdr"},
+	} {
+		var stdout, stderr bytes.Buffer
+		code := run(append(args, "--state-dir", dir), &stdout, &stderr)
+		var failure struct {
+			Error stack.Error `json:"error"`
+		}
+		if code != 2 || json.Unmarshal(stderr.Bytes(), &failure) != nil || !strings.Contains(failure.Error.Message, "not supported on Windows") {
+			t.Fatalf("%v: exit %d, %s", args, code, stderr.String())
+		}
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("a refused command made the state directory")
+	}
+}
+
 func TestCLIHerdrBindAndFocusRefusals(t *testing.T) {
+	if !herdrSupported {
+		t.Skip("Herdr is not supported here")
+	}
 	// Never reach a real Herdr: no pane variables and a herdr that is absent.
 	for _, name := range []string{"HERDR_ENV", "HERDR_PANE_ID", "HERDR_SOCKET_PATH"} {
 		t.Setenv(name, "")

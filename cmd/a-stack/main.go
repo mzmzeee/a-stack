@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -21,6 +22,9 @@ import (
 var version string
 
 func main() {
+	if runtime.GOOS == "windows" {
+		removeOldBinaries()
+	}
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
@@ -78,7 +82,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	var state, credential, kind, listen, destination, herdrExecutable, orchestrator string
 	var machine, help, noBrowser, resume, project, refresh, check, all bool
 	var release versionFlag
-	fs.StringVar(&state, "state-dir", "", "State directory (default ~/.local/state/a-stack)")
+	fs.StringVar(&state, "state-dir", "", "State directory (default "+stateDirDefault+")")
 	fs.StringVar(&credential, "credential-file", "", "Credential file (default: operator.json)")
 	fs.StringVar(&kind, "as", "", "Credential kind: operator, agent or browser")
 	fs.StringVar(&listen, "listen", "", "Loopback address (default: the last port, else a free one)")
@@ -181,6 +185,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if err := validateCommandFlags(cmd, seen); err != nil {
 		return err
 	}
+	if !herdrSupported && (isHerdrCommand(cmd) || seen["herdr-executable"]) {
+		return invalid("Herdr is not supported on Windows; a-stack works without it, and Task mail reaches Agents through mail check")
+	}
 	if err := checkIDs(seen, lifecycle, tasks); err != nil {
 		return err
 	}
@@ -218,7 +225,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 	if isHookCommand(cmd) {
-		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}}
+		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, noStopGuard: hooks.noStopGuard, noMailNudge: hooks.noMailNudge}
 		if cmd == "hook" {
 			runHook(id, os.Stdin, stdout)
 			return nil
@@ -235,9 +242,18 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		if credential != "" || kind != "" {
 			return invalid("serve initializes its state Operator credential; credential selection applies to client commands")
 		}
-		return serveForeground(ctx, state, listen, herdrExecutable, func(_ context.Context, service *stack.Service) error {
+		log := detachConsole(state)
+		if log != nil {
+			defer log.Close()
+			stdout = log
+		}
+		err := serveForeground(ctx, state, listen, herdrExecutable, func(_ context.Context, service *stack.Service) error {
 			return json.NewEncoder(stdout).Encode(readyLine(service))
 		})
+		if err != nil && log != nil {
+			writeError(log, err)
+		}
+		return err
 	}
 	if isWatchCommand(cmd) {
 		connect := func() (*stack.Client, error) { return stack.NewClient(state, credential, stack.CapabilityKind(kind)) }
@@ -336,8 +352,10 @@ func serveForeground(ctx context.Context, state, listen, herdrExecutable string,
 		return err
 	}
 	service.Version = buildVersion()
-	if service.Notice != "" {
-		_, _ = io.WriteString(os.Stderr, service.Notice+"\n")
+	for _, line := range []string{service.Store.Migrated, service.Notice} {
+		if line != "" {
+			_, _ = io.WriteString(os.Stderr, line+"\n")
+		}
 	}
 	if herdrExecutable != "" {
 		if err = service.EnableNotifications(herdrExecutable); err != nil {
@@ -354,6 +372,9 @@ func serveForeground(ctx context.Context, state, listen, herdrExecutable string,
 		case err = <-result:
 		}
 	}
+	// Stop catching signals, so a second Ctrl-C during the wait below ends
+	// the process at once.
+	stop()
 	closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	closeErr := service.Close(closeCtx)

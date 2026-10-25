@@ -6,7 +6,7 @@
 #   demo-archive.gif   finished Tasks shrink and fold into the archive
 #   demo-agents.gif    the Agents tab
 #   graph-light.png, graph-dark.png, now-light.png, now-dark.png,
-#   mail-light.png, mail-dark.png, agents.png and picker.png
+#   mail-light.png, mail-dark.png, agents.png, graph-overview.png and picker.png
 #
 # The script builds a-stack from this checkout and runs a real Session on a
 # disposable service. A temporary HOME holds the state, the credentials and the
@@ -47,6 +47,8 @@ scenes=(
   "demo|now|Agent 02-backend's terminal|You answer, work continues"
   "demo-archive|graph||Finished work folds away"
   "demo-agents|agents||The Agents tab shows who does what"
+  "demo|now|Agent 02-backend's terminal|Hooks keep Agents on the protocol"
+  "demo-graph|graph||Explore a larger graph with the minimap and zoom"
   "demo|now|Your terminal|Pick another Session"
 )
 # The step badge of the caption in the feature GIFs.
@@ -75,6 +77,9 @@ for tool in go python3 ffmpeg magick agent-browser curl sha256sum; do
   command -v "$tool" >/dev/null || die "$tool is not installed"
 done
 
+browser_bin="$(command -v agent-browser)"
+build_cache="$(go env GOCACHE)"
+
 case "$(uname -m)" in
   x86_64) agg_asset='agg-x86_64-unknown-linux-musl'
     agg_sha256=ddcbf6ca044c8ac3a434dcb9ee89fb9e3be87209982b7c2adb55f782e8f0f390 ;;
@@ -98,6 +103,10 @@ work_dir="$(mktemp -d -t a-stack-demo.XXXXXX)"
 # The demo HOME. The terminal shows it as ~, so no personal path is recorded.
 demo_home="$(mktemp -d -t demo.XXXXXX)"
 cred_dir="$demo_home/.agents"
+state_dir="$demo_home/.local/state/a-stack"
+# Every service/CLI command names disposable state; hook caches and settings stay here too.
+export XDG_CONFIG_HOME="$demo_home/.config" XDG_CACHE_HOME="$demo_home/.cache" XDG_DATA_HOME="$demo_home/.local/share"
+export CODEX_HOME="$demo_home/.codex" CLAUDE_CONFIG_DIR="$demo_home/.claude"
 rec_session="a-stack-demo-$$"
 shot_session="a-stack-demo-shots-$$"
 # The background processes: the screenshot job, the two terminal recorders
@@ -135,7 +144,7 @@ step "build a-stack"
 mkdir -p "$work_dir/bin" "$cred_dir" "$demo_home/.local/state/a-stack" "$demo_home/code/oauth-app"
 bin="$work_dir/bin/a-stack"
 # The footer of the view shows this version.
-go build -ldflags "-X main.version=$(git describe --tags --always)" -o "$bin" ./cmd/a-stack
+GOCACHE="$build_cache" go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" -o "$bin" ./cmd/a-stack
 
 # a-stack new and a-stack -r call xdg-open with the view URL. In the demo this
 # stand-in shows the URL in the recording browser instead.
@@ -143,13 +152,13 @@ cat >"$work_dir/bin/xdg-open" <<'EOF'
 #!/bin/sh
 case "$1" in http://127.0.0.1:*) ;; *) exit 1 ;; esac
 printf "location.replace('%s')" "$1" |
-  HOME="$DEMO_REAL_HOME" agent-browser --session "$DEMO_BROWSER" eval --stdin >/dev/null 2>&1
+  HOME="$DEMO_REAL_HOME" "$DEMO_BROWSER_BIN" --session "$DEMO_BROWSER" eval --stdin >/dev/null 2>&1
 EOF
 chmod 755 "$work_dir/bin/xdg-open"
 
 # --- a-stack helpers --------------------------------------------------------
 
-stack() { HOME="$demo_home" XDG_STATE_HOME='' "$bin" "$@"; }
+stack() { HOME="$demo_home" XDG_STATE_HOME='' "$bin" --state-dir "$state_dir" "$@"; }
 field() {
   python3 -c 'import json,sys
 value=json.load(sys.stdin)
@@ -187,7 +196,7 @@ appoint() {
     --operation-id "demo-appoint-$lead" >/dev/null
 }
 register() {
-  agent_id[$1]="$(as_agent "$lead" agent register --workspace "$workspace" --session "$session" \
+  agent_id[$1]="$(as_agent "$lead" agent register \
     --name "$1" --new-credential-file "$cred_dir/$1.json" \
     --operation-id "demo-register-$1" | field data.resource_id)"
 }
@@ -279,6 +288,7 @@ wait_graph() {
     document.querySelectorAll('#graph-panel .connection').length === $3" >/dev/null
 }
 screenshot() {
+  step "capture $1"
   shot screenshot "$work_dir/$1" >/dev/null
   # The view uses flat colors, so 192 colors keep the PNGs small and sharp.
   # Without dithering, the blurred backdrop behind the Task details stays smooth.
@@ -288,6 +298,9 @@ screenshot() {
 # in both themes, and the Agents tab.
 take_screenshots() {
   local theme
+  # This page polls independently of the recording browser. Do not capture a
+  # stale graph, and keep the question open until every still has finished.
+  shot wait --fn "document.getElementById('attention').textContent.includes('Needs you (1)')" >/dev/null
   for theme in light dark; do
     shot click ".theme-button[data-theme=$theme]" >/dev/null
     shot click '#graph-tab' >/dev/null
@@ -307,10 +320,6 @@ take_screenshots() {
     screenshot "mail-$theme.png"
     shot eval "document.getElementById('task-dialog').close()" >/dev/null
   done
-  shot click '.theme-button[data-theme=light]' >/dev/null
-  shot click '#agents-tab' >/dev/null
-  sleep 0.5
-  screenshot agents.png
 }
 
 # --- scenes -----------------------------------------------------------------
@@ -346,6 +355,7 @@ scene() {
 cat >"$demo_home/.bashrc" <<'EOF'
 PS1='\[\e]0;demo\a\e[1;32m\]\w\[\e[0m\] \$ '
 HISTFILE=/dev/null
+a-stack() { command a-stack --state-dir "$HOME/.local/state/a-stack" "$@"; }
 bind 'set enable-bracketed-paste off'
 EOF
 # Each terminal has a control and an ack FIFO. Read-write opens do not block,
@@ -357,7 +367,7 @@ declare -A control_fd=([you]=3 [agent]=5) ack_fd=([you]=4 [agent]=6) terminal_st
 # you or agent.
 say() {
   printf '%s %s\n' "$2" "${3:-}" >&"${control_fd[$1]}"
-  read -r -t 60 term_answer <&"${ack_fd[$1]}" || die "the $1 terminal stopped at: $2 ${3:-}"
+  read -r -t 60 _ <&"${ack_fd[$1]}" || die "the $1 terminal stopped at: $2 ${3:-}"
 }
 # start_terminal TERMINAL CAST COLS ROWS RCFILE FOLDER: record a Bash. The
 # recording starts at the first prompt; terminal_start holds that Unix time.
@@ -365,7 +375,7 @@ start_terminal() {
   (
     cd "$6"
     exec env -u XDG_STATE_HOME HOME="$demo_home" PATH="$work_dir/bin:$PATH" TERM=xterm-256color \
-      DEMO_REAL_HOME="$HOME" DEMO_BROWSER="$rec_session" \
+      DEMO_REAL_HOME="$HOME" DEMO_BROWSER="$rec_session" DEMO_BROWSER_BIN="$browser_bin" \
       python3 "$repo/scripts/demo-terminal.py" --control "$work_dir/$1-control" --ack "$work_dir/$1-ack" \
       --cast "$work_dir/$2" --cols "$3" --rows "$4" \
       -- bash --noprofile --rcfile "$5" -i
@@ -384,11 +394,27 @@ stop_terminal() {
 # me runs a-stack as the Agent, like the me script of the a-stack skill, and
 # shows only the outcome and the new revision of each change.
 agent_terminal() {
+  stack hook install --codex --credential-file "$cred_dir/$1.json" --worktree "$demo_home" >/dev/null
   cat >"$cred_dir/$1.rc" <<EOF
 PS1='\[\e]0;demo\a\e[1;35m\]$1\[\e[0m\] \\$ '
 HISTFILE=/dev/null
 bind 'set enable-bracketed-paste off'
 APP=${task_id[app]} UI=${task_id[ui]} TOKEN=${task_id[token]}
+a-stack() { command a-stack --state-dir "\$HOME/.local/state/a-stack" "\$@"; }
+AGENT=${agent_id[$1]} WORKSPACE=$workspace SESSION=$session
+hook_event() { printf '{"hook_event_name":"%s","session_id":"demo-hooks","cwd":"%s"}\\n' "\$1" "\$PWD"; }
+# Keep the real decision and first reason line readable in an eight-row terminal.
+hook() {
+  hook_event "\$1" | a-stack hook --credential-file ~/.agents/$1.json --agent "\$AGENT" --workspace "\$WORKSPACE" --session "\$SESSION" --worktree "\$PWD" |
+    python3 -c 'import json,sys
+text=sys.stdin.read()
+if text:
+    data=json.loads(text)
+    if "reason" in data: data["reason"]=data["reason"].splitlines()[0]
+    print(json.dumps(data,separators=(",",":")))'
+}
+hook PostToolUse
+read_mail() { a-stack --as agent --credential-file ~/.agents/$1.json mail check | python3 -c 'import json,sys;print("\\n".join(m["sender_name"]+": "+m["body"] for p in json.load(sys.stdin)["data"]["tasks"] for m in p["messages"]))'; }
 me() {
   a-stack --as agent --credential-file ~/.agents/$1.json --workspace $workspace --session $session "\$@" |
     python3 -c 'import json,sys;d=json.load(sys.stdin)["data"];print(json.dumps({"outcome":d["outcome"],"revision":d["revision"]}))'
@@ -401,7 +427,7 @@ EOF
 
 step "start a disposable service"
 # The binary itself runs in the background, so $! is the service process.
-HOME="$demo_home" XDG_STATE_HOME='' "$bin" serve --json \
+HOME="$demo_home" XDG_STATE_HOME='' "$bin" serve --state-dir "$state_dir" --json \
   >"$work_dir/serve.json" 2>"$work_dir/serve-error.json" &
 service_pid=$!
 for _ in {1..50}; do
@@ -531,6 +557,8 @@ js "demo.clear()"
 zoom null
 sleep 0.6
 js "demo.escape()"
+callout "$(element '#now-panel .mail-count:not([hidden])')" 'The envelope count shows Task mail messages'
+hold
 
 scene 6 # An Agent asks you a question.
 say agent clear
@@ -545,10 +573,13 @@ no_fragment shot
 take_screenshots &
 shot_pid=$!
 hold
-wait_for "document.getElementById('attention').textContent.includes('1 needs you')"
+wait_for "document.getElementById('attention').textContent.includes('Needs you (1)')"
 zoom "$(element '#attention')"
 callout "$(element '#attention')" 'Questions for you wait here'
 hold
+
+wait "$shot_pid"
+shot_pid=""
 
 scene 7 # You answer, work continues.
 say agent clear
@@ -558,8 +589,6 @@ wait_card app Working 'Needs you'
 zoom "$(card app)"
 callout "$(card app)" 'You answered "GitHub first". Back to work.'
 hold
-wait "$shot_pid"
-shot_pid=""
 
 scene 8 # Finished work folds away.
 finish 02-backend app 'GitHub OAuth app registered; client ID and secret load from AUTH_GITHUB_*.'
@@ -585,13 +614,128 @@ click "$(element '#archived')"
 js "demo.clear()"
 beat
 
+agents_seed_start="$(now)"
+# Populate the Agent card before recording it. Six Waiting Tasks show a
+# useful fold; five intentionally all show in the current view.
+for n in {1..6}; do
+  new_task "wait$n" "OAuth follow-up $n" "AUTH-W$n" 'Wait for the security review.'
+  depends review "wait$n"
+  assign "wait$n" 02-backend
+done
+for n in {1..3}; do
+  new_task "done$n" "Provider check $n" "AUTH-D$n" 'Check the provider configuration.'
+  depends "done$n" review
+  assign "done$n" 02-backend
+  start 02-backend "done$n"
+  finish 02-backend "done$n" 'Provider settings checked.'
+done
+new_task followup 'Refresh token retry policy' AUTH-5 'Choose a retry limit for refresh failures.'
+depends token followup
+assign followup 02-backend
+start 02-backend followup
+ask 02-backend followup 'Retry twice, or stop after the first failure?'
+
 scene 9 # The Agents tab shows who does what.
+scene_switch[9]="$agents_seed_start"
 say you clear
-zoom "$(element '#agents-panel .agent-row:nth-child(2) .agent-heading')" 1.25
-callout "$(element '#agents-panel .agent-row:nth-child(2)')" 'Each Agent, with its Tasks'
+poll
+wait_for "document.querySelector('#agents-panel').textContent.includes('2 more waiting')"
+# Resolve the Agent by name: urgency order changes as work changes.
+js "[...document.querySelectorAll('.agent-row')].find(c=>c.querySelector('.agent-name').textContent==='02-backend').id='demo-backend'"
+callout "$(element '#agents-summary')" 'A summary of who needs you and who is working'
+hold
+zoom "$(element '#demo-backend .agent-heading')" 1.25
+callout "$(element '#demo-backend .chips')" 'Counts for this Agent, including shared Tasks'
+hold
+zoom null
+click "$(element '#demo-backend .fold')"
+js "demo.scroll($(element '#demo-backend .fold'))"
+callout "$(element '#demo-backend .fold')" 'Open the fold to see every waiting Task'
+hold
+click "$(element '#demo-backend .fold')"
+click "$(element '#demo-backend .fold:nth-of-type(2)')"
+js "demo.scroll($(element '#demo-backend .fold:nth-of-type(2)'))"
+callout "$(element '#demo-backend .fold:nth-of-type(2)')" 'Finished Tasks stay out of the way until you need them'
+hold
+click "$(element '#demo-backend .fold:nth-of-type(2)')"
+click "$(element '[data-sort=name]')"
+js "demo.scroll($(element '[data-sort=name]'))"
+callout "$(element '[data-sort=name]')" 'Sort by name, or put the most urgent Agent first'
+hold
+click "$(element '[data-sort=urgency]')"
+shot click '.theme-button[data-theme=light]' >/dev/null
+shot click '#agents-tab' >/dev/null
+shot wait --fn "document.querySelector('#agents-panel').textContent.includes('2 more waiting')" >/dev/null
+screenshot agents.png
+
+scene 10 # Real hook events, on the same disposable service.
+# Needs you intentionally exempts a Task from the Stop guard. Answer first,
+# leaving this Agent's Working Task without a report for the real Stop event.
+change 02-backend followup hook-answer task attention resolve --note 'Retry twice.'
+poll
+say agent clear
+say agent line 'hook Stop # runs the installed a-stack hook command'
+say agent expect '"decision":"block"'
+hold
+say agent line "me task report --task ${task_id[followup]} --report 'Retry twice with backoff'$next--expected-revision $(revision 02-backend followup) --operation-id be-hook-report"
+say agent line "me task status --task ${task_id[followup]} --progress finished$next--summary 'Retry policy documented' --expected-revision $(revision 02-backend followup) --operation-id be-hook-finish"
+assign ui 01-orchestrator
+mail 01-orchestrator ui 'The callback review is ready; please check the error states.' orch-hook
+say agent clear
+say agent line 'hook PostToolUse'
+say agent expect 'New Task mail on'
+hold
+say agent line 'read_mail # me mail check, showing sender and body'
+hold
+poll
+
+scale_seed_start="$(now)"
+# A large graph makes the minimap and semantic zoom useful. Dependencies
+# are linked immediately, in three parallel chains of fourteen Tasks.
+for lane in {1..3}; do
+  for n in {1..14}; do
+    key="scale-$lane-$n"
+    new_task "$key" "Pipeline $lane: step $n" "SCALE-$lane-$n" 'A stage in the integration pipeline.'
+    if [ "$n" -gt 1 ]; then depends "scale-$lane-$((n-1))" "$key"; fi
+    assign "$key" 02-backend
+  done
+done
+start 02-backend scale-2-7
+ask 02-backend scale-2-7 'Run this pipeline against staging?'
+scene 11 # Minimap and semantic zoom.
+scene_switch[11]="$scale_seed_start"
+poll
+wait_for "document.querySelectorAll('#graph-panel .task-card').length > 40"
+js "document.getElementById('zoom-reset').click()"
+wait_for "!document.getElementById('minimap').hidden"
+callout "$(element '#minimap')" 'Drag the minimap to move across a large graph' left
+hold
+read -r map_x map_y map_to_x map_to_y <<<"$(rec eval '(()=>{const r=document.getElementById("minimap").getBoundingClientRect();return [r.x+r.width*.25,r.y+r.height*.1,r.x+r.width*.75,r.y+r.height*.1].map(Math.round)})()' | python3 -c 'import json,sys;print(*json.load(sys.stdin))')"
+rec mouse move "$map_x" "$map_y" >/dev/null
+rec mouse down >/dev/null
+js "window.demoMapBefore=[document.getElementById('graph-panel').scrollLeft,document.getElementById('graph-panel').scrollTop]"
+rec mouse move "$map_to_x" "$map_to_y" >/dev/null
+rec mouse up >/dev/null
+wait_for "document.getElementById('graph-panel').scrollLeft!==demoMapBefore[0] || document.getElementById('graph-panel').scrollTop!==demoMapBefore[1]"
+hold
+js "demo.clear(); document.getElementById('zoom-reset').click(); for(let i=0;i<5;i++)document.getElementById('zoom-out').click()"
+wait_for "parseInt(document.getElementById('zoom-reset').textContent) < 50"
+js "demo.scroll($(card scale-2-7))"
+callout "$(element '#zoom-reset')" 'Below 50%, blocks keep their titles and status colors' above
+hold
+shot click '#graph-tab' >/dev/null
+shot wait --fn "document.querySelectorAll('#graph-panel .task-card').length > 40" >/dev/null
+shot eval "document.getElementById('zoom-reset').click();for(let i=0;i<5;i++)document.getElementById('zoom-out').click()" >/dev/null
+shot eval "[...document.querySelectorAll('#graph-panel .task-title')].find(n=>n.textContent==='Pipeline 2: step 7').closest('.task-unit').scrollIntoView({block:'center',inline:'center'})" >/dev/null
+shot wait --fn "!document.getElementById('minimap').hidden && parseInt(document.getElementById('zoom-reset').textContent) === 40" >/dev/null
+screenshot graph-overview.png
+js "document.getElementById('zoom-out').click();document.getElementById('zoom-out').click()"
+wait_for "parseInt(document.getElementById('zoom-reset').textContent) < 30"
+js "demo.scroll($(card scale-2-7))"
+callout "$(element '#zoom-reset')" 'Below 30%, only colors and the Needs you ring remain' above
 hold
 
-scene 10 # Pick another Session.
+scene 12 # Pick another Session.
 say you keys 'a-stack -r\r'
 say you expect 'Tab to switch'
 beat
@@ -603,7 +747,7 @@ beat
 say you line ''
 wait_view rec 'Docs refresh'
 no_fragment rec
-overlay "$(scene_field 10 2)"
+overlay "$(scene_field 12 2)"
 wait_for "demo.ready($(card d1))"
 zoom "$(card d1)"
 callout "$(card d1)" 'Another Session, another question for you'
@@ -622,11 +766,7 @@ say you expect 'Tab to switch'
 say you keys '\t'
 say you expect '(All)'
 sleep 0.5
-say you mark
-picker_at="$term_answer"
-say you keys '\x1b'
-sleep 0.3
-stop_terminal you
+stop_terminal you # save while the picker is still visible; Escape clears it
 
 # --- compose ----------------------------------------------------------------
 
@@ -636,7 +776,7 @@ for name in you agent; do
     --last-frame-duration 0 "$work_dir/$name.cast" "$work_dir/$name.gif"
 done
 "$agg" --quiet --theme github-dark --font-size 18 --idle-time-limit 600 \
-  --select "$picker_at" "$work_dir/picker.cast" "$work_dir/picker.gif"
+  --select 100% "$work_dir/picker.cast" "$work_dir/picker.gif"
 magick "$work_dir/picker.gif[0]" -strip -colors 64 "PNG8:$out/picker.png"
 
 step "stack the terminal over the browser"
@@ -644,7 +784,7 @@ step "stack the terminal over the browser"
 since() { python3 -c 'import sys;print(max(0.0,float(sys.argv[1])-float(sys.argv[2])))' "$1" "$story_start"; }
 offset="$(python3 -c 'import sys;print(max(0.0,float(sys.argv[1])-float(sys.argv[2])))' "$story_start" "$browser_start")"
 agent_from="$(since "${terminal_start[agent]}")"
-agent_to="$(since "${scene_switch[10]}")"
+agent_to="$(since "${scene_switch[12]}")"
 length="$(since "$story_end")"
 term_height="$(magick "$work_dir/you.gif[0]" -format "%[fx:2*round(h*$GIF_WIDTH/w/2)]" info:)"
 ffmpeg -v error -y -ss "$offset" -i "$work_dir/browser.mp4" -i "$work_dir/you.gif" -i "$work_dir/agent.gif" \

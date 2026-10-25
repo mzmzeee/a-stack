@@ -135,6 +135,10 @@ func TuneServiceGC() {
 }
 
 func Start(ctx context.Context, dir, address string) (*Service, error) {
+	if !builtWithCgo {
+		return nil, failure("storage_unavailable", "this a-stack was built without cgo, so it cannot open its SQLite database; build it with CGO_ENABLED=1 and a C compiler, or install a release binary")
+	}
+	storageLog.setOutput(storageLogOutput)
 	if address != "" {
 		host, _, err := net.SplitHostPort(address)
 		if err != nil || host != "127.0.0.1" {
@@ -216,7 +220,7 @@ func (s *Service) Close(ctx context.Context) error {
 			s.notifier.mu.Unlock()
 		}
 		if err := s.Store.db.Close(); err != nil {
-			s.closeErr = storageError()
+			s.closeErr = storageError(err)
 		}
 		if d, err := ReadDiscovery(s.lock.dir); err == nil && d.InstanceID == s.Discovery.InstanceID {
 			_ = os.Remove(filepath.Join(s.lock.dir, "service.json"))

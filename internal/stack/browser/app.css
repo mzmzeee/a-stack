@@ -1,27 +1,20 @@
 
-  /* Throwaway comparison: one Graph/Agents layout, two themes, identical sample data. */
+  /* Each color is light-dark(light, dark). The page follows the system until a theme is picked;
+     data-theme then fixes color-scheme, so the first paint already has the right theme. */
   :root {
-    color-scheme: light;
-    --canvas: #f4f3ef; --chrome: #faf9f6; --surface: #ffffff; --raised: #f0efeb;
-    --ink: #252a2d; --muted: #60686c; --line: #d8dcd8; --strong-line: #a0a7a6;
-    --edge: #7b8588; --accent: #3558bc; --accent-bg: #eaf0ff;
-    --working: #3558bc; --working-bg: #edf1fc; --finished: #256548; --finished-bg: #eaf3ed;
-    --attention: #a33c2f; --attention-bg: #faece6; --waiting: #62676f; --waiting-bg: #efefed;
-    --shadow: 0 2px 3px #22252b04, 0 5px 14px #22252b04;
-    --panel-shadow: 0 16px 80px #111a2730;
+    color-scheme: light dark;
+    --canvas: light-dark(#f4f3ef, #151a1c); --chrome: light-dark(#faf9f6, #1a2022); --surface: light-dark(#ffffff, #242b2e); --raised: light-dark(#f0efeb, #30383b);
+    --ink: light-dark(#252a2d, #f0f1eb); --muted: light-dark(#60686c, #b1bbbd); --line: light-dark(#d8dcd8, #3e484c); --strong-line: light-dark(#a0a7a6, #768487);
+    --edge: light-dark(#7b8588, #879497); --accent: light-dark(#3558bc, #a7bcff); --accent-bg: light-dark(#eaf0ff, #303c58);
+    --working: light-dark(#3558bc, #a7bcff); --working-bg: light-dark(#edf1fc, #303c58); --finished: light-dark(#256548, #9ed4b5); --finished-bg: light-dark(#eaf3ed, #2c4037);
+    --attention: light-dark(#a33c2f, #ffb0a1); --attention-bg: light-dark(#faece6, #48332f); --waiting: light-dark(#62676f, #bdc4c8); --waiting-bg: light-dark(#efefed, #363d40);
+    --shadow: 0 1px 2px light-dark(#22252b14, #0000001a), 0 4px 12px light-dark(#22252b0d, #0000000d);
+    --panel-shadow: 0 16px 80px light-dark(#111a2730, #00000060);
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     font-size: 14px; line-height: 1.5; font-synthesis: none;
   }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --canvas: #151a1c; --chrome: #1a2022; --surface: #242b2e; --raised: #30383b;
-    --ink: #f0f1eb; --muted: #b1bbbd; --line: #3e484c; --strong-line: #768487;
-    --edge: #879497; --accent: #a7bcff; --accent-bg: #303c58;
-    --working: #a7bcff; --working-bg: #303c58; --finished: #9ed4b5; --finished-bg: #2c4037;
-    --attention: #ffb0a1; --attention-bg: #48332f; --waiting: #bdc4c8; --waiting-bg: #363d40;
-    --shadow: 0 2px 4px #0000001a, 0 5px 14px #0000000d;
-    --panel-shadow: 0 16px 80px #00000060;
-  }
+  :root[data-theme="light"] { color-scheme: light; }
+  :root[data-theme="dark"] { color-scheme: dark; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--canvas); color: var(--ink); }
   button, input, select { font: inherit; color: inherit; }
@@ -30,7 +23,7 @@
   button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 4px;
   }
-  button:disabled { cursor: default; opacity: .45; }
+  button:disabled { cursor: default; opacity: .6; }
   button svg, .icon { width: 18px; height: 18px; flex: 0 0 auto; vertical-align: middle; }
   [hidden] { display: none !important; }
   .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
@@ -59,7 +52,13 @@
   .search input:focus-visible { outline: none; }
   .status-filter { max-width: 150px; height: 38px; padding: 0 28px 0 10px; border: 1px solid var(--line); border-radius: 7px; background-color: var(--surface); font-size: 13px; }
   .attention-button { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 6px 12px; border: 1px solid transparent; border-radius: 7px; color: var(--attention); background: var(--attention-bg); font-size: 13px; font-weight: 600; white-space: nowrap; }
-  .attention-button:hover { border-color: currentColor; }
+  .attention-button:hover:not(:disabled) { border-color: currentColor; }
+  .attention-button:disabled { color: var(--muted); background: var(--raised); opacity: 1; }
+  .banner { margin: 0 28px 12px; padding: 10px 14px; border: 1px solid var(--attention); border-radius: 8px; background: var(--attention-bg); color: var(--ink); font-size: 13px; line-height: 19px; font-weight: 550; flex-shrink: 0; }
+  .update-note { display: flex; align-items: center; gap: 12px; margin: 0 28px 12px; padding: 5px 6px 5px 14px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-bg); font-size: 13px; line-height: 19px; flex-shrink: 0; }
+  .update-note p { margin: 0 auto 0 0; }
+  .update-note button { min-height: 32px; padding: 4px 12px; }
+  main.stale .view { filter: saturate(.3); }
   main { flex: 1; min-height: 0; position: relative; }
   .view { height: 100%; overflow: auto; overscroll-behavior: contain; scrollbar-color: var(--strong-line) transparent; }
   #graph-panel { display: flex; cursor: grab; user-select: none; }
@@ -73,7 +72,6 @@
   .connection.faded { opacity: .17; }
   .task-unit { width: 274px; }
   .graph-world > .task-unit { position: absolute; }
-  .task-unit.dimmed { opacity: .18; }
   .owners { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin-bottom: 8px; min-height: 20px; background: var(--canvas); }
   .owner { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; font-size: 14px; font-weight: 500; color: var(--muted); overflow-wrap: anywhere; }
   .owner svg { width: 13px; height: 13px; flex-shrink: 0; }
@@ -81,29 +79,20 @@
   .task-card:hover { border-color: var(--strong-line); }
   .task-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent), var(--shadow); }
   .task-title { display: block; font-size: 16px; font-weight: 620; letter-spacing: -.22px; line-height: 23px; margin-top: 10px; }
-  .task-note { display: block; color: var(--muted); line-height: 21px; margin-top: 6px; font-size: 14px; }
-  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap; color: var(--waiting); }
+  .task-note { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; height: 42px; color: var(--muted); line-height: 21px; margin-top: 6px; font-size: 14px; }
+  .status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; line-height: 18px; font-weight: 600; color: var(--waiting); }
   .status svg { width: 14px; height: 14px; }
   .status.working { color: var(--working); }
   .status.finished { color: var(--finished); }
-  .status.blocked { color: var(--attention); background: var(--attention-bg); border-radius: 4px; padding: 2px 6px; margin: -2px -6px; }
+  .status.blocked { color: var(--attention); background: var(--attention-bg); border-radius: 4px; padding: 2px 6px; margin: -2px -6px -2px 0; }
+  /* A Now card with Needs you is in the Needs you column, with a red ring and the question: the label would only
+     crowd the status line. */
+  .now-top .status.blocked { display: none; }
   .empty { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 12px; text-align: center; padding: 24px; }
   .empty h2 { font-size: 18px; margin: 0; }
   .empty p { margin: 0; color: var(--muted); }
   .plain-button { min-height: 36px; padding: 6px 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
   .plain-button:hover { border-color: var(--strong-line); }
-  .agent-list { width: min(1330px, 100%); margin: 0 auto; padding: 8px 28px 36px; }
-  .agent-row { display: grid; grid-template-columns: 238px minmax(0, 1fr); gap: 28px; padding: 26px 0; }
-  .agent-row + .agent-row { border-top: 1px solid var(--line); }
-  .agent-heading { padding-top: 2px; min-width: 0; }
-  .agent-identity { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
-  .agent-avatar { width: 32px; height: 32px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); font-size: 13px; font-weight: 650; }
-  .agent-name { margin: 0; font-size: 14px; line-height: 21px; font-weight: 600; overflow-wrap: anywhere; }
-  .agent-meta { font-size: 12px; color: var(--muted); margin-top: 1px; }
-  .agent-state { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 13px; }
-  .agent-state svg { width: 14px; height: 14px; }
-  .agent-tasks { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 24px 18px; }
-  .agent-tasks .task-unit { width: 272px; max-width: 100%; }
   .footer { display: flex; align-items: center; gap: 18px; min-height: 58px; padding: 9px 28px; border-top: 1px solid var(--line); background: var(--chrome); flex-shrink: 0; }
   .zoom-controls { display: flex; align-items: center; padding: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
   .zoom-controls button { display: flex; align-items: center; justify-content: center; height: 30px; min-width: 32px; padding: 0 8px; border: none; border-radius: 4px; background: transparent; color: var(--muted); font-size: 12px; }
@@ -114,6 +103,7 @@
   .footer-hint.lost { display: inline; color: var(--attention); }
   .preview-button { display: flex; align-items: center; gap: 7px; min-height: 32px; border: none; padding: 0 2px; margin-left: auto; background: transparent; font-size: 12px; color: var(--muted); white-space: nowrap; }
   .preview-short { display: none; }
+  .preview-button { min-width: 0; } .preview-label { overflow: hidden; text-overflow: ellipsis; }
   .preview-button:hover { color: var(--ink); text-decoration: underline; }
   .preview-button svg { width: 14px; height: 14px; }
   dialog { color: var(--ink); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--panel-shadow); }
@@ -136,6 +126,22 @@
   .dependency + .dependency { border-top: 1px solid var(--line); }
   .dependency:hover .dependency-name { text-decoration: underline; }
   .dependency-name { font-size: 14px; }
+.choice { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; align-items: baseline; }
+.choice .dependency-name { font-weight: 600; }
+.choice-question { grid-column: 1 / -1; color: var(--muted); font-size: 13px; line-height: 19px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.detail-props { display: flex; flex-direction: column; gap: 8px; margin: 16px 0 0; font-size: 13px; line-height: 20px; }
+.detail-prop { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; }
+.detail-prop dt { color: var(--muted); }
+.detail-prop dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.detail-prop .status { margin: 0; }
+.dep-link { display: flex; align-items: flex-start; gap: 7px; width: 100%; padding: 2px 0; border: 0; background: none; text-align: left; font-size: 13px; line-height: 20px; }
+.dep-link + .dep-link { margin-top: 2px; }
+.dep-link .status { flex: none; padding-top: 2px; }
+.dep-link .dependency-name { font-size: 13px; overflow-wrap: anywhere; }
+.dep-link:hover .dependency-name { text-decoration: underline; }
+.dep-note { flex: none; color: var(--muted); }
+.detail-question { border-top: 0; margin-top: 18px; padding: 12px 14px; border-radius: 8px; background: var(--attention-bg); }
+.detail-question h3 { color: var(--attention); }
   .detail-footnote { color: var(--muted); font-size: 12px; margin: 24px 0 0; }
   .about-panel { width: min(560px, calc(100% - 32px)); max-height: calc(100dvh - 32px); padding: 0; border-radius: 12px; }
   .about-panel p { line-height: 24px; }
@@ -146,9 +152,8 @@
     .appbar { gap: 16px; padding-inline: 20px; }
     .project-name { display: none; }
     .workspacebar { padding-inline: 20px; gap: 12px; }
+    .banner, .update-note { margin-inline: 20px; }
     .search { width: 210px; }
-    .agent-row { grid-template-columns: 205px minmax(0, 1fr); gap: 24px; }
-    .agent-tasks .task-unit { width: 262px; }
     .footer-hint { display: none; }
   }
   @media (max-width: 700px) {
@@ -158,19 +163,15 @@
     .tab { padding-inline: 14px; }
     .theme-switch { margin-left: auto; }
     .theme-button { padding-inline: 8px; }
+    .theme-label { display: none; }
     .workspacebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; padding: 18px 16px 14px; gap: 14px 10px; }
+    .banner, .update-note { margin-inline: 16px; }
     .workspace-title { width: auto; margin: 0; }
     h1 { font-size: 20px; }
     .workspace-subtitle { font-size: 12px; }
     .attention-button { order: 1; margin-left: 0; justify-self: end; }
     .search { order: 2; width: 100%; }
     .status-filter { order: 3; width: 132px; }
-    .agent-list { padding: 0 16px 24px; }
-    .agent-row { display: block; padding: 22px 0; }
-    .agent-heading { margin-bottom: 22px; }
-    .agent-identity { margin-bottom: 6px; }
-    .agent-tasks .task-unit { width: 100%; }
-    .agent-tasks { gap: 20px; }
     .footer { padding: 8px 14px; gap: 10px; min-height: 56px; flex-wrap: wrap; }
     .preview-button .preview-label { display: none; }
     .preview-short { display: inline; }
@@ -187,17 +188,11 @@
 /* Live content keeps the approved card dimensions while reports change. */
 .owner-name { min-width: 0; overflow-wrap: anywhere; }
 .task-title, .task-caption, .detail-text, .dependency, .workspace-title h1 { overflow-wrap: anywhere; }
-.task-note { height: 42px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; width: 100%; }
 .task-caption { display: block; line-height: 16px; margin-top: 6px; font-size: 11px; color: var(--muted); }
-.status { flex-wrap: wrap; white-space: normal; }
 .status.cancelled { color: var(--muted); }
 .detail-text { white-space: pre-wrap; line-height: 24px; }
 .reference { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .reference code { min-width: 0; flex: 1; }
-.agent-meta, .agent-state { overflow-wrap: anywhere; }
-.agent-identity > div { min-width: 0; }
-.agent-state { line-height: 20px; }
-button:disabled { cursor: default; opacity: .6; }
 .workspace-title h1 { max-height: 58px; overflow: auto; }
 
 .task-caption:empty { display: none; }
@@ -207,7 +202,9 @@ button:disabled { cursor: default; opacity: .6; }
 .now-card.archived { opacity: .7; }
 .detail-archive { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 19px; }
 .detail-archive[hidden] { display: none; }
-.graph-world > .task-unit.unfocused { opacity: .42; }
+/* Focus fades the other cards to the canvas color with muted titles; their text keeps its contrast. */
+.graph-world > .task-unit.unfocused .task-card { background: var(--canvas); border-color: var(--line); box-shadow: none; }
+.graph-world > .task-unit.unfocused .task-title { color: var(--muted); }
 .graph-world > .task-unit.dimmed { opacity: .18; }
 .connection.unfocused { opacity: .22; }
 .connection.implied { stroke-dasharray: 6 5; }
@@ -223,10 +220,10 @@ button:disabled { cursor: default; opacity: .6; }
 .task-unit.compact .task-title { margin: 0; min-width: 0; font-size: 14px; font-weight: 560; line-height: 20px; letter-spacing: -.1px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .task-unit.compact .status { flex: none; margin-top: 1px; }
 .task-unit.compact .status-label, .task-unit.compact .task-note, .task-unit.compact .task-caption { display: none; }
-.archive-toggle { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.archive-toggle svg { width: 15px; height: 15px; }
-.archive-toggle:hover { color: var(--ink); border-color: var(--strong-line); }
-.archive-toggle[aria-pressed="true"] { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+.toggle-button { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.toggle-button svg { width: 15px; height: 15px; }
+.toggle-button:hover { color: var(--ink); border-color: var(--strong-line); }
+.toggle-button[aria-pressed="true"] { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
 
 /* Task mail in the details: closed until the Operator opens it; bodies are plain text. */
 .mail-toggle { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 28px; padding: 0; border: 0; background: none; font-size: 13px; font-weight: 650; text-align: left; }
@@ -241,7 +238,7 @@ button:disabled { cursor: default; opacity: .6; }
 .mail-sender { font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
 .mail-meta .now-age { cursor: help; }
 .mail-body { font-size: 14px; line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.mention { padding: 0 2px; margin: 0 -2px; border-radius: 4px; background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+.mention { white-space: nowrap; padding: 0 2px; margin: 0 -2px; border-radius: 4px; background: var(--accent-bg); color: var(--accent); font-weight: 600; }
 .mail-status:empty { display: none; }
 .mail-status { margin-top: 8px; }
 .mail-more { margin-top: 8px; font-size: 13px; }
@@ -279,8 +276,10 @@ button:disabled { cursor: default; opacity: .6; }
 .feed-mark.working { color: var(--working); }
 .feed-mark.finished, .feed-mark.resolve { color: var(--finished); }
 .feed-mark.ask { color: var(--attention); }
-.feed-text { overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.feed-text { display: flex; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.feed-title, .feed-what { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .feed-title { font-weight: 600; }
+.feed-mark.report, .feed-mark.create { color: var(--working); }
 @media (max-width: 1100px) {
   #now-panel { padding: 0 20px 20px; }
   .now-layout { display: flex; flex-direction: column; height: auto; }
@@ -291,4 +290,144 @@ button:disabled { cursor: default; opacity: .6; }
   #now-panel { padding: 0 16px 20px; }
   .now-board { grid-template-columns: minmax(0, 1fr); }
   .now-list, .feed-list { max-height: 60vh; }
+}
+
+/* Status at a glance: a left border in the status color on every card, and a ring on Needs you. */
+.task-card { --status: var(--line); }
+.task-card[data-status="working"] { --status: var(--working); }
+.task-card[data-status="waiting"] { --status: var(--waiting); }
+.task-card[data-status="finished"] { --status: var(--finished); }
+.task-card[data-status="cancelled"] { --status: var(--strong-line); }
+.task-card[data-status="needs-you"] { --status: var(--attention); border-color: var(--attention); box-shadow: 0 0 0 3px var(--attention-bg), var(--shadow); }
+.task-card[data-status="needs-you"].selected { box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px var(--attention-bg); }
+.task-unit.compact .task-card[data-status="needs-you"] { box-shadow: 0 0 0 3px var(--attention-bg); }
+.task-card[data-status], .graph-world > .task-unit.unfocused .task-card[data-status] { border-left: 3px solid var(--status); }
+.graph-world > .task-unit.unfocused .task-card[data-status] { border-left-color: var(--line); }
+
+/* Render cost: cards out of view skip layout and paint; graph cards are laid out on their own. Graph cards get
+   content-visibility only after the layout measured them (.cv), with that height (--uh). */
+.now-card { content-visibility: auto; contain-intrinsic-size: auto 150px; }
+.agent-row { content-visibility: auto; contain-intrinsic-size: auto 320px; }
+.graph-world > .task-unit { contain: layout style; }
+.graph-world.cv > .task-unit { content-visibility: auto; contain-intrinsic-size: 274px var(--uh); }
+
+/* Short or narrow windows: the page scrolls, so the view gets the height. Only the tabs stay at the top,
+   and in the Graph tab the footer with the zoom controls stays at the bottom. */
+@media (max-height: 600px), (max-width: 700px) {
+  :root { --top: 68px; --foot: 58px; }
+  .app { height: auto; min-height: 100dvh; overflow: visible; }
+  .appbar { position: sticky; top: 0; z-index: 3; }
+  main { flex: none; min-height: 40dvh; }
+  .view { height: auto; overflow: visible; }
+  .now-layout { height: auto; }
+  .now-list, .feed-list { max-height: calc(100dvh - var(--top) - 64px); }
+  #graph-panel { height: calc(100dvh - var(--top) - var(--foot)); overflow: auto; }
+  .app:has(#graph-panel:not([hidden])) .footer { position: sticky; bottom: 0; z-index: 3; }
+}
+@media (max-width: 700px) {
+  :root { --top: 49px; --foot: 100px; }
+  .appbar { top: -59px; }
+}
+
+/* Task mail: an envelope and the count, at the right of the status line. Compact blocks leave it out. */
+.card-top { display: flex; align-items: flex-start; gap: 8px; width: 100%; }
+.mail-count { display: inline-flex; align-items: center; gap: 3px; margin-left: auto; color: var(--muted); font-size: 12px; line-height: 18px; font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mail-count svg { width: 14px; height: 14px; }
+.task-unit.compact .card-top { width: auto; }
+.task-unit.compact .mail-count { display: none; }
+.now-top .mail-count:not([hidden]) + .now-age { margin-left: 0; }
+
+/* The Agents tab: a grid of Agent cards with compact Task rows. */
+#agents-panel { padding: 0 28px 28px; }
+.agents-bar { display: flex; align-items: center; gap: 16px; margin: 0 0 14px; }
+.agents-summary { margin: 0 auto 0 0; color: var(--muted); font-size: 13px; }
+.seg { display: flex; flex: none; padding: 2px; gap: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--raised); }
+.seg button { min-height: 30px; padding: 2px 10px; border: 1px solid transparent; border-radius: 6px; background: none; color: var(--muted); font-size: 12.5px; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--surface); border-color: var(--line); color: var(--ink); }
+.agent-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 400px), 1fr)); gap: 14px; align-items: start; }
+.agent-row { min-width: 0; border: 1px solid var(--line); border-radius: 10px; background: var(--chrome); }
+.agent-row.urgent { border-color: var(--attention); }
+.agent-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.agent-row.idle .agent-heading { border-bottom: 0; }
+.agent-identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.agent-identity > div { min-width: 0; }
+.agent-avatar { width: 30px; height: 30px; flex-shrink: 0; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; font-weight: 650; }
+.agent-name { margin: 0; font-size: 14px; line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
+.agent-meta { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px 1px 6px; border-radius: 10px; background: var(--raised); color: var(--muted); font-size: 12px; font-weight: 600; line-height: 20px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.chip svg { width: 13px; height: 13px; }
+.chip.needs { background: var(--attention-bg); color: var(--attention); }
+.chip.working { background: var(--working-bg); color: var(--working); }
+.chip.done { background: var(--finished-bg); color: var(--finished); }
+.task-rows { list-style: none; margin: 0; padding: 4px; }
+.task-rows.done { padding-top: 0; }
+.task-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: start; gap: 8px; width: 100%; padding: 7px 8px; border: 0; border-radius: 6px; background: transparent; text-align: left; font-size: 13.5px; line-height: 19px; }
+.task-row:hover { background: var(--surface); }
+.task-row.selected { box-shadow: inset 0 0 0 1px var(--accent); }
+.task-row.archived { opacity: .7; }
+.row-status { padding-top: 1px; color: var(--waiting); }
+.row-status svg { width: 16px; height: 16px; }
+.row-status.working { color: var(--working); }
+.row-status.finished { color: var(--finished); }
+.row-status.needs-you { color: var(--attention); }
+.row-status.cancelled { color: var(--muted); }
+.row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.row-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-weight: 560; overflow-wrap: anywhere; }
+.task-rows.done .row-title { color: var(--muted); font-weight: 500; }
+.row-question { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; padding: 3px 6px; border-radius: 5px; background: var(--attention-bg); font-size: 12.5px; line-height: 17px; overflow-wrap: anywhere; }
+.row-meta { overflow: hidden; color: var(--muted); font-size: 12px; line-height: 16px; text-overflow: ellipsis; white-space: nowrap; }
+.row-side { display: flex; align-items: center; gap: 8px; }
+.row-side .mail-count, .row-side .now-age { margin: 0; }
+.fold { display: flex; align-items: center; gap: 4px; width: 100%; padding: 8px 12px; border: 0; background: none; color: var(--muted); font-size: 12.5px; text-align: left; }
+.fold svg { width: 14px; height: 14px; }
+.fold[aria-expanded="true"] svg { transform: rotate(90deg); }
+.fold:hover { color: var(--ink); }
+.agent-empty { margin: 0; padding: 0 14px 12px 54px; color: var(--muted); font-size: 12.5px; }
+@media (max-width: 1100px) { #agents-panel { padding: 0 20px 24px; } }
+@media (max-width: 700px) {
+  #agents-panel { padding: 0 16px 20px; }
+  .agents-bar { flex-wrap: wrap; gap: 8px; }
+  .agents-summary { width: 100%; }
+}
+
+/* Semantic zoom. Below 50% (.far) each card is a block in its status color with only its title, kept at 12.5px on
+   screen; below 30% (.farther) only the blocks remain. Sizes scale with 1/zoom (--z), and every card keeps the
+   height the layout measured (--h), so a zoom step never runs a new layout. */
+.task-card { --tint: var(--surface); }
+.task-card[data-status="working"] { --tint: color-mix(in srgb, var(--working) 22%, var(--surface)); }
+.task-card[data-status="finished"] { --tint: var(--finished-bg); }
+.task-card[data-status="cancelled"] { --tint: var(--raised); }
+.task-card[data-status="needs-you"] { --tint: color-mix(in srgb, var(--attention) 22%, var(--surface)); }
+.graph-world.far .owners { visibility: hidden; }
+.graph-world.far .task-card { height: var(--h); overflow: hidden; padding: calc(4px / var(--z)) calc(6px / var(--z)); border-width: calc(1px / var(--z)); border-left-width: calc(4px / var(--z)); border-radius: calc(4px / var(--z)); border-color: var(--status); background: var(--tint); box-shadow: none; }
+.graph-world.far .task-card[data-status="needs-you"] { box-shadow: 0 0 0 calc(3px / var(--z)) color-mix(in srgb, var(--attention) 45%, transparent); }
+.graph-world.far .task-card.selected { box-shadow: 0 0 0 calc(2px / var(--z)) var(--accent); }
+.graph-world.far .task-card:focus-visible { outline-width: calc(2px / var(--z)); outline-offset: calc(2px / var(--z)); }
+.graph-world.far .task-card > :not(.task-title), .graph-world.far .port, .graph-world.far .compact .task-title { display: none; }
+.graph-world.far .task-title { margin: 0; font-size: calc(12.5px / var(--z)); line-height: calc(16px / var(--z)); font-weight: 600; letter-spacing: 0; color: var(--ink); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines); overflow: hidden; }
+/* After the rule above, which sets display at the same specificity. */
+.graph-world.farther .task-title { display: none; }
+.graph-world.far > .task-unit.unfocused .task-card { background: var(--canvas); border-color: var(--line); }
+.graph-world.far > .task-unit.unfocused .task-title { color: var(--muted); }
+.graph-world.far .connection { stroke-width: calc(1.2px / var(--z)); }
+.graph-world.far .connection.active { stroke-width: calc(2px / var(--z)); }
+
+/* The minimap at the bottom right of the graph; only for the pointer, it never takes the focus. */
+.minimap { position: absolute; right: 16px; bottom: 16px; z-index: 2; width: 200px; height: 130px; border: 1px solid var(--line); border-radius: 8px; background: var(--chrome); box-shadow: var(--panel-shadow); cursor: pointer; touch-action: none; }
+.minimap canvas { display: block; width: 100%; height: 100%; border-radius: 8px; }
+@media (max-width: 700px) { .minimap { right: 10px; bottom: 10px; width: 140px; height: 91px; } }
+/* When the page scrolls, the minimap stays in the window, above the footer. */
+@media (max-height: 600px), (max-width: 700px) { .minimap { position: fixed; bottom: calc(var(--foot) + 10px); } }
+
+/* Forced colors drop backgrounds and shadows: keep the borders, give Needs you a double border, draw lines in the text color. */
+@media (forced-colors: active) {
+  .task-card[data-status="needs-you"] { border-style: double; border-width: 4px; }
+  .graph-world.far .task-card { border-color: CanvasText; }
+  .graph-world.far .task-card[data-status="needs-you"] { border-width: calc(4px / var(--z)); }
+  .connection { stroke: CanvasText; }
+  .connection.active { stroke: Highlight; }
+  .port { fill: CanvasText; }
+  .minimap, #minimap-toggle { display: none; }
 }

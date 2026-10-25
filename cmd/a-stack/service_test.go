@@ -30,6 +30,7 @@ var errExit = errors.New("exit status 3")
 // folder with a space, a state directory and a fake systemd.
 func serviceSetup(t *testing.T) (f *fakeSystemd, exe, state, file string) {
 	t.Helper()
+	unixOnly(t, "systemd units hold Unix paths")
 	root := t.TempDir()
 	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
@@ -44,7 +45,8 @@ func serviceSetup(t *testing.T) (f *fakeSystemd, exe, state, file string) {
 		"is-enabled a-stack":        func() (string, error) { return "disabled", errExit },
 		"loginctl show-user":        func() (string, error) { return "Linger=no", nil },
 	}}
-	oldRun, oldExecutable, oldWait := runCommand, executable, serviceWait
+	oldRun, oldExecutable, oldWait, oldOS := runCommand, executable, serviceWait, serviceOS
+	serviceOS = "linux"
 	runCommand = func(name string, args ...string) (string, error) {
 		var call string
 		switch {
@@ -62,7 +64,7 @@ func serviceSetup(t *testing.T) (f *fakeSystemd, exe, state, file string) {
 		return "", nil
 	}
 	executable, serviceWait = func() (string, error) { return exe, nil }, 2*time.Second
-	t.Cleanup(func() { runCommand, executable, serviceWait = oldRun, oldExecutable, oldWait })
+	t.Cleanup(func() { runCommand, executable, serviceWait, serviceOS = oldRun, oldExecutable, oldWait, oldOS })
 	return f, exe, filepath.Join(root, "state"), filepath.Join(root, "config", "systemd", "user", "a-stack.service")
 }
 
@@ -220,6 +222,66 @@ func TestServiceInstallFailures(t *testing.T) {
 	f.replies["disable --now a-stack"] = func() (string, error) { return "Access denied", errExit }
 	if _, errout = runService(t, 1, "uninstall"); !strings.Contains(errout, "Access denied") {
 		t.Fatalf("stderr %s", errout)
+	}
+}
+
+// The upgrade test: a failed daemon-reload left the new unit file, and the
+// agent told the user that nothing was changed. A new unit file that systemd
+// does not take is removed again; an earlier one stays.
+func TestServiceInstallFailureRemovesANewUnit(t *testing.T) {
+	for _, step := range []string{"daemon-reload", "enable --now a-stack"} {
+		t.Run(step, func(t *testing.T) {
+			f, _, state, file := serviceSetup(t)
+			f.replies[step] = func() (string, error) { return "Failed to connect to bus", errExit }
+			if _, errout := runService(t, 1, "install", "--state-dir", state); !strings.Contains(errout, "systemctl --user "+step+" failed: Failed to connect to bus") {
+				t.Fatalf("stderr %s", errout)
+			}
+			if _, err := os.Stat(file); !os.IsNotExist(err) || !slices.Contains(f.calls, "disable a-stack") {
+				t.Fatalf("the new unit stayed: %v %v", err, f.calls)
+			}
+			if os.MkdirAll(filepath.Dir(file), 0o755) != nil || os.WriteFile(file, []byte("[Service]\n"), 0o644) != nil {
+				t.Fatal("unit")
+			}
+			runService(t, 1, "install", "--state-dir", state)
+			if _, err := os.Stat(file); err != nil {
+				t.Fatal("an earlier unit was removed:", err)
+			}
+		})
+	}
+}
+
+// The upgrade test: with a unit that systemd loads from elsewhere, such as
+// from a package or another config folder, status said "not installed" next
+// to "enabled" and "active", and update told the user to restart a service
+// that runs another binary.
+func TestServiceFromAnotherUnitFile(t *testing.T) {
+	f, exe, state, file := serviceSetup(t)
+	other := filepath.Join(t.TempDir(), "a-stack.service")
+	unit, err := renderUnit(exe, "/other/state", os.Getenv("HOME"))
+	if err != nil || os.WriteFile(other, []byte(unit), 0o644) != nil {
+		t.Fatal(err)
+	}
+	f.replies["show -p FragmentPath --value a-stack"] = func() (string, error) { return other, nil }
+	f.replies["is-enabled a-stack"] = func() (string, error) { return "enabled", nil }
+	f.replies["is-active a-stack"] = func() (string, error) { return "active", nil }
+	f.replies["is-active --quiet a-stack"] = func() (string, error) { return "", nil }
+	out, _ := runService(t, 0, "status", "--state-dir", state)
+	for _, want := range []string{"Unit file: " + other + " (a-stack service install would write " + file + ")", "Active:    active", "State dir: /other/state", "The CLI uses " + state} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("status lacks %q:\n%s", want, out)
+		}
+	}
+	// The restart hint of update is for the service that runs this binary.
+	if !serviceRuns(exe) {
+		t.Fatal("the service runs this binary")
+	}
+	another := filepath.Join(t.TempDir(), "a-stack")
+	if os.WriteFile(another, nil, 0o755) != nil || serviceRuns(another) {
+		t.Fatal("the service runs another binary")
+	}
+	f.replies["is-active --quiet a-stack"] = func() (string, error) { return "", errExit }
+	if serviceRuns(exe) {
+		t.Fatal("the service does not run")
 	}
 }
 

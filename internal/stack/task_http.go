@@ -65,6 +65,7 @@ func (s *Service) taskHTTP(w http.ResponseWriter, r *http.Request, token string)
 	var err error
 	switch q := request.(type) {
 	case *SnapshotRequest:
+		knownArchiveMark(r, q)
 		data, err = s.Store.Snapshot(r.Context(), token, *q)
 	case *TaskReadRequest:
 		data, err = s.Store.ShowTask(r.Context(), token, *q)

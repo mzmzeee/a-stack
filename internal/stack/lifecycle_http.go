@@ -22,7 +22,7 @@ func (s *Store) ListLifecycle(ctx context.Context, token, action string, r ListR
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	defer tx.Rollback()
 	p, err := authenticate(ctx, tx, token)
@@ -46,7 +46,7 @@ func (s *Store) ListLifecycle(ctx context.Context, token, action string, r ListR
 		}
 		var exists int
 		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM workspaces WHERE id=?", r.WorkspaceID).Scan(&exists); err != nil {
-			return nil, storageError()
+			return nil, storageError(err)
 		}
 		if exists != 1 {
 			return nil, failure("not_found", "Workspace not found")
@@ -56,14 +56,14 @@ func (s *Store) ListLifecycle(ctx context.Context, token, action string, r ListR
 	case "workspace.list":
 		rows, err := tx.QueryContext(ctx, "SELECT id,path,created_at FROM workspaces WHERE (?='' OR id=?) AND id>? ORDER BY id LIMIT ?", r.WorkspaceID, r.WorkspaceID, r.After, r.Limit+1)
 		if err != nil {
-			return nil, storageError()
+			return nil, storageError(err)
 		}
 		defer rows.Close()
 		result := Page[Workspace]{Items: []Workspace{}}
 		for rows.Next() {
 			var w Workspace
 			if err = rows.Scan(&w.ID, &w.Path, &w.CreatedAt); err != nil {
-				return nil, storageError()
+				return nil, storageError(err)
 			}
 			if len(result.Items) == r.Limit {
 				result.Next = result.Items[len(result.Items)-1].ID
@@ -71,28 +71,14 @@ func (s *Store) ListLifecycle(ctx context.Context, token, action string, r ListR
 			}
 			result.Items = append(result.Items, w)
 		}
-		if rows.Err() != nil {
-			return nil, storageError()
+		if err = rows.Err(); err != nil {
+			return nil, storageError(err)
 		}
 		return result, nil
 	case "session.list":
-		rows, err := tx.QueryContext(ctx, "SELECT id FROM sessions WHERE workspace_id=? AND (?='' OR id=?) AND id>? ORDER BY id LIMIT ?", r.WorkspaceID, r.SessionID, r.SessionID, r.After, r.Limit+1)
+		ids, err := readIDs(ctx, tx, "SELECT id FROM sessions WHERE workspace_id=? AND (?='' OR id=?) AND id>? ORDER BY id LIMIT ?", r.WorkspaceID, r.SessionID, r.SessionID, r.After, r.Limit+1)
 		if err != nil {
-			return nil, storageError()
-		}
-		ids := []string{}
-		for rows.Next() {
-			var id string
-			if err = rows.Scan(&id); err != nil {
-				rows.Close()
-				return nil, storageError()
-			}
-			ids = append(ids, id)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, storageError()
+			return nil, err
 		}
 		result := Page[Session]{Items: []Session{}}
 		for _, id := range ids {
@@ -111,23 +97,9 @@ func (s *Store) ListLifecycle(ctx context.Context, token, action string, r ListR
 		if _, err = ReadSession(ctx, tx, p, r.Context); err != nil {
 			return nil, err
 		}
-		rows, err := tx.QueryContext(ctx, "SELECT id FROM agents WHERE session_id=? AND id>? ORDER BY id LIMIT ?", r.SessionID, r.After, r.Limit+1)
+		ids, err := readIDs(ctx, tx, "SELECT id FROM agents WHERE session_id=? AND id>? ORDER BY id LIMIT ?", r.SessionID, r.After, r.Limit+1)
 		if err != nil {
-			return nil, storageError()
-		}
-		ids := []string{}
-		for rows.Next() {
-			var id string
-			if err = rows.Scan(&id); err != nil {
-				rows.Close()
-				return nil, storageError()
-			}
-			ids = append(ids, id)
-		}
-		err = rows.Err()
-		rows.Close()
-		if err != nil {
-			return nil, storageError()
+			return nil, err
 		}
 		result := Page[Agent]{Items: []Agent{}}
 		for _, id := range ids {
@@ -149,7 +121,7 @@ func (s *Store) ListLifecycle(ctx context.Context, token, action string, r ListR
 func (s *Store) InspectSession(ctx context.Context, token string, ref Context) (Session, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return Session{}, storageError()
+		return Session{}, storageError(err)
 	}
 	defer tx.Rollback()
 	p, err := authenticate(ctx, tx, token)
@@ -159,7 +131,11 @@ func (s *Store) InspectSession(ctx context.Context, token string, ref Context) (
 	if p.Kind == BrowserCapability {
 		return Session{}, failure("forbidden", "browser views use Session snapshot endpoints")
 	}
-	return ReadSession(ctx, tx, p, ref)
+	session, err := ReadSession(ctx, tx, p, ref)
+	if err == nil && p.Kind == AgentCapability {
+		session.YourAgentID = p.SubjectID
+	}
+	return session, err
 }
 func (s *Service) lifecycleHTTP(w http.ResponseWriter, r *http.Request, token string) bool {
 	var request any

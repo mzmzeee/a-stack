@@ -3,9 +3,14 @@ package main
 import (
 	"context"
 	"os"
+	"runtime"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
+
+// herdrSupported is false on Windows: Herdr's Windows build is a preview,
+// and a-stack reaches Herdr through a Unix socket. Tests change it.
+var herdrSupported = runtime.GOOS != "windows"
 
 func isHerdrCommand(command string) bool {
 	return command == "herdr bind" || command == "herdr focus"

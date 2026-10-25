@@ -140,7 +140,7 @@ func setFreeBytes(s *Store, free uint64, err error, calls *int) {
 func TestLowDiskWarningInStorageStatusAndView(t *testing.T) {
 	f := tasksFixture(t)
 	s := f.service.Store
-	if free, err := statfsFree(s.path); err != nil || free == 0 {
+	if free, err := diskFree(s.path); err != nil || free == 0 {
 		t.Fatal("statfs:", free, err)
 	}
 	calls := 0

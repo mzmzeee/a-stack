@@ -11,14 +11,14 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	_ "github.com/mattn/go-sqlite3"
 )
 
-const schemaVersion = 7
+const schemaVersion = 8
 const applicationID = 0x4153544b
 const migration1 = `
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -47,6 +47,10 @@ type Store struct {
 	noticeWake    func()
 	budget        writeBudget
 	disk          diskSpace
+	marksMu       sync.Mutex
+	marks         map[string]archiveMarkState // by Session ID
+	// Migrated is one line for stderr after a schema migration, else empty.
+	Migrated string
 }
 
 // stmtCacheSize bounds the prepared statements the driver keeps. Past it, the
@@ -54,13 +58,37 @@ type Store struct {
 // as the migrations, are never cached.
 const stmtCacheSize = 128
 
+// JournalSizeLimit is the size that SQLite cuts the WAL file back to when it
+// starts the WAL again after a checkpoint. A burst, such as a migration or a
+// mail flood, can grow the WAL far past the about 4 MB that the default
+// automatic checkpoint (every 1,000 pages) leaves; without a limit the file
+// keeps that size until the service stops. Twice the normal size means that
+// ordinary use never cuts and grows the file again.
+const JournalSizeLimit = 8 << 20
+
+// driverName is go-sqlite3 with JournalSizeLimit set on each new connection;
+// the driver has no DSN parameter for it. sqlite_cgo.go registers it.
+const driverName = "sqlite3-a-stack"
+
+// fileURI is the SQLite URI of a database file.
+func fileURI(path string) string { return sqliteURI(path, runtime.GOOS == "windows") }
+
+// sqliteURI writes a Windows path as file:///C:/folder/state.db: SQLite
+// refuses a URI with any host but an empty one or localhost, and the
+// backslashes of C:\folder would become part of a host.
+func sqliteURI(path string, windows bool) string {
+	if windows {
+		path = "/" + strings.ReplaceAll(path, `\`, "/")
+	}
+	return (&url.URL{Scheme: "file", Path: path}).String()
+}
+
 func openStore(ctx context.Context, path string) (*Store, error) {
-	u := url.URL{Scheme: "file", Path: path}
 	// The driver keeps up to stmtCacheSize single-statement queries prepared on
 	// the one connection, so hot queries are not compiled again on every call.
-	db, err := sql.Open("sqlite3", u.String()+"?_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate&_stmt_cache_size="+strconv.Itoa(stmtCacheSize))
+	db, err := sql.Open(driverName, fileURI(path)+"?_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate&_stmt_cache_size="+strconv.Itoa(stmtCacheSize))
 	if err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
@@ -72,7 +100,7 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 		}
 	}()
 	if err = db.QueryRowContext(ctx, "SELECT sqlite_version()").Scan(&s.sqliteVersion); err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	if !sqliteSupported(s.sqliteVersion) {
 		return nil, failure("storage_unavailable", "SQLite >=3.51.3 is required")
@@ -86,13 +114,18 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 	if db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version) != nil || db.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app) != nil {
 		return nil, storageError()
 	}
+	backup := ""
 	if version > 0 && version < schemaVersion && app == applicationID {
-		if err = s.backupBeforeMigration(ctx, version); err != nil {
+		if backup, err = s.backupBeforeMigration(ctx, version); err != nil {
 			return nil, err
 		}
 	}
+	started := time.Now()
 	if err = s.migrate(ctx, migration1); err != nil {
 		return nil, err
+	}
+	if backup != "" {
+		s.Migrated = fmt.Sprintf("Migrated the state database from schema %d to %d in %.1f s. The copy from before is %s; an older a-stack cannot open the database now. To go back: %s", version, schemaVersion, time.Since(started).Seconds(), backup, goBackDocs)
 	}
 	// Close the connection that ran the migrations, and with it every statement
 	// it cached against the old schema. The pool opens a fresh one on demand.
@@ -109,39 +142,116 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 }
 
 const restoreDocs = "https://github.com/mzmzeee/a-stack/blob/main/docs/foundation.md#backup-and-restore"
+const goBackDocs = "https://github.com/mzmzeee/a-stack/blob/main/docs/install.md#go-back-to-an-older-version"
 
 // backupBeforeMigration copies the database at schema version to
 // state.db.pre-vN with VACUUM INTO before a migration changes it. It never
 // replaces an earlier copy: the next one is state.db.pre-vN.2, and so on.
-func (s *Store) backupBeforeMigration(ctx context.Context, version int) error {
-	base := s.path + ".pre-v" + strconv.Itoa(version)
-	for n := 1; n <= 100; n++ {
-		name := base
-		if n > 1 {
-			name += "." + strconv.Itoa(n)
-		}
-		f, err := os.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if errors.Is(err, os.ErrExist) {
-			continue
-		}
-		if err != nil {
-			break
-		}
-		// VACUUM INTO accepts the empty file, which keeps the owner-only mode.
-		_, err = s.db.ExecContext(ctx, "VACUUM main INTO ?", name)
-		if err == nil {
-			err = f.Sync()
-		}
-		if closeErr := f.Close(); err == nil {
-			err = closeErr
-		}
-		if err == nil && syncDir(filepath.Dir(s.path)) == nil {
-			return nil
-		}
-		os.Remove(name)
-		break
+//
+// A start that fails after the copy, and is tried again, reuses it. Each copy
+// gets the modification time of the database it was made from, after the WAL
+// is folded into the file, so a later change to the database means a new
+// copy. The copy is written under a temporary name and renamed when it is
+// complete, so a crash never leaves a cut-off copy under the final name.
+func (s *Store) backupBeforeMigration(ctx context.Context, version int) (string, error) {
+	var busy, frames, moved int
+	folded := s.db.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &frames, &moved) == nil && busy == 0
+	source, err := os.Stat(s.path)
+	if err != nil {
+		return "", storageError(err)
 	}
-	return failure("storage_unavailable", fmt.Sprintf("cannot write %s.pre-v%d, the backup before the schema migration; check free space and permissions in the state directory", filepath.Base(s.path), version))
+	var id string
+	if err = s.db.QueryRowContext(ctx, "SELECT value FROM metadata WHERE key='database_id'").Scan(&id); err != nil {
+		return "", storageError(err)
+	}
+	base := s.path + ".pre-v" + strconv.Itoa(version)
+	name := ""
+	for n := 1; n <= 100; n++ {
+		next := base
+		if n > 1 {
+			next += "." + strconv.Itoa(n)
+		}
+		info, err := os.Lstat(next)
+		if errors.Is(err, os.ErrNotExist) {
+			if name == "" {
+				name = next
+			}
+		} else if err == nil && folded && info.Mode().IsRegular() && info.ModTime().Equal(source.ModTime()) && copyOf(ctx, next, version, id) {
+			if err = s.migrationSpace(source.Size(), false); err != nil {
+				return "", err
+			}
+			return next, nil
+		}
+	}
+	cannot := failure("storage_unavailable", fmt.Sprintf("cannot write %s.pre-v%d, the backup before the schema migration; check free space and permissions in the state directory", filepath.Base(s.path), version))
+	if name == "" {
+		return "", cannot
+	}
+	if err = s.migrationSpace(source.Size(), true); err != nil {
+		return "", err
+	}
+	// Only one serve holds the state directory, so a temporary file left
+	// there belongs to an earlier start that stopped.
+	tmp := base + ".tmp"
+	os.Remove(tmp)
+	os.Remove(tmp + "-journal")
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return "", cannot
+	}
+	// VACUUM INTO accepts the empty file, which keeps the owner-only mode.
+	_, err = s.db.ExecContext(ctx, "VACUUM main INTO ?", tmp)
+	if err == nil {
+		err = f.Sync()
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Chtimes(tmp, source.ModTime(), source.ModTime())
+	}
+	if err == nil {
+		err = Rename(tmp, name)
+	}
+	if err == nil && syncDir(filepath.Dir(s.path)) == nil {
+		return name, nil
+	}
+	os.Remove(tmp)
+	return "", cannot
+}
+
+// copyOf reports whether the file at name is an a-stack database at schema
+// version with the database ID id.
+func copyOf(ctx context.Context, name string, version int, id string) bool {
+	db, err := sql.Open("sqlite3", fileURI(name)+"?mode=ro")
+	if err != nil {
+		return false
+	}
+	defer db.Close()
+	var v, app int
+	var got string
+	return db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&v) == nil && v == version &&
+		db.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app) == nil && app == applicationID &&
+		db.QueryRowContext(ctx, "SELECT value FROM metadata WHERE key='database_id'").Scan(&got) == nil && got == id
+}
+
+// migrationSpace refuses a migration while the state directory has less free
+// space than it needs. The migration rebuilds the Task text and mail tables,
+// which hold most of the data: the new tables go into the WAL first, and the
+// checkpoint then grows the file by as much, so the migration needs up to
+// twice the database size, and the copy, unless reused, once more. When the
+// free space cannot be measured, the migration tries anyway.
+func (s *Store) migrationSpace(size int64, withCopy bool) error {
+	need := 2 * uint64(size)
+	if withCopy {
+		need += uint64(size)
+	}
+	free, err := s.disk.get(s.path)
+	if err != nil || free >= need {
+		return nil
+	}
+	mb := func(n uint64) string { return strconv.FormatUint((n+999_999)/1_000_000, 10) + " MB" }
+	return failure("storage_unavailable", fmt.Sprintf("the schema migration of %s needs about %s of free space in the state directory (for a copy of the database and to rebuild its tables), but only %s is free; free some space and start a-stack again", filepath.Base(s.path), mb(need), mb(free)))
 }
 func sqliteSupported(version string) bool {
 	parts := strings.Split(version, ".")
@@ -166,15 +276,74 @@ func sqliteSupported(version string) bool {
 	}
 	return true
 }
+
+// migration8 keeps Task texts and Task mail in rowid tables. A WITHOUT ROWID
+// table stores a row of more than about 1 KB on its own 4 KB overflow page; a
+// rowid table keeps rows of up to about 4 KB in the table page. The foreign key
+// of a mention now uses the primary key of its message, and a trigger checks
+// that the mention names the message's Task, which the composite foreign key
+// did before. So mail_messages needs no UNIQUE(id,task_id) index any more.
+// task_content_task keeps only task_id, which is all the foreign key check of
+// a Task needs: every read finds a text by its ID.
+const migration8 = `
+CREATE TABLE task_content_v8(id TEXT PRIMARY KEY NOT NULL,task_id TEXT NOT NULL REFERENCES tasks(id),kind TEXT NOT NULL,body TEXT NOT NULL,actor_id TEXT NOT NULL REFERENCES agents(id),received_at TEXT NOT NULL);
+INSERT INTO task_content_v8 SELECT id,task_id,kind,body,actor_id,received_at FROM task_content ORDER BY task_id,received_at;
+DROP TABLE task_content;
+ALTER TABLE task_content_v8 RENAME TO task_content;
+CREATE INDEX task_content_task ON task_content(task_id);
+CREATE TABLE mail_messages_v8(
+ id TEXT PRIMARY KEY NOT NULL, task_id TEXT NOT NULL REFERENCES tasks(id), sequence INTEGER NOT NULL CHECK(sequence>0),
+ sender_id TEXT NOT NULL REFERENCES agents(id), received_at TEXT NOT NULL, body TEXT NOT NULL,
+ UNIQUE(task_id,sequence)
+);
+INSERT INTO mail_messages_v8 SELECT id,task_id,sequence,sender_id,received_at,body FROM mail_messages ORDER BY task_id,sequence;
+CREATE TABLE mail_mentions_v8(
+ message_id TEXT NOT NULL REFERENCES mail_messages(id), task_id TEXT NOT NULL, recipient_id TEXT NOT NULL REFERENCES agents(id),
+ notice_state TEXT NOT NULL CHECK(notice_state IN ('pending','submitting','submitted','uncertain','suppressed','self')),
+ state_at TEXT NOT NULL,
+ PRIMARY KEY(message_id,recipient_id)
+) WITHOUT ROWID;
+INSERT INTO mail_mentions_v8 SELECT message_id,task_id,recipient_id,notice_state,state_at FROM mail_mentions;
+DROP TABLE mail_mentions;
+DROP TABLE mail_messages;
+ALTER TABLE mail_messages_v8 RENAME TO mail_messages;
+ALTER TABLE mail_mentions_v8 RENAME TO mail_mentions;
+CREATE INDEX mail_mentions_pending ON mail_mentions(notice_state,recipient_id,message_id);
+CREATE INDEX mail_mentions_membership ON mail_mentions(task_id,recipient_id,notice_state,message_id);
+CREATE TRIGGER mail_mentions_task BEFORE INSERT ON mail_mentions
+ WHEN NEW.task_id IS NOT (SELECT task_id FROM mail_messages WHERE id=NEW.message_id)
+ BEGIN SELECT RAISE(ABORT,'FOREIGN KEY constraint failed'); END;
+CREATE TRIGGER mail_mentions_task_change BEFORE UPDATE OF message_id,task_id ON mail_mentions
+ WHEN NEW.task_id IS NOT (SELECT task_id FROM mail_messages WHERE id=NEW.message_id)
+ BEGIN SELECT RAISE(ABORT,'FOREIGN KEY constraint failed'); END;
+`
+
+// migrate runs every migration the database lacks in one transaction.
+// Schema 8 rebuilds tables that other tables reference, which SQLite allows
+// only with foreign keys off, and it cannot change that inside a transaction.
+// So the migrations run on one connection with foreign keys off, and
+// PRAGMA foreign_key_check must find no broken reference before the commit.
 func (s *Store) migrate(ctx context.Context, migration string) error {
-	tx, err := s.db.BeginTx(ctx, nil)
+	conn, err := s.db.Conn(ctx)
 	if err != nil {
-		return storageError()
+		return storageError(err)
+	}
+	defer conn.Close()
+	if _, err = conn.ExecContext(ctx, "PRAGMA foreign_keys=OFF"); err != nil {
+		return storageError(err)
+	}
+	defer conn.ExecContext(context.Background(), "PRAGMA foreign_keys=ON")
+	tx, err := conn.BeginTx(ctx, nil)
+	if err != nil {
+		return storageError(err)
 	}
 	defer tx.Rollback()
 	var version, app int
 	if tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version) != nil || tx.QueryRowContext(ctx, "PRAGMA application_id").Scan(&app) != nil {
 		return storageError()
+	}
+	if version == schemaVersion && app == applicationID {
+		return nil
 	}
 	if version > schemaVersion && app == applicationID {
 		return unusableDatabase("the state database %s has schema version %d, but this a-stack supports schema version %d or older; update a-stack with a-stack update, or restore a backup made with this version: %s", s.path, version, schemaVersion, restoreDocs)
@@ -191,66 +360,81 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 			return unusableDatabase("the state database %s is not an a-stack database or has an unknown schema (version 0); use another state directory, or restore a backup: %s", s.path, restoreDocs)
 		}
 		if _, err = tx.ExecContext(ctx, migration); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "INSERT INTO metadata(key,value) VALUES('database_id',?)", opaqueID()); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version=1; PRAGMA application_id=%d", applicationID)); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		version = 1
 	}
 	if version < 2 {
 		if _, err = tx.ExecContext(ctx, migration2); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=2"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	if version < 3 {
 		if _, err = tx.ExecContext(ctx, migration3); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=3"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	if version < 4 {
 		if _, err = tx.ExecContext(ctx, migration4); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=4"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	if version < 5 {
 		if _, err = tx.ExecContext(ctx, migration5); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=5"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	if version < 6 {
 		if _, err = tx.ExecContext(ctx, migration6); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=6"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	if version < 7 {
 		if _, err = tx.ExecContext(ctx, migration7); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=7"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
+	if version < 8 {
+		if _, err = tx.ExecContext(ctx, migration8); err != nil {
+			return storageError(err)
+		}
+		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=8"); err != nil {
+			return storageError(err)
+		}
+	}
+	var broken bool
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pragma_foreign_key_check)").Scan(&broken); err != nil {
+		return storageError(err)
+	}
+	if broken {
+		return unusableDatabase("the state database %s has broken references (PRAGMA foreign_key_check), so it was not migrated; restore a backup: %s", s.path, restoreDocs)
+	}
 	if err = tx.Commit(); err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	return nil
 }
@@ -278,22 +462,16 @@ func tokenHash(token string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// IssueCapability participates in the caller's registration/rebind transaction.
-// Only the hash persists; callers must deliver the returned credential privately.
-func IssueCapability(ctx context.Context, tx *sql.Tx, kind CapabilityKind, subject, session string) (Credential, error) {
-	if !validKind(kind) || subject == "" || len(subject) > 128 || len(session) > 128 || (kind == OperatorCapability && session != "") || (kind != OperatorCapability && session == "") {
-		return Credential{}, failure("invalid_input", "invalid credential scope")
-	}
-	c := Credential{Kind: kind, Token: opaqueID()}
-	var expires int64 // view tokens expire; Operator and Agent credentials do not
-	if kind == BrowserCapability {
-		expires = clockNow().Add(ViewTokenAge).Unix()
-	}
-	_, err := tx.ExecContext(ctx, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id,expires_at) VALUES(?,?,?,?,?)", tokenHash(c.Token), kind, subject, session, expires)
+// issueViewToken stores the hash of a new view token for one Session in the
+// caller's transaction and returns the token. Operator and Agent credentials
+// are not issued here: the CLI makes them and the service stores their hash.
+func issueViewToken(ctx context.Context, tx *sql.Tx, session string) (string, error) {
+	token := opaqueID()
+	_, err := tx.ExecContext(ctx, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id,expires_at) VALUES(?,'browser',?,?,?)", tokenHash(token), opaqueID(), session, clockNow().Add(ViewTokenAge).Unix())
 	if err != nil {
-		return Credential{}, storageError()
+		return "", storageError(err)
 	}
-	return c, nil
+	return token, nil
 }
 func authenticate(ctx context.Context, q interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
@@ -308,7 +486,7 @@ func authenticate(ctx context.Context, q interface {
 		return p, failure("unauthorized", "valid bearer credential required")
 	}
 	if err != nil {
-		return p, storageError()
+		return p, storageError(err)
 	}
 	return p, nil
 }
@@ -336,7 +514,7 @@ func (s *Store) ensureOperator(ctx context.Context, dir string) error {
 		// established credential merely because a local file disappeared.
 		_, err = s.db.ExecContext(ctx, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id) VALUES(?,'operator',?,'')", tokenHash(c.Token), opaqueID())
 		if err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	p, err := authenticate(ctx, s.db, c.Token)
@@ -389,7 +567,7 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	digest := hex.EncodeToString(sum[:])
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	defer tx.Rollback()
 	p, err := authenticate(ctx, tx, token)
@@ -410,12 +588,12 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 			return empty, failure("operation_conflict", "operation ID already used with a different payload or scope")
 		}
 		if err = authorizeReplay(ctx, tx, p, r); err != nil {
-			return empty, publicError(err)
+			return empty, operationError(op.Name, err)
 		}
 		return r, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return empty, storageError()
+		return empty, operationError(op.Name, err)
 	}
 	// A replay above is never limited: it stores nothing new.
 	if p.Kind == AgentCapability {
@@ -425,7 +603,7 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	}
 	r, err = apply(ctx, tx, p)
 	if err != nil {
-		return empty, publicError(err)
+		return empty, operationError(op.Name, err)
 	}
 	if len(r.ResourceID) == 0 || len(r.ResourceID) > 128 || r.Revision < 0 || len(r.Outcome) == 0 || len(r.Outcome) > 64 || len(r.BodyRef) > 128 {
 		return empty, failure("invalid_input", "receipt must contain bounded references and a scalar outcome")
@@ -434,10 +612,10 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	r.ReceivedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	_, err = tx.ExecContext(ctx, `INSERT INTO operation_receipts(actor,operation_id,name,scope,digest,resource_id,revision,outcome,body_ref,received_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, actor, op.ID, op.Name, op.Scope, digest, r.ResourceID, r.Revision, r.Outcome, r.BodyRef, r.ReceivedAt)
 	if err != nil {
-		return empty, storageError()
+		return empty, operationError(op.Name, err)
 	}
-	if tx.Commit() != nil {
-		return empty, storageError()
+	if err = tx.Commit(); err != nil {
+		return empty, operationError(op.Name, err)
 	}
 	if p.Kind == AgentCapability {
 		s.budget.charge(p.SubjectID, len(op.Payload))
@@ -468,7 +646,7 @@ func (s *Store) Status() (StorageStatus, error) {
 			continue
 		}
 		if err != nil {
-			return status, storageError()
+			return status, storageError(err)
 		}
 		*target = info.Size()
 	}
@@ -491,20 +669,17 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 		return empty, failure("invalid_input", "backup destination must be a new absolute filename")
 	}
 	parent := filepath.Dir(destination)
-	info, err := os.Lstat(parent)
+	err := checkPrivateDirectory(parent)
 	if err != nil {
 		return empty, failure("invalid_input", "create a private backup directory first")
 	}
-	if err = checkPrivate(info, true); err != nil {
-		return empty, err
-	}
-	resolvedParent, err := filepath.EvalSymlinks(parent)
+	resolvedParent, err := ResolvePath(parent)
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
-	resolvedState, err := filepath.EvalSymlinks(filepath.Dir(s.path))
+	resolvedState, err := ResolvePath(filepath.Dir(s.path))
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	relative, err := filepath.Rel(resolvedState, resolvedParent)
 	if err != nil || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))) {
@@ -513,11 +688,11 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	if _, err = os.Lstat(destination); err == nil {
 		return empty, failure("conflict", "backup destination already exists")
 	} else if !os.IsNotExist(err) {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	defer conn.Close()
 	p, err := authenticate(ctx, conn, token)
@@ -529,16 +704,16 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	}
 	f, err := os.CreateTemp(parent, ".a-stack-backup-*")
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	staging := f.Name()
 	defer func() { f.Close(); os.Remove(staging) }()
 	if _, err = conn.ExecContext(ctx, "VACUUM main INTO ?", staging); err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
-	backup, err := sql.Open("sqlite3", (&url.URL{Scheme: "file", Path: staging}).String()+"?mode=ro&_busy_timeout=5000")
+	backup, err := sql.Open("sqlite3", fileURI(staging)+"?mode=ro&_busy_timeout=5000")
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	var integrity string
 	err = backup.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity)
@@ -550,14 +725,14 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	if err = os.Link(staging, destination); errors.Is(err, os.ErrExist) {
 		return empty, failure("conflict", "backup destination already exists")
 	} else if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	if err = syncDir(parent); err != nil {
 		return empty, err
 	}
-	info, err = f.Stat()
+	info, err := f.Stat()
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	return StorageStatus{DatabaseID: s.id, DatabaseBytes: info.Size()}, nil
 }

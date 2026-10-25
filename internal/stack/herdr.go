@@ -93,7 +93,7 @@ func completeHerdrBinding(b RuntimeBinding) bool {
 	return safeBindingField(b.InstanceID) && herdrName.MatchString(b.HerdrAlias) && filepath.IsAbs(b.Endpoint) && safeBindingField(b.Endpoint) && safeBindingField(b.PaneID) && !strings.HasPrefix(b.PaneID, "-") && safeBindingField(b.TerminalID) && safeBindingField(b.NativeSessionID) && safeBindingField(b.Harness) && safeBindingField(b.HarnessVersion)
 }
 func (a herdrAgent) matches(b RuntimeBinding) bool {
-	return a.Name == b.HerdrAlias && a.PaneID == b.PaneID && a.TerminalID == b.TerminalID && a.Agent == b.Harness && a.Session.Agent == b.Harness && a.Session.Kind == "id" && a.Session.Source == "herdr:"+b.Harness && a.Session.Value == b.NativeSessionID
+	return a.Name == b.HerdrAlias && a.PaneID == b.PaneID && a.TerminalID == b.TerminalID && a.Agent == b.Harness && nativeSession(b.Harness, a.Session.Agent, a.Session.Kind, a.Session.Source, a.Session.Value) && a.Session.Value == b.NativeSessionID
 }
 
 // Capture bounded output only for decoding allowlisted metadata/codes. Never

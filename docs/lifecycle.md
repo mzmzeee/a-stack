@@ -100,7 +100,7 @@ a-stack agent rebind --workspace "$workspace_id" --session "$session_id" \
 
 To remove the binding instead, use `--clear-runtime` in place of a new runtime. The Agent is then unattached and has a rotated credential. A rebind works only in an open Session. To recover a credential in a closed Session, reopen the Session first. If a rebind fails with a conflict, a-stack rolls back the credential, the binding claims, the history and the receipt together.
 
-An Agent that runs inside Herdr binds itself to its own pane with `a-stack herdr bind`, in place of `agent attach`. It takes the same `--agent`, `--expected-revision` and `--operation-id`, reads the pane, the terminal, the native session and the harness version from Herdr and the harness, and sends them as an `agent attach`. See [Enroll a recipient](notifications.md#enroll-a-recipient).
+An Agent that runs inside Herdr binds itself to its own pane with `a-stack herdr bind`, in place of `agent attach`. It works for Claude Code, Codex and Pi panes. It takes the same `--agent`, `--expected-revision` and `--operation-id`, reads the pane, the terminal, the native session and the harness version from Herdr and the harness, and sends them as an `agent attach`. For Pi, the native session is the path of its session file. Mention notices reach only Codex for now. See [Enroll a recipient](notifications.md#enroll-a-recipient).
 
 Instead of `--runtime-id`, you can give `--runtime-file PRIVATE_JSON`. The file has `instance_id` and these optional fields: `endpoint`, `pane_id`, `terminal_id`, `native_session_id`, `herdr_alias`, `harness` and `harness_version`. a-stack reads it with the same bounded reader as credential files. An instance ID can be 128 UTF-8 bytes at most, and each optional value 512 bytes at most. List, inspect and receipt output never show the binding. `agent attach` and `agent rebind` run no Herdr command.
 
@@ -116,7 +116,7 @@ Observations also work when the Session is closed. They do not change the lifecy
 
 ## Close, reopen and inspect
 
-Only the Operator can run `session close` and `session reopen`. Both need `--expected-revision` and `--operation-id`. `session inspect` shows the current lifecycle revision, the Orchestrator and whether the Session is closed.
+Only the Operator can run `session close` and `session reopen`. Both need `--expected-revision` and `--operation-id`. `session inspect` shows the current lifecycle revision, the Orchestrator and whether the Session is closed. Run by an Agent, it also shows that Agent's own ID as `your_agent_id`.
 
 - A retry of the same operation returns its original receipt, also after the Session is closed.
 - A new operation with an old revision causes a conflict.

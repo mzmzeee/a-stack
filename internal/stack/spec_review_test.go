@@ -13,8 +13,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mattn/go-sqlite3"
 )
 
 func reviewService(t *testing.T, dir string) (*Service, Credential) {
@@ -145,8 +143,7 @@ func TestSpecReviewRealDiskFullRollback(t *testing.T) {
 		_, sqliteFailure = tx.ExecContext(ctx, "INSERT INTO review_effects VALUES(zeroblob(1048576))")
 		return Receipt{ResourceID: "fixture", Outcome: "created"}, sqliteFailure
 	})
-	var se sqlite3.Error
-	if !errors.As(sqliteFailure, &se) || se.Code != sqlite3.ErrFull {
+	if !isSQLiteFull(sqliteFailure) {
 		t.Fatalf("did not generate real SQLITE_FULL: %v", sqliteFailure)
 	}
 	reviewCode(t, err, "storage_unavailable")
@@ -227,7 +224,7 @@ func TestSpecReviewBackupAndConfiguration(t *testing.T) {
 	if err != nil || backupStatus.DatabaseID != s.Store.id {
 		t.Fatalf("backup failed: %v", err)
 	}
-	backup, err := sql.Open("sqlite3", "file:"+destination+"?mode=ro")
+	backup, err := sql.Open("sqlite3", fileURI(destination)+"?mode=ro")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,7 +235,7 @@ func TestSpecReviewBackupAndConfiguration(t *testing.T) {
 	}
 	reviewCount(t, backup, "review_committed", 1)
 	info, err := os.Stat(destination)
-	if err != nil || info.Mode().Perm() != 0600 {
+	if err != nil || posixModes && info.Mode().Perm() != 0600 {
 		t.Fatal("backup permissions are not private")
 	}
 	_, err = s.Store.Backup(context.Background(), c.Token, destination)
@@ -283,23 +280,8 @@ func TestSpecReviewHTTPAndCapabilities(t *testing.T) {
 	if _, err := NewClient(dir, "", AgentCapability); err == nil {
 		t.Fatal("Agent mode fell back to Operator credential")
 	}
-	ctx := context.Background()
-	tx, err := s.Store.db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-	agent, err := IssueCapability(ctx, tx, AgentCapability, "review-agent", "review-session")
-	if err != nil {
-		t.Fatal(err)
-	}
-	browser, err := IssueCapability(ctx, tx, BrowserCapability, "review-browser", "review-session")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
+	agent := issueTest(t, s.Store, AgentCapability, "review-agent", "review-session")
+	browser := issueTest(t, s.Store, BrowserCapability, "review-browser", "review-session")
 	for _, tc := range []struct {
 		name, token, path string
 		want              int

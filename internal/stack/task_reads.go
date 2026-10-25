@@ -15,6 +15,10 @@ const readPageBudget = 768 << 10
 type SnapshotRequest struct {
 	Context
 	KnownRevision int64 `json:"known_revision,omitempty"`
+	// knownMark is the archive mark of the caller's snapshot ETag, when it
+	// sent one; -1 for an ETag without one.
+	knownMark    int64
+	hasKnownMark bool
 }
 type SnapshotCounts struct {
 	Tasks        int `json:"tasks"`
@@ -30,6 +34,7 @@ type SessionSnapshot struct {
 	WorkspaceName string          `json:"workspace_name"`
 	Unchanged     bool            `json:"unchanged"`
 	Counts        *SnapshotCounts `json:"counts,omitempty"`
+	archiveMark   int64           // in the ETag; see Store.archiveMark
 }
 type TaskReadRequest struct {
 	Context
@@ -104,7 +109,7 @@ func pinReadRevision(expected int64, session Session) error {
 func (s *Store) readSessionTx(ctx context.Context, token string, ref Context) (*sql.Tx, Principal, Session, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, Principal{}, Session{}, storageError()
+		return nil, Principal{}, Session{}, storageError(err)
 	}
 	p, err := authenticate(ctx, tx, token)
 	if err != nil {
@@ -129,16 +134,21 @@ func (s *Store) Snapshot(ctx context.Context, token string, r SnapshotRequest) (
 	}
 	var workspacePath string
 	if err = tx.QueryRowContext(ctx, `SELECT path FROM workspaces WHERE id=?`, session.WorkspaceID).Scan(&workspacePath); err != nil {
-		return SessionSnapshot{}, storageError()
+		return SessionSnapshot{}, storageError(err)
 	}
-	snapshot := SessionSnapshot{Source: "local-service", CapturedAt: now(), Session: session, WorkspaceName: filepath.Base(workspacePath), Unchanged: r.KnownRevision == session.ReadRevision}
+	mark, err := s.archiveMark(ctx, tx, session)
+	if err != nil {
+		return SessionSnapshot{}, err
+	}
+	unchanged := r.KnownRevision == session.ReadRevision && (!r.hasKnownMark || r.knownMark == mark)
+	snapshot := SessionSnapshot{Source: "local-service", CapturedAt: now(), Session: session, WorkspaceName: filepath.Base(workspacePath), Unchanged: unchanged, archiveMark: mark}
 	if snapshot.Unchanged {
 		return snapshot, nil
 	}
 	counts := &SnapshotCounts{}
 	err = tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM tasks WHERE session_id=?),(SELECT count(*) FROM agents WHERE session_id=?),(SELECT count(*) FROM dependencies WHERE session_id=?),(SELECT count(*) FROM task_assignees WHERE session_id=?)`, session.ID, session.ID, session.ID, session.ID).Scan(&counts.Tasks, &counts.Agents, &counts.Dependencies, &counts.Assignments)
 	if err != nil {
-		return SessionSnapshot{}, storageError()
+		return SessionSnapshot{}, storageError(err)
 	}
 	snapshot.Counts = counts
 	return snapshot, nil
@@ -160,19 +170,21 @@ func (s *Store) ShowTask(ctx context.Context, token string, r TaskReadRequest) (
 	for _, field := range []struct {
 		ref    string
 		target *string
-	}{{task.descriptionRef, &detail.Description}, {task.reportRef, &detail.Report}, {task.reasonRef, &detail.Reason}, {task.resultRef, &detail.Result}} {
+		kind   string
+	}{{task.descriptionRef, &detail.Description, "description"}, {task.reportRef, &detail.Report, "report"}, {task.reasonRef, &detail.Reason, "reason"}, {task.resultRef, &detail.Result, "result"}} {
 		if field.ref == "" {
+			*field.target, _ = defaultText(field.kind, task.Progress)
 			continue
 		}
 		body, err := contentBody(ctx, tx, field.ref)
 		if err != nil {
-			return TaskDetail{}, storageError()
+			return TaskDetail{}, storageError(err)
 		}
 		*field.target = body
 	}
 	detail.Question, err = openQuestion(ctx, tx, task.ID)
 	if err != nil {
-		return TaskDetail{}, storageError()
+		return TaskDetail{}, storageError(err)
 	}
 	return detail, nil
 }
@@ -214,19 +226,19 @@ func encodeSnapshotCursor(r SnapshotPageRequest, revision int64, position string
 func readIDs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]string, error) {
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	defer rows.Close()
 	ids := []string{}
 	for rows.Next() {
 		var id string
-		if rows.Scan(&id) != nil {
-			return nil, storageError()
+		if err = rows.Scan(&id); err != nil {
+			return nil, storageError(err)
 		}
 		ids = append(ids, id)
 	}
-	if rows.Err() != nil {
-		return nil, storageError()
+	if err = rows.Err(); err != nil {
+		return nil, storageError(err)
 	}
 	return ids, nil
 }
@@ -319,7 +331,7 @@ func (s *Store) SnapshotPage(ctx context.Context, token string, r SnapshotPageRe
 		}
 		encoded, err := json.Marshal(item)
 		if err != nil {
-			return empty, storageError()
+			return empty, storageError(err)
 		}
 		if used+len(encoded)+1 > readPageBudget {
 			if len(result.Items) == 0 {
@@ -373,6 +385,9 @@ func snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequest, id str
 			}
 			h.Texts = append(h.Texts, text)
 		}
+		if h.Action == "task.create" {
+			h.Texts = createTexts(h)
+		}
 		if h.Changes.QuestionID != "" {
 			var q Question
 			err = tx.QueryRowContext(ctx, "SELECT id,task_id,question,asker_id,asked_at,note,COALESCE(resolver_id,''),COALESCE(resolved_at,'') FROM task_questions WHERE id=? AND task_id=?", h.Changes.QuestionID, r.TaskID).Scan(&q.ID, &q.TaskID, &q.Question, &q.AskerID, &q.AskedAt, &q.Note, &q.ResolverID, &q.ResolvedAt)
@@ -395,6 +410,19 @@ func snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequest, id str
 		return h, err
 	}
 	return nil, failure("invalid_input", "unknown read item")
+}
+
+// createTexts adds the texts that a new Task does not store (see defaultText)
+// to its create entry, without an ID, in the order older entries list them.
+func createTexts(h TaskHistoryEntry) []TaskContent {
+	if len(h.Texts) == 2 {
+		return h.Texts
+	}
+	texts := []TaskContent{{Kind: "description", ActorID: h.ActorID, ReceivedAt: h.ReceivedAt}}
+	if len(h.Texts) == 1 {
+		texts[0] = h.Texts[0]
+	}
+	return append(texts, TaskContent{Kind: "reason", Body: NotStarted, ActorID: h.ActorID, ReceivedAt: h.ReceivedAt})
 }
 func readReference(ctx context.Context, tx *sql.Tx, task, id string) (FileReference, error) {
 	var ref FileReference

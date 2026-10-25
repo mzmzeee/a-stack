@@ -9,7 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
@@ -27,7 +27,7 @@ func isWatchCommand(command string) bool { return command == "watch" || command 
 type watchFlags struct{ all, notify, notifyText bool }
 
 func (f *watchFlags) register(fs *flag.FlagSet) {
-	fs.BoolVar(&f.notify, "notify", false, "Also show a desktop notice through notify-send")
+	fs.BoolVar(&f.notify, "notify", false, "Also show a desktop notice through notify-send (osascript on macOS)")
 	fs.BoolVar(&f.notifyText, "notify-text", false, "Put the question in the desktop notice (implies --notify)")
 }
 
@@ -106,7 +106,7 @@ type scopedSession struct {
 
 func (w *watcher) setup() {
 	if wd, err := os.Getwd(); err == nil {
-		if canonical, err := filepath.EvalSymlinks(wd); err == nil {
+		if canonical, err := stack.ResolvePath(wd); err == nil {
 			wd = canonical
 		}
 		w.cwd = wd
@@ -225,10 +225,18 @@ func statusCounts(r sessionStatus) string {
 // It reads a Session's Tasks again only when its read revision changed.
 func (w *watcher) watch(ctx context.Context) error {
 	if w.notify {
-		if path, err := exec.LookPath("notify-send"); err == nil {
+		tool := "notify-send"
+		if runtime.GOOS == "darwin" {
+			tool = "osascript"
+		}
+		if runtime.GOOS == "windows" {
+			if w.notifier == nil {
+				_, _ = io.WriteString(w.stderr, "Desktop notices are not available on Windows yet; watch shows no desktop notices.\n")
+			}
+		} else if path, err := exec.LookPath(tool); err == nil {
 			w.notifySend = path
 		} else if w.notifier == nil {
-			_, _ = io.WriteString(w.stderr, "notify-send is not installed; watch shows no desktop notices.\n")
+			_, _ = io.WriteString(w.stderr, tool+" is not installed; watch shows no desktop notices.\n")
 		}
 	}
 	rows, err := w.poll(ctx, true)
@@ -368,7 +376,7 @@ func (w *watcher) report(s scopedSession, before map[string]stack.Task, now []st
 		count := countTasks(s, now).NeedsYou
 		body := ""
 		if w.notifyText {
-			body = markupEscape(strings.Join(questions, " / "))
+			body = strings.Join(questions, " / ")
 		}
 		w.desktopNotice(fmt.Sprintf("a-stack: %d needs you in %s", count, printable(s.Name)), body)
 	}
@@ -392,7 +400,8 @@ func eventLine(e watchEvent) string {
 	return fmt.Sprintf("%s  %s  %s: %s\n", e.At, printable(e.Session), printable(e.Title), printable(truncate(what, 120)))
 }
 
-// desktopNotice runs notify-send. A failure only costs the notice.
+// desktopNotice runs notify-send, or osascript on macOS. A failure only
+// costs the notice.
 func (w *watcher) desktopNotice(summary, body string) {
 	if w.notifier != nil {
 		_ = w.notifier(summary, body)
@@ -401,13 +410,24 @@ func (w *watcher) desktopNotice(summary, body string) {
 	if w.notifySend == "" {
 		return
 	}
-	args := []string{"--app-name=a-stack", summary}
-	if body != "" {
-		args = append(args, body)
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_ = exec.CommandContext(ctx, w.notifySend, args...).Run()
+	_ = exec.CommandContext(ctx, w.notifySend, noticeArgs(runtime.GOOS, summary, body)...).Run()
+}
+
+// noticeArgs are the arguments of notify-send, or of osascript on macOS.
+func noticeArgs(goos, summary, body string) []string {
+	if goos == "darwin" {
+		// The texts go in as arguments, never into the script, and macOS
+		// shows them as plain text.
+		return []string{"-e", "on run argv", "-e", "display notification (item 2 of argv) with title (item 1 of argv)", "-e", "end run", summary, printable(body)}
+	}
+	// -- keeps a text that starts with - from being read as an option.
+	args := []string{"--app-name=a-stack", "--", summary}
+	if body != "" {
+		args = append(args, markupEscape(body))
+	}
+	return args
 }
 
 // markupEscape keeps notification servers that read a body as markup from
@@ -434,7 +454,7 @@ func statusLine(state string, stdin io.Reader, stdout io.Writer) {
 	if dir == "" {
 		dir = in.Cwd
 	}
-	if canonical, err := filepath.EvalSymlinks(dir); err == nil {
+	if canonical, err := stack.ResolvePath(dir); err == nil {
 		dir = canonical
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)

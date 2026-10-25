@@ -1,12 +1,14 @@
 <!doctype html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>a-stack</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2322252b'/%3E%3Cpath d='M8 24L16 8l8 16M11 18h10' fill='none' stroke='%23f6f5f1' stroke-width='3'/%3E%3C/svg%3E">
 <meta name="a-stack-instance" content="{{.Instance}}">
 <meta name="a-stack-version" content="{{.Version}}">
+<meta name="a-stack-assets" content="{{.Assets}}">
 <link rel="stylesheet" href="/assets/app.css">
 
 </head>
@@ -20,9 +22,10 @@
       <button id="graph-tab" class="tab" role="tab" aria-selected="false" aria-controls="graph-panel" tabindex="-1" data-view="graph"><span data-icon="graph"></span>Graph</button>
       <button id="agents-tab" class="tab" role="tab" aria-selected="false" aria-controls="agents-panel" tabindex="-1" data-view="agents"><span data-icon="agents"></span>Agents</button>
     </nav>
-    <div class="theme-switch" role="group" aria-label="Compare appearance">
-      <button class="theme-button" data-theme="light" aria-pressed="true"><span data-icon="sun"></span>Light</button>
-      <button class="theme-button" data-theme="dark" aria-pressed="false"><span data-icon="moon"></span>Dark</button>
+    <div class="theme-switch" role="group" aria-label="Theme">
+      <button class="theme-button" data-theme="light" aria-pressed="false" aria-label="Light"><span data-icon="sun"></span><span class="theme-label">Light</span></button>
+      <button class="theme-button" data-theme="dark" aria-pressed="false" aria-label="Dark"><span data-icon="moon"></span><span class="theme-label">Dark</span></button>
+      <button class="theme-button" data-theme="system" aria-pressed="true" aria-label="System" title="Follow the system setting"><span data-icon="system"></span><span class="theme-label">System</span></button>
     </div>
   </header>
   <section class="workspacebar" aria-label="Workspace and filters">
@@ -30,16 +33,22 @@
     <label class="search"><span data-icon="search"></span><span class="sr-only">Find an agent or task</span><input id="search" type="search" placeholder="Find an agent or task…" autocomplete="off" spellcheck="false"></label>
     <label class="sr-only" for="status-filter">Filter task status</label>
     <select class="status-filter" id="status-filter"><option value="all">All statuses</option><option value="working">Working</option><option value="blocked">Needs you</option><option value="waiting">Waiting</option><option value="finished">Finished</option><option value="cancelled">Cancelled</option></select>
-    <button class="attention-button" id="attention"><span data-icon="attention"></span>Needs you</button>
+    <button class="attention-button" id="attention" disabled><span data-icon="attention"></span>Needs you</button>
   </section>
+  <p class="banner" id="banner" role="status" hidden></p>
+  <div class="update-note" id="update-note" hidden><p id="update-text" role="status"></p><button class="plain-button" id="reload">Reload</button></div>
   <main>
     <div class="view" id="now-panel" role="tabpanel" aria-labelledby="now-tab" tabindex="0" aria-description="What is happening now. Columns list the Tasks that need you, are working, are waiting, or finished recently. Select a task for details.">
       <div class="now-layout"><div class="now-board" id="now-board"></div><section class="now-column now-feed" aria-labelledby="feed-heading"><header class="now-head"><h2 id="feed-heading">Latest changes</h2></header><ol class="feed-list" id="feed-list"></ol><p class="now-empty" id="feed-empty">No changes yet.</p></section></div>
     </div>
-    <div class="view" id="graph-panel" role="tabpanel" aria-labelledby="graph-tab" tabindex="0" hidden aria-description="Read-only task graph. Arrows point from prerequisites to dependent tasks. Scroll, or drag, to explore. Select a task for details and named dependencies.">
+    <div class="view" id="graph-panel" role="tabpanel" aria-labelledby="graph-tab" tabindex="0" hidden aria-description="Read-only task graph. Arrows point from prerequisites to dependent tasks. Scroll, or drag, to explore. Below 50 percent zoom, cards show only their titles, and below 30 percent, no text. Select a task for details and named dependencies.">
       <div class="graph-space"><div class="graph-world" id="graph-world"></div></div>
     </div>
-    <div class="view" id="agents-panel" role="tabpanel" aria-labelledby="agents-tab" tabindex="0" hidden><div class="agent-list" id="agent-list"></div></div>
+    <div class="minimap" id="minimap" aria-hidden="true" title="Minimap: click or drag to move the view. The Minimap button, or m in the graph, hides it." hidden><canvas></canvas></div>
+    <div class="view" id="agents-panel" role="tabpanel" aria-labelledby="agents-tab" tabindex="0" hidden>
+      <div class="agents-bar" hidden><p class="agents-summary" id="agents-summary"></p><div class="seg" role="group" aria-label="Sort Agents"><button data-sort="urgency" aria-pressed="true">Most urgent first</button><button data-sort="name" aria-pressed="false">By name</button></div></div>
+      <div class="agent-list" id="agent-list"></div>
+    </div>
     <div class="empty" id="empty" hidden><h2>No matching work</h2><p>Try another agent name, task, or status.</p><button class="plain-button" id="clear-filters">Clear filters</button></div>
   </main>
   <footer class="footer">
@@ -49,9 +58,11 @@
       <button id="zoom-in" aria-label="Zoom in"><span data-icon="plus"></span></button>
       <button id="zoom-fit" aria-label="Fit graph"><span data-icon="fit"></span>Fit</button>
     </div>
-    <button class="archive-toggle" id="archived" aria-pressed="false" title="Finished and cancelled Tasks"><span data-icon="archive"></span><span id="archived-label">Archived (0)</span></button>
+    <button class="toggle-button" id="archived" aria-pressed="false" title="Finished and cancelled Tasks"><span data-icon="archive"></span><span id="archived-label">Archived (0)</span></button>
+    <button class="toggle-button" id="minimap-toggle" aria-pressed="true" title="The minimap shows while the graph is larger than the panel. Key: m" hidden><span data-icon="map"></span>Minimap</button>
     <span class="footer-hint" id="footer-hint">Arrows show what comes next. Drag to pan.</span>
     <span id="result-count" role="status" aria-live="polite"></span>
+    <button class="toggle-button" id="notify" aria-pressed="false" hidden><span data-icon="bell"></span>Notify me</button>
     <button class="preview-button" id="about-button"><span data-icon="info"></span><span class="preview-label">Local service · connecting</span><span class="preview-short" aria-hidden="true">Read-only</span><span class="sr-only">About this view</span></button>
   </footer>
 </div>

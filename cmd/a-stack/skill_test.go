@@ -18,6 +18,7 @@ func skillHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home) // the home folder on Windows
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	return home
 }

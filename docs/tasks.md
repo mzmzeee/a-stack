@@ -1,6 +1,6 @@
 # Tasks and the Task graph
 
-A Task belongs to one Session. Every Task command needs `--workspace ID --session ID`. Agent commands also need `--as agent --credential-file PRIVATE_FILE`, and can leave out the IDs when that file names them (see [Credential context](lifecycle.md#credential-context)). The current directory never changes the context. (Only the Operator commands `a-stack`, `a-stack -r` and `a-stack new` use it, to choose a Session to open. See [Workspaces, Sessions and Agents](lifecycle.md).) Before you use these commands, enroll the Operator, the Orchestrator and the other Agents as described in [Workspaces, Sessions and Agents](lifecycle.md).
+A Task belongs to one Session. The Operator names the Session in each Task command with `--workspace ID --session ID`. An Agent runs Task commands with `--as agent --credential-file PRIVATE_FILE`. A credential file from v0.1.5 or later names the Session, so the Agent can leave both IDs out (see [Credential context](lifecycle.md#credential-context)). The current directory never changes the context. (Only the Operator commands `a-stack`, `a-stack -r` and `a-stack new` use it, to choose a Session to open. See [Workspaces, Sessions and Agents](lifecycle.md).) Before you use these commands, enroll the Operator, the Orchestrator and the other Agents as described in [Workspaces, Sessions and Agents](lifecycle.md).
 
 ## Who can do what
 
@@ -79,13 +79,13 @@ a-stack task unarchive --workspace "$workspace_id" --session "$session_id" \
 
 `task archive` works only on a Finished or Cancelled Task that the command has not archived yet. `task unarchive` undoes only the command. It cannot keep a Task visible against the chain or age rule. Both need an operation ID and the Task revision. They raise the revision and write a history entry, `task.archive` or `task.unarchive`. Assignees that are not the Orchestrator get `forbidden`, and so does the browser view. `task reopen` clears the archive and the end time, so a reopened Task is visible again.
 
-a-stack stores only the command, as `archived_at`, and the time the Task last became Finished or Cancelled, as `ended_at`. It computes the chain and age rules in Go each time it reads a Task, so `task show`, `task list` and the browser view agree. Passing the age limit does not change the Session read revision. A polling view shows the change with the next change in the Session, or after a reload.
+a-stack stores only the command, as `archived_at`, and the time the Task last became Finished or Cancelled, as `ended_at`. It computes the chain and age rules in Go each time it reads a Task, so `task show`, `task list` and the browser view agree. Passing the age limit does not change the Session read revision. The snapshot ETag also counts the Tasks that the age rule archives, so an open browser view shows the change at its next poll, also in a quiet Session.
 
 ## Reports, edits and history
 
 `task report --report TEXT` replaces the shared report. `task edit` accepts `--title`, `--description` and `--ticket`, in any combination. An explicitly empty description or Ticket reference clears it. If a large text does not change, a-stack reuses the stored copy.
 
-`task history` pages through the retained changes and the changed text versions. It does not store a full copy of the Task for each change. Each entry has `actor_kind`: `agent` with the Agent's `actor_id`, or `operator` with no `actor_id`. Only `task archive` and `task unarchive` write Operator entries. An Operator change keeps the Task's `updated_by`, which always names an Agent.
+`task history` pages through the retained changes and the changed text versions. It does not store a full copy of the Task for each change. Each entry has `actor_kind`: `agent` with the Agent's `actor_id`, or `operator` with no `actor_id`. Only `task archive` and `task unarchive` write Operator entries. An Operator change keeps the Task's `updated_by`, which always names an Agent. A new Task stores no text for an empty description or for its starting reason `Not started`. Reads still show both, and in the `task.create` history entry these two texts have no `id`.
 
 ## Text input and limits
 

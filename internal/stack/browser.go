@@ -2,13 +2,16 @@ package stack
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"embed"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -16,6 +19,21 @@ import (
 //go:embed browser/*
 var browserFiles embed.FS
 var browserTemplate = template.Must(template.ParseFS(browserFiles, "browser/index.html"))
+
+// browserAssetTags holds an ETag per embedded asset: a hash of its content, so
+// a browser revalidates and downloads the file again only after it changed.
+// browserAssets identifies the page and both assets. After a restart, an open
+// page compares it with the service's revision to offer a reload.
+var browserAssetTags, browserAssets = func() (map[string]string, string) {
+	tags, all := map[string]string{}, sha256.New()
+	for _, name := range []string{"browser/app.js", "browser/app.css", "browser/index.html"} {
+		b, _ := browserFiles.ReadFile(name)
+		sum := sha256.Sum256(b)
+		tags[name] = `"` + hex.EncodeToString(sum[:12]) + `"`
+		all.Write(sum[:])
+	}
+	return tags, hex.EncodeToString(all.Sum(nil)[:12])
+}()
 
 // ViewLinkAge is how long the one-time code of a view link works. ViewTokenAge
 // is how long the view token works that the page gets for the code.
@@ -62,21 +80,21 @@ func (s *Store) OpenBrowser(ctx context.Context, token string, r BrowserOpenRequ
 		}
 		now := clockNow().Unix()
 		if _, err = tx.ExecContext(ctx, "DELETE FROM view_links WHERE expires_at<=?", now); err != nil {
-			return Receipt{}, storageError()
+			return Receipt{}, storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "DELETE FROM capabilities WHERE kind='browser' AND expires_at<=?", now); err != nil {
-			return Receipt{}, storageError()
+			return Receipt{}, storageError(err)
 		}
 		var exists int
 		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM view_links WHERE code_hash=?", r.CredentialHash).Scan(&exists); err != nil {
-			return Receipt{}, storageError()
+			return Receipt{}, storageError(err)
 		}
 		if exists != 0 {
 			return Receipt{}, failure("conflict", "credential hash already exists")
 		}
 		_, err = tx.ExecContext(ctx, "INSERT INTO view_links(code_hash,session_id,expires_at) VALUES(?,?,?)", r.CredentialHash, session.ID, now+int64(ViewLinkAge/time.Second))
 		if err != nil {
-			return Receipt{}, storageError()
+			return Receipt{}, storageError(err)
 		}
 		return Receipt{ResourceID: session.ID, Revision: session.Revision, Outcome: "view-link-issued"}, nil
 	})
@@ -109,7 +127,7 @@ func (s *Store) RedeemViewLink(ctx context.Context, r ViewRedeemRequest) (string
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return "", storageError()
+		return "", storageError(err)
 	}
 	defer tx.Rollback()
 	var session string
@@ -119,7 +137,7 @@ func (s *Store) RedeemViewLink(ctx context.Context, r ViewRedeemRequest) (string
 		return "", errViewLink
 	}
 	if err != nil {
-		return "", storageError()
+		return "", storageError(err)
 	}
 	// An expired code, or one sent for another Session, is used up all the same.
 	if _, err = ReadSession(ctx, tx, Principal{Kind: BrowserCapability, SessionID: session}, r.Context); err != nil || expires <= clockNow().Unix() {
@@ -128,14 +146,14 @@ func (s *Store) RedeemViewLink(ctx context.Context, r ViewRedeemRequest) (string
 		}
 		return "", errViewLink
 	}
-	c, err := IssueCapability(ctx, tx, BrowserCapability, opaqueID(), session)
+	token, err := issueViewToken(ctx, tx, session)
 	if err != nil {
 		return "", err
 	}
-	if tx.Commit() != nil {
-		return "", storageError()
+	if err = tx.Commit(); err != nil {
+		return "", storageError(err)
 	}
-	return c.Token, nil
+	return token, nil
 }
 
 type ViewRevokeRequest struct {
@@ -152,7 +170,7 @@ func (s *Store) RevokeViews(ctx context.Context, token string, r ViewRevokeReque
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, storageError()
+		return 0, storageError(err)
 	}
 	defer tx.Rollback()
 	p, err := authenticate(ctx, tx, token)
@@ -170,11 +188,11 @@ func (s *Store) RevokeViews(ctx context.Context, token string, r ViewRevokeReque
 		where, args = " AND session_id=?", []any{r.SessionID}
 	}
 	if _, err = tx.ExecContext(ctx, "DELETE FROM view_links WHERE 1"+where, args...); err != nil {
-		return 0, storageError()
+		return 0, storageError(err)
 	}
 	result, err := tx.ExecContext(ctx, "DELETE FROM capabilities WHERE kind='browser'"+where, args...)
 	if err != nil {
-		return 0, storageError()
+		return 0, storageError(err)
 	}
 	n, err := result.RowsAffected()
 	if err != nil || tx.Commit() != nil {
@@ -206,13 +224,23 @@ func (s *Service) browserAsset(w http.ResponseWriter, r *http.Request) bool {
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
 	w.Header().Set("X-A-Stack-Instance", s.Discovery.InstanceID)
 	w.Header().Set("X-A-Stack-Version", s.Version)
+	w.Header().Set("X-A-Stack-Assets", browserAssets)
 	if page {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_ = browserTemplate.Execute(w, struct{ Instance, Version string }{s.Discovery.InstanceID, s.Version})
+		_ = browserTemplate.Execute(w, struct{ Instance, Version, Assets string }{s.Discovery.InstanceID, s.Version, browserAssets})
 	} else {
 		name, contentType := "browser/app.js", "text/javascript; charset=utf-8"
 		if path == "/assets/app.css" {
 			name, contentType = "browser/app.css", "text/css; charset=utf-8"
+		}
+		// The assets hold no data or credentials, so a browser may keep them,
+		// but it must ask each time whether they are still current.
+		tag := browserAssetTags[name]
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("ETag", tag)
+		if r.Header.Get("If-None-Match") == tag {
+			w.WriteHeader(http.StatusNotModified)
+			return true
 		}
 		b, _ := browserFiles.ReadFile(name)
 		w.Header().Set("Content-Type", contentType)
@@ -270,12 +298,35 @@ func (s *Service) redeemHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": map[string]string{"token": token}})
 }
+
+// snapshotTag is the ETag of a snapshot: its Session, read revision and archive
+// mark.
+func snapshotTag(snapshot SessionSnapshot) string {
+	return fmt.Sprintf(`"%s:%d:%d"`, snapshot.Session.ID, snapshot.Session.ReadRevision, snapshot.archiveMark)
+}
+
+// knownArchiveMark reads the archive mark from the snapshot ETag that the
+// view sends back. An ETag without one, from an older service, gives -1, so
+// that the next answer is a full one with the new ETag.
+func knownArchiveMark(r *http.Request, q *SnapshotRequest) {
+	tag := r.Header.Get("If-None-Match")
+	if tag == "" {
+		return
+	}
+	q.hasKnownMark, q.knownMark = true, -1
+	parts := strings.Split(strings.Trim(tag, `"`), ":")
+	if len(parts) == 3 {
+		if mark, err := strconv.ParseInt(parts[2], 10, 64); err == nil {
+			q.knownMark = mark
+		}
+	}
+}
 func snapshotConditional(w http.ResponseWriter, r *http.Request, data any) bool {
 	snapshot, ok := data.(SessionSnapshot)
 	if !ok {
 		return false
 	}
-	tag := fmt.Sprintf(`"%s:%d"`, snapshot.Session.ID, snapshot.Session.ReadRevision)
+	tag := snapshotTag(snapshot)
 	w.Header().Set("ETag", tag)
 	w.Header().Set("Cache-Control", "no-store")
 	if r.Header.Get("If-None-Match") == tag {

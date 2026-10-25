@@ -12,10 +12,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mzmzeee/a-stack/contrib/pi"
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-// `a-stack hook` runs as a Claude Code or Codex hook for one Agent. The hook
+// `a-stack hook` runs as a Claude Code, Codex or Pi hook for one Agent. The hook
 // configuration that `hook install` writes names the Agent explicitly:
 // credential file, Workspace, Session and Agent ID, never the environment.
 
@@ -28,11 +29,14 @@ func isHookRun(args []string) bool {
 	return len(args) > 0 && args[0] == "hook" && (len(args) == 1 || strings.HasPrefix(args[1], "-"))
 }
 
-type hookFlags struct{ claude, codex bool }
+type hookFlags struct{ claude, codex, pi, noStopGuard, noMailNudge bool }
 
 func (f *hookFlags) register(fs *flag.FlagSet) {
 	fs.BoolVar(&f.claude, "claude", false, "Only Claude Code (default: Claude Code and Codex)")
 	fs.BoolVar(&f.codex, "codex", false, "Only Codex (default: Claude Code and Codex)")
+	fs.BoolVar(&f.pi, "pi", false, "Pi, with the a-stack extension; not in the default")
+	fs.BoolVar(&f.noStopGuard, "no-stop-guard", false, "Let the agent stop with a working Task that has no report")
+	fs.BoolVar(&f.noMailNudge, "no-mail-nudge", false, "Do not tell the agent about new Task mail after tool calls")
 }
 
 // hookTimeout bounds one hook run; the harness gets hookTimeoutSeconds.
@@ -51,13 +55,16 @@ var hookEvents = []struct{ event, matcher, state string }{
 
 type hookInput struct {
 	Event            string `json:"hook_event_name"`
+	SessionID        string `json:"session_id"`
 	Cwd              string `json:"cwd"`
 	NotificationType string `json:"notification_type"`
+	StopHookActive   bool   `json:"stop_hook_active"`
 }
 
 type hookIdentity struct {
 	state, credential, agent, runtimeID, worktree string
 	ref                                           stack.Context
+	noStopGuard, noMailNudge                      bool
 }
 
 // runHook handles one hook event. Any failure ends it silently: a hook must
@@ -68,7 +75,7 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 		return
 	}
 	cwd := in.Cwd
-	if canonical, err := filepath.EvalSymlinks(cwd); err == nil {
+	if canonical, err := stack.ResolvePath(cwd); err == nil {
 		cwd = canonical
 	}
 	if id.worktree != "" && !within(cwd, id.worktree) {
@@ -82,15 +89,32 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	}
 	if in.Event == "SessionStart" {
 		if text, err := hookReminder(ctx, client, id); err == nil {
-			_, _ = io.WriteString(stdout, text)
+			hookContext(stdout, in.Event, text)
+		}
+		if !id.noMailNudge {
+			hookMailNudge(ctx, client, id, in) // reads up to the newest mail
 		}
 		return
+	}
+	if in.Event == "Stop" && !id.noStopGuard && stopGuard(ctx, client, id, in, stdout) {
+		return // the agent goes on, so its state stays working
 	}
 	for _, e := range hookEvents {
 		if e.event == in.Event && e.state != "" && (e.matcher == "" || e.matcher == in.NotificationType) && id.runtimeID != "" {
 			_ = hookObserve(ctx, client, id, e.state)
 		}
 	}
+	if (in.Event == "PostToolUse" || in.Event == "UserPromptSubmit") && !id.noMailNudge {
+		if text := hookMailNudge(ctx, client, id, in); text != "" {
+			hookContext(stdout, in.Event, text)
+		}
+	}
+}
+
+// hookContext prints text for the agent's context as JSON, which Claude Code
+// and Codex both read for SessionStart, UserPromptSubmit and PostToolUse.
+func hookContext(stdout io.Writer, event, text string) {
+	_ = json.NewEncoder(stdout).Encode(map[string]any{"hookSpecificOutput": map[string]string{"hookEventName": event, "additionalContext": text}})
 }
 
 // hookObserve records the runtime state. It reads the Agent first and writes
@@ -112,15 +136,9 @@ func hookObserve(ctx context.Context, client *stack.Client, id hookIdentity, sta
 // hookReminder is the SessionStart context, also after compaction: who the
 // Agent is, how to run a-stack as itself, its open Tasks, and to check mail.
 func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (string, error) {
-	data, err := client.Do(ctx, "POST", "/v1/session/inspect", id.ref)
+	session, err := inspectSession(ctx, client, id.ref)
 	if err != nil {
 		return "", err
-	}
-	var session struct {
-		Data stack.Session `json:"data"`
-	}
-	if json.Unmarshal(data, &session) != nil {
-		return "", invalid("invalid service response")
 	}
 	agents, err := listPages[stack.Agent](ctx, client, "/v1/agent/list", id.ref)
 	if err != nil {
@@ -144,15 +162,11 @@ func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (s
 		return "", err
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "a-stack: you are the Agent %s in the a-stack Session %q (Workspace %s, Session %s).", name, printable(session.Data.Name), id.ref.WorkspaceID, id.ref.SessionID)
-	if session.Data.Closed {
+	fmt.Fprintf(&b, "a-stack: you are the Agent %s in the a-stack Session %q (Workspace %s, Session %s).", name, printable(session.Name), id.ref.WorkspaceID, id.ref.SessionID)
+	if session.Closed {
 		b.WriteString(" The Session is closed.")
 	}
-	command := "a-stack"
-	if id.state != "" {
-		command += " --state-dir " + shellQuote(id.state)
-	}
-	fmt.Fprintf(&b, "\nRun a-stack as yourself: %s --as agent --credential-file %s --workspace %s --session %s COMMAND\n", command, shellQuote(id.credential), id.ref.WorkspaceID, id.ref.SessionID)
+	fmt.Fprintf(&b, "\nRun Task and mail commands as yourself, such as: %s task list\n", agentCommand(id))
 	open := 0
 	for _, t := range tasks {
 		if !mine[t.ID] || t.Progress == "finished" || t.Progress == "cancelled" {
@@ -175,32 +189,51 @@ func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (s
 	return b.String(), nil
 }
 
+// agentCommand is the a-stack command line that runs Task and mail commands
+// as the hook's Agent.
+func agentCommand(id hookIdentity) string {
+	command := "a-stack"
+	if id.state != "" {
+		command += " --state-dir " + quotePath(id.state)
+	}
+	return command + " --as agent --credential-file " + quotePath(id.credential) + " --workspace " + id.ref.WorkspaceID + " --session " + id.ref.SessionID
+}
+
 // assignedTasks reads the Session's assignments and returns the Agent's Tasks.
 func assignedTasks(ctx context.Context, client *stack.Client, ref stack.Context, agent string) (map[string]bool, error) {
 	mine := map[string]bool{}
-	request := stack.SnapshotPageRequest{Context: ref, Kind: "assignments", Limit: 100}
+	err := sessionPages(ctx, client, stack.SnapshotPageRequest{Context: ref, Kind: "assignments"}, func(a stack.Assignment) {
+		if a.AgentID == agent {
+			mine[a.TaskID] = true
+		}
+	})
+	return mine, err
+}
+
+// sessionPages reads every page of one session page kind, at one read
+// revision, and calls each for every item.
+func sessionPages[T any](ctx context.Context, client *stack.Client, request stack.SnapshotPageRequest, each func(T)) error {
+	request.Limit = 100
 	for {
 		data, err := client.Do(ctx, "POST", "/v1/session/page", request)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		var page struct {
 			Data struct {
-				ReadRevision int64              `json:"read_revision"`
-				Items        []stack.Assignment `json:"items"`
-				Next         string             `json:"next"`
+				ReadRevision int64  `json:"read_revision"`
+				Items        []T    `json:"items"`
+				Next         string `json:"next"`
 			} `json:"data"`
 		}
 		if json.Unmarshal(data, &page) != nil {
-			return nil, invalid("invalid service response")
+			return invalid("invalid service response")
 		}
-		for _, a := range page.Data.Items {
-			if a.AgentID == agent {
-				mine[a.TaskID] = true
-			}
+		for _, item := range page.Data.Items {
+			each(item)
 		}
 		if page.Data.Next == "" {
-			return mine, nil
+			return nil
 		}
 		request.After, request.ReadRevision = page.Data.Next, page.Data.ReadRevision
 	}
@@ -208,13 +241,21 @@ func assignedTasks(ctx context.Context, client *stack.Client, ref stack.Context,
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
+// quotePath is shellQuote for a path with forward slashes. On Windows,
+// Claude Code runs hook commands in Git Bash, which mangles backslashes;
+// a-stack reads C:/folder as C:\folder.
+func quotePath(path string) string { return shellQuote(filepath.ToSlash(path)) }
+
 // hookSettings returns the settings files to change: Claude Code's
-// settings.json (settings.local.json in a project, so it is not committed)
-// and Codex's hooks.json.
+// settings.json (settings.local.json in a project, so it is not committed),
+// Codex's hooks.json, and with --pi the hook list of the Pi extension.
 func hookSettings(f hookFlags, project bool) (map[string]string, error) {
 	files := map[string]string{}
-	both := !f.claude && !f.codex
+	both := !f.claude && !f.codex && !f.pi
 	if project {
+		if f.pi {
+			return nil, invalid("--pi has no --project: Pi loads a project's extensions only in a trusted project, and the hook list would put a credential path in it; install the Pi hooks without --project")
+		}
 		dir, err := os.Getwd()
 		if err != nil {
 			return nil, invalid("cannot read the current folder")
@@ -231,24 +272,61 @@ func hookSettings(f hookFlags, project bool) (map[string]string, error) {
 	if err != nil {
 		return nil, invalid("cannot find home directory")
 	}
-	for harness, variable := range map[string]string{"claude": "CLAUDE_CONFIG_DIR", "codex": "CODEX_HOME"} {
-		if !both && (harness == "claude") != f.claude {
+	for _, h := range []struct {
+		harness, variable, dir, name string
+		on                           bool
+	}{
+		{"claude", "CLAUDE_CONFIG_DIR", ".claude", "settings.json", both || f.claude},
+		{"codex", "CODEX_HOME", ".codex", "hooks.json", both || f.codex},
+		{"pi", "PI_CODING_AGENT_DIR", filepath.Join(".pi", "agent"), "a-stack-hooks.json", f.pi},
+	} {
+		if !h.on {
 			continue
 		}
-		dir := filepath.Join(home, "."+harness)
-		if v := os.Getenv(variable); v != "" {
+		dir := filepath.Join(home, h.dir)
+		if v := os.Getenv(h.variable); v != "" {
 			if !filepath.IsAbs(v) {
-				return nil, invalid(variable + " must be absolute")
+				return nil, invalid(h.variable + " must be absolute")
 			}
 			dir = v
 		}
-		name := "settings.json"
-		if harness == "codex" {
-			name = "hooks.json"
-		}
-		files[harness] = filepath.Join(dir, name)
+		files[h.harness] = filepath.Join(dir, h.name)
 	}
 	return files, nil
+}
+
+// piExtension writes Pi's a-stack extension next to its hook list. On
+// uninstall, once the list has no hooks left, it removes the extension and
+// the empty list. It returns the extension's path and whether it changed it.
+// It never touches another file of that name.
+func piExtension(list string, remove bool) (string, bool, error) {
+	file := filepath.Join(filepath.Dir(list), "extensions", "a-stack.ts")
+	old, err := os.ReadFile(file)
+	if err != nil && !os.IsNotExist(err) || err == nil && !strings.HasPrefix(string(old), pi.Header) {
+		if remove {
+			return file, false, nil
+		}
+		return file, false, &stack.Error{Code: "storage_unavailable", Message: "cannot change " + file + ": it is not the a-stack Pi extension; move it first"}
+	}
+	if !remove {
+		if string(old) == pi.Extension {
+			return file, false, nil
+		}
+		if err = writeAtomic(file, []byte(pi.Extension), 0o644); err != nil {
+			return file, false, &stack.Error{Code: "storage_unavailable", Message: "cannot change " + file + ": " + err.Error()}
+		}
+		return file, true, nil
+	}
+	if data, err := os.ReadFile(list); err == nil {
+		doc := map[string]json.RawMessage{}
+		if json.Unmarshal(data, &doc) != nil || doc["hooks"] != nil {
+			return file, false, nil // another folder's hooks still use it
+		}
+		if len(doc) == 0 {
+			_ = os.Remove(list)
+		}
+	}
+	return file, old != nil && os.Remove(file) == nil, nil
 }
 
 type hookInstall struct {
@@ -274,7 +352,7 @@ func (h *hookInstall) run(ctx context.Context) error {
 	if !filepath.IsAbs(id.worktree) {
 		return invalid("--worktree must be absolute")
 	}
-	if canonical, err := filepath.EvalSymlinks(id.worktree); err == nil {
+	if canonical, err := stack.ResolvePath(id.worktree); err == nil {
 		id.worktree = canonical
 	}
 	command := ""
@@ -289,7 +367,7 @@ func (h *hookInstall) run(ctx context.Context) error {
 		return err
 	}
 	done := []string{}
-	for _, harness := range []string{"claude", "codex"} {
+	for _, harness := range []string{"claude", "codex", "pi"} {
 		file, ok := files[harness]
 		if !ok {
 			continue
@@ -300,6 +378,14 @@ func (h *hookInstall) run(ctx context.Context) error {
 		}
 		if changed {
 			done = append(done, file)
+		}
+		if harness == "pi" {
+			if file, changed, err = piExtension(file, h.remove); err != nil {
+				return err
+			}
+			if changed {
+				done = append(done, file)
+			}
 		}
 	}
 	key, text := "installed", "Installed the a-stack hooks for "+printable(id.worktree)+" in:\n"
@@ -317,10 +403,13 @@ func (h *hookInstall) run(ctx context.Context) error {
 	}
 	if !h.remove {
 		if id.runtimeID == "" {
-			text += "Without --runtime-id the hooks only print the reminder at session start; they record no runtime state.\n"
+			text += "Without --runtime-id the hooks record no runtime state; the reminder, Stop guard and mail nudge still work.\n"
 		}
 		if _, ok := files["codex"]; ok {
 			text += "Codex runs new hooks only after you trust them: run /hooks in Codex.\n"
+		}
+		if _, ok := files["pi"]; ok {
+			text += "Pi loads the extension when it starts; in a running Pi, run /reload.\n"
 		}
 	}
 	_, err = io.WriteString(h.stdout, text)
@@ -381,28 +470,34 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", invalid("cannot find the a-stack binary")
 	}
-	parts := []string{shellQuote(exe), "hook"}
+	parts := []string{quotePath(exe), "hook"}
 	if id.state != "" {
-		parts = append(parts, "--state-dir", shellQuote(id.state))
+		parts = append(parts, "--state-dir", quotePath(id.state))
 	}
-	parts = append(parts, "--credential-file", shellQuote(id.credential), "--workspace", id.ref.WorkspaceID, "--session", id.ref.SessionID, "--agent", id.agent)
+	parts = append(parts, "--credential-file", quotePath(id.credential), "--workspace", id.ref.WorkspaceID, "--session", id.ref.SessionID, "--agent", id.agent)
 	if id.runtimeID != "" {
 		parts = append(parts, "--runtime-id", shellQuote(id.runtimeID))
 	}
-	parts = append(parts, "--worktree", shellQuote(id.worktree))
+	if h.flags.noStopGuard {
+		parts = append(parts, "--no-stop-guard")
+	}
+	if h.flags.noMailNudge {
+		parts = append(parts, "--no-mail-nudge")
+	}
+	parts = append(parts, "--worktree", quotePath(id.worktree))
 	return strings.Join(parts, " "), nil
 }
 
 // isOurs reports whether a hook command is an a-stack hook for worktree.
 func isOurs(command, worktree string) bool {
-	return strings.Contains(command, "' hook ") && strings.HasSuffix(command, " --worktree "+shellQuote(worktree))
+	return strings.Contains(command, "' hook ") && strings.HasSuffix(command, " --worktree "+quotePath(worktree))
 }
 
 // mergeHooks removes the worktree's a-stack hooks from file and, when
 // command is set, adds them again. It keeps every other key and hook, and
 // writes nothing when nothing changes.
 func mergeHooks(file, harness, worktree, command string) (bool, error) {
-	if target, err := filepath.EvalSymlinks(file); err == nil {
+	if target, err := stack.ResolvePath(file); err == nil {
 		file = target // a settings file kept in a dotfiles folder stays a link
 	}
 	fail := func(message string) error {
@@ -446,7 +541,7 @@ func mergeHooks(file, harness, worktree, command string) (bool, error) {
 	if command != "" {
 		for _, e := range hookEvents {
 			if e.event == "Notification" && harness != "claude" {
-				continue // Codex has no Notification event
+				continue // Codex and the Pi extension have no Notification event
 			}
 			group := map[string]any{"hooks": []map[string]any{{"type": "command", "command": command, "timeout": hookTimeoutSeconds}}}
 			if e.matcher != "" {
@@ -526,5 +621,5 @@ func writeAtomic(file string, data []byte, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), file)
+	return stack.Rename(tmp.Name(), file)
 }
