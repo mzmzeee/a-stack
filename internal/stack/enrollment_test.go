@@ -39,3 +39,41 @@ func TestPrepareAgentCredentialRejectsCheckoutDestinations(t *testing.T) {
 		})
 	}
 }
+
+// A new credential file names its Workspace, Session and Agent. A bad ID or
+// name leaves the file without context, and a file with a bad one is refused.
+func TestCredentialFileContext(t *testing.T) {
+	dir := privateTestDir(t)
+	ref := Context{WorkspaceID: opaqueID(), SessionID: opaqueID()}
+	good := filepath.Join(dir, "good.json")
+	request := AgentRegisterRequest{Context: ref, OperationID: "context-register", Name: "02-worker"}
+	if _, err := PrepareAgentCredential(good, opaqueID(), "agent register", request.OperationID, request); err != nil {
+		t.Fatal(err)
+	}
+	c, err := ReadCredential(good)
+	if err != nil || c.WorkspaceID != ref.WorkspaceID || c.SessionID != ref.SessionID || c.AgentName != "02-worker" {
+		t.Fatal("register context")
+	}
+	rebound := filepath.Join(dir, "rebound.json")
+	rebind := AgentBindingRequest{Context: ref, OperationID: "context-rebind", AgentID: opaqueID()}
+	if _, err = PrepareRebindCredential(rebound, opaqueID(), rebind, "02-worker"); err != nil {
+		t.Fatal(err)
+	}
+	if c, err = ReadCredential(rebound); err != nil || c.SessionID != ref.SessionID || c.AgentName != "02-worker" {
+		t.Fatal("rebind context")
+	}
+	bad := filepath.Join(dir, "bad.json")
+	request = AgentRegisterRequest{Context: ref, OperationID: "context-bad-name", Name: "-bad"}
+	if _, err = PrepareAgentCredential(bad, opaqueID(), "agent register", request.OperationID, request); err != nil {
+		t.Fatal(err)
+	}
+	if c, err = ReadCredential(bad); err != nil || c.WorkspaceID != "" || c.AgentName != "" {
+		t.Fatal("a bad name must leave no context")
+	}
+	c.WorkspaceID = "not-an-id"
+	if err = writePrivate(bad, c, true); err != nil {
+		t.Fatal(err)
+	}
+	_, err = ReadCredential(bad)
+	requireCode(t, err, "invalid_input")
+}

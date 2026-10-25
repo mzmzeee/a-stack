@@ -227,8 +227,10 @@ func (s *Store) CheckMail(ctx context.Context, token string, r MailCheckRequest)
 		}
 		used += jsonBytes(page) + 1
 		result.Tasks = append(result.Tasks, page)
+		result.More = result.More || page.More
 		messages += len(page.Messages)
 		last = task
 	}
+	result.More = result.More || result.NextTask != ""
 	return result, nil
 }

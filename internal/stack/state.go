@@ -141,6 +141,10 @@ func writePrivate(path string, v any, replace bool) error {
 	return syncDir(filepath.Dir(path))
 }
 
+// ReplacePrivate replaces path with v as JSON, mode 0600: a synced temporary
+// file is renamed over it. Of two writers at once, the last one wins.
+func ReplacePrivate(path string, v any) error { return writePrivate(path, v, true) }
+
 type stateLock struct {
 	dir  string
 	file *os.File
@@ -190,10 +194,16 @@ var ErrStateOwned = failure("conflict", "another a-stack serve is already runnin
 
 func (l *stateLock) close() { _ = syscall.Flock(int(l.file.Fd()), syscall.LOCK_UN); _ = l.file.Close() }
 
+// Credential is a private credential file. An Agent credential also names its
+// Workspace, Session and Agent; these fields are not secret and give no access.
+// Files from before v0.1.5 have none of them.
 type Credential struct {
-	Kind       CapabilityKind `json:"kind"`
-	Token      string         `json:"token"`
-	Enrollment *Enrollment    `json:"enrollment,omitempty"`
+	Kind        CapabilityKind `json:"kind"`
+	Token       string         `json:"token"`
+	WorkspaceID string         `json:"workspace_id,omitempty"`
+	SessionID   string         `json:"session_id,omitempty"`
+	AgentName   string         `json:"agent_name,omitempty"`
+	Enrollment  *Enrollment    `json:"enrollment,omitempty"`
 }
 
 // ValidID reports whether id has the form of a Workspace, Session, Agent,
@@ -203,13 +213,16 @@ func validToken(token string) bool {
 	b, err := base64.RawURLEncoding.DecodeString(token)
 	return err == nil && len(b) == 32 && base64.RawURLEncoding.EncodeToString(b) == token
 }
+func validContext(c Credential) bool {
+	return (c.WorkspaceID == "" || validToken(c.WorkspaceID)) && (c.SessionID == "" || validToken(c.SessionID)) && (c.AgentName == "" || agentName.MatchString(c.AgentName))
+}
 func ReadCredential(path string) (Credential, error) {
 	data, err := privateRead(path)
 	if err != nil {
 		return Credential{}, err
 	}
 	var c Credential
-	if err = decodeJSON(data, &c); err != nil || !validToken(c.Token) || !validKind(c.Kind) {
+	if err = decodeJSON(data, &c); err != nil || !validToken(c.Token) || !validKind(c.Kind) || !validContext(c) {
 		return Credential{}, failure("invalid_input", "invalid credential file")
 	}
 	return c, nil

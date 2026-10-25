@@ -2,7 +2,7 @@
 
 Each Task has one ordered Task mail history, and a-stack keeps all of it. Only the current assignees of the Task can send mail, read mail or get back the receipt of a send. The Orchestrator must be assigned to the Task too. The Operator credential gives no mail access. A browser view credential can only read the Task mail of its own Session, as described in [Browser reads](#browser-reads).
 
-Every mail command needs `--workspace ID --session ID` and an Agent credential. If you use a different state directory, add the same `--state-dir` to every command.
+Every mail command needs an Agent credential and `--workspace ID --session ID`. A credential file that names its Workspace and Session gives them (see [Credential context](lifecycle.md#credential-context)). If you use a different state directory, add the same `--state-dir` to every command.
 
 ## Commands
 
@@ -25,7 +25,7 @@ a-stack mail read --as agent --credential-file "$worker_a_credential" \
   --cursor "$mail_cursor" --json
 a-stack mail check --as agent --credential-file "$worker_a_credential" \
   --workspace "$workspace_id" --session "$session_id" \
-  --cursor-file cursors.json --task-limit 50 --limit 100 --json
+  --cursor-file /private/worker-a/mail.json --json
 ```
 
 `--body-file -` reads the body from stdin. You cannot use it together with `--body`. A body must not be blank, must be valid UTF-8 and can be 65,536 bytes at most. For larger documents or results, use Task file references. a-stack rejects a body that is too long. It never cuts it. Mail counts toward the sender's [write budget](foundation.md#write-budget): about 127 sends of maximum size at once, then about 16 a minute. `--mention NAME` takes a name without `@`. You can repeat it.
@@ -38,7 +38,7 @@ All three endpoints take authenticated `POST` JSON under `/v1/mail/`. They use t
 | --- | --- | --- |
 | `send` | `task_id`, `operation_id`, `body`, optional `mentions` array of names | A compact receipt: the message `resource_id` and `body_ref`, the sequence number in `revision`, and `outcome: "sent"` |
 | `read` | `task_id`, optional `cursor` and `limit` | `task_id`, `messages`, `cursor`, `more` |
-| `check` | optional `cursors` map, `after_task`, `task_limit` and `limit` | A `tasks` array of read pages, and `next_task` when more Tasks follow |
+| `check` | optional `cursors` map, `after_task`, `task_limit` and `limit` | A `tasks` array of read pages, `next_task` when more Tasks follow, and `more` |
 
 Each message has `id`, `task_id`, `sequence`, `sender_id`, `sender_name`, `received_at`, `body` and `mention_ids`. `sender_name` is the sender's current Agent name. `mention_ids` is the sorted list of the resolved Agent IDs. The sequence increases inside one Task. The service sets the sender and the UTC receipt time.
 
@@ -60,16 +60,21 @@ A returned cursor points to the last message that the response actually contains
 
 `mail check` reads the caller's current Tasks in Task ID order. It reads 50 Tasks by default. Use `--task-limit` with a value from 1 to 100. The message limit and the size limit apply to the whole response.
 
-`cursors.json` is a JSON object that maps each Task ID to the last cursor that you saved for it, for example `{"TASK_ID":"CURSOR"}`. You can also give it with `--cursor-file -`. The file can be 1 MiB at most. The CLI never writes the file. `mail check` checks a cursor when it reads that Task, and it ignores the cursors of Tasks that you are no longer assigned to.
+`more: true` in the response means that more mail is waiting than the response holds: a Task's page has `more: true`, or `next_task` is set.
 
-After each response, follow these steps:
+### The cursor file
 
-1. Merge only the returned `tasks[].cursor` values into your saved map. Keep all other positions.
-2. If the response has `next_task`, run the check again with the merged map and `--after-task` set to that value.
-3. Repeat until the response has no `next_task`.
-4. Start the next round without `--after-task`.
+`mail check --cursor-file FILE` keeps your read positions in a file that you own. The check reads the file, sends it, and then writes the returned positions back to it. So the same command, run again, shows only mail that you have not seen. Run it again while the output has `more: true`. Repeated checks reach the newest message, also on a Task with more mail than one response holds. The service stores no read position; the file is yours.
 
-If a Task's page has `more: true`, the next round reads more of it. You can also read it directly with `mail read`. This keeps each check bounded, and each Task keeps its own position.
+- The CLI creates the file if it is missing. It writes a temporary file with mode 0600, syncs it and renames it over the old one, so a crash never leaves half a file. The folder must exist.
+- If two checks write the same file at once, the last write wins. The other check's mail then shows again in the next check. Nothing is lost.
+- The file is a JSON object that maps each Task ID to its last cursor, for example `{"TASK_ID":"CURSOR"}`. Under the key `next_task` it also keeps the Task scan position: the next check goes on with the Tasks after it. When a Task has mail left, the next check starts again at the first Task instead, so no Task is skipped. The file can be 1 MiB at most.
+- With a cursor file, the output lists only the Tasks with new mail, and no `next_task`. `"tasks": []` means that there is no new mail.
+- If the check rejects a saved cursor, for example after a database restore, delete the file. The next check starts again at the first message.
+
+`mail check` checks a cursor only when it reads that Task, and it ignores the cursors of Tasks that you are no longer assigned to.
+
+Without `--cursor-file`, every check starts again at the first message of every Task. It stops at the message limit, so on a busy Task you never see the newest mail, and each check shows old mail again. When `more` is true, the output then has a `hint`. `--cursor-file -` reads a cursor map from stdin and never writes anything; then merge the returned `tasks[].cursor` values into your map yourself, and follow `next_task` with `--after-task`.
 
 A scan continuation belongs to one Session and one caller. Tasks that you were removed from in between do not appear. If you are assigned a new Task that comes earlier in the scan order, it appears in the next round. The server keeps no read records, acknowledgments or unread counts.
 

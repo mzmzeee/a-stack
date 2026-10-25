@@ -2,14 +2,7 @@
 
 The Orchestrator coordinates the Session's team. It registers Agents, creates Tasks, assigns Agents and adds dependencies. Only the Operator appoints the Orchestrator, closes the Session and answers Needs you questions.
 
-Set up `me` and `rev` as [SKILL.md](../SKILL.md) shows, with your own credential. Add a third script, `grev`, that prints the Session's graph revision:
-
-```sh
-#!/bin/sh
-"$(dirname "$0")/me" session inspect | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["graph_revision"])'
-```
-
-For each command's flags, see [commands.md](commands.md).
+Set up `me` as [SKILL.md](../SKILL.md) shows, with your own credential. For each command's flags, see [commands.md](commands.md).
 
 ## 1. Register the Agents
 
@@ -21,6 +14,7 @@ me agent register --name 02-worker --new-credential-file "$CREDS/02-worker.json"
 ```
 
 - `data.resource_id` of the receipt is the new Agent's ID. Task commands take this ID, not the name.
+- The new credential file names the Workspace, the Session and the Agent, so the Agent's `me` needs only its path.
 - A name has 1 to 64 letters, digits, `_` or `-`, starts with a letter or digit, and is unique in the Workspace.
 - Your own Agent credential is enough. Never use the Operator credential, and never run the Operator commands `a-stack` with no command, `a-stack new` or `a-stack -r`: they use the Operator credential and the current folder, and can create Workspaces, Sessions or a second service.
 - If the response is lost, run the same command again with the same operation ID and file name. Never delete a credential file because a response was lost.
@@ -30,10 +24,11 @@ me agent register --name 02-worker --new-credential-file "$CREDS/02-worker.json"
 
 ```sh
 me task create --title 'Build the API' --body-file /your/private/folder/api.md --operation-id orch-task-api-1
-me task assign --task T --agent AGENT_ID --expected-revision "$(rev T)" --operation-id orch-assign-api-02
+me task assign --task T --agent AGENT_ID --expected-revision 1 --operation-id orch-assign-api-02
+me task assign --task T --agent YOUR_AGENT_ID --expected-revision 2 --operation-id orch-assign-api-01
 ```
 
-- `data.resource_id` of `task create` is the Task ID. A new Task is Waiting, with revision 1.
+- `data.resource_id` of `task create` is the Task ID. A new Task is Waiting, with revision 1. Each receipt's `revision` is the Task's new revision: give it to your next change of that Task. Read the Task again only after a `conflict`.
 - Write the description so that the assignee can do the Task from it alone: the goal, the files, what done means.
 - `--ticket '#42'` links a Ticket. Each Ticket reference is unique in the Session.
 - Assign yourself to every Task you hand out (your own Agent ID is `orchestrator_id` in `me session inspect`). Only assignees can read and send a Task's mail, so without it the other Agents cannot reach you there, and you cannot reopen the Task.
@@ -41,11 +36,11 @@ me task assign --task T --agent AGENT_ID --expected-revision "$(rev T)" --operat
 ## 3. Add dependencies
 
 ```sh
-me dependency add --from A --to B --expected-revision "$(grev)" --operation-id orch-dep-a-b-1
+me dependency add --from A --to B --expected-revision G --operation-id orch-dep-a-b-1
 ```
 
 - `--from A --to B` means that B depends on A.
-- The expected revision is the Session's `graph_revision`, not a Task revision. Each `task create` and each dependency change increases it, so read it again before each change. The receipt's `revision` is the new `graph_revision`.
+- `G` is the Session's `graph_revision`, not a Task revision. Read it with `me session inspect` after you create Tasks, because each `task create` increases it. The receipt of a dependency change has the new `graph_revision` in `revision`: give it to your next dependency change.
 - a-stack rejects a duplicate, a dependency of a Task on itself and a cycle.
 - A dependency does not block anything. Say in B's description that B waits for A, so that its assignee sets Waiting until A is Finished.
 
@@ -82,7 +77,7 @@ Other assignees you can @mention: 01-orchestrator
 - `me task list` shows each Task's `progress`, `needs_you` and `unassigned`.
 - `me session snapshot --known-revision N` returns `unchanged: true` while nothing changed since read revision N. Then you need not read the pages again.
 - `me task show --task T` shows the report, and `me task history --task T` shows every change.
-- `me mail check` reads the mail of the Tasks that you are assigned to.
+- `me mail check --cursor-file /your/private/folder/mail.json` reads the new mail of the Tasks that you are assigned to.
 
 When a Task shows `needs_you`, the Operator must answer. You cannot answer for the Operator.
 
