@@ -107,7 +107,7 @@ If `next_task` is not empty, run the check again with `--after-task "$next_task"
 | `not_found` | 1 | The ID does not exist in your Session. |
 | `session_closed` | 1 | The Operator closed the Session. Reads still work. Wait or ask the Operator. |
 | `unauthorized` | 1 | The credential file is wrong or was replaced. Ask the Operator. |
-| `storage_unavailable` | 1 | The service is not reachable or failed. Retry the same command with the same operation ID later. Never start the service yourself. |
+| `storage_unavailable` | 1 | The service is not running, not reachable or failed, and `retryable` is `true`. Your change may have been made. Retry the same command with the same operation ID later. If the service stays down, ask the Operator to start it. Never start the service yourself. |
 
 If a response gets lost, send the same command again with the same operation ID and the same flags. You get the original receipt, and nothing changes twice.
 

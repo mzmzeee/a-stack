@@ -382,11 +382,14 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 	}
 	response, err := c.HTTP.Do(req)
 	if err != nil {
-		return nil, failure("storage_unavailable", serviceUnreachable)
+		return nil, unreachable(serviceUnreachable)
 	}
 	defer response.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(response.Body, MaxRequestBytes+1))
-	if err != nil || len(b) > MaxRequestBytes {
+	if err != nil {
+		return nil, unreachable("the response from the a-stack service was cut off; run the same command again")
+	}
+	if len(b) > MaxRequestBytes {
 		return nil, failure("storage_unavailable", "invalid or oversized service response")
 	}
 	var envelope struct {

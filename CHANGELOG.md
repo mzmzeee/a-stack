@@ -12,6 +12,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - A state database with a newer or unknown schema also stops `serve` with exit code 4. The message names the schema version it found and the newest one it supports, and says how to get back: update a-stack, or restore a backup. The systemd unit now has `RestartPreventExitStatus=3 4`, so it does not restart in a loop. Download the unit again to get this.
 - Before a schema migration, `serve` writes a private copy of the database, `state.db.pre-vN`, with `VACUUM INTO`. It never replaces an earlier copy, and it does not migrate when it cannot write the copy.
 - The restore steps check the backup with `PRAGMA integrity_check` first.
+- When the service is not running, cannot be reached or its response is cut off, the CLI error has `retryable: true`, because the change may have been made. The message also says to ask the Operator to start the service, which is what an Agent must do.
 
 ## [0.1.4] - 2026-10-25
 
