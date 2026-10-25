@@ -6,7 +6,7 @@
 # On Linux it needs Docker; the build runs in a pinned Alpine Go image so the
 # binary links musl statically and runs on any Linux.
 # On macOS it needs Go 1.27.3 and the Xcode command line tools. The binary
-# links only the system libraries and runs on macOS 12 or later.
+# links only the system libraries and runs on macOS 13 or later.
 # For Windows it needs Go 1.27.3, curl, xz and zip; it downloads the pinned
 # llvm-mingw C toolchain to .tmp once. The binary links its C runtime
 # statically and needs only the DLLs of Windows 10 and later. It cannot run
@@ -89,11 +89,14 @@ archive="dist/a-stack_${os}_$arch.tar.gz"
 rm -rf "$out"
 mkdir -p "$out" dist
 if [ "$os" = darwin ]; then
-  # Go 1.27 runs on macOS 12 or later; the C part of SQLite targets the same.
-  GOTOOLCHAIN=local GOFLAGS=-buildvcs=false CGO_ENABLED=1 MACOSX_DEPLOYMENT_TARGET=12.0 \
+  # The Go 1.27 linker marks its binaries for macOS 13 or later; the C part of
+  # SQLite targets the same.
+  GOTOOLCHAIN=local GOFLAGS=-buildvcs=false CGO_ENABLED=1 MACOSX_DEPLOYMENT_TARGET=13.0 \
     go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$out/a-stack" ./cmd/a-stack
-  # Only system libraries and frameworks, which every Mac has.
-  if otool -L "$out/a-stack" | tail -n +2 | grep -Ev '^[[:space:]]+(/usr/lib/|/System/Library/)'; then
+  # Only system libraries and frameworks, which every Mac has. The output is
+  # read first, so that a failing otool stops the build.
+  libraries="$(otool -L "$out/a-stack")"
+  if printf '%s\n' "$libraries" | tail -n +2 | grep -Ev '^[[:space:]]+(/usr/lib/|/System/Library/)'; then
     echo "the binary links a library outside the system" >&2
     exit 1
   fi
@@ -111,6 +114,14 @@ if [ "$("$out/a-stack" version)" != "{\"data\":{\"version\":\"$version\"}}" ]; t
   echo "built binary reports the wrong version" >&2
   exit 1
 fi
-# COPYFILE_DISABLE keeps macOS tar from adding ._a-stack metadata files.
-COPYFILE_DISABLE=1 tar -C "$out" -czf "$archive" a-stack
+# The archive names owner 0, the time of the commit and no extended
+# attributes, and gzip stores no name or time, so the same binary gives the
+# same archive. COPYFILE_DISABLE keeps macOS tar from adding ._a-stack files.
+epoch="${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}"
+if [ "$os" = darwin ]; then
+  TZ=UTC touch -t "$(TZ=UTC date -r "$epoch" +%Y%m%d%H%M.%S)" "$out/a-stack"
+  COPYFILE_DISABLE=1 tar -C "$out" --uid 0 --gid 0 --uname root --gname root --no-xattrs --no-mac-metadata -cf - a-stack | gzip -n >"$archive"
+else
+  tar -C "$out" --owner=0 --group=0 --numeric-owner --no-xattrs --mtime="@$epoch" -cf - a-stack | gzip -n >"$archive"
+fi
 echo "$archive"
