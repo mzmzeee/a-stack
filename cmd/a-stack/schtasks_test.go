@@ -193,4 +193,11 @@ func TestSchtasksInstallFailures(t *testing.T) {
 	if _, errout = runService(t, 1, "install", "--state-dir", state); !strings.Contains(errout, "schtasks /Create /TN a-stack failed: ERROR: Access is denied.") {
 		t.Fatalf("stderr %s", errout)
 	}
+	// A new task that cannot run is removed again.
+	f.replies["/Create /XML FILE /TN a-stack /F"] = nil
+	f.replies["/Run /TN a-stack"] = func() (string, error) { return "ERROR: Access is denied.", errExit }
+	f.task, f.calls = "", nil
+	if _, errout = runService(t, 1, "install", "--state-dir", state); !strings.Contains(errout, "schtasks /Run /TN a-stack failed") || f.task != "" || !slices.Contains(f.calls, "/Delete /TN a-stack /F") {
+		t.Fatalf("stderr %s, calls %v", errout, f.calls)
+	}
 }
