@@ -18,8 +18,6 @@ import (
 	"syscall"
 	"testing"
 	"time"
-
-	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
 var ctx = context.Background()
@@ -460,8 +458,7 @@ func TestMutationAtomicFailureAndDiskFull(t *testing.T) {
 		_, sqliteErr = tx.ExecContext(ctx, "INSERT INTO test_blob VALUES(zeroblob(4194304))")
 		return Receipt{}, sqliteErr
 	})
-	var driverErr sqlite3.Error
-	if !errors.As(sqliteErr, &driverErr) || driverErr.Code != sqlite3.ErrFull {
+	if !isSQLiteFull(sqliteErr) {
 		t.Fatalf("expected real SQLITE_FULL, got %v", sqliteErr)
 	}
 	requireCode(t, err, "storage_unavailable")

@@ -6,9 +6,16 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 	"io"
 	"os/exec"
+	"runtime"
 )
 
-var launchBrowser = func(url string) error { return exec.Command("xdg-open", url).Run() }
+var launchBrowser = func(url string) error {
+	opener := "xdg-open"
+	if runtime.GOOS == "darwin" {
+		opener = "open"
+	}
+	return exec.Command(opener, url).Run()
+}
 
 func openBrowser(ctx context.Context, client *stack.Client, ref stack.Context, machine, noBrowser bool, stdout, stderr io.Writer) error {
 	return openView(ctx, client, ref, viewNotes{}, machine, noBrowser, stdout, stderr)

@@ -13,8 +13,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/mattn/go-sqlite3"
 )
 
 func reviewService(t *testing.T, dir string) (*Service, Credential) {
@@ -145,8 +143,7 @@ func TestSpecReviewRealDiskFullRollback(t *testing.T) {
 		_, sqliteFailure = tx.ExecContext(ctx, "INSERT INTO review_effects VALUES(zeroblob(1048576))")
 		return Receipt{ResourceID: "fixture", Outcome: "created"}, sqliteFailure
 	})
-	var se sqlite3.Error
-	if !errors.As(sqliteFailure, &se) || se.Code != sqlite3.ErrFull {
+	if !isSQLiteFull(sqliteFailure) {
 		t.Fatalf("did not generate real SQLITE_FULL: %v", sqliteFailure)
 	}
 	reviewCode(t, err, "storage_unavailable")

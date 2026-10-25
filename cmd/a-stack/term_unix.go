@@ -1,3 +1,5 @@
+//go:build linux || darwin
+
 package main
 
 import (
@@ -13,18 +15,21 @@ import (
 	"unsafe"
 )
 
-// Linux only: raw mode and the window size use termios ioctls from syscall.
+// The terminal of the Session picker on Linux and macOS: raw mode and the
+// window size use termios ioctls from syscall. The ioctl numbers and select
+// differ; see term_linux.go and term_darwin.go. Another system adds its own
+// term_GOOS.go with isTerminal, terminalSize and runPicker.
 
 func termios(fd uintptr) (syscall.Termios, error) {
 	var t syscall.Termios
-	if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TCGETS, uintptr(unsafe.Pointer(&t))); e != 0 {
+	if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, fd, ioctlGetTermios, uintptr(unsafe.Pointer(&t))); e != 0 {
 		return t, e
 	}
 	return t, nil
 }
 
 func setTermios(fd uintptr, t *syscall.Termios) {
-	_, _, _ = syscall.Syscall(syscall.SYS_IOCTL, fd, syscall.TCSETS, uintptr(unsafe.Pointer(t)))
+	_, _, _ = syscall.Syscall(syscall.SYS_IOCTL, fd, ioctlSetTermios, uintptr(unsafe.Pointer(t)))
 }
 
 func isTerminal(f *os.File) bool {
@@ -123,8 +128,16 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 // select on fd and on a pipe, so stop wakes it, and nothing reads fd after
 // stop.
 func readKeys(fd int) (<-chan []byte, func(), error) {
+	// macOS has no pipe2, so set close-on-exec under ForkLock, as os.Pipe does.
 	var pipe [2]int
-	if err := syscall.Pipe2(pipe[:], syscall.O_CLOEXEC); err != nil {
+	syscall.ForkLock.RLock()
+	err := syscall.Pipe(pipe[:])
+	if err == nil {
+		syscall.CloseOnExec(pipe[0])
+		syscall.CloseOnExec(pipe[1])
+	}
+	syscall.ForkLock.RUnlock()
+	if err != nil {
 		return nil, nil, err
 	}
 	if fd >= 1024 || pipe[0] >= 1024 {
@@ -142,7 +155,7 @@ func readKeys(fd int) (<-chan []byte, func(), error) {
 			var set syscall.FdSet
 			addFD(&set, fd)
 			addFD(&set, pipe[0])
-			if _, err := syscall.Select(max(fd, pipe[0])+1, &set, nil, nil, nil); err == syscall.EINTR {
+			if err := waitReadable(max(fd, pipe[0])+1, &set); err == syscall.EINTR {
 				continue
 			} else if err != nil || hasFD(&set, pipe[0]) {
 				return
