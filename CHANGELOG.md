@@ -9,6 +9,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 ### Added
 
 - A Working Task with no change and no Task mail for 30 minutes is quiet: its Agent may have stopped. `a-stack status` shows it among the working Tasks, such as `2 working (1 quiet)`, and `--json` has `quiet`. The Task data in `task list`, `task show` and the browser view's pages has `quiet` and `last_mail_at`. `a-stack watch` prints a line and rings the bell once when a Task turns quiet. A Task that waits for an answer to its Needs you question is never quiet. a-stack derives this when it reads a Task, with no schema change and no background job; the view's snapshot ETag counts quiet Tasks, so an open view sees a Task turn quiet in an idle Session. See [Quiet Tasks](docs/watch.md#quiet-tasks).
+- `a-stack task handoff --task T` prints a brief that a fresh Agent can start from when another Agent stopped: the Task, its description and report, the open Needs you question, the unfinished prerequisites, the assignees as `@name`, and the latest 20 Task mails (`--limit N`). Plain text by default, `--json` too. It only reads; the mail is there only for an assignee. The skill tells an Agent that takes over a Task, and the Orchestrator that hands one over, to use it. See [Hand a Task over](docs/tasks.md#hand-a-task-over).
 
 ## [0.1.6] - 2026-10-25
 

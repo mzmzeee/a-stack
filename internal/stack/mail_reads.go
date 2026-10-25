@@ -22,6 +22,10 @@ func encodeMailCursor(task string, sequence int64) string {
 	b, _ := json.Marshal(mailCursor{task, sequence})
 	return base64.RawURLEncoding.EncodeToString(b)
 }
+
+// MailCursor is the mail read cursor after message number sequence of a Task;
+// 0 is the start. task handoff uses it to read the latest messages.
+func MailCursor(task string, sequence int64) string { return encodeMailCursor(task, sequence) }
 func decodeMailCursor(task, cursor string) (int64, error) {
 	if cursor == "" {
 		return 0, nil

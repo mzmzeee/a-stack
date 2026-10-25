@@ -28,7 +28,7 @@ A Working Task is quiet when it had no change and no Task mail for 30 minutes. I
 "OAuth login" in ~/code/shop: 0 needs you · 2 working (1 quiet) · 1 waiting · 3 finished
 ```
 
-The Task data has `quiet` and `last_mail_at` (see [What a page contains](tasks.md#what-a-page-contains)), so `task list` marks them too. Nothing is stored for this: a-stack derives it from the Task's `updated_at` and the time of its last Task mail when it reads the Task. A change or a Task mail ends it.
+The Task data has `quiet` and `last_mail_at` (see [What a page contains](tasks.md#what-a-page-contains)), so `task list` marks them too. Nothing is stored for this: a-stack derives it from the Task's `updated_at` and the time of its last Task mail when it reads the Task. A change or a Task mail ends it. To brief a fresh Agent for a quiet Task, see [Hand a Task over](tasks.md#hand-a-task-over).
 
 ## Watch
 
