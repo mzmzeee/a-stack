@@ -186,7 +186,7 @@ func checkIDs(seen map[string]bool, l lifecycleFlags, t taskFlags) error {
 		what := short(id.value) + " is not one"
 		if id.value == "" {
 			what = "it is empty"
-		} else if id.flag == "agent" && len(id.value) < 40 && agentName(id.value) {
+		} else if id.flag == "agent" && len(id.value) < 40 && looksLikeAgentName(id.value) {
 			what = id.value + " looks like a name"
 		}
 		return invalid("--" + id.flag + " takes " + id.kind + "; " + what + "; see " + id.list)
@@ -194,7 +194,7 @@ func checkIDs(seen map[string]bool, l lifecycleFlags, t taskFlags) error {
 	return nil
 }
 
-func agentName(s string) bool {
+func looksLikeAgentName(s string) bool {
 	if s == "" || len(s) > 64 || !strings.ContainsAny(s[:1], "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789") {
 		return false
 	}
