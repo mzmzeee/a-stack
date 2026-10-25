@@ -1,6 +1,7 @@
 # contrib
 
 - `systemd/a-stack.service`: the systemd user unit. See [Start a-stack automatically](../docs/install.md#start-a-stack-automatically).
+- `pi/a-stack.ts`: the Pi extension that `a-stack hook install --pi` writes. See [Pi](../docs/hooks.md#pi).
 - `aur/PKGBUILD`: the AUR package `a-stack-bin`, from the release archives.
 - `homebrew/a-stack.rb`: a Homebrew formula for Linux, from the release archives.
 - `scoop/a-stack.json`: a Scoop manifest for Windows, from the release archives.
