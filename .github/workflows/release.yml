@@ -48,8 +48,75 @@ jobs:
           path: dist/a-stack_${{ matrix.os }}_${{ matrix.arch }}.tar.gz
           if-no-files-found: error
 
+  # Both Windows archives are cross-built on Linux with the pinned llvm-mingw,
+  # which also targets Arm; the smoke job then runs them on Windows.
+  build-windows:
+    needs: check
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false # a release build never uses a cache
+      - env:
+          ARCH: ${{ matrix.arch }}
+        run: scripts/build-release.sh "$GITHUB_REF_NAME" windows "$ARCH"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: a-stack_windows_${{ matrix.arch }}
+          path: dist/a-stack_windows_${{ matrix.arch }}.zip
+          if-no-files-found: error
+
+  # version, serve on a new state directory, health, a refused second serve
+  # and a stop, on Windows x64 and Arm.
+  smoke-windows:
+    needs: build-windows
+    strategy:
+      matrix:
+        include:
+          - arch: amd64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm # free for public repositories only
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: a-stack_windows_${{ matrix.arch }}
+          path: dist
+      - env:
+          ARCH: ${{ matrix.arch }}
+        run: |
+          unzip -q "dist/a-stack_windows_$ARCH.zip" -d "$RUNNER_TEMP/bin"
+          exe="$RUNNER_TEMP\\bin\\a-stack.exe"
+          state="$RUNNER_TEMP\\state"
+          test "$("$exe" version)" = "{\"data\":{\"version\":\"$GITHUB_REF_NAME\"}}"
+          "$exe" serve --state-dir "$state" > "$RUNNER_TEMP/serve.log" 2>&1 &
+          pid=$!
+          for _ in $(seq 50); do
+            if "$exe" health --state-dir "$state" --json; then break; fi
+            sleep 0.2
+          done
+          "$exe" health --state-dir "$state" --json
+          code=0
+          "$exe" serve --state-dir "$state" || code=$?
+          test "$code" = 3
+          kill "$pid"
+          cat "$RUNNER_TEMP/serve.log"
+
   publish:
-    needs: build
+    needs: [build, smoke-windows]
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -93,7 +160,7 @@ jobs:
           cp install.sh contrib/systemd/a-stack.service dist/
           tar -czf dist/a-stack-skill.tar.gz -C skills a-stack
           cd dist
-          sha256sum a-stack_linux_*.tar.gz a-stack_darwin_*.tar.gz install.sh a-stack.service a-stack-skill.tar.gz > SHA256SUMS
+          sha256sum a-stack_linux_*.tar.gz a-stack_darwin_*.tar.gz a-stack_windows_*.zip install.sh a-stack.service a-stack-skill.tar.gz > SHA256SUMS
           cat SHA256SUMS
       # SHA256SUMS.sig is the raw 64-byte Ed25519 signature of SHA256SUMS. The
       # check uses the public key in install.sh, which a-stack update also has.

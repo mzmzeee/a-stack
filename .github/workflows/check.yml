@@ -53,3 +53,35 @@ jobs:
           "$RUNNER_TEMP/a-stack" version
           go vet ./...
           go test -count=1 ./...
+
+  # The Windows build: go build, vet and test with cgo and the MinGW-w64 gcc
+  # of the runner image. The release workflow cross-builds the archives with
+  # llvm-mingw and runs them on Windows x64 and Arm.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.sum
+      - env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: "1"
+        run: |
+          # Tests keep private state in the temporary folder. Use a long
+          # Windows path, not the 8.3 short name in the default TEMP.
+          tmp="$RUNNER_TEMP\\a-stack-check"
+          mkdir -p "$tmp"
+          export TMP="$tmp" TEMP="$tmp"
+          gcc --version
+          go build -o "$RUNNER_TEMP\\a-stack.exe" ./cmd/a-stack
+          "$RUNNER_TEMP\\a-stack.exe" version
+          go vet ./...
+          go test -count=1 ./...
