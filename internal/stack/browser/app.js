@@ -132,7 +132,7 @@ function makeCard(t) {
   const own=el('div','owners'), button=el('button','task-card');button.dataset.openTask=t.id;
   const top=el('span','card-top'),st=el('span','status'),mail=el('span','mail-count'),title=el('span','task-title'),note=el('span','task-note'),foot=el('span','task-caption');
   top.append(st,mail);button.append(top,title,note,foot);article.append(own,button);
-  button.addEventListener('click',()=>openTask(t.id,button));
+  button.addEventListener('click',e=>e.detail?peek(t.id):openTask(t.id,button)); // a pointer click peeks; Enter opens the details
   return {article,own,button,st,mail,title,note,foot};
 }
 // A card in the graph. Only the graph uses these cards; Now and Agents have their own.
@@ -485,7 +485,7 @@ function patchFeed(byID) {
   $('feed-empty').hidden=shown.length>0;
 }
 // Ages tick every second only where they show: the Now and Agents tabs and the open Task mail.
-function updateNowAges() { for(const root of [state.view==='now'&&nowPanel,state.view==='agents'&&agentsPanel,dialog.open&&dialog,$('attention-dialog').open&&$('attention-dialog')])if(root)for(const n of root.querySelectorAll('time[data-at]'))setText(n,age(n.dataset.at)); }
+function updateNowAges() { for(const root of [state.view==='now'&&nowPanel,state.view==='agents'&&agentsPanel,!peekBox.hidden&&peekBox,dialog.open&&dialog,$('attention-dialog').open&&$('attention-dialog')])if(root)for(const n of root.querySelectorAll('time[data-at]'))setText(n,age(n.dataset.at)); }
 function render() {
   if(state.theme==='system')delete document.documentElement.dataset.theme;else document.documentElement.dataset.theme=state.theme;
   document.querySelectorAll('.theme-button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.theme===state.theme)));
@@ -528,7 +528,7 @@ function render() {
   const archived=model.tasks.filter(t=>t.archived).length;setText($('archived-label'),`Archived (${archived})`);$('archived').setAttribute('aria-pressed',String(state.archived));
   $('archived').setAttribute('aria-label',`${state.archived?'Hide':'Show'} ${plural(archived,'archived Task')} in the Graph and Agents tabs`);
   if(state.view==='graph')redrawMinimap();
-  updateSource();
+  patchPeek();updateSource();
 }
 // Only the visible view is patched. The others are patched when they show, if their inputs changed since.
 const patched={}, patchers={now:()=>patchNow(),graph:()=>patchGraph(),agents:()=>patchAgents()};
@@ -657,7 +657,6 @@ minimap.addEventListener('pointerdown',e=>{if(e.button!==0)return;e.preventDefau
 minimap.addEventListener('pointermove',e=>{if(mapDrag)mapJump(e);});
 for(const type of ['pointerup','pointercancel'])minimap.addEventListener(type,()=>{mapDrag=false;});
 minimap.addEventListener('mousedown',e=>e.preventDefault()); // keeps the focus where it is
-panel.addEventListener('keydown',e=>{if(e.key==='m'&&!e.repeat&&!e.isComposing&&!e.ctrlKey&&!e.metaKey&&!e.altKey)setMinimap(!mapOn);});
 function setZoom(value) {
   const old=state.zoom;state.zoom=Math.max(.0001,Math.min(1.5,value));
   const x=(panel.scrollLeft+panel.clientWidth/2)/old,y=(panel.scrollTop+panel.clientHeight/2)/old;applyZoom();panel.scrollLeft=x*state.zoom-panel.clientWidth/2;panel.scrollTop=y*state.zoom-panel.clientHeight/2;
@@ -755,27 +754,80 @@ mailToggle.onclick=()=>{
 mailMore.onclick=()=>fetchMail();
 dialog.append(top,body);
 dialog.addEventListener('close',()=>{detailEpoch++;state.selected=null;detailKey='';render();if(returnFocus?.isConnected&&!returnFocus.closest('[inert]')&&!returnFocus.closest('[hidden]'))returnFocus.focus();else $(state.view+'-tab').focus();});
-function setFocus(id) {state.focus=id;render();}
-// Escape clears the focus once no dialog is open; an open dialog takes the first Escape.
-document.addEventListener('keydown',e=>{if(e.key==='Escape'&&state.focus&&state.view==='graph'&&!document.querySelector('dialog[open]')){e.preventDefault();setFocus(null);}});
+function setFocus(id) {state.focus=id;if(!id)peekID=null;render();}
 $('archived').addEventListener('click',()=>{state.archived=!state.archived;save('a-stack-archived',state.archived?'1':'0');render();});
 function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){resetMail(id);for(const name of ['description','report','reason','result','question','references'])detailText(name,'');delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
 const archiveReasons={command:'Archived with task archive.',chain:'Archived: every Task that depends on it is finished or cancelled.',age:'Archived: it ended more than 24 hours ago.'};
 function patchDetailMetadata(t) {
   setText(detailTitle,t.title);status(detailStatus,t);setText(detailArchive,t.archived?archiveReasons[t.archived_reason] || 'Archived.':'');detailArchive.hidden=!t.archived;
   setText(detailFields.ticket,t.ticket_ref || '');propRows.ticket.hidden=!t.ticket_ref;setText(detailFields.owners,owners(t).join(', ') || 'Unassigned');patchMail(t);
-  // Both directions, each with the other Task's status icon: open Tasks first, then by title.
+  patchDependencies(t,detailFields,propRows,Infinity,o=>openTask(o.id,returnFocus));
+}
+// Both directions, each with the other Task's status icon: open Tasks first, then by title. The peek shows the
+// first few and "+N more".
+function patchDependencies(t,fields,rowsOf,limit,pick) {
   index();const order=(a,b)=>done(a)-done(b)||(a.title<b.title?-1:a.title>b.title?1:0);
   const requires=model.dependencies.filter(e=>e.dependent_id===t.id).map(e=>taskByID.get(e.prerequisite_id)).filter(Boolean).sort(order);
   const requiredBy=model.dependencies.filter(e=>e.prerequisite_id===t.id).map(e=>taskByID.get(e.dependent_id)).filter(Boolean).sort(order);
   for(const [key,list] of [['requires',requires],['requiredBy',requiredBy]]){
-    const dd=detailFields[key], signature=t.id+JSON.stringify(list.map(o=>[o.id,o.title,o.progress,o.archived]));propRows[key].hidden=!list.length;
+    const dd=fields[key], signature=t.id+JSON.stringify(list.map(o=>[o.id,o.title,o.progress,o.archived]));rowsOf[key].hidden=!list.length;
     if(dd.dataset.key===signature)continue;dd.dataset.key=signature;
-    dd.replaceChildren(...list.map(o=>{const b=el('button','dep-link'),mark=el('span','status '+o.progress);mark.append(iconNode(o.progress==='cancelled'?'idle':o.progress));
+    dd.replaceChildren(...list.slice(0,limit).map(o=>{const b=el('button','dep-link'),mark=el('span','status '+o.progress);mark.append(iconNode(o.progress==='cancelled'?'idle':o.progress));
       b.append(mark,el('span','dependency-name',o.title));if(o.archived)b.append(el('span','dep-note','archived'));
-      b.setAttribute('aria-label',`${o.title}, ${labels[o.progress]}${o.archived?', archived':''}`);b.onclick=()=>openTask(o.id,returnFocus);return b;}));
+      b.setAttribute('aria-label',`${o.title}, ${labels[o.progress]}${o.archived?', archived':''}`);b.onclick=()=>pick(o);return b;}),...(list.length>limit?[el('span','dep-note',`+${list.length-limit} more`)]:[]));
   }
 }
+// The side peek: a non-modal panel at the right of the graph (a bottom sheet on phones) with a summary of one Task.
+// A click on a card, or Space, opens it. It never takes or traps the focus: j and k move the focus to the next or
+// previous card in layout order and the peek follows. Escape closes it and puts the focus back on the card. The title
+// is a polite live region, so a screen reader hears the new Task. The full details stay a modal dialog.
+const peekBox=$('peek'), peekCount=el('span','peek-count'), peekClose=el('button','icon-button'), peekTitle=el('h2'), peekStatus=el('div','status'), peekQuestion=el('p','peek-question'), peekProps=el('dl','detail-props'), peekWhen=el('time','now-age'), peekReport=el('p','peek-report'), peekOpen=el('button','plain-button','Open details'), peekFields={}, peekRows={};
+let peekID=null;
+{
+  const head=el('div','detail-top'), inner=el('div','peek-body');peekTitle.id='peek-title';peekTitle.setAttribute('aria-live','polite');
+  peekClose.setAttribute('aria-label','Close peek');peekClose.append(iconNode('close'));peekClose.onclick=()=>closePeek();head.append(peekCount,peekClose);
+  for(const [key,label] of Object.entries({status:'Status',owners:'Agents',ticket:'Ticket',requires:'Requires',requiredBy:'Required by',mail:'Task mail',changed:'Changed'})){const row=el('div','detail-prop'),dd=el('dd');row.append(el('dt','',label),dd);peekProps.append(row);peekRows[key]=row;peekFields[key]=dd;}
+  peekFields.status.append(peekStatus);peekFields.changed.append(peekWhen);
+  peekOpen.onclick=()=>openTask(peekID,cards.get(peekID)?.button);inner.append(peekTitle,peekQuestion,peekProps,peekReport,peekOpen);peekBox.append(head,inner);
+}
+const layoutCards=()=>[...graph.querySelectorAll('.task-unit:not([inert]) > .task-card')]; // the DOM follows the layout
+function peek(id) {peekID=id;setFocus(id);}
+function closePeek() {const c=cards.get(peekID), inside=peekBox.contains(document.activeElement);peekID=null;patchPeek();if(inside&&c)c.button.focus();}
+function patchPeek() {
+  const t=model&&taskByID.get(peekID), c=cards.get(peekID);
+  if(peekID&&(!t||!c||c.article.inert))peekID=null; // gone, archived away or filtered out
+  peekBox.hidden=!peekID||state.view!=='graph';if(peekBox.hidden)return;
+  const list=layoutCards();setText(peekCount,`${list.indexOf(c.button)+1} of ${list.length}`);
+  setText(peekTitle,t.title);status(peekStatus,t);setText(peekQuestion,t.needs_you?t.question_preview || 'Needs you':'');peekQuestion.hidden=!t.needs_you;
+  setText(peekFields.owners,owners(t).join(', ') || 'Unassigned');setText(peekFields.ticket,t.ticket_ref || '');peekRows.ticket.hidden=!t.ticket_ref;
+  setText(peekFields.mail,t.mail_count?plural(t.mail_count,'message'):'None');stamp(peekWhen,t.updated_at);setText(peekReport,t.report_preview || 'No report yet.');
+  patchDependencies(t,peekFields,peekRows,4,o=>cards.get(o.id)&&!cards.get(o.id).article.inert?goTo(o.id):openTask(o.id,c.button));
+}
+// j, k and u: focus a card and highlight it; an open peek follows.
+function goTo(id) {const b=cards.get(id).button;b.focus({preventScroll:true});b.scrollIntoView({block:'nearest',inline:'nearest'});if(peekID)peekID=id;setFocus(id);}
+// Keys. Single-key shortcuts work only while the focus is in the Graph tab (its peek included) or the Agents tab
+// (WCAG 2.1.4), so typing elsewhere never triggers one; never with Ctrl, Alt or Meta, and never under a modal dialog.
+// Every key only moves around or shows something: none changes the Session.
+let gAt=0;
+$('keys-button').onclick=()=>$('keys-dialog').showModal();
+document.addEventListener('keydown',e=>{
+  if(e.ctrlKey||e.metaKey||e.altKey||e.isComposing||document.querySelector('dialog[open]'))return;
+  if(e.key==='Escape'){if(state.view!=='graph')return;if(peekID){e.preventDefault();closePeek();}else if(state.focus){e.preventDefault();setFocus(null);}return;}
+  const where=panel.contains(e.target)||peekBox.contains(e.target)?'graph':agentsPanel.contains(e.target)?'agents':'', k=e.key, g=Date.now()-gAt<1500;
+  if(!where||e.target.closest('input, select, textarea'))return;
+  gAt=0;
+  const card=e.target.closest('.task-card'), act={
+    '?':()=>$('keys-dialog').showModal(), '/':()=>$('search').focus(), g:()=>{gAt=Date.now();},
+    u:()=>{const list=where==='graph'?layoutCards():[...agentsPanel.querySelectorAll('.task-row')], asks=list.filter(b=>where==='graph'?b.dataset.status==='needs-you':b.querySelector('.row-status.needs-you')), i=asks.findIndex(b=>list.indexOf(b)>list.indexOf(e.target.closest('.task-card, .task-row')));const b=asks[i<0?0:i];if(!b)return;if(where==='graph')goTo(b.dataset.openTask);else{b.focus({preventScroll:true});b.scrollIntoView({block:'nearest'});}},
+  };
+  if(where==='graph')Object.assign(act,{
+    j:()=>step(1), k:()=>step(-1), ' ':card?()=>{const id=card.dataset.openTask;if(peekID===id)closePeek();else peek(id);}:null,
+    f:()=>$('zoom-fit').click(), '+':()=>$('zoom-in').click(), '=':()=>$('zoom-in').click(), '-':()=>$('zoom-out').click(), '0':()=>$('zoom-reset').click(), m:e.repeat?null:()=>setMinimap(!mapOn),
+  });
+  function step(d) {const list=layoutCards();if(!list.length)return;let i=list.indexOf(card || cards.get(state.focus)?.button);i=i<0?(d>0?0:list.length-1):Math.max(0,Math.min(list.length-1,i+d));goTo(list[i].dataset.openTask);}
+  const run=g&&['n','g','a'].includes(k)?()=>{const v={n:'now',g:'graph',a:'agents'}[k];$(v+'-tab').click();({now:nowPanel,graph:panel,agents:agentsPanel})[v].focus();}:Object.hasOwn(act,k)&&act[k];
+  if(!run)return;e.preventDefault();run();
+});
 async function loadDetail() {
   const t=model.tasks.find(t=>t.id===state.selected);if(!t)return;
   patchDetailMetadata(t);

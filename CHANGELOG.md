@@ -6,6 +6,11 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- The browser view's Graph has a side peek. A click on a card, or Space, opens a panel with the Task's place in the layout ("26 of 113"), title, question, status, Agents, Ticket, the first 4 prerequisites and dependents, Task mail count, age and report start; on a phone, a bottom sheet. It is not modal: the focus stays on the cards, `j` and `k` move it and the peek follows, and Escape closes it and returns the focus to the card. Its title is a polite live region. Enter on a card, or Open details, still opens the full details.
+- The view has a keyboard map: `?`, or the Keyboard button in the footer. `g n`, `g g`, `g a` switch tabs, `/` finds, `u` jumps to the next Needs you, and in the graph `j`/`k`, Space, Enter, `f`, `+`, `-`, `0` and `m` move, peek, fit, zoom and toggle the minimap. Single keys work only while the focus is in the Graph or Agents tab, never with Ctrl, Alt or Meta, and none changes anything.
+
 ### Changed
 
 - In the browser view's Graph, a line that skips columns runs through the gaps between the cards instead of behind them. It curves in each gap and runs straight across each column it crosses. The layout orders these lines like cards, so they also cross each other less. At 2,000 Tasks, no line runs behind a card instead of 510, and the layout takes about 15% longer (322–344 ms instead of 272–314 ms); it never measures a card again.
