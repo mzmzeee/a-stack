@@ -26,6 +26,33 @@ func TestPickerAgesPathsAndPrintableText(t *testing.T) {
 	}
 }
 
+func TestPathBelowOnWindows(t *testing.T) {
+	for _, c := range []struct {
+		path, root, rest string
+		ok               bool
+	}{
+		{`C:\Users\me\code\x`, `C:\Users\me`, `\code\x`, true},
+		{`c:\users\ME\code`, `C:\Users\me`, `\code`, true},
+		{`C:\Users\me`, `C:\Users\me\`, ``, true},
+		{`C:/Users/me/code`, `C:\Users\me`, `\code`, true},
+		{`C:\Users\me\code`, `C:/Users/me`, `\code`, true},
+		{`C:\Users\meg\code`, `C:\Users\me`, ``, false},
+		{`D:\Users\me\code`, `C:\Users\me`, ``, false},
+		{`C:\x`, `C:\`, `\x`, true},
+	} {
+		if rest, ok := pathBelow(c.path, c.root, true); ok != c.ok || ok && rest != c.rest {
+			t.Errorf("pathBelow(%q, %q) = %q, %v", c.path, c.root, rest, ok)
+		}
+	}
+	// On Linux and macOS case matters and \ is a plain character.
+	if _, ok := pathBelow("/Home/a/x", "/home/a", false); ok {
+		t.Fatal("case ignored")
+	}
+	if _, ok := pathBelow(`/home/a\x`, "/home/a", false); ok {
+		t.Fatal(`\ read as a separator`)
+	}
+}
+
 func rowsFixture(now time.Time) []sessionRow {
 	return []sessionRow{
 		{SessionID: "a", Name: "Alpha", WorkspacePath: "/home/u/code/alpha", ChangedAt: now.Add(-2 * time.Hour), CurrentFolder: true, Tasks: 3, NeedsYou: 1},

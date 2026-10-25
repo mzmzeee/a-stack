@@ -396,7 +396,8 @@ func (h *home) sessions(ctx context.Context, client *stack.Client) ([]sessionRow
 }
 
 func within(dir, root string) bool {
-	return dir != "" && root != "" && (dir == root || strings.HasPrefix(dir, strings.TrimSuffix(root, "/")+"/"))
+	_, ok := pathBelow(dir, root, windowsPaths)
+	return dir != "" && root != "" && ok
 }
 
 func later(t time.Time, stamp string) time.Time {
