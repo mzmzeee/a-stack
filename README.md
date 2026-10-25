@@ -82,7 +82,7 @@ a-stack -r           # pick another Session
 
 If no a-stack service runs yet, these commands start it in the terminal and keep it running until you press Ctrl-C. If the service already runs, for example as a [systemd service](docs/install.md#start-a-stack-automatically), they use it and return.
 
-The Task graph is empty at first. To register Agents and give them Tasks, follow [Getting started](docs/getting-started.md).
+The Task graph is empty at first. To hand the Session to an Orchestrator agent that registers the other Agents and plans the Tasks, see [Hand your Session to an Orchestrator](docs/getting-started.md#hand-your-session-to-an-orchestrator). To try a whole team on throwaway state first, follow [Getting started](docs/getting-started.md).
 
 ## Documentation
 

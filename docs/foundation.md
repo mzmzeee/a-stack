@@ -49,7 +49,7 @@ When `serve` is ready, it prints one JSON line on stdout with `status`, `url`, `
 
 ## Command line
 
-Flags can come before or after the command. All commands accept `--json` and `--state-dir DIR`. `a-stack` without a command, `a-stack -r` and `a-stack new [NAME]` also accept `--no-browser`, and take no credential or `serve` flags. They are described in [Open the last Session](browser.md#open-the-last-session). `serve` also accepts `--listen 127.0.0.1:PORT` (port 0 picks a free port; without the flag, see [Discovery](#discovery)) and `--herdr-executable FILE` (see [Mention notices](notifications.md)). Client commands also accept `--credential-file FILE` and `--as operator|agent|browser`.
+Flags can come before or after the command. Each flag can appear once; only `--mention` repeats. All commands accept `--json`. All commands except `version`, `update`, `skill install` and `skill uninstall` accept `--state-dir DIR`. `a-stack` without a command, `a-stack -r` and `a-stack new [NAME]` also accept `--no-browser`, and take no credential or `serve` flags. They are described in [Open the last Session](browser.md#open-the-last-session). `serve` also accepts `--listen 127.0.0.1:PORT` (port 0 picks a free port; without the flag, see [Discovery](#discovery)) and `--herdr-executable FILE` (see [Mention notices](notifications.md)). Client commands also accept `--credential-file FILE` and `--as operator|agent|browser`.
 
 `serve` makes or checks its own Operator credential, and it does not accept credential flags. A client without `--credential-file` uses `operator.json` in the state directory. `--as agent` and `--as browser` require `--credential-file`. a-stack rejects a credential file of a different kind, and it never uses the Operator credential instead.
 
@@ -61,9 +61,9 @@ Workspace, Session, Agent, Task and mail commands need explicit Workspace and Se
 | `storage status` | `GET /v1/storage` | Operator |
 | `storage backup --destination ABSOLUTE_FILE` | `POST /v1/storage/backup` with `destination` | Operator |
 
-`a-stack --help` (also `-h` or `help`) lists the commands in groups. `a-stack help COMMAND` or `a-stack COMMAND --help` lists the flags of one command and marks the required ones. The flag list comes from the same table that rejects flags a command does not accept. For a first word such as `task`, the help lists the commands that start with it. `--version` works like `version`. With `--json`, help prints the same `{"data":{"commands":[...],"flags":[...]}}` list for every command.
+`a-stack --help` (also `-h` or `help`) lists the commands in groups. `a-stack help COMMAND` or `a-stack COMMAND --help` lists the flags of one command and marks the required ones. The flag list comes from the same table that rejects flags a command does not accept. For a first word such as `task`, the help lists the commands that start with it. `a-stack task` alone prints the same list and exits with 0. With flags, a first word alone is an `invalid_input` error that lists the words that can follow it. `--version` works like `version`. With `--json`, help prints the same `{"data":{"commands":[...],"flags":[...]}}` list for every command.
 
-Every command except `open`, `update`, `skill install`, `skill uninstall`, the three Operator commands and `--help` prints a JSON `data` object on stdout, also without `--json`. Those commands print plain lines without `--json`. If a command fails, it prints a JSON `error` object on stderr and nothing on stdout. The exit code is 0 for success, 2 when the error code is `invalid_input`, and 1 for all other errors. One exception: `serve` and the Operator commands exit with 3 when another `serve` already owns the state directory and does not answer them. Its error code is still `conflict`.
+Every command except `open`, `update`, `skill install`, `skill uninstall`, the three Operator commands and `--help` prints a JSON `data` object on stdout, also without `--json`. Those commands print plain lines without `--json`. If a command fails, it prints a JSON `error` object on stderr and nothing on stdout. An `invalid_input` message names what is wrong: the unknown or misplaced flag, the bad value, the extra word or the missing text. When a command or flag is close to what you typed, it asks, for example `unknown command tsak list (did you mean task list?)` or `unexpected argument abc for task show (did you mean --task abc?)`. The ID flags `--workspace`, `--session`, `--agent`, `--task`, `--from`, `--to` and `--reference` take IDs only. The CLI rejects any other value before it contacts the service, for example `--agent takes an Agent ID; 01-orch looks like a name; see a-stack agent list`. It never looks a name up. The exit code is 0 for success, 2 when the error code is `invalid_input`, and 1 for all other errors. One exception: `serve` and the Operator commands exit with 3 when another `serve` already owns the state directory and does not answer them. Its error code is still `conflict`.
 
 The CLI never retries a request automatically. Client commands stop normally on SIGINT and SIGTERM, also while they wait for stdin. Only the foreground service catches these signals, so that it can shut down cleanly. The `a-stack -r` picker also catches them, restores the terminal and then ends the same way. If an interrupted change was possibly committed, send it again with the same operation ID and payload to get the original receipt.
 
@@ -113,7 +113,7 @@ A storage error returns `storage_unavailable`. A failed commit never returns a s
 
 ## Operation IDs and receipts
 
-Commands that change records take an `--operation-id` of 8 to 128 ASCII letters, digits, underscores or hyphens. (`open` makes its own operation ID. `agent observe` and `storage backup` take none.) The service stores a compact receipt for each change, under the actor's kind and subject and the operation ID.
+Commands that change records take an `--operation-id` of 8 to 128 ASCII letters, digits, underscores or hyphens. Any other ID gets `invalid_input` with the message `operation ID must be 8–128 letters, digits, _ or -`. (`open` makes its own operation ID. `agent observe` and `storage backup` take none.) The service stores a compact receipt for each change, under the actor's kind and subject and the operation ID.
 
 - A retry with the same ID and the same payload returns the exact receipt that was committed. It has no new effect.
 - A retry with the same ID but a different name, scope or payload returns only `operation_conflict`. A conflict never returns saved IDs, bodies or receipt data.
@@ -131,7 +131,7 @@ To make a backup while the service runs:
 
 ```sh
 backup_dir="$(mktemp -d)"
-./a-stack storage backup --destination "$backup_dir/a-stack.sqlite" --json
+a-stack storage backup --destination "$backup_dir/a-stack.sqlite" --json
 ```
 
 To restore a completed backup, stop the service first. Then copy only the completed backup and the original Operator credential into a new, empty, private directory:
@@ -143,10 +143,10 @@ state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/a-stack"
 restore_dir="$(mktemp -d)"
 install -m 600 "$backup_dir/a-stack.sqlite" "$restore_dir/state.db"
 install -m 600 "$state_dir/operator.json" "$restore_dir/operator.json"
-./a-stack serve --state-dir "$restore_dir" --json
+a-stack serve --state-dir "$restore_dir" --json
 ```
 
-In another terminal, run `./a-stack health --state-dir "$restore_dir" --json` and make sure that the database ID is the original one. Keep the old state directory until you have checked the restored copy.
+In another terminal, run `a-stack health --state-dir "$restore_dir" --json` and make sure that the database ID is the original one. Keep the old state directory until you have checked the restored copy.
 
 Never copy only a live main database file. Never mix a backup with old sidecar files, and never delete sidecar files to try a recovery. Keep the Agent credential files that you gave out in a separate place, because the database hashes cannot rebuild their tokens. See [credential delivery and recovery](lifecycle.md#credential-delivery-and-recovery).
 

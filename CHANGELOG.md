@@ -10,6 +10,25 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 - Each Agent has a write budget, so a runaway loop cannot fill the disk. A change costs the size of its request; an Agent can spend 8 MiB at once and 1 MiB more a minute. Past that, a change gets the new error code `rate_limited` (HTTP 429, retryable) with `retry_after_seconds`. A replay of a committed operation ID and the Operator are never limited. In a rerun of the review's reproduction (16 parallel `mail send` loops with 64 KiB bodies from one Agent for 20 seconds), the Agent stored 13,835 messages (925 MB) before and 132 messages (8 MB) now; another Agent could still send.
 - `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
+- `--body TEXT` works on every command that takes one inline text (`task create`, `task edit`, `task status`, `task reopen`, `task report`, `task attention set` and `resolve`), like `--body-file`. The specific flags such as `--report` stay.
+- A mistyped command, help topic or flag gets a suggestion, such as `unknown command tsak list (did you mean task list?)`. A stray word gets `unexpected argument abc for task show (did you mean --task abc?)`.
+- `a-stack task` and other first words alone print the commands of the group, like `a-stack help task`, and exit with 0. With flags, they fail with `invalid_input` and list the words that can follow.
+- Getting started has a section "Hand your Session to an Orchestrator", with the commands the Operator runs after `a-stack new`. The README Quick start points to it.
+
+### Changed
+
+- `invalid_input` errors name what is wrong: the flag that does not apply to the command, the unknown flag, the bad value (`invalid value "abc" for --expected-revision`), and the missing or bad text field (`--reason is required for --progress waiting`, `title is required`, `reason exceeds 2048 bytes`).
+- A bad operation ID gets `operation ID must be 8–128 letters, digits, _ or -`, also on `agent register`, instead of a generic or misleading message. The `--operation-id` help states the rule.
+- A mail with a mention that is not a current assignee names each such mention and lists the assignee names.
+- An ID flag (`--workspace`, `--session`, `--agent`, `--task`, `--from`, `--to`, `--reference`) with a value that cannot be an ID fails before the CLI contacts the service, for example `--agent takes an Agent ID; 01-orch looks like a name; see a-stack agent list`. The CLI still never looks a name up.
+- `a-stack new` opens the open Session of the same name in this folder's Workspace instead of making a second one. Another name still makes a new Session.
+- A flag given twice is rejected, except `--mention`. `version` and `--version` reject flags that do not apply to them. `help version` no longer lists credential flags.
+- The help lists `session snapshot` and `session page` with the Session commands.
+
+### Fixed
+
+- JSON output from the service ends in one newline, not two.
+- The docs say which commands take `--state-dir`, and use `a-stack` instead of `./a-stack` in examples.
 
 ## [0.1.4] - 2026-10-25
 

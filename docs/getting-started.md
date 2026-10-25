@@ -297,6 +297,73 @@ If a `conflict` shows that the revision changed, your change is out of date. Rea
 
 `agent register` writes the new credential file before it sends the request. If you are not sure that a registration worked, keep that file and run the same command again. For lost credentials, see [credential recovery](lifecycle.md#credential-delivery-and-recovery).
 
+## Hand your Session to an Orchestrator
+
+The guide above uses throwaway state. For your own project, `a-stack new` makes the Workspace and the Session, and the view starts empty. Then you, the Operator, register one Agent, appoint it as the Orchestrator and brief it. The Orchestrator registers the other Agents and plans the Tasks. These commands use the default state directory, like `a-stack new`.
+
+Find the IDs of the Session. In the project folder, `a-stack -r --json` lists your Sessions; yours has `"current_folder":true`:
+
+```sh
+cd ~/code/my-project
+a-stack -r --json
+```
+
+```text
+{"data":{"folder":"/home/you/code/my-project","sessions":[{"workspace_id":"8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ","workspace_path":"/home/you/code/my-project","session_id":"1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4","name":"my-project","closed":false,"tasks":0,"needs_you":0,"changed_at":"2026-10-25T08:52:45.507299788Z","current_folder":true}]}}
+```
+
+Register the Orchestrator. Its credential file must be in a private folder outside every Git checkout:
+
+```sh
+workspace_id=8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ
+session_id=1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
+mkdir -p -m 700 ~/.local/state/a-stack-agents
+a-stack agent register --workspace "$workspace_id" --session "$session_id" \
+  --name 01-orchestrator --new-credential-file ~/.local/state/a-stack-agents/01-orchestrator.json \
+  --operation-id register-orchestrator-1
+```
+
+```text
+{"data":{"operation_id":"register-orchestrator-1","resource_id":"pgsSLxMbbGGfPx5N_7ZixIkS2iKBmBMnYBoS-Xv-2PE","revision":1,"outcome":"registered","received_at":"2026-10-25T08:52:45.581246599Z"}}
+```
+
+`resource_id` is the new Agent's ID. Appoint it. A new Session has revision 1; if you get `conflict`, use the `current_revision` from the error and a new operation ID:
+
+```sh
+orchestrator_id=pgsSLxMbbGGfPx5N_7ZixIkS2iKBmBMnYBoS-Xv-2PE
+a-stack session appoint --workspace "$workspace_id" --session "$session_id" \
+  --agent "$orchestrator_id" --expected-revision 1 --operation-id appoint-orchestrator-1
+```
+
+```text
+{"data":{"operation_id":"appoint-orchestrator-1","resource_id":"1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4","revision":2,"outcome":"appointed","received_at":"2026-10-25T08:52:45.621302893Z"}}
+```
+
+Install the agent skill once, so that your coding agents know the work loop:
+
+```sh
+a-stack skill install
+```
+
+```text
+Installed the a-stack skill v0.1.5 in:
+  ~/.claude/skills/a-stack
+  ~/.agents/skills/a-stack
+```
+
+Start your coding agent in the project folder and give it this brief, with your values and your goal:
+
+```text
+You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.
+Credential file: /home/you/.local/state/a-stack-agents/01-orchestrator.json
+Workspace: 8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ   Session: 1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
+Your name: 01-orchestrator   Your private folder: /tmp/work/01-orchestrator/
+Work in: /home/you/code/my-project
+Goal: add OAuth login. Plan the Tasks, register one Agent per Task and brief each one.
+```
+
+The Orchestrator registers the other Agents with its own credential and writes their briefs, as the skill's orchestrator reference shows. Watch the work in the view; `a-stack` opens it again at any time. Answer a Needs you question in your conversation with the Agent that asks it. Never put a credential file's contents, or the part of the view URL after `#`, in a brief.
+
 ## Next steps
 
 - To let a-stack tell an Agent in Herdr to check its mail, see [Mention notices](notifications.md). Mail works without it.

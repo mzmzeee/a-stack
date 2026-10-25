@@ -46,9 +46,9 @@ me task reference remove --task T --reference REFERENCE_ID --expected-revision "
 
 ### Long text
 
-Instead of the text flag, give `--body-file FILE`, or `--body-file -` for stdin. Never give both.
+Instead of the text flag, give `--body-file FILE`, or `--body-file -` for stdin. `--body TEXT` also works on every command below. Give only one of them.
 
-| Command | `--body-file` sets |
+| Command | `--body` or `--body-file` sets |
 | --- | --- |
 | `task report` | The report (64 KiB at most) |
 | `task status --progress finished` | The summary (2,048 bytes at most) |
@@ -100,7 +100,7 @@ If `next_task` is not empty, run the check again with `--after-task "$next_task"
 
 | `error.code` | Exit | Meaning and what to do |
 | --- | --- | --- |
-| `invalid_input` | 2 | A flag, ID or text is wrong. A too short operation ID also gives this, with a generic message. Fix the command; use a new operation ID. |
+| `invalid_input` | 2 | A flag, ID or text is wrong. The message names it, and may suggest a close command or flag. Fix the command; use a new operation ID. |
 | `conflict` | 1 | The revision changed (`current_revision`, `current_progress`), or a question is already open (`current_question`). Read again, rethink, retry with a new operation ID. |
 | `operation_conflict` | 1 | This operation ID was already used for a different change. Use a new ID. |
 | `forbidden` | 1 | You are not allowed, for example you are not an assignee of the Task or not the Orchestrator. |
