@@ -20,21 +20,32 @@ func openBrowser(ctx context.Context, client *stack.Client, ref stack.Context, m
 type viewNotes struct {
 	fields        map[string]any
 	before, after []string
+	// noView prints the notes without making a view link.
+	noView bool
 }
 
 func openView(ctx context.Context, client *stack.Client, ref stack.Context, notes viewNotes, machine, noBrowser bool, stdout, stderr io.Writer) error {
-	url, err := client.BrowserURL(ctx, ref)
-	if err != nil {
-		return err
+	url, err := "", error(nil)
+	if !notes.noView {
+		if url, err = client.BrowserURL(ctx, ref); err != nil {
+			return err
+		}
 	}
 	if machine {
-		data := map[string]any{"url": url}
+		data := map[string]any{}
+		if url != "" {
+			data["url"] = url
+		}
 		for k, v := range notes.fields {
 			data[k] = v
 		}
 		err = json.NewEncoder(stdout).Encode(map[string]any{"data": data})
 	} else {
-		lines := append(append(append([]string{}, notes.before...), url), notes.after...)
+		lines := append([]string{}, notes.before...)
+		if url != "" {
+			lines = append(lines, url)
+		}
+		lines = append(lines, notes.after...)
 		for _, line := range lines {
 			if _, err = io.WriteString(stdout, line+"\n"); err != nil {
 				break
@@ -44,7 +55,7 @@ func openView(ctx context.Context, client *stack.Client, ref stack.Context, note
 	if err != nil {
 		return err
 	}
-	if !noBrowser && launchBrowser(url) != nil {
+	if url != "" && !noBrowser && launchBrowser(url) != nil {
 		_, _ = io.WriteString(stderr, "Browser launch failed; open the printed URL.\n")
 	}
 	return nil
