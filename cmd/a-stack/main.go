@@ -284,6 +284,9 @@ func serveForeground(ctx context.Context, state, listen, herdrExecutable string,
 		case err = <-result:
 		}
 	}
+	// Stop catching signals, so a second Ctrl-C during the wait below ends
+	// the process at once.
+	stop()
 	closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	closeErr := service.Close(closeCtx)

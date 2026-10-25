@@ -41,7 +41,7 @@ a-stack trusts the local operating system account. File permissions and bearer c
 
 `service.json` holds the service's loopback URL, the database ID and an instance ID that changes on each start. The service replaces the file atomically. Clients send the instance ID in the `X-A-Stack-Instance` header. Because of this, an old discovery file cannot send requests to a different service that now uses the same port.
 
-On a normal shutdown, the service deletes its own discovery file. After an abrupt stop, clients report that the service is unavailable until you start `serve` again.
+On Ctrl-C, SIGTERM or SIGHUP, the service stops taking new requests and waits up to 10 seconds for open ones; a second signal ends it at once. On a normal shutdown, the service deletes its own discovery file. After an abrupt stop, clients report that the service is unavailable until you start `serve` again.
 
 Without `--listen`, `serve` first tries the port it used the last time it ran without `--listen`. It keeps that port in the private file `last-port.json` in the state directory. If the port is taken, the service picks a free port, records that one, and prints one line on stderr that names both ports. So after a restart, an open browser tab usually finds the service again at the same address. The new instance ID and the bearer checks still apply, and a browser credential still belongs to the database and its Session, not to the port.
 

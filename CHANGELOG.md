@@ -32,6 +32,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Fixed
 
+- A second Ctrl-C (or SIGTERM) while `serve` waits up to 10 seconds for open requests ends it at once. Before, the second signal was ignored.
 - When the service refuses `agent register` or `agent rebind` with an error that is not retryable, the CLI deletes the new credential file that the command wrote. A file that existed before is kept.
 
 ### Security
