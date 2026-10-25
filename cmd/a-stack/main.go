@@ -39,7 +39,10 @@ func writeError(stderr io.Writer, err error) int {
 	}
 	_ = json.NewEncoder(stderr).Encode(map[string]any{"error": e})
 	if e == stack.ErrStateOwned || e == errStateBusy {
-		return 3 // systemd: RestartPreventExitStatus=3
+		return 3 // systemd: RestartPreventExitStatus
+	}
+	if e.DatabaseUnusable() {
+		return 4 // a damaged database, or a newer or unknown schema
 	}
 	if e.Code == "invalid_input" {
 		return 2

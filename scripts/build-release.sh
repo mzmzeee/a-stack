@@ -7,6 +7,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 IMAGE=golang:1.27.3-alpine@sha256:b8c9b82affbbb82a020bbcf998dad2ba9516944ac7e883524642a481a9505e9c
+# The C toolchain from Alpine 3.24, the image's release, pinned so that a
+# build does not change silently. When Alpine replaces one of these versions,
+# apk add fails; then pin the new version (apk policy gcc musl-dev binutils).
+PACKAGES="gcc=15.2.0-r5 musl-dev=1.2.6-r3 binutils=2.45.1-r1"
 
 version="${1:?usage: scripts/build-release.sh vX.Y.Z}"
 if ! [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
@@ -23,9 +27,9 @@ out=".tmp/release-$arch"
 rm -rf "$out"
 mkdir -p "$out" dist
 docker run --rm -v "$PWD:/src:ro" -v "$PWD/$out:/out" -w /src \
-  -e GOTOOLCHAIN=local -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=1 -e VERSION="$version" \
+  -e GOTOOLCHAIN=local -e GOFLAGS=-buildvcs=false -e CGO_ENABLED=1 -e VERSION="$version" -e PACKAGES="$PACKAGES" \
   "$IMAGE" sh -euc '
-    apk add --no-cache gcc musl-dev >/dev/null
+    apk add --no-cache $PACKAGES >/dev/null
     go build -trimpath -ldflags "-s -w -X main.version=$VERSION -linkmode external -extldflags -static" \
       -o /out/a-stack ./cmd/a-stack
     chown '"$(id -u):$(id -g)"' /out/a-stack'

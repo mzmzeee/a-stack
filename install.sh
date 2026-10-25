@@ -3,6 +3,9 @@
 #
 #   curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/install.sh | sh
 #
+# It checks the release signature with OpenSSL 3, if installed, and the
+# SHA-256 checksum before it installs anything.
+#
 # Environment:
 #   A_STACK_VERSION      release tag to install, such as v0.1.0 (default: latest)
 #   A_STACK_INSTALL_DIR  where to put the binary (default: ~/.local/bin)
@@ -43,6 +46,7 @@ main() {
 		fail "download failed: $url/$archive"
 	curl -fsSL --proto "$proto" --tlsv1.2 -o "$tmp/SHA256SUMS" "$url/SHA256SUMS" ||
 		fail "download failed: $url/SHA256SUMS"
+	check_signature
 	expected="$(awk -v f="$archive" '$2 == f { print $1 }' "$tmp/SHA256SUMS")"
 	actual="$(sha256sum "$tmp/$archive" | cut -d ' ' -f 1)"
 	[ -n "$expected" ] && [ "$expected" = "$actual" ] || fail "checksum mismatch for $archive"
@@ -75,6 +79,43 @@ main() {
 	esac
 	echo "To teach your coding agents a-stack, run: a-stack skill install"
 	echo "To update a-stack next time, run: a-stack update"
+}
+
+# The release workflow signs SHA256SUMS with this Ed25519 key. SHA256SUMS.sig
+# is the raw 64-byte signature. a-stack update checks it with the same key.
+release_key() {
+	cat <<'EOF'
+-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEANkJiNRRt3iLovFX+EVrAxA1Z7a3diAw6F3PhyC9+D08=
+-----END PUBLIC KEY-----
+EOF
+}
+
+# Check SHA256SUMS.sig with OpenSSL 3 or later. Releases before v0.1.5 have
+# no signature; every later release must have a valid one.
+check_signature() {
+	case "$(openssl version 2>/dev/null)" in
+		"OpenSSL "[3-9].* | "OpenSSL "[1-9][0-9].*) ;;
+		*)
+			echo "OpenSSL 3 was not found, so the release signature was not checked, only the checksum."
+			return
+			;;
+	esac
+	if curl -fsSL --proto "$proto" --tlsv1.2 -o "$tmp/SHA256SUMS.sig" "$url/SHA256SUMS.sig" 2>/dev/null; then
+		release_key >"$tmp/release-key.pem"
+		openssl pkeyutl -verify -pubin -inkey "$tmp/release-key.pem" -rawin \
+			-in "$tmp/SHA256SUMS" -sigfile "$tmp/SHA256SUMS.sig" >/dev/null 2>&1 ||
+			fail "the signature of SHA256SUMS is not valid; nothing was installed"
+	elif [ "$version" != latest ] && unsigned_release "$version"; then
+		echo "a-stack $version has no release signature, as every release before v0.1.5; only the checksum was checked."
+	else
+		fail "download failed: $url/SHA256SUMS.sig; every release since v0.1.5 is signed"
+	fi
+}
+
+# Succeed for a version before v0.1.5, such as v0.1.4.
+unsigned_release() {
+	echo "$1" | awk -F '[.-]' '{ sub(/^v/, "", $1) } !($1 == 0 && ($2 < 1 || $2 == 1 && $3 < 5)) { exit 1 }'
 }
 
 # Print the version of an a-stack binary, or nothing if it fails or hangs.
