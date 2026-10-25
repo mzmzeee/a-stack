@@ -113,11 +113,41 @@ During the restart, Agent commands fail with `storage_unavailable` for a few sec
 
 ## Start a-stack automatically
 
-On Linux with systemd, a user service can run `a-stack serve` for you. systemd starts it when your user manager starts, and starts it again if it crashes. You do not need `sudo`.
+If you start a-stack with `a-stack`, `a-stack new` or `a-stack -r`, the service runs in that terminal. When you close the terminal, a-stack stops. On Linux with systemd, a user service can run `a-stack serve` for you instead. systemd starts it when your user manager starts, and starts it again if it crashes. You do not need `sudo`.
+
+Run this command:
+
+```sh
+a-stack service install
+```
+
+It does these steps:
+
+1. It checks that no `a-stack serve` runs for the state directory outside systemd. If one runs, it stops and changes nothing. Press Ctrl-C in the terminal of that service, then run the command again. Only one service can use a state directory.
+2. It writes the unit `~/.config/systemd/user/a-stack.service` (or below `$XDG_CONFIG_HOME`). The unit runs the `a-stack` binary that you ran, with its real path, and the state directory that the CLI uses. If the unit exists and differs, it replaces the unit and says `Updated`. If systemd runs the service already, it tells you to restart the service to use the new unit.
+3. It runs `systemctl --user daemon-reload` and `systemctl --user enable --now a-stack`.
+4. It waits until the service answers, and prints its URL. If the service does not answer, read the log with `journalctl --user -u a-stack`.
+5. It checks linger. Without linger, systemd starts your user services only when you log in, and stops them when you log out. If linger is off, the command prints the command that turns it on, and does not run it:
+
+   ```sh
+   loginctl enable-linger "$USER"
+   ```
+
+Run `a-stack service install` again after you move the binary or change `XDG_STATE_HOME`. It changes nothing when the unit is up to date.
+
+`a-stack service status` shows whether the unit file exists, whether it is enabled and active, the binary and the state directory in the unit, linger, and the result of `a-stack health`. `--json` prints the same as one JSON object.
+
+`a-stack service uninstall` stops and disables the service, removes the unit file and runs `systemctl --user daemon-reload`. It never touches the state directory.
+
+To read the service's log, run `journalctl --user -u a-stack`. At each start, the service writes one ready line with its URL.
+
+### Set up the unit by hand
+
+Releases up to v0.1.4 do not have `a-stack service`. You can also set up the unit by hand.
 
 The unit runs `~/.local/bin/a-stack`. If you installed the binary in another folder, change the path in the `ExecStart` line.
 
-1. Stop any `a-stack serve` that you started by hand. Only one service can use a state directory. A second one stops with `conflict`. The unit then shows as failed with exit code 3 and does not restart.
+1. Stop any `a-stack serve` that you started by hand. A second service stops with `conflict`. The unit then shows as failed with exit code 3 and does not restart.
 
    Press Ctrl-C in the terminal where `a-stack serve` runs. If you closed that terminal, run this command:
 
@@ -164,11 +194,9 @@ The unit runs `~/.local/bin/a-stack`. If you installed the binary in another fol
    loginctl enable-linger "$USER"
    ```
 
-   Without linger, systemd starts your user services only when you log in, and stops them when you log out.
-
-To read the service's log, run `journalctl --user -u a-stack`. At each start, the service writes one ready line with its URL.
-
 ### Use the same state directory as the CLI
+
+`a-stack service install` writes the CLI's state directory into the unit, so you need this only for a unit that you set up by hand.
 
 The unit uses the default state directory, `~/.local/state/a-stack`. It sets this folder with `--state-dir` and does not read `XDG_STATE_HOME`. The systemd user manager can have a different environment than your shell. At boot, it usually does not have the variables that your desktop session sets.
 
@@ -214,7 +242,13 @@ This binary uses your system's C library. To build the static release binary, se
 
 ## Uninstall
 
-If you set up the systemd user service, stop it and remove the unit and any drop-in:
+If you set up the systemd user service, stop it and remove the unit:
+
+```sh
+a-stack service uninstall
+```
+
+If you added a drop-in, remove it too: `rm -rf ~/.config/systemd/user/a-stack.service.d`. Without `a-stack service`, run these commands:
 
 ```sh
 systemctl --user disable --now a-stack
