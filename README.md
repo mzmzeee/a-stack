@@ -114,7 +114,7 @@ a-stack -r           # pick another Session
 
 If no service runs, `a-stack` starts one in this terminal. It stops when you press Ctrl-C or close the terminal. To keep it running, run `a-stack service install`.
 
-To brief the coding agent yourself, run `a-stack new --orchestrator 01-orchestrator` in the project folder. It makes the Session, registers and appoints the Orchestrator, opens the view and prints a brief to paste into your coding agent. See [Hand your Session to an Orchestrator](docs/getting-started.md#hand-your-session-to-an-orchestrator). To try a whole team on throwaway state first, follow [Getting started](docs/getting-started.md).
+To brief the coding agent yourself, run `a-stack new --orchestrator 01-orchestrator` in the project folder. It makes the Session, registers and appoints the Orchestrator, opens the view and prints a brief to paste into your coding agent, with the command that installs its [hooks](docs/hooks.md). See [Hand your Session to an Orchestrator](docs/getting-started.md#hand-your-session-to-an-orchestrator). To try a whole team on throwaway state first, follow [Getting started](docs/getting-started.md).
 
 ## Documentation
 

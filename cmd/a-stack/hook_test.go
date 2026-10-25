@@ -95,7 +95,7 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 	if ours != want {
 		t.Fatalf("hook command\n got %s\nwant %s", ours, want)
 	}
-	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "PermissionRequest", "Notification"} {
+	for _, event := range []string{"SessionStart", "UserPromptSubmit", "PostToolUse", "PermissionRequest", "Notification", "SubagentStart", "SubagentStop"} {
 		if c := commands(s, event); len(c) != 1 || c[0] != want {
 			t.Fatalf("%s: %v", event, c)
 		}
@@ -137,7 +137,7 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 		t.Fatalf("uninstall: %q", out)
 	}
 	s = readSettings(t, claude)
-	if c := commands(s, "Stop"); len(c) != 2 || c[0] != "say done" || len(s.Hooks) != 7 || len(commands(s, "PreToolUse")) != 1 {
+	if c := commands(s, "Stop"); len(c) != 2 || c[0] != "say done" || len(s.Hooks) != 9 || len(commands(s, "PreToolUse")) != 1 {
 		t.Fatalf("uninstall removed other hooks: %+v", s.Hooks)
 	}
 	if data, _ := os.ReadFile(codex); string(data) != "{}\n" {
@@ -394,6 +394,64 @@ func TestHookRecordsRuntimeStateAndPrintsTheReminder(t *testing.T) {
 	runHook(id, strings.NewReader("not json"), &out)
 	if out.Len() != 0 {
 		t.Fatal("bad input printed")
+	}
+}
+
+// A Claude Code subagent's hook input names the parent's session and the
+// subagent's own folder, with agent_id. The subagent events reach the Agent
+// whose hooks are installed for exactly that folder, such as a worktree made
+// for the subagent, and never the Agent of a folder above it, or of the
+// parent's own folder.
+func TestHookSubagentEventsReachOnlyTheirOwnAgent(t *testing.T) {
+	f := newTeam(t)
+	hookHome(t)
+	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}
+	worktree := filepath.Join(f.project, ".claude", "worktrees", "agent-a1")
+	if os.MkdirAll(worktree, 0o700) != nil {
+		t.Fatal("fixture")
+	}
+	orch := hookIdentity{state: f.state, credential: f.orchFile, agent: f.orch, worktree: f.project, ref: ref, noMailNudge: true}
+	worker := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: worktree, ref: ref, noMailNudge: true}
+	event := func(id hookIdentity, session, agentID, cwd, event, extra string) string {
+		t.Helper()
+		var out bytes.Buffer
+		input := `{"session_id":"` + session + `","cwd":` + jsonString(cwd) + `,"hook_event_name":"` + event + `"`
+		if agentID != "" {
+			input += `,"agent_id":"` + agentID + `","agent_type":"general-purpose"`
+		}
+		runHook(id, strings.NewReader(input+extra+`}`), &out)
+		return out.String()
+	}
+	// The parent session runs in the project folder: the Orchestrator's hooks.
+	if text := hookContextText(t, event(orch, "parent", "", f.project, "SessionStart", ""), "SessionStart"); !strings.Contains(text, "you are the Agent 01-orchestrator") {
+		t.Fatalf("parent reminder: %s", text)
+	}
+	// A subagent in its own worktree gets the worker's reminder only.
+	if out := event(orch, "parent", "a1", worktree, "SubagentStart", ""); out != "" {
+		t.Fatalf("the Orchestrator's hooks answered a subagent below its folder: %q", out)
+	}
+	if text := hookContextText(t, event(worker, "parent", "a1", worktree, "SubagentStart", ""), "SubagentStart"); !strings.Contains(text, "you are the Agent 02-worker") {
+		t.Fatalf("subagent reminder: %s", text)
+	}
+	// SubagentStop runs the worker's Stop guard, once per stop_hook_active.
+	f.taskChange(f.workerFile, "sub-working", 2, "status", "--progress", "working")
+	if out := event(worker, "parent", "a1", worktree, "SubagentStop", `,"stop_hook_active":false`); !strings.Contains(out, `"decision":"block"`) || !strings.Contains(out, f.task) {
+		t.Fatalf("SubagentStop passed: %q", out)
+	}
+	if out := event(worker, "parent", "a1", worktree, "SubagentStop", `,"stop_hook_active":true`); out != "" {
+		t.Fatalf("blocked twice: %q", out)
+	}
+	// The parent's own Stop is not the worker's: outside its folder.
+	if out := event(worker, "parent", "", f.project, "Stop", ""); out != "" {
+		t.Fatalf("the parent's stop reached the worker: %q", out)
+	}
+	// A subagent in the parent's folder is not the parent's Agent.
+	if out := event(orch, "parent", "a2", f.project, "SubagentStart", ""); out != "" {
+		t.Fatalf("a subagent in the parent's folder got the parent's reminder: %q", out)
+	}
+	// Nor is one whose session never ran there itself, below the folder.
+	if out := event(orch, "other", "a3", filepath.Join(f.project, ".claude"), "SubagentStart", ""); out != "" {
+		t.Fatalf("a subagent below the folder got the reminder: %q", out)
 	}
 }
 
@@ -674,7 +732,9 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	}
 	var files []string
 	for _, entry := range entries {
-		files = append(files, entry.Name())
+		if !strings.HasSuffix(entry.Name(), ".main") { // see ownSubagent
+			files = append(files, entry.Name())
+		}
 	}
 	if !slices.Equal(files, wantFiles) {
 		t.Fatalf("cursor files: %v, want %v", files, wantFiles)

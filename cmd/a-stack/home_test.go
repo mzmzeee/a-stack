@@ -324,7 +324,10 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	if err != nil || credential.Token == "" || strings.Contains(got.Brief, credential.Token) || strings.Contains(stdout.String(), credential.Token) {
 		t.Fatal("the brief or the output leaks the credential")
 	}
-	for _, want := range []string{got.Credential, got.WorkspaceID, got.SessionID, "01-orch", "orchestrator reference"} {
+	// The brief names the hook install for the agent's harness; a state
+	// directory that is not the default goes into it.
+	install := "run a-stack hook install --state-dir " + shellQuote(dir) + " --credential-file " + shellQuote(got.Credential) + " --claude (or --codex, --pi or --opencode"
+	for _, want := range []string{got.Credential, got.WorkspaceID, got.SessionID, "01-orch", "orchestrator reference", install} {
 		if !strings.Contains(got.Brief, want) {
 			t.Fatalf("brief lacks %q: %s", want, got.Brief)
 		}

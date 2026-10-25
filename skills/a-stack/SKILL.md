@@ -16,7 +16,7 @@ If the Operator asks you directly to use a-stack or to be the Orchestrator, give
 1. Run `a-stack new --orchestrator 01-orchestrator --no-browser --json` in the project folder. It makes or reuses the folder's Workspace and Session, registers you, appoints you as the Orchestrator and prints `orchestrator_credential_file`, `workspace_id`, `session_id` and a `brief`. Running it again returns the same hand-off, so it is safe after a lost answer or in a new conversation. If the output has `"existing_orchestrator": true`, the Session already had this Orchestrator: tell the Operator that you are taking over as `01-orchestrator`, and stop if they say another conversation still is.
 2. If it says the folder is inside another Workspace, run step 1 in that folder. If it fails because the service is not running, run `a-stack service install` (a user service, no sudo), tell the Operator that you did, then run step 1 again.
 3. If it says the Session already has an Orchestrator, ask the Operator whether to use another Session or to replace the Orchestrator. For another Session in the same folder, use a new Session name and a new Agent name, because Agent names are unique in a project folder: `a-stack new NAME --orchestrator 01-orchestrator-NAME --no-browser --json`.
-4. Follow the brief: set up `me` below with the credential file, then read [references/orchestrator.md](references/orchestrator.md). The output has no view link; tell the Operator to open the view with `a-stack`.
+4. Follow the brief: set up `me` below with the credential file, install the hooks (below), then read [references/orchestrator.md](references/orchestrator.md). The output has no view link; tell the Operator to open the view with `a-stack`.
 
 ## What you receive
 
@@ -47,6 +47,10 @@ exec a-stack --state-dir /path/to/state --as agent --credential-file /path/to/02
 Check it with `me session inspect`. If that fails with `this credential file is from before a-stack v0.1.5`, the service is too old to look up your Workspace and Session: add `--workspace WORKSPACE_ID --session SESSION_ID` from your brief before `"$@"`.
 
 A script keeps working in shells that forget functions between commands. Write it with your file-write tool if you have one, and call it by its literal full path, not through a variable. Below, `me` stands for that full path, and `/your/private/folder/mail.json` for a file in your private folder.
+
+## Install the hooks
+
+Once, in the folder you work in, install the a-stack hooks for your harness: `a-stack hook install --credential-file /path/to/02-worker.json --claude` (`--codex`, `--pi` or `--opencode` for those; add `--state-dir` if you were given one). They remind you who you are after a compaction, keep you from stopping with a working Task that has no report, and tell you about new Task mail. They work from your next session start or resume; tell the Operator so. Skip this as a Claude Code subagent: the hooks would not reach you.
 
 ## If you run inside Herdr
 

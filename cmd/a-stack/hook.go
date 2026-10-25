@@ -45,19 +45,26 @@ func (f *hookFlags) register(fs *flag.FlagSet) {
 const hookTimeout, hookTimeoutSeconds = 2 * time.Second, 5
 
 // hookEvents maps each event that install registers to the runtime state it
-// records; SessionStart prints the reminder instead.
-var hookEvents = []struct{ event, matcher, state string }{
-	{"SessionStart", "", ""},
-	{"UserPromptSubmit", "", "working"},
-	{"PostToolUse", "", "working"},
-	{"PermissionRequest", "", "blocked"},
-	{"Notification", "elicitation_dialog", "blocked"}, // Claude Code only
-	{"Stop", "", "idle"},
+// records; SessionStart and SubagentStart print the reminder instead. Only
+// Claude Code gets the events marked claude.
+var hookEvents = []struct {
+	event, matcher, state string
+	claude                bool
+}{
+	{"SessionStart", "", "", false},
+	{"UserPromptSubmit", "", "working", false},
+	{"PostToolUse", "", "working", false},
+	{"PermissionRequest", "", "blocked", false},
+	{"Notification", "elicitation_dialog", "blocked", true},
+	{"Stop", "", "idle", false},
+	{"SubagentStart", "", "", true},
+	{"SubagentStop", "", "idle", true},
 }
 
 type hookInput struct {
 	Event            string `json:"hook_event_name"`
 	SessionID        string `json:"session_id"`
+	AgentID          string `json:"agent_id"` // set by Claude Code in a subagent
 	Cwd              string `json:"cwd"`
 	NotificationType string `json:"notification_type"`
 	StopHookActive   bool   `json:"stop_hook_active"`
@@ -80,7 +87,7 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	if canonical, err := stack.ResolvePath(cwd); err == nil {
 		cwd = canonical
 	}
-	if id.worktree != "" && !within(cwd, id.worktree) {
+	if id.worktree != "" && !within(cwd, id.worktree) || !ownSubagent(id, &in, cwd) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), hookTimeout)
@@ -89,7 +96,7 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	if err != nil {
 		return
 	}
-	if in.Event == "SessionStart" {
+	if in.Event == "SessionStart" || in.Event == "SubagentStart" {
 		if text, err := hookReminder(ctx, client, id); err == nil {
 			hookContext(stdout, in.Event, text)
 		}
@@ -98,7 +105,7 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 		}
 		return
 	}
-	if in.Event == "Stop" && !id.noStopGuard && stopGuard(ctx, client, id, in, stdout) {
+	if (in.Event == "Stop" || in.Event == "SubagentStop") && !id.noStopGuard && stopGuard(ctx, client, id, in, stdout) {
 		return // the agent goes on, so its state stays working
 	}
 	for _, e := range hookEvents {
@@ -111,6 +118,39 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 			hookContext(stdout, in.Event, text)
 		}
 	}
+}
+
+// ownSubagent reports whether a hook event belongs to the hook's Agent. A
+// Claude Code subagent's events name the parent's session and carry the
+// subagent's own folder and agent_id. They belong to the Agent only when the
+// subagent works in exactly the Agent's folder, such as a worktree made for
+// it, and the parent session never ran in that folder: a subagent in its
+// parent's folder, or below it, is not the Agent. A main session's event in
+// the folder leaves a marker for that check. For a subagent, the event's
+// session becomes session and agent ID, so it gets its own cursor file and
+// Stop guard marker.
+func ownSubagent(id hookIdentity, in *hookInput, cwd string) bool {
+	here := id.worktree != "" && filepath.Clean(cwd) == filepath.Clean(id.worktree)
+	if in.AgentID == "" {
+		if marker, ok := hookCacheFile(id.agent, in.SessionID, ".main"); ok && here {
+			if _, err := os.Stat(marker); err != nil {
+				_ = os.WriteFile(marker, nil, 0o600)
+			}
+		}
+		return true
+	}
+	if !here {
+		return false
+	}
+	marker, ok := hookCacheFile(id.agent, in.SessionID, ".main")
+	if !ok {
+		return false
+	}
+	if _, err := os.Stat(marker); err == nil {
+		return false
+	}
+	in.SessionID += "/" + in.AgentID
+	return true
 }
 
 // hookContext prints text for the agent's context as JSON, which Claude Code
@@ -459,8 +499,26 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 	if credential.Kind != stack.AgentCapability {
 		return "", invalid("the credential file is not an Agent credential")
 	}
-	// A credential file from v0.1.5 on names its Workspace, Session and Agent.
+	// The service is asked only when the flags and the file leave a gap.
+	var client *stack.Client
+	connect := func() error {
+		if client == nil {
+			client, err = stack.NewClient(id.state, id.credential, stack.AgentCapability)
+		}
+		return err
+	}
+	// A credential file from v0.1.5 on names its Workspace, Session and Agent;
+	// for an older one the service names the Workspace and Session.
 	ref := lifecycleFlags{workspace: id.ref.WorkspaceID, session: id.ref.SessionID}
+	if (credential.WorkspaceID == "" || credential.SessionID == "") && (ref.workspace == "" || ref.session == "") {
+		if err = connect(); err != nil {
+			return "", err
+		}
+		if err = loadContext(ctx, client, ref, "hook install"); err != nil {
+			return "", err
+		}
+		credential = client.Credential
+	}
 	if err = fillContext(credential, &ref, "hook install"); err != nil {
 		return "", err
 	}
@@ -471,12 +529,20 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 	if !stack.ValidID(id.ref.WorkspaceID) || !stack.ValidID(id.ref.SessionID) {
 		return "", invalid("--workspace and --session required; this credential file does not name them")
 	}
+	if id.agent == "" && h.name == "" && client != nil {
+		// A file from before v0.1.5 does not name its Agent either; the
+		// service knows whose credential it is.
+		session, err := inspectSession(ctx, client, id.ref)
+		if err != nil {
+			return "", err
+		}
+		id.agent = session.YourAgentID
+	}
 	if (id.agent == "") == (h.name == "") {
 		return "", invalid("choose --agent ID or --name NAME")
 	}
 	if h.name != "" {
-		client, err := stack.NewClient(id.state, id.credential, stack.AgentCapability)
-		if err != nil {
+		if err = connect(); err != nil {
 			return "", err
 		}
 		agents, err := listPages[stack.Agent](ctx, client, "/v1/agent/list", id.ref)
@@ -569,8 +635,8 @@ func mergeHooks(file, harness, worktree, command string) (bool, error) {
 	}
 	if command != "" {
 		for _, e := range hookEvents {
-			if e.event == "Notification" && harness != "claude" {
-				continue // Codex, the Pi extension and the OpenCode plugin have no Notification event
+			if e.claude && harness != "claude" {
+				continue // Codex, the Pi extension and the OpenCode plugin have no such event
 			}
 			group := map[string]any{"hooks": []map[string]any{{"type": "command", "command": command, "timeout": hookTimeoutSeconds}}}
 			if e.matcher != "" {

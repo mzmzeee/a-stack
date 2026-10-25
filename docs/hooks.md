@@ -9,7 +9,7 @@ Claude Code, Codex, Pi and OpenCode can run a command on events in an agent's se
 
 ## Install
 
-Run the command in the Agent's working folder, with the values from its brief:
+Run the command in the Agent's working folder, with the values from its brief. The brief of `a-stack new --orchestrator` names it for the Orchestrator, and the Orchestrator's briefs name it for each Agent ([orchestrator reference](../skills/a-stack/references/orchestrator.md#4-brief-each-agent)):
 
 ```sh
 a-stack hook install --credential-file /path/to/02-worker.json \
@@ -17,7 +17,7 @@ a-stack hook install --credential-file /path/to/02-worker.json \
   --runtime-id RUNTIME_ID
 ```
 
-- A credential file written by v0.1.5 or later names its Workspace, Session and Agent, so `--workspace`, `--session` and `--name` can be left out: `a-stack hook install --credential-file FILE --runtime-id RUNTIME_ID` is enough. A `--workspace` or `--session` that you give must match the file.
+- A credential file written by v0.1.5 or later names its Workspace, Session and Agent, so `--workspace`, `--session` and `--name` can be left out: `a-stack hook install --credential-file FILE --runtime-id RUNTIME_ID` is enough. A `--workspace` or `--session` that you give must match the file. For an older file, `hook install` asks the service for the Workspace, Session and Agent of its credential.
 - `--name` finds the Agent's ID with the service. Instead, `--agent ID` gives the ID and needs no running service.
 - `--runtime-id` is the instance ID of the Agent's runtime binding, as in `agent attach --runtime-id`. a-stack records runtime state only for an attached Agent with the same runtime ID. Without `--runtime-id`, the hooks record no runtime state. The reminder, the Stop guard and the Task mail nudge still work. To attach a new Agent first, see [Runtime bindings](lifecycle.md#runtime-bindings).
 - `--state-dir` goes into the hook command when you give it.
@@ -76,8 +76,18 @@ Cursor CLI and GitHub Copilot CLI also read Claude Code's settings files: Cursor
 | `PermissionRequest` | `ui_prompt_start` | `permission.asked`, `question.asked` | Records `blocked`. The hook makes no permission decision. |
 | `Notification` with `elicitation_dialog` (Claude Code only) | | | Records `blocked`. |
 | `Stop` | `agent_before_settle` | `session.idle` | Runs the Stop guard. When the guard does not block, records `idle`. |
+| `SubagentStart` (Claude Code only) | | | Prints the reminder for a [subagent](#claude-code-subagents) of the Agent's own. |
+| `SubagentStop` (Claude Code only) | | | Runs the Stop guard for such a subagent. When the guard does not block, records `idle`. |
 
 A state hook reads the Agent first and writes only when the state changes, so a tool call usually costs one read. The harness gives each hook 5 seconds, and the hook stops itself after 2. On any error, also when the service is down, the hook prints nothing and exits with 0, so it never stops or slows the agent. `a-stack hook` itself reads the event as JSON on stdin; the harness runs it, not you.
+
+### Claude Code subagents
+
+A Claude Code subagent's hook input names the parent's session, its own folder as `cwd`, and its `agent_id`. Measured with Claude Code 2.1.310: a subagent started with `isolation: "worktree"` reports its new worktree, `.claude/worktrees/agent-ID` below the parent's folder, and a subagent without it reports the parent's folder, also after a `cd` in its shell. So a subagent's events, `SubagentStart`, its tool calls and `SubagentStop`, reach the hooks of every folder that holds its own.
+
+An event with `agent_id` counts only for the hooks of exactly the subagent's folder, and only when the parent session never ran in that folder. The hooks of a folder above it, such as the Orchestrator's, and the hooks of the parent's own folder skip it: they record no state, show no mail note and do not guard the subagent's stop. For a subagent that counts, the cursor file and the Stop guard marker are its own. The hook remembers that a main session ran in its folder with an empty marker file, `HASH.main`, next to the cursor files.
+
+Claude Code reads hooks when a session starts, for the session and its subagents: hooks added during a session ran only after `claude --continue`. A worktree that Claude Code makes for a subagent is new, so no hooks were installed for it at that time. In practice a Claude Code subagent gets no a-stack hooks of its own, and the rule above keeps the parent's hooks from acting for it. `SubagentStart` and `SubagentStop` count for a subagent whose worktree had hooks when the parent session started or resumed.
 
 ## Stop guard
 

@@ -66,6 +66,9 @@ Give each Agent only what it needs, in private:
 - Its own private folder for helpers, for example `/tmp/work/02-worker/`. Give each Agent a different folder; the Agent creates it if it does not exist.
 - The names of the other assignees of its Tasks, for `@name` mentions.
 - The repository or worktree to work in, when the Task changes files.
+- The hook install command, which the Agent runs once in that folder with the flag of its harness: `a-stack hook install --credential-file /private/creds/02-worker.json --claude` (or `--codex`, `--pi`, `--opencode`), with `--state-dir` when it is not the default. The hooks remind the Agent who it is after a compaction, keep it from stopping with a working Task that has no report, and tell it about new Task mail.
+
+A harness reads its hooks when a session starts, so an Agent gets them from its next start or resume; when you start the Agent yourself, run its install first. A Claude Code subagent gets no hooks of its own: in the parent's folder its events are the parent's, and in a worktree that Claude Code makes for it, the folder is new. Brief it all the same; it works without hooks.
 
 Keep the Operator credential, other Agents' credentials and the browser URL out of every brief.
 
@@ -82,6 +85,7 @@ Workspace: WORKSPACE_ID   Session: SESSION_ID
 State directory: /private/state   (only if not the default)
 Your name: 02-worker   Your private folder: /tmp/work/02-worker/
 Work in: /path/to/worktree
+Hooks: run once in that folder: a-stack hook install --credential-file /private/creds/02-worker.json --claude (or --codex, --pi, --opencode)
 Tasks: A_ID (do first), B_ID (depends on A)
 Other assignees you can @mention: 01-orchestrator
 ```

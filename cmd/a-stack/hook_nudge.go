@@ -130,12 +130,12 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 	return "a-stack: New Task mail on " + strings.Join(titles, ", ") + "; run mail check."
 }
 
-// pruneHookFiles removes the cursor files and Stop guard markers of harness
+// pruneHookFiles removes the cursor files, Stop guard and session markers of harness
 // sessions unused for hookFilesKept.
 func pruneHookFiles(dir string) {
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
-		if info, err := e.Info(); err == nil && (strings.HasSuffix(e.Name(), ".json") || strings.HasSuffix(e.Name(), ".stop")) && time.Since(info.ModTime()) > hookFilesKept {
+		if info, err := e.Info(); err == nil && (strings.HasSuffix(e.Name(), ".json") || strings.HasSuffix(e.Name(), ".stop") || strings.HasSuffix(e.Name(), ".main")) && time.Since(info.ModTime()) > hookFilesKept {
 			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}
