@@ -368,7 +368,7 @@ class Bench:
         mailable = [t for t in tasks if t['assignees']]
         weights = [1 / (1 + j) ** 0.8 for j in range(len(mailable))]
         rng.shuffle(mailable)
-        plan = rng.choices(mailable, weights=weights, k=n_messages)
+        plan = rng.choices(mailable, weights=weights, k=n_messages) if mailable else []
         counter = {'n': 0}
         lock = threading.Lock()
         t1 = time.monotonic()
@@ -496,7 +496,7 @@ class Bench:
             'receipt_lookup': ('SELECT digest,operation_id,resource_id,revision,outcome,body_ref,received_at FROM operation_receipts WHERE actor=? AND operation_id=?', ('agent:' + agent['id'], 'x')),
             'dependency_cycle_check': (cycle_sql, (first_task, sess, last_task)),
             'dependency_cycle_check_v0.1.2': (old_cycle_sql, (first_task, sess, last_task)),
-            'dependency_cycle_check_late_task': (cycle_sql, (self.tasks[-200]['id'], sess, first_task)),
+            'dependency_cycle_check_late_task': (cycle_sql, (self.tasks[-min(200, len(self.tasks))]['id'], sess, first_task)),
             'mail_check_assigned_tasks_join': ('SELECT x.task_id FROM task_assignees x WHERE x.session_id=? AND x.agent_id=? AND x.task_id>? ORDER BY x.task_id LIMIT ?', (sess, agent['id'], '', 101)),
             # Harness-only batched reads: one statement per page or per collection instead of one per item.
             'page_tasks_batched (harness-only)': ('SELECT ' + cols + ' FROM tasks t WHERE t.session_id=? AND t.id>? ORDER BY t.id LIMIT ?', (sess, '', 101)),
