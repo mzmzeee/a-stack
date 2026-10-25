@@ -137,7 +137,7 @@ a-stack workspace orders clear --workspace "$workspace_id" --expected-revision 2
 - Only the Operator sets and clears them. `--body TEXT` or `--body-file FILE` (`-` for stdin) gives the text: plain UTF-8 of at most 4 KiB, with no control characters other than tabs and line breaks.
 - `show` returns `workspace_id`, `body`, `revision` and `updated_at`. A Workspace without orders has an empty `body` and revision 1, so the first `set` takes `--expected-revision 1`. Each change adds one, also a clear. The same text again changes nothing.
 - An Agent reads its own Workspace's orders with `workspace orders show`, and in `session inspect` as `standing_orders` (`body`, `revision`, `updated_at`), which is left out while there are none.
-- The SessionStart reminder of the [agent hooks](hooks.md) shows the first 8 lines, each cut to 200 characters, and the command that shows the rest. The brief of `a-stack new --orchestrator` shows them the same way.
+- The SessionStart reminder of the [agent hooks](hooks.md) shows the first 8 lines, each cut to 200 characters, and the command that shows the rest. The brief of `a-stack new --orchestrator` shows them the same way, and `task handoff` shows them in full.
 - The [browser view](browser.md#what-the-view-shows) shows them read-only. A change gives every Session of the Workspace a new `read_revision`, so open views show it at their next poll.
 - Each change adds a `workspace.orders.set` or `workspace.orders.clear` entry to the lifecycle history.
 

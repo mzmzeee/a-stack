@@ -47,6 +47,10 @@ func TestStandingOrdersCLIAndReminder(t *testing.T) {
 		t.Fatalf("session inspect: %s", out)
 	}
 
+	if out, errout, code = f.run(f.workerFile, f.scoped("task", "handoff", "--task", f.task)...); code != 0 || !strings.Contains(out, "\n## Standing orders\n\nThe Operator's rules for every Agent of the Workspace. They override your own defaults.\n\nRule 1: keep it short.\n") || !strings.Contains(out, "Rule 10: keep it short.\n\n## Description") {
+		t.Fatalf("task handoff: %d %s %s", code, out, errout)
+	}
+
 	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}}
 	text := hookContextText(t, hookEvent(t, id, "SessionStart", `,"source":"compact"`), "SessionStart")
 	for _, want := range []string{"Standing orders of this Workspace, from the Operator. They override your own defaults:\n  Rule 1: keep it short.\n", "  Rule 8: keep it short.\n", "  (2 more lines; read them all with: " + agentCommand(id) + " workspace orders show)\n"} {
