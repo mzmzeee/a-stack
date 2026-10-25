@@ -62,21 +62,21 @@ func (s *Store) OpenBrowser(ctx context.Context, token string, r BrowserOpenRequ
 		}
 		now := clockNow().Unix()
 		if _, err = tx.ExecContext(ctx, "DELETE FROM view_links WHERE expires_at<=?", now); err != nil {
-			return Receipt{}, storageError()
+			return Receipt{}, storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "DELETE FROM capabilities WHERE kind='browser' AND expires_at<=?", now); err != nil {
-			return Receipt{}, storageError()
+			return Receipt{}, storageError(err)
 		}
 		var exists int
 		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM view_links WHERE code_hash=?", r.CredentialHash).Scan(&exists); err != nil {
-			return Receipt{}, storageError()
+			return Receipt{}, storageError(err)
 		}
 		if exists != 0 {
 			return Receipt{}, failure("conflict", "credential hash already exists")
 		}
 		_, err = tx.ExecContext(ctx, "INSERT INTO view_links(code_hash,session_id,expires_at) VALUES(?,?,?)", r.CredentialHash, session.ID, now+int64(ViewLinkAge/time.Second))
 		if err != nil {
-			return Receipt{}, storageError()
+			return Receipt{}, storageError(err)
 		}
 		return Receipt{ResourceID: session.ID, Revision: session.Revision, Outcome: "view-link-issued"}, nil
 	})
@@ -109,7 +109,7 @@ func (s *Store) RedeemViewLink(ctx context.Context, r ViewRedeemRequest) (string
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return "", storageError()
+		return "", storageError(err)
 	}
 	defer tx.Rollback()
 	var session string
@@ -119,7 +119,7 @@ func (s *Store) RedeemViewLink(ctx context.Context, r ViewRedeemRequest) (string
 		return "", errViewLink
 	}
 	if err != nil {
-		return "", storageError()
+		return "", storageError(err)
 	}
 	// An expired code, or one sent for another Session, is used up all the same.
 	if _, err = ReadSession(ctx, tx, Principal{Kind: BrowserCapability, SessionID: session}, r.Context); err != nil || expires <= clockNow().Unix() {
@@ -152,7 +152,7 @@ func (s *Store) RevokeViews(ctx context.Context, token string, r ViewRevokeReque
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, storageError()
+		return 0, storageError(err)
 	}
 	defer tx.Rollback()
 	p, err := authenticate(ctx, tx, token)
@@ -170,11 +170,11 @@ func (s *Store) RevokeViews(ctx context.Context, token string, r ViewRevokeReque
 		where, args = " AND session_id=?", []any{r.SessionID}
 	}
 	if _, err = tx.ExecContext(ctx, "DELETE FROM view_links WHERE 1"+where, args...); err != nil {
-		return 0, storageError()
+		return 0, storageError(err)
 	}
 	result, err := tx.ExecContext(ctx, "DELETE FROM capabilities WHERE kind='browser'"+where, args...)
 	if err != nil {
-		return 0, storageError()
+		return 0, storageError(err)
 	}
 	n, err := result.RowsAffected()
 	if err != nil || tx.Commit() != nil {

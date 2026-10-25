@@ -197,7 +197,7 @@ func scanTask(row interface{ Scan(...any) error }) (Task, error) {
 		return t, failure("not_found", "Task not found in Session")
 	}
 	if err != nil {
-		return t, storageError()
+		return t, storageError(err)
 	}
 	return t, nil
 }
@@ -222,7 +222,7 @@ func RequireTaskAssignee(ctx context.Context, tx *sql.Tx, p Principal, t Task) e
 	}
 	var count int
 	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM task_assignees WHERE task_id=? AND agent_id=?", t.ID, p.SubjectID).Scan(&count); err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	if count != 1 {
 		return failure("forbidden", "current Task assignee required")
@@ -242,7 +242,7 @@ func replayTask(assigned bool) func(context.Context, *sql.Tx, Principal, Receipt
 		if err := tx.QueryRowContext(ctx, "SELECT session_id FROM tasks WHERE id=?", r.ResourceID).Scan(&sessionID); errors.Is(err, sql.ErrNoRows) {
 			return failure("not_found", "Task not found")
 		} else if err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		session, err := loadSession(ctx, tx, sessionID)
 		if err != nil {

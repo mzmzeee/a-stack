@@ -135,6 +135,7 @@ func TuneServiceGC() {
 }
 
 func Start(ctx context.Context, dir, address string) (*Service, error) {
+	storageLog.setOutput(os.Stderr)
 	if address != "" {
 		host, _, err := net.SplitHostPort(address)
 		if err != nil || host != "127.0.0.1" {

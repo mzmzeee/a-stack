@@ -104,7 +104,7 @@ func pinReadRevision(expected int64, session Session) error {
 func (s *Store) readSessionTx(ctx context.Context, token string, ref Context) (*sql.Tx, Principal, Session, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, Principal{}, Session{}, storageError()
+		return nil, Principal{}, Session{}, storageError(err)
 	}
 	p, err := authenticate(ctx, tx, token)
 	if err != nil {
@@ -129,7 +129,7 @@ func (s *Store) Snapshot(ctx context.Context, token string, r SnapshotRequest) (
 	}
 	var workspacePath string
 	if err = tx.QueryRowContext(ctx, `SELECT path FROM workspaces WHERE id=?`, session.WorkspaceID).Scan(&workspacePath); err != nil {
-		return SessionSnapshot{}, storageError()
+		return SessionSnapshot{}, storageError(err)
 	}
 	snapshot := SessionSnapshot{Source: "local-service", CapturedAt: now(), Session: session, WorkspaceName: filepath.Base(workspacePath), Unchanged: r.KnownRevision == session.ReadRevision}
 	if snapshot.Unchanged {
@@ -138,7 +138,7 @@ func (s *Store) Snapshot(ctx context.Context, token string, r SnapshotRequest) (
 	counts := &SnapshotCounts{}
 	err = tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM tasks WHERE session_id=?),(SELECT count(*) FROM agents WHERE session_id=?),(SELECT count(*) FROM dependencies WHERE session_id=?),(SELECT count(*) FROM task_assignees WHERE session_id=?)`, session.ID, session.ID, session.ID, session.ID).Scan(&counts.Tasks, &counts.Agents, &counts.Dependencies, &counts.Assignments)
 	if err != nil {
-		return SessionSnapshot{}, storageError()
+		return SessionSnapshot{}, storageError(err)
 	}
 	snapshot.Counts = counts
 	return snapshot, nil
@@ -166,13 +166,13 @@ func (s *Store) ShowTask(ctx context.Context, token string, r TaskReadRequest) (
 		}
 		body, err := contentBody(ctx, tx, field.ref)
 		if err != nil {
-			return TaskDetail{}, storageError()
+			return TaskDetail{}, storageError(err)
 		}
 		*field.target = body
 	}
 	detail.Question, err = openQuestion(ctx, tx, task.ID)
 	if err != nil {
-		return TaskDetail{}, storageError()
+		return TaskDetail{}, storageError(err)
 	}
 	return detail, nil
 }
@@ -214,7 +214,7 @@ func encodeSnapshotCursor(r SnapshotPageRequest, revision int64, position string
 func readIDs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]string, error) {
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	defer rows.Close()
 	ids := []string{}
@@ -319,7 +319,7 @@ func (s *Store) SnapshotPage(ctx context.Context, token string, r SnapshotPageRe
 		}
 		encoded, err := json.Marshal(item)
 		if err != nil {
-			return empty, storageError()
+			return empty, storageError(err)
 		}
 		if used+len(encoded)+1 > readPageBudget {
 			if len(result.Items) == 0 {

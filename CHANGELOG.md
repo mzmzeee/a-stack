@@ -9,6 +9,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 ### Added
 
 - Each Agent has a write budget, so a runaway loop cannot fill the disk. A change costs the size of its request; an Agent can spend 8 MiB at once and 1 MiB more a minute. Past that, a change gets the new error code `rate_limited` (HTTP 429, retryable) with `retry_after_seconds`. A replay of a committed operation ID and the Operator are never limited. In a rerun of the review's reproduction (16 parallel `mail send` loops with 64 KiB bodies from one Agent for 20 seconds), the Agent stored 13,835 messages (925 MB) before and 132 messages (8 MB) now; another Agent could still send.
+- The service logs the cause of each `storage_unavailable` error to stderr, one line per error: the operation, and the Go error type, SQLite result codes or system error number, never a body, an ID, a credential or SQL text. The same line is logged at most once every 10 seconds. Before, a code bug looked like a full disk, and the real cause was lost.
 - `storage status` reports `free_bytes`, and `low_disk` with a `warning` below 1 GiB of free space. The browser view footer then says that disk space is low.
 - `a-stack view revoke --workspace ID --session ID` ends browser view access to one Session, and `--all` to every Session. Open tabs say that they lost access at their next refresh. Only the Operator can run it.
 

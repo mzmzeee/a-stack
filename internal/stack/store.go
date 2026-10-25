@@ -60,7 +60,7 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 	// the one connection, so hot queries are not compiled again on every call.
 	db, err := sql.Open("sqlite3", u.String()+"?_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate&_stmt_cache_size="+strconv.Itoa(stmtCacheSize))
 	if err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
@@ -72,7 +72,7 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 		}
 	}()
 	if err = db.QueryRowContext(ctx, "SELECT sqlite_version()").Scan(&s.sqliteVersion); err != nil {
-		return nil, storageError()
+		return nil, storageError(err)
 	}
 	if !sqliteSupported(s.sqliteVersion) {
 		return nil, failure("storage_unavailable", "SQLite >=3.51.3 is required")
@@ -169,7 +169,7 @@ func sqliteSupported(version string) bool {
 func (s *Store) migrate(ctx context.Context, migration string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	defer tx.Rollback()
 	var version, app int
@@ -191,66 +191,66 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 			return unusableDatabase("the state database %s is not an a-stack database or has an unknown schema (version 0); use another state directory, or restore a backup: %s", s.path, restoreDocs)
 		}
 		if _, err = tx.ExecContext(ctx, migration); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "INSERT INTO metadata(key,value) VALUES('database_id',?)", opaqueID()); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, fmt.Sprintf("PRAGMA user_version=1; PRAGMA application_id=%d", applicationID)); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		version = 1
 	}
 	if version < 2 {
 		if _, err = tx.ExecContext(ctx, migration2); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=2"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	if version < 3 {
 		if _, err = tx.ExecContext(ctx, migration3); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=3"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	if version < 4 {
 		if _, err = tx.ExecContext(ctx, migration4); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=4"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	if version < 5 {
 		if _, err = tx.ExecContext(ctx, migration5); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=5"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	if version < 6 {
 		if _, err = tx.ExecContext(ctx, migration6); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=6"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	if version < 7 {
 		if _, err = tx.ExecContext(ctx, migration7); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=7"); err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	if err = tx.Commit(); err != nil {
-		return storageError()
+		return storageError(err)
 	}
 	return nil
 }
@@ -291,7 +291,7 @@ func IssueCapability(ctx context.Context, tx *sql.Tx, kind CapabilityKind, subje
 	}
 	_, err := tx.ExecContext(ctx, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id,expires_at) VALUES(?,?,?,?,?)", tokenHash(c.Token), kind, subject, session, expires)
 	if err != nil {
-		return Credential{}, storageError()
+		return Credential{}, storageError(err)
 	}
 	return c, nil
 }
@@ -308,7 +308,7 @@ func authenticate(ctx context.Context, q interface {
 		return p, failure("unauthorized", "valid bearer credential required")
 	}
 	if err != nil {
-		return p, storageError()
+		return p, storageError(err)
 	}
 	return p, nil
 }
@@ -336,7 +336,7 @@ func (s *Store) ensureOperator(ctx context.Context, dir string) error {
 		// established credential merely because a local file disappeared.
 		_, err = s.db.ExecContext(ctx, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id) VALUES(?,'operator',?,'')", tokenHash(c.Token), opaqueID())
 		if err != nil {
-			return storageError()
+			return storageError(err)
 		}
 	}
 	p, err := authenticate(ctx, s.db, c.Token)
@@ -389,7 +389,7 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	digest := hex.EncodeToString(sum[:])
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	defer tx.Rollback()
 	p, err := authenticate(ctx, tx, token)
@@ -410,12 +410,12 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 			return empty, failure("operation_conflict", "operation ID already used with a different payload or scope")
 		}
 		if err = authorizeReplay(ctx, tx, p, r); err != nil {
-			return empty, publicError(err)
+			return empty, operationError(op.Name, err)
 		}
 		return r, nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
-		return empty, storageError()
+		return empty, operationError(op.Name, err)
 	}
 	// A replay above is never limited: it stores nothing new.
 	if p.Kind == AgentCapability {
@@ -425,7 +425,7 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	}
 	r, err = apply(ctx, tx, p)
 	if err != nil {
-		return empty, publicError(err)
+		return empty, operationError(op.Name, err)
 	}
 	if len(r.ResourceID) == 0 || len(r.ResourceID) > 128 || r.Revision < 0 || len(r.Outcome) == 0 || len(r.Outcome) > 64 || len(r.BodyRef) > 128 {
 		return empty, failure("invalid_input", "receipt must contain bounded references and a scalar outcome")
@@ -434,10 +434,10 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	r.ReceivedAt = time.Now().UTC().Format(time.RFC3339Nano)
 	_, err = tx.ExecContext(ctx, `INSERT INTO operation_receipts(actor,operation_id,name,scope,digest,resource_id,revision,outcome,body_ref,received_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, actor, op.ID, op.Name, op.Scope, digest, r.ResourceID, r.Revision, r.Outcome, r.BodyRef, r.ReceivedAt)
 	if err != nil {
-		return empty, storageError()
+		return empty, operationError(op.Name, err)
 	}
-	if tx.Commit() != nil {
-		return empty, storageError()
+	if err = tx.Commit(); err != nil {
+		return empty, operationError(op.Name, err)
 	}
 	if p.Kind == AgentCapability {
 		s.budget.charge(p.SubjectID, len(op.Payload))
@@ -468,7 +468,7 @@ func (s *Store) Status() (StorageStatus, error) {
 			continue
 		}
 		if err != nil {
-			return status, storageError()
+			return status, storageError(err)
 		}
 		*target = info.Size()
 	}
@@ -500,11 +500,11 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	}
 	resolvedParent, err := filepath.EvalSymlinks(parent)
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	resolvedState, err := filepath.EvalSymlinks(filepath.Dir(s.path))
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	relative, err := filepath.Rel(resolvedState, resolvedParent)
 	if err != nil || (relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))) {
@@ -517,7 +517,7 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	}
 	conn, err := s.db.Conn(ctx)
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	defer conn.Close()
 	p, err := authenticate(ctx, conn, token)
@@ -529,16 +529,16 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	}
 	f, err := os.CreateTemp(parent, ".a-stack-backup-*")
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	staging := f.Name()
 	defer func() { f.Close(); os.Remove(staging) }()
 	if _, err = conn.ExecContext(ctx, "VACUUM main INTO ?", staging); err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	backup, err := sql.Open("sqlite3", (&url.URL{Scheme: "file", Path: staging}).String()+"?mode=ro&_busy_timeout=5000")
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	var integrity string
 	err = backup.QueryRowContext(ctx, "PRAGMA integrity_check").Scan(&integrity)
@@ -550,14 +550,14 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	if err = os.Link(staging, destination); errors.Is(err, os.ErrExist) {
 		return empty, failure("conflict", "backup destination already exists")
 	} else if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	if err = syncDir(parent); err != nil {
 		return empty, err
 	}
 	info, err = f.Stat()
 	if err != nil {
-		return empty, storageError()
+		return empty, storageError(err)
 	}
 	return StorageStatus{DatabaseID: s.id, DatabaseBytes: info.Size()}, nil
 }
