@@ -269,6 +269,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if err != nil {
 		return err
 	}
+	if err = loadContext(ctx, client, lifecycle, cmd); err != nil {
+		return err
+	}
 	if err = fillContext(client.Credential, &lifecycle, cmd); err != nil {
 		return err
 	}

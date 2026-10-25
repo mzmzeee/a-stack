@@ -328,8 +328,8 @@ func flagText(fs *flag.FlagSet, command, name string) string {
 	switch {
 	case !flagRequired(command, name):
 	case name == "workspace" || name == "session":
-		// fillContext takes them from an Agent credential file.
-		text += " (required unless the credential file names it)"
+		// With an Agent credential, loadContext and fillContext find them.
+		text += " (required with the Operator credential)"
 	default:
 		text += " (required)"
 	}

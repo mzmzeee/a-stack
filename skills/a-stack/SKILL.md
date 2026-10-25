@@ -24,7 +24,7 @@ When an Orchestrator or the Operator briefs you, you get:
 
 - The `a-stack` binary on your `PATH`.
 - The path of your credential file.
-- The Workspace ID and the Session ID. A credential file from a-stack v0.1.5 or later also names them.
+- The Workspace ID and the Session ID. The CLI finds them from your credential file alone, so you need them only for an old service (see below).
 - Your Agent name, such as `02-worker`, and your Task IDs.
 - A state directory, only if the service does not use the default one.
 - A private folder for your helper scripts. If you get none, make one with `mktemp -d`.
@@ -44,7 +44,7 @@ Write a script named `me` in your private folder, with your real paths, and make
 exec a-stack --state-dir /path/to/state --as agent --credential-file /path/to/02-worker.json "$@"
 ```
 
-Check it with `me session inspect`. If that fails with `explicit --workspace and --session required`, your credential file is older and does not name them: add `--workspace WORKSPACE_ID --session SESSION_ID` before `"$@"`.
+Check it with `me session inspect`. If that fails with `this credential file is from before a-stack v0.1.5`, the service is too old to look up your Workspace and Session: add `--workspace WORKSPACE_ID --session SESSION_ID` from your brief before `"$@"`.
 
 A script keeps working in shells that forget functions between commands. Write it with your file-write tool if you have one, and call it by its literal full path, not through a variable. Below, `me` stands for that full path, and `/your/private/folder/mail.json` for a file in your private folder.
 

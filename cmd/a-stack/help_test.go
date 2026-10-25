@@ -87,7 +87,7 @@ func TestHelpPerCommandFollowsAcceptedFlags(t *testing.T) {
 		}
 	}
 	create := helpOutput(t, "task", "create", "--help")
-	for _, want := range []string{"Create a Task.\n", "  --title TEXT             Task title (required)\n", "  --workspace ID           Workspace ID (required unless the credential file\n                           names it)\n", "  --session ID             Session ID (required unless the credential file names\n                           it)\n", "  --description TEXT       Task description\n", "  --credential-file FILE   "} {
+	for _, want := range []string{"Create a Task.\n", "  --title TEXT             Task title (required)\n", "  --workspace ID           Workspace ID (required with the Operator credential)\n", "  --session ID             Session ID (required with the Operator credential)\n", "  --description TEXT       Task description\n", "  --credential-file FILE   "} {
 		if !strings.Contains(create, want) {
 			t.Fatalf("task create help misses %q:\n%s", want, create)
 		}
