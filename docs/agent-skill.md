@@ -38,6 +38,6 @@ curl -fsSL https://github.com/mzmzeee/a-stack/releases/latest/download/a-stack-s
 
 ## Use
 
-To keep an agent on the protocol after its context is compacted, and to show its runtime state in the view, also install the [agent hooks](hooks.md).
+To keep an agent on the protocol after its context is compacted, to show its runtime state in the view, to stop it once when it would end a turn with a Working Task and no report, and to tell it about new Task mail, also install the [agent hooks](hooks.md).
 
 Start the agent and tell it that it is an a-stack Agent. Give it its credential file path and IDs as [Getting started](getting-started.md) describes. The skill's description makes the agent load it when it hears that it is an a-stack Agent, gets an a-stack credential file, or must coordinate Tasks or Task mail with other agents. You can also name the skill in the prompt.

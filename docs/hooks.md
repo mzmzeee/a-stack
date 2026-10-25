@@ -1,9 +1,11 @@
 # Agent hooks
 
-Claude Code and Codex can run a command on events in an agent's session. `a-stack hook install` adds such hooks for one Agent. They do two things:
+Claude Code and Codex can run a command on events in an agent's session. `a-stack hook install` adds such hooks for one Agent. They do four things:
 
 - When a session starts, resumes, is cleared or is compacted, the agent gets a short reminder in its context: its a-stack name and Session, how to run a-stack as itself, its open Tasks with their status, and to run `mail check`. So the agent keeps the a-stack protocol after a compaction.
 - The Agent's runtime state in the Operator's view follows the agent: `working` when you send a prompt and after each tool call, `blocked` when it waits for a permission or an input dialog, and `idle` when it stops.
+- The [Stop guard](#stop-guard) keeps the agent from stopping once while one of its Tasks is `working` without a report.
+- The [Task mail nudge](#task-mail-nudge) tells the agent when another assignee wrote Task mail, at most every 30 seconds.
 
 ## Install
 
@@ -20,6 +22,7 @@ a-stack hook install --credential-file /path/to/02-worker.json \
 - `--runtime-id` is the instance ID of the Agent's runtime binding, as in `agent attach --runtime-id`. a-stack records runtime state only for an attached Agent with the same runtime ID. Without `--runtime-id` the hooks only print the reminder. To attach a new Agent first, see [Runtime bindings](lifecycle.md#runtime-bindings).
 - `--state-dir` goes into the hook command when you give it.
 - `--worktree DIR` is the folder the hooks act in; it defaults to the current folder. The hooks do nothing in a session whose folder is outside it.
+- `--no-stop-guard` and `--no-mail-nudge` turn off the Stop guard and the Task mail nudge. Both are on by default. Run install again without them to turn them on.
 
 The hook command names the a-stack binary, the credential file path, the Workspace, Session and Agent IDs, the runtime ID and the folder, all explicitly. It does not use environment variables or the current folder to choose an identity. The credential file stays where it is; the settings hold only its path.
 
@@ -42,10 +45,45 @@ To remove the hooks of the current folder, run `a-stack hook uninstall` (or with
 
 | Event | What the hook does |
 | --- | --- |
-| `SessionStart` | Prints the reminder. Both harnesses add it to the agent's context. |
-| `UserPromptSubmit`, `PostToolUse` | Records `working`. |
+| `SessionStart` | Prints the reminder. Both harnesses add it to the agent's context. Starts the Task mail nudge's cursor file. |
+| `UserPromptSubmit`, `PostToolUse` | Records `working`. Runs the Task mail nudge. |
 | `PermissionRequest` | Records `blocked`. The hook makes no permission decision. |
 | `Notification` with `elicitation_dialog` (Claude Code only) | Records `blocked`. |
-| `Stop` | Records `idle`. |
+| `Stop` | Runs the Stop guard. When the guard does not block, records `idle`. |
 
 A state hook reads the Agent first and writes only when the state changes, so a tool call usually costs one read. The harness gives each hook 5 seconds, and the hook stops itself after 2. On any error, also when the service is down, the hook prints nothing and exits with 0, so it never stops or slows the agent. `a-stack hook` itself reads the event as JSON on stdin; the harness runs it, not you.
+
+## Stop guard
+
+When the agent stops, the hook reads the Agent's Tasks. It blocks the stop when one of them is `working`, does not wait for the Operator's answer, and has no report written since its progress last changed. A report written earlier, before the Task was set to `working` again, does not count. The agent then gets this reason and goes on:
+
+```text
+a-stack: your Task "Build the parser" (Task ID) is still working and has no report since its status last changed. Before you stop, either write a task report and set the Task finished, or set it waiting with a reason.
+```
+
+The guard blocks at most once in a row: when the agent stops again right after, the harness sets `stop_hook_active` and the hook lets it stop. It also lets the agent stop when the service is down, a read fails or the 2 seconds run out. A blocked stop records no `idle`.
+
+The hook prints `{"decision":"block","reason":"..."}`, the same for Claude Code and Codex. Claude Code shows the reason as Stop hook feedback; Codex continues the turn with the reason as a new prompt.
+
+The guard costs two reads at each stop: the assignments and the Task list. A Task that had a report before its last progress change also costs a read of its history.
+
+## Task mail nudge
+
+After a tool call or a prompt, the hook checks the Agent's Task mail, at most once every 30 seconds per harness session. When another assignee wrote since the last check, the agent gets this in its context:
+
+```text
+a-stack: New Task mail on "Build the parser"; run mail check.
+```
+
+The note names only the Task titles: no sender and no mail text. The agent then reads the mail as usual, with its own `mail check --cursor-file`.
+
+The hook keeps its own mail cursor file, so it never moves the Agent's cursor file. There is one per Agent and harness session: `~/.cache/a-stack/hooks/AGENT_ID/HASH.json` (below `$XDG_CACHE_HOME` when set; on macOS below `~/Library/Caches`), where `HASH` comes from the harness session ID. The folder has mode 0700 and the files 0600. The hook removes files unused for 7 days. Deleting the folder is safe.
+
+- At `SessionStart`, or at the first check of a harness session, the hook reads up to the newest message and says nothing about earlier mail. The reminder already says to run `mail check`.
+- Each check moves the cursor past the messages it saw, so the hook names a message once. Mail the Agent sent itself is skipped.
+- Of two hook runs of the same Agent at once, one checks and the other skips the check.
+- When the check fails, the hook waits 30 seconds before it checks again. When the cursor file is broken or a cursor no longer fits, it starts again at the newest message.
+
+The added cost per tool call, measured with a local service: under 1 ms when the last check was less than 30 seconds ago, and about 5 to 13 ms for a check. A note costs one more read for each Task with new mail.
+
+Claude Code and Codex both take the note as `hookSpecificOutput.additionalContext`. Codex runs `PostToolUse` only for its local tools, not for hosted tools such as web search.

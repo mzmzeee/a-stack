@@ -98,7 +98,7 @@ The Task graph is empty at first. `a-stack new --orchestrator 01-orchestrator` a
 - [Task mail](docs/mail.md): send and read messages, and mention Agents.
 - [Browser view](docs/browser.md): open the view and read what it shows.
 - [Watch from the terminal](docs/watch.md): `a-stack status`, `a-stack watch` and `a-stack statusline` show what needs you, with a bell, opt-in desktop notices and a Claude Code status line.
-- [Agent hooks](docs/hooks.md): `a-stack hook install` reminds Claude Code and Codex agents of their Tasks after a compaction and reports their runtime state.
+- [Agent hooks](docs/hooks.md): `a-stack hook install` reminds Claude Code and Codex agents of their Tasks after a compaction, reports their runtime state, keeps them from stopping without a report and tells them about new Task mail.
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
 - [Agent skill](docs/agent-skill.md): run `a-stack skill install` to teach your coding agents to work in an a-stack Session.
