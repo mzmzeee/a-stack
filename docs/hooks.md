@@ -1,6 +1,6 @@
 # Agent hooks
 
-Claude Code and Codex can run a command on events in an agent's session. `a-stack hook install` adds such hooks for one Agent. They do four things:
+Claude Code, Codex and Pi can run a command on events in an agent's session; Pi does it through an a-stack extension. `a-stack hook install` adds such hooks for one Agent. They do four things:
 
 - When a session starts, resumes, is cleared or is compacted, the agent gets a short reminder in its context: its a-stack name and Session, how to run a-stack as itself, its open Tasks with their status, and to run `mail check`. So the agent keeps the a-stack protocol after a compaction.
 - The Agent's runtime state in the Operator's view follows the agent: `working` when you send a prompt and after each tool call, `blocked` when it waits for a permission or an input dialog, and `idle` when it stops.
@@ -26,30 +26,44 @@ a-stack hook install --credential-file /path/to/02-worker.json \
 
 The hook command names the a-stack binary, the credential file path, the Workspace, Session and Agent IDs, the runtime ID and the folder, all explicitly. It does not use environment variables or the current folder to choose an identity. The credential file stays where it is; the settings hold only its path.
 
-By default the command writes both harnesses' user settings:
+By default the command writes the user settings of Claude Code and Codex. With `--pi` it writes Pi's files:
 
 | Harness | User settings | With `--project` |
 | --- | --- | --- |
 | Claude Code | `~/.claude/settings.json` (or `$CLAUDE_CONFIG_DIR/settings.json`) | `.claude/settings.local.json` |
 | Codex | `~/.codex/hooks.json` (or `$CODEX_HOME/hooks.json`) | `.codex/hooks.json` |
+| Pi | `~/.pi/agent/a-stack-hooks.json` and `~/.pi/agent/extensions/a-stack.ts` (or in `$PI_CODING_AGENT_DIR`) | none |
 
-`--claude` or `--codex` writes only one of them. With `--project` the files are in the current folder. For Claude Code that is `settings.local.json`, which is not meant to be committed, because the hooks name a private credential path. Several Agents can have hooks in the same user settings, one set per folder.
+`--claude`, `--codex` or `--pi` writes only those you name; `--pi` alone leaves Claude Code and Codex out. With `--project` the files are in the current folder. For Claude Code that is `settings.local.json`, which is not meant to be committed, because the hooks name a private credential path. Several Agents can have hooks in the same user settings, one set per folder.
 
 The command keeps every other setting and hook in the file. It replaces only the a-stack hooks of the same folder, so you can run it again after a change. It rewrites the file with sorted keys and two-space indents. When the file is a link, it writes the file the link points to. It refuses a file that is not a JSON object.
 
 Codex runs a new or changed hook only after you trust it: run `/hooks` in Codex and trust the a-stack hooks. Project hooks in `.codex/` also need a trusted project.
 
-To remove the hooks of the current folder, run `a-stack hook uninstall` (or with `--worktree DIR`), with the same `--project`, `--claude` or `--codex` as for install. It removes only a-stack's hooks for that folder.
+To remove the hooks of the current folder, run `a-stack hook uninstall` (or with `--worktree DIR`), with the same `--project`, `--claude`, `--codex` or `--pi` as for install. It removes only a-stack's hooks for that folder.
+
+### Pi
+
+Pi has no command hooks, so `hook install --pi` writes two files in Pi's agent folder, `~/.pi/agent` or `$PI_CODING_AGENT_DIR` (an absolute path):
+
+- `a-stack-hooks.json` holds the hook commands, in the same form as Claude Code's settings. Several folders can have hooks in it, one set each.
+- `extensions/a-stack.ts` is a small extension that comes with the a-stack binary. On Pi's events it runs those commands with the JSON that Claude Code would send, and passes their output back to Pi. It needs Pi 0.87 or later and `/bin/sh`, so it works on Linux and macOS.
+
+Pi loads the extension when it starts; in a running Pi, run `/reload`. The reminder goes into the agent's context as a hidden message, and the mail nudge is added to the tool result or to the prompt. When the Stop guard blocks, Pi makes one more model request with the reason as a message. Run `hook install --pi` again after an a-stack update to update the extension. `hook uninstall --pi` removes both files once no folder has hooks left. Another file named `a-stack.ts` in the extensions folder is never changed.
+
+Pi hooks have no `--project`: Pi loads a project's extensions only after you trust the project, and the hook list would put a credential path in it. `a-stack skill install` already gives Pi the skill, in `~/.agents/skills`.
+
+Cursor CLI and GitHub Copilot CLI also read Claude Code's settings files: Cursor the user's `~/.claude/settings.json`, Copilot a project's `.claude/settings.json` and `.claude/settings.local.json`. a-stack does not support them yet, so the hooks there may do nothing or misfire; Copilot, for example, would record `blocked` before each tool call.
 
 ## Events
 
-| Event | What the hook does |
-| --- | --- |
-| `SessionStart` | Prints the reminder as `hookSpecificOutput.additionalContext` JSON. Both harnesses add it to the agent's context. Starts the Task mail nudge's cursor file. |
-| `UserPromptSubmit`, `PostToolUse` | Records `working`. Runs the Task mail nudge. |
-| `PermissionRequest` | Records `blocked`. The hook makes no permission decision. |
-| `Notification` with `elicitation_dialog` (Claude Code only) | Records `blocked`. |
-| `Stop` | Runs the Stop guard. When the guard does not block, records `idle`. |
+| Event | Pi event | What the hook does |
+| --- | --- | --- |
+| `SessionStart` | `session_start`, `session_compact` | Prints the reminder as `hookSpecificOutput.additionalContext` JSON. The harnesses add it to the agent's context. Starts the Task mail nudge's cursor file. |
+| `UserPromptSubmit`, `PostToolUse` | `before_agent_start`, `tool_result` | Records `working`. Runs the Task mail nudge. |
+| `PermissionRequest` | `ui_prompt_start` | Records `blocked`. The hook makes no permission decision. |
+| `Notification` with `elicitation_dialog` (Claude Code only) | | Records `blocked`. |
+| `Stop` | `agent_before_settle` | Runs the Stop guard. When the guard does not block, records `idle`. |
 
 A state hook reads the Agent first and writes only when the state changes, so a tool call usually costs one read. The harness gives each hook 5 seconds, and the hook stops itself after 2. On any error, also when the service is down, the hook prints nothing and exits with 0, so it never stops or slows the agent. `a-stack hook` itself reads the event as JSON on stdin; the harness runs it, not you.
 
@@ -72,7 +86,7 @@ When other Agents share the Task, the reason adds: read its report with `task sh
 
 The guard blocks at most once in a row. When the agent stops again right after, the harness sets `stop_hook_active`. The hook also leaves a marker file next to the [mail nudge's cursor file](#task-mail-nudge), `HASH.stop`, so that the next stop passes also in a harness that does not send the flag. The guard lets the agent stop when the service is down, a read fails or the 2 seconds run out. A blocked stop records no `idle`.
 
-The hook prints `{"decision":"block","reason":"..."}`, the same for Claude Code and Codex. Claude Code shows the reason as Stop hook feedback; Codex continues the turn with the reason as a new prompt.
+The hook prints `{"decision":"block","reason":"..."}`, the same for Claude Code and Codex. Claude Code shows the reason as Stop hook feedback; Codex continues the turn with the reason as a new prompt; the Pi extension adds it as a message for one more model request.
 
 The guard costs two reads at each stop: the assignments and the Task list. A working Task whose latest change is not its status change also costs a read of its history, to find who set it working. A block costs one more read, to check that the Session is open.
 
@@ -95,4 +109,4 @@ The hook keeps its own mail cursor file, so it never moves the Agent's cursor fi
 
 The added cost per tool call, measured with a local service: under 1 ms when the last check was less than 30 seconds ago, and about 5 to 13 ms for a check. A note costs one more read for each Task with new mail.
 
-Claude Code and Codex both take the note as `hookSpecificOutput.additionalContext`. Codex runs `PostToolUse` only for its local tools, not for hosted tools such as web search.
+Claude Code, Codex and the Pi extension take the note as `hookSpecificOutput.additionalContext`. Codex runs `PostToolUse` only for its local tools, not for hosted tools such as web search.

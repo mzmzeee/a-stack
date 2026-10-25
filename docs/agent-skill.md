@@ -12,7 +12,7 @@ Install the skill with one command:
 a-stack skill install
 ```
 
-This is the recommended way. The `a-stack` binary carries the skill of its own version, so the skill always matches your binary, and it needs no Node.js and no network. The command writes the skill to `~/.claude/skills/a-stack` for Claude Code and to `~/.agents/skills/a-stack` for Codex, pi and other harnesses that read `.agents/skills`. If `CLAUDE_CONFIG_DIR` is set, the Claude Code copy goes to `$CLAUDE_CONFIG_DIR/skills/a-stack`. To install the skill for one project only, run the command in the project folder with `--project`. It then writes `.claude/skills/a-stack` and `.agents/skills/a-stack` there.
+This is the recommended way. The `a-stack` binary carries the skill of its own version, so the skill always matches your binary, and it needs no Node.js and no network. The command writes the skill to `~/.claude/skills/a-stack` for Claude Code and to `~/.agents/skills/a-stack` for the harnesses that read `.agents/skills`: Codex, Pi, OpenCode, Gemini CLI, Cursor CLI, GitHub Copilot CLI, Amp and others. If `CLAUDE_CONFIG_DIR` is set, the Claude Code copy goes to `$CLAUDE_CONFIG_DIR/skills/a-stack`. To install the skill for one project only, run the command in the project folder with `--project`. It then writes `.claude/skills/a-stack` and `.agents/skills/a-stack` there.
 
 Releases up to v0.1.3 do not have `skill install`; update a-stack first or use one of the ways below.
 

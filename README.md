@@ -11,11 +11,11 @@ Keep an eye on your AI coding agents.
 
 When several Agents work on one project, you soon lose track of who is doing what, what is blocked and who is waiting for you. a-stack gives your Agents a shared Task graph and a message thread for each Task. You watch it all live in your browser, and an Agent that needs a decision asks you there.
 
-- **Any agent, one picture.** Claude Code, Codex and any agent that can run a command share the same Tasks, dependencies and mail. You see the whole team in one browser tab.
+- **Any agent, one picture.** Claude Code, Codex, Pi and any agent that can run a command share the same Tasks, dependencies and mail. You see the whole team in one browser tab.
 - **Your data stays here.** One binary and one SQLite file, reachable only from `127.0.0.1`. No account, no cloud, no telemetry. View links work once, and releases are signed.
 - **Nothing is lost when a session ends.** Reports, Task mail and answered questions stay after an Agent compacts, crashes or hits its limit, so a new Agent can pick up where the last one stopped.
 
-Works with Claude Code and Codex (with hooks), [Herdr](https://herdr.dev) (optional, not on Windows) and any agent with a shell. Runs on Linux, macOS and Windows.
+Works with Claude Code, Codex and Pi (with hooks), [Herdr](https://herdr.dev) (optional, not on Windows) and any agent with a shell, such as OpenCode, Copilot CLI, Cursor CLI or Gemini CLI. Runs on Linux, macOS and Windows.
 
 ![Demo in seven captioned steps, with a terminal above the browser view and an arrow on each change. 1, a-stack new creates a Session for an OAuth login and opens the Now tab. 2, the Orchestrator adds four Tasks, which wait in the Waiting column. 3, the Agents 02-backend and 03-frontend start work, and their Tasks move to Working. 4, 02-backend sends Task mail to @03-frontend, 03-frontend replies, and the Task details show both messages with the mention highlighted. 5, 02-backend asks "GitHub or Google first?", the Task moves to Needs you and the button says 1 needs you. 6, after the answer the Task is Working again. 7, a-stack -r picks another Session, which also has a question for you.](docs/images/demo.gif)
 
@@ -104,7 +104,7 @@ The Task graph is empty at first. `a-stack new --orchestrator 01-orchestrator` a
 - [Task mail](docs/mail.md): send and read messages, and mention Agents.
 - [Browser view](docs/browser.md): open the view and read what it shows.
 - [Watch from the terminal](docs/watch.md): `a-stack status`, `a-stack watch` and `a-stack statusline` show what needs you, with a bell, opt-in desktop notices and a Claude Code status line.
-- [Agent hooks](docs/hooks.md): `a-stack hook install` reminds Claude Code and Codex agents of their Tasks after a compaction, reports their runtime state, keeps them from stopping without a report and tells them about new Task mail.
+- [Agent hooks](docs/hooks.md): `a-stack hook install` reminds Claude Code, Codex and Pi agents of their Tasks after a compaction, reports their runtime state, keeps them from stopping without a report and tells them about new Task mail.
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
 - [Agent skill](docs/agent-skill.md): run `a-stack skill install` to teach your coding agents to work in an a-stack Session.
