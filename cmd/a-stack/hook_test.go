@@ -455,6 +455,67 @@ func TestHookSubagentEventsReachOnlyTheirOwnAgent(t *testing.T) {
 	}
 }
 
+// A main session that starts in a folder above a worker's, such as the
+// Orchestrator's, and then cds into the worker's folder is not the worker.
+// Claude Code 2.1.310 reports the main session's folder after a cd. The
+// worker's hooks never act for it, and the worker's subagent of that session
+// keeps its hooks.
+func TestHookParentSessionInAWorkersFolderIsNotTheWorker(t *testing.T) {
+	f := newTeam(t)
+	hookHome(t)
+	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}
+	worktree := filepath.Join(f.project, ".claude", "worktrees", "agent-a1")
+	if os.MkdirAll(worktree, 0o700) != nil {
+		t.Fatal("fixture")
+	}
+	worker := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: worktree, ref: ref, noMailNudge: true}
+	event := func(session, agentID, cwd, event, extra string) string {
+		t.Helper()
+		var out bytes.Buffer
+		input := `{"session_id":"` + session + `","cwd":` + jsonString(cwd) + `,"hook_event_name":"` + event + `"`
+		if agentID != "" {
+			input += `,"agent_id":"` + agentID + `","agent_type":"general-purpose"`
+		}
+		runHook(worker, strings.NewReader(input+extra+`}`), &out)
+		return out.String()
+	}
+	f.taskChange(f.workerFile, "parent-working", 2, "status", "--progress", "working")
+	// Every Claude Code session runs the worker's hooks. The parent starts in
+	// the project folder, compacts there, then cds into the worker's folder.
+	if out := event("parent", "", f.project, "SessionStart", `,"source":"startup"`); out != "" {
+		t.Fatalf("the parent's start reached the worker: %q", out)
+	}
+	event("parent", "", f.project, "SessionStart", `,"source":"compact"`)
+	for _, step := range []struct{ event, extra string }{
+		{"PostToolUse", `,"tool_name":"Bash"`},
+		{"UserPromptSubmit", `,"prompt":"go"`},
+		{"Stop", `,"stop_hook_active":false`},
+		{"SessionStart", `,"source":"compact"`},
+	} {
+		if out := event("parent", "", worktree, step.event, step.extra); out != "" {
+			t.Fatalf("the parent's %s in the worker's folder reached the worker: %q", step.event, out)
+		}
+	}
+	// The worker's subagent of that parent keeps the worker's hooks.
+	if text := hookContextText(t, event("parent", "a1", worktree, "SubagentStart", ""), "SubagentStart"); !strings.Contains(text, "you are the Agent 02-worker") {
+		t.Fatalf("subagent reminder: %s", text)
+	}
+	if out := event("parent", "a1", worktree, "SubagentStop", `,"stop_hook_active":false`); !strings.Contains(out, `"decision":"block"`) {
+		t.Fatalf("the subagent's stop passed: %q", out)
+	}
+	// The worker's own session, started in its folder, keeps its hooks; a
+	// subagent of it in the same folder is not the worker.
+	if text := hookContextText(t, event("own", "", worktree, "SessionStart", `,"source":"startup"`), "SessionStart"); !strings.Contains(text, "you are the Agent 02-worker") {
+		t.Fatalf("own reminder: %s", text)
+	}
+	if out := event("own", "", worktree, "Stop", ""); !strings.Contains(out, `"decision":"block"`) {
+		t.Fatalf("the worker's own stop passed: %q", out)
+	}
+	if out := event("own", "b1", worktree, "SubagentStart", ""); out != "" {
+		t.Fatalf("a subagent in the worker's own folder got the reminder: %q", out)
+	}
+}
+
 func TestHookExitsZeroQuicklyWithoutService(t *testing.T) {
 	dir := t.TempDir()
 	credential := filepath.Join(dir, "none.json")
@@ -732,7 +793,7 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	}
 	var files []string
 	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".main") { // see ownSubagent
+		if !strings.HasSuffix(entry.Name(), ".main") { // see ownEvent
 			files = append(files, entry.Name())
 		}
 	}

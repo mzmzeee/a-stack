@@ -68,6 +68,7 @@ type hookInput struct {
 	Cwd              string `json:"cwd"`
 	NotificationType string `json:"notification_type"`
 	StopHookActive   bool   `json:"stop_hook_active"`
+	Source           string `json:"source"` // of SessionStart, such as startup or compact
 }
 
 type hookIdentity struct {
@@ -87,7 +88,7 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	if canonical, err := stack.ResolvePath(cwd); err == nil {
 		cwd = canonical
 	}
-	if id.worktree != "" && !within(cwd, id.worktree) || !ownSubagent(id, &in, cwd) {
+	if !ownEvent(id, &in, cwd) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), hookTimeout)
@@ -120,33 +121,50 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	}
 }
 
-// ownSubagent reports whether a hook event belongs to the hook's Agent. A
-// Claude Code subagent's events name the parent's session and carry the
+// ownEvent reports whether a hook event belongs to the hook's Agent. The
+// hooks run for every session of the harness, and only events in the Agent's
+// folder can belong to it.
+//
+// A main session's event (no agent_id) belongs to the Agent unless the
+// session started in a folder that holds the Agent's, such as the
+// Orchestrator's: Claude Code reports a main session's folder after a cd, so
+// such a session can reach the folder later. Its SessionStart leaves a marker
+// for that, HASH.away. The SessionStart after a compaction is no new start.
+//
+// A Claude Code subagent's events name the parent's session and carry the
 // subagent's own folder and agent_id. They belong to the Agent only when the
 // subagent works in exactly the Agent's folder, such as a worktree made for
-// it, and the parent session never ran in that folder: a subagent in its
-// parent's folder, or below it, is not the Agent. A main session's event in
-// the folder leaves a marker for that check. For a subagent, the event's
-// session becomes session and agent ID, so it gets its own cursor file and
-// Stop guard marker.
-func ownSubagent(id hookIdentity, in *hookInput, cwd string) bool {
-	here := id.worktree != "" && filepath.Clean(cwd) == filepath.Clean(id.worktree)
-	if in.AgentID == "" {
-		if marker, ok := hookCacheFile(id.agent, in.SessionID, ".main"); ok && here {
-			if _, err := os.Stat(marker); err != nil {
-				_ = os.WriteFile(marker, nil, 0o600)
+// it, and the parent session is not the Agent's own: a subagent in its
+// parent's folder, or below it, is not the Agent. A main session's event that
+// belongs to the Agent in its folder leaves a marker for that check,
+// HASH.main. For a subagent, the event's session becomes session and agent
+// ID, so it gets its own cursor file and Stop guard marker.
+func ownEvent(id hookIdentity, in *hookInput, cwd string) bool {
+	if id.worktree == "" {
+		return in.AgentID == ""
+	}
+	marker := func(suffix string) (string, bool) { return hookCacheFile(id.agent, in.SessionID, suffix) }
+	exists := func(file string) bool { _, err := os.Stat(file); return err == nil }
+	if !within(cwd, id.worktree) {
+		if in.AgentID == "" && in.Event == "SessionStart" && in.Source != "compact" && within(id.worktree, cwd) {
+			if away, ok := marker(".away"); ok && !exists(away) {
+				_ = os.WriteFile(away, nil, 0o600)
 			}
+		}
+		return false
+	}
+	here := filepath.Clean(cwd) == filepath.Clean(id.worktree)
+	if in.AgentID == "" {
+		if away, ok := marker(".away"); ok && exists(away) {
+			return false
+		}
+		if main, ok := marker(".main"); ok && here && !exists(main) {
+			_ = os.WriteFile(main, nil, 0o600)
 		}
 		return true
 	}
-	if !here {
-		return false
-	}
-	marker, ok := hookCacheFile(id.agent, in.SessionID, ".main")
-	if !ok {
-		return false
-	}
-	if _, err := os.Stat(marker); err == nil {
+	main, ok := marker(".main")
+	if !here || !ok || exists(main) {
 		return false
 	}
 	in.SessionID += "/" + in.AgentID
