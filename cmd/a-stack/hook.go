@@ -224,6 +224,7 @@ func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (s
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "a-stack: you are the Agent %s in the a-stack Session %q (Workspace %s, Session %s).", name, printable(session.Name), id.ref.WorkspaceID, id.ref.SessionID)
+	b.WriteString(" Load the a-stack skill before running commands.")
 	if session.Closed {
 		b.WriteString(" The Session is closed.")
 	}
@@ -246,7 +247,7 @@ func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (s
 	if open == 0 {
 		b.WriteString("You have no open Tasks.\n")
 	}
-	b.WriteString("Run mail check now, and follow the a-stack skill: Task mail at milestones, a report, then finish.\n")
+	b.WriteString("Run mail check now; send Task mail at milestones, write a report, then finish.\n")
 	b.WriteString(ordersReminder(session.StandingOrders, agentCommand(id)))
 	return b.String(), nil
 }

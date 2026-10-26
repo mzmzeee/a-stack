@@ -387,7 +387,7 @@ func TestHookRecordsRuntimeStateAndPrintsTheReminder(t *testing.T) {
 	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, runtimeID: "worker-runtime", worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}}
 
 	text := hookContextText(t, hookEvent(t, id, "SessionStart", `,"source":"compact"`), "SessionStart")
-	for _, want := range []string{"a-stack: you are the Agent 02-worker in the a-stack Session \"Build\"", "--credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace, "Your open Tasks:\n- Build the parser (Task " + f.task + "): working, waits for the Operator's answer\n", "Run mail check now"} {
+	for _, want := range []string{"a-stack: you are the Agent 02-worker in the a-stack Session \"Build\"", "--credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace, "Your open Tasks:\n- Build the parser (Task " + f.task + "): working, waits for the Operator's answer\n", "Load the a-stack skill before running commands", "Run mail check now"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("reminder misses %q:\n%s", want, text)
 		}
@@ -776,7 +776,7 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 		t.Fatalf("nudged within 30 seconds: %q", out)
 	}
 	later(file)
-	want := `{"hookSpecificOutput":{"additionalContext":"a-stack: New Task mail on \"Build the parser\"; run mail check.","hookEventName":"PostToolUse"}}` + "\n"
+	want := `{"hookSpecificOutput":{"additionalContext":"a-stack: New Task mail on \"Build the parser\"; load the a-stack skill, then run mail check.","hookEventName":"PostToolUse"}}` + "\n"
 	if out := hookEvent(t, id, "PostToolUse", ""); out != want {
 		t.Fatalf("nudge\n got %q\nwant %q", out, want)
 	}

@@ -25,7 +25,7 @@ import time
 from urllib.parse import urlsplit
 
 REPO = Path(__file__).resolve().parent.parent
-NOTICE = "New a-stack Task mail mentions you. Run your own a-stack mail check with your registered Workspace, Session and Agent credential."
+NOTICE = "New a-stack Task mail mentions you. Load the a-stack skill, then run your own a-stack mail check with your registered Workspace, Session and Agent credential."
 SAMPLES, WARMUP = 20, 2
 
 

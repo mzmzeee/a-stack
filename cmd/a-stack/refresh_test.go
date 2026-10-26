@@ -121,6 +121,43 @@ func TestRefreshInstalledFiles(t *testing.T) {
 	}
 }
 
+// The latest release's skill and briefing reference must refresh after their
+// trigger wording changes, through both the installer and the update path.
+func TestRefreshV017Skill(t *testing.T) {
+	fixtures, err := filepath.Abs("testdata/refresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, command := range [][]string{{"skill", "install", "--refresh"}, {"update", "--refresh"}} {
+		t.Run(strings.Join(command, "-"), func(t *testing.T) {
+			home := hookHome(t)
+			t.Chdir(t.TempDir())
+			folder := filepath.Join(home, ".agents", "skills", "a-stack")
+			for name, fixture := range map[string]string{"SKILL.md": "skill-v0.1.7.md", "references/orchestrator.md": "orchestrator-v0.1.7.md"} {
+				old, err := os.ReadFile(filepath.Join(fixtures, fixture))
+				if err != nil {
+					t.Fatal(err)
+				}
+				file := filepath.Join(folder, filepath.FromSlash(name))
+				if err := os.MkdirAll(filepath.Dir(file), 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.WriteFile(file, old, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			}
+			runSkill(t, command...)
+			for _, name := range []string{"SKILL.md", "references/orchestrator.md"} {
+				current, _ := skills.FS.ReadFile("a-stack/" + name)
+				got, err := os.ReadFile(filepath.Join(folder, filepath.FromSlash(name)))
+				if err != nil || !bytes.Equal(got, current) {
+					t.Fatalf("released %s was not refreshed: %v", name, err)
+				}
+			}
+		})
+	}
+}
+
 func TestRefreshPreservesEditedForeignAndLinkedFiles(t *testing.T) {
 	old, err := os.ReadFile("testdata/refresh/skill-v0.1.4.md")
 	if err != nil {

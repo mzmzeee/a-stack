@@ -58,7 +58,7 @@ me task assign --task T --agent 03-worker --expected-revision R --operation-id o
 
 Give each Agent only what it needs, in private:
 
-- That it is an a-stack Agent, and that it should load the `a-stack` skill.
+- Start the brief's first line with an instruction to load the `a-stack` skill before running commands, then name its a-stack Agent role.
 - The path of its own credential file. Never paste the file's contents.
 - The Workspace ID and the Session ID.
 - Its Agent name and its Task IDs.
@@ -79,7 +79,7 @@ Give each brief to its Agent yourself when you can, for example when you start t
 A brief can be this short:
 
 ```text
-You are an a-stack Agent. Load the a-stack skill and follow its work loop.
+Load the a-stack skill before running commands. You are an a-stack Agent; follow its work loop.
 Credential file: /private/creds/02-worker.json
 Workspace: WORKSPACE_ID   Session: SESSION_ID
 State directory: /private/state   (only if not the default)

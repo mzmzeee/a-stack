@@ -2,7 +2,7 @@
 
 Claude Code, Codex, Pi and OpenCode can run a command on events in an agent's session; Pi does it through an a-stack extension and OpenCode through an a-stack plugin. `a-stack hook install` adds such hooks for one Agent. They do four things:
 
-- When a session starts, resumes, is cleared or is compacted, the agent gets a short reminder in its context: its a-stack name and Session, how to run a-stack as itself, its open Tasks with their status, to run `mail check`, and the Workspace's [standing orders](lifecycle.md#standing-orders) (the first 8 lines, and the command for the rest). So the agent keeps the a-stack protocol after a compaction.
+- When a session starts, resumes, is cleared or is compacted, the agent gets a short reminder in its context: its a-stack name and Session, how to run a-stack as itself, its open Tasks with their status, to load the `a-stack` skill before running commands and then run `mail check`, and the Workspace's [standing orders](lifecycle.md#standing-orders) (the first 8 lines, and the command for the rest). So the agent keeps the a-stack protocol after a compaction.
 - The Agent's runtime state in the Operator's view follows the agent: `working` when you send a prompt and after each tool call, `blocked` when it waits for a permission or an input dialog, and `idle` when it stops.
 - The [Stop guard](#stop-guard) keeps the agent from stopping once while a Task that it set `working` has no report.
 - The [Task mail nudge](#task-mail-nudge) tells the agent when another assignee wrote Task mail, at most every 30 seconds.
@@ -119,7 +119,7 @@ The guard costs two reads at each stop: the assignments and the Task list. A wor
 After a tool call or a prompt, the hook checks the Agent's Task mail, at most once every 30 seconds per harness session. When another assignee wrote since the last check, the agent gets this in its context:
 
 ```text
-a-stack: New Task mail on "Build the parser"; run mail check.
+a-stack: New Task mail on "Build the parser"; load the a-stack skill, then run mail check.
 ```
 
 The note names only the Task titles: no sender and no mail text. The agent then reads the mail as usual, with its own `mail check --cursor-file`.

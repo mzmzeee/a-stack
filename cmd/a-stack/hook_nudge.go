@@ -127,7 +127,7 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 		return ""
 	}
 	sort.Strings(titles)
-	return "a-stack: New Task mail on " + strings.Join(titles, ", ") + "; run mail check."
+	return "a-stack: New Task mail on " + strings.Join(titles, ", ") + "; load the a-stack skill, then run mail check."
 }
 
 // pruneHookFiles removes the cursor files, Stop guard and session markers of harness

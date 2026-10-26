@@ -14,7 +14,7 @@ import (
 	"unicode/utf8"
 )
 
-const noticeText = "New a-stack Task mail mentions you. Run your own a-stack mail check with your registered Workspace, Session and Agent credential."
+const noticeText = "New a-stack Task mail mentions you. Load the a-stack skill, then run your own a-stack mail check with your registered Workspace, Session and Agent credential."
 
 // herdrProtocol is the private API protocol of Herdr 0.9.5, which the native
 // fixtures used. a-stack accepts any Herdr whose running server reports this

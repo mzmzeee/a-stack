@@ -350,7 +350,7 @@ func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row 
 	}
 	install += " --credential-file " + shellQuote(credential)
 	brief := strings.Join([]string{
-		"You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.",
+		"Load the a-stack skill before running commands. You are the Orchestrator of an a-stack Session. Read its orchestrator reference.",
 		"Credential file: " + credential,
 		"Workspace: " + row.WorkspaceID + "   Session: " + row.SessionID,
 		"Your name: " + h.orchestrator + "   Your private folder: make one with mktemp -d",

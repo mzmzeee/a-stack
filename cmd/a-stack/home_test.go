@@ -324,6 +324,9 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	if err != nil || credential.Token == "" || strings.Contains(got.Brief, credential.Token) || strings.Contains(stdout.String(), credential.Token) {
 		t.Fatal("the brief or the output leaks the credential")
 	}
+	if !strings.HasPrefix(got.Brief, "Load the a-stack skill before running commands.") {
+		t.Fatalf("brief does not lead with loading the skill: %s", got.Brief)
+	}
 	// The brief names the hook install for the agent's harness; a state
 	// directory that is not the default goes into it.
 	install := "run a-stack hook install --state-dir " + shellQuote(dir) + " --credential-file " + shellQuote(got.Credential) + " --claude (or --codex, --pi or --opencode"
