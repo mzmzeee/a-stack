@@ -1,11 +1,13 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/xml"
 	"fmt"
 	"os"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode/utf16"
 
@@ -143,13 +145,55 @@ const taskTemplate = `<?xml version="1.0" encoding="UTF-16"?>
 </Task>
 `
 
+const taskPowerShell = `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`
+const taskEncodedPrefix = "-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand "
+
+func powershellLiteral(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
+
+// Task Scheduler expands %VAR% in both Command and Arguments, even inside
+// quotes. Only paths containing % need a wrapper. Base64 hides those paths
+// from expansion; Start-Process waits and preserves the service's exit code,
+// with a separate hidden console so serve still detaches and writes its log.
+func encodedTaskArguments(exe, args string) string {
+	script := "$p = Start-Process -FilePath " + powershellLiteral(exe) + " -ArgumentList " + powershellLiteral(args) + " -WindowStyle Hidden -PassThru -Wait -ErrorAction Stop; exit $p.ExitCode"
+	return taskEncodedPrefix + base64.StdEncoding.EncodeToString(utf16File(script)[2:])
+}
+
+var encodedTaskScript = regexp.MustCompile(`^\$p = Start-Process -FilePath '((?:[^']|'')*)' -ArgumentList '((?:[^']|'')*)' -WindowStyle Hidden -PassThru -Wait -ErrorAction Stop; exit \$p.ExitCode$`)
+
+func decodeTaskArguments(args string) (exe, command string) {
+	encoded, ok := strings.CutPrefix(args, taskEncodedPrefix)
+	if !ok {
+		return "", ""
+	}
+	data, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(data)%2 != 0 {
+		return "", ""
+	}
+	units := make([]uint16, len(data)/2)
+	for i := range units {
+		units[i] = uint16(data[2*i]) | uint16(data[2*i+1])<<8
+	}
+	parts := encodedTaskScript.FindStringSubmatch(string(utf16.Decode(units)))
+	if parts == nil {
+		return "", ""
+	}
+	return strings.ReplaceAll(parts[1], "''", "'"), strings.ReplaceAll(parts[2], "''", "'")
+}
+
 // renderTask is the task that runs exe serve --state-dir state as account.
 func renderTask(account, exe, state string) (string, error) {
-	values := []string{account, windowsArg(exe), "serve --state-dir " + windowsArg(state)}
-	for i, v := range values {
+	for _, v := range []string{account, exe, state} {
 		if strings.ContainsFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 			return "", invalid("cannot write a value with control characters into the task: " + printable(v))
 		}
+	}
+	command, args := windowsArg(exe), "serve --state-dir "+windowsArg(state)
+	if strings.ContainsAny(exe+state, "%") {
+		command, args = taskPowerShell, encodedTaskArguments(exe, args)
+	}
+	values := []string{account, command, args}
+	for i, v := range values {
 		var b strings.Builder
 		_ = xml.EscapeText(&b, []byte(v))
 		values[i] = b.String()
@@ -186,10 +230,14 @@ func taskCommand(content string) (binary, state string, enabled bool) {
 	if xml.Unmarshal([]byte(content), &task) != nil {
 		return "", "", false
 	}
-	if rest, ok := strings.CutPrefix(task.Exec.Arguments, "serve --state-dir "); ok {
+	binary, args := unquoteWindowsArg(task.Exec.Command), task.Exec.Arguments
+	if strings.EqualFold(binary, taskPowerShell) {
+		binary, args = decodeTaskArguments(args)
+	}
+	if rest, ok := strings.CutPrefix(args, "serve --state-dir "); ok {
 		state = unquoteWindowsArg(rest)
 	}
-	return unquoteWindowsArg(task.Exec.Command), state, task.Enabled != "false"
+	return binary, state, task.Enabled != "false"
 }
 
 // queryTask returns the task's XML, or ok false when there is no task.
@@ -250,7 +298,10 @@ func schtasksInstall(name, state, log string, data map[string]any) ([]string, er
 	status := "created"
 	if installed {
 		status = "updated"
-		if binary, dir, enabled := taskCommand(old); binary == exe && dir == state && enabled {
+		// Replace old direct actions too: they may have the right paths but
+		// still expand a literal %VAR% when the task runs.
+		safePaths := !strings.ContainsAny(exe+state, "%") || strings.Contains(old, encodedTaskArguments(exe, "serve --state-dir "+windowsArg(state)))
+		if binary, dir, enabled := taskCommand(old); binary == exe && dir == state && enabled && safePaths {
 			status = "unchanged"
 		}
 	}

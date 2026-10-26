@@ -53,7 +53,7 @@ The script does these steps:
 2. It downloads the archive and the release's `SHA256SUMS` file.
 3. It compares the SHA-256 checksum. If it is not correct, it stops and installs nothing. It does not check the signature of `SHA256SUMS`, because PowerShell cannot check an Ed25519 signature; to check it, see [How releases are verified](#how-releases-are-verified). `a-stack update` checks the signature of every later update.
 4. It runs the downloaded executable’s `version` command and checks its exit status before replacing any existing binary. It installs `a-stack.exe` in `%LOCALAPPDATA%\Programs\a-stack`, without administrator rights. If a-stack runs from there, the old binary moves aside to `a-stack.exe.old`, which the next start of a-stack removes.
-5. It adds this folder to your user `PATH`. Open a new terminal to use it.
+5. It adds this folder to your user `PATH`. Open a new terminal to use it. It keeps the order of existing entries, so it does not take over a package-manager installation. If another `a-stack` would run first, it warns and names both copies. Move this folder earlier on `PATH`, remove the other copy, or run the installed binary by its full path. Prepending user `PATH` alone would not beat a copy on the system `PATH`.
 
 If Windows or the installer stops between moving the old executable aside and placing the new one, restore `a-stack.exe.old` to `a-stack.exe`, or run the installer again. A running older copy may instead have a numbered `.old` name beside it.
 
@@ -310,6 +310,8 @@ On Windows, `a-stack service install` sets up a Task Scheduler task named `a-sta
 1. It creates the task with `schtasks /Create`. If the task exists and differs, it replaces the task and says `Updated`. If the service runs already, it prints the commands that restart it.
 2. If the service does not run, it starts the task with `schtasks /Run /TN a-stack-SID`. If that fails and the task is new, it deletes the task again.
 3. It waits until the service answers, and prints its URL. If the service does not answer, read the log and the output of `schtasks /Query /TN a-stack-SID /V /FO LIST`.
+
+Paths are literal, including `%VAR%` in a folder name. Task Scheduler expands environment variables even inside quotes, so when the binary or state path contains `%`, the task uses Windows PowerShell with an encoded command. It starts the same binary in a hidden console, waits for it and keeps its exit code. Other paths run the binary directly. Run `a-stack service install` again to replace a task created by an older version.
 
 The service started by Task Scheduler has no terminal. It leaves its console window and writes its output, such as the ready line with the URL, to `service.log` inside the private state directory: `%LOCALAPPDATA%\a-stack\service.log` for the default state directory. At each start, it empties the log when the log is larger than 1 MiB. A console window can show for a moment when the task starts.
 
