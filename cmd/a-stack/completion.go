@@ -8,8 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
-	"unicode"
 )
 
 type completionItem struct{ value, description string }
@@ -21,19 +21,33 @@ func boolFlag(f *flag.Flag) bool {
 	return ok && b.IsBoolFlag()
 }
 
-// The shells pass the words before the cursor, including an empty last word
-// after a space. The wire format is value<TAB>description, never shell code.
+// The shells pass words and optionally --at=N for the cursor's word index.
+// After a space they pass an empty current word. The wire format is
+// value<TAB>description, never shell code.
 func completeWords(fs *flag.FlagSet, words []string) []completionItem {
-	if len(words) == 0 {
-		words = []string{""}
+	at := len(words) - 1
+	if len(words) > 0 && strings.HasPrefix(words[0], "--at=") {
+		var err error
+		at, err = strconv.Atoi(strings.TrimPrefix(words[0], "--at="))
+		words = words[1:]
+		if err != nil || at < 0 || at >= len(words) {
+			return nil
+		}
 	}
-	// PowerShell 5.1 drops empty native arguments; its adapter encodes only
-	// the current word so a trailing space survives the subprocess boundary.
-	current := strings.TrimPrefix(words[len(words)-1], "--current=")
+	if len(words) == 0 {
+		words, at = []string{""}, 0
+	}
+	// PowerShell drops empty native arguments in legacy mode; its adapter
+	// encodes the current word so a trailing space survives the subprocess.
+	current := strings.TrimPrefix(words[at], "--current=")
 	var command []string
 	values := map[string]string{}
-	pending := ""
-	for _, word := range words[:len(words)-1] {
+	pending, valueFlag := "", ""
+	for i, word := range words {
+		if i == at {
+			valueFlag, pending = pending, ""
+			continue
+		}
 		if pending != "" {
 			values[pending], pending = word, ""
 			continue
@@ -51,8 +65,11 @@ func completeWords(fs *flag.FlagSet, words []string) []completionItem {
 			}
 			continue
 		}
-		command = append(command, word)
+		if i < at {
+			command = append(command, word)
+		}
 	}
+	pending = valueFlag
 	prefix := ""
 	if pending == "" && strings.HasPrefix(current, "-") {
 		name, value, equal := strings.Cut(strings.TrimLeft(current, "-"), "=")
@@ -86,7 +103,7 @@ func completeWords(fs *flag.FlagSet, words []string) []completionItem {
 		}
 		if !help {
 			if cmd == "" {
-				items = append(items, completionItem{"help", "Show command help"})
+				items = append(items, completionItem{"help", "Show command help"}, completionItem{"--version", "Print the version"})
 			}
 			allowed := acceptedFlags(cmd)
 			if cmd == "" || !knownCommand(cmd) {
@@ -110,16 +127,19 @@ func completeWords(fs *flag.FlagSet, words []string) []completionItem {
 	slices.SortFunc(items, func(a, b completionItem) int { return strings.Compare(a.value, b.value) })
 	out := []completionItem{}
 	for _, item := range items {
-		if strings.HasPrefix(item.value, current) && !strings.ContainsFunc(item.value, unicode.IsControl) && (len(out) == 0 || out[len(out)-1].value != prefix+item.value) {
+		if strings.HasPrefix(item.value, current) && printable(item.value) == item.value && (len(out) == 0 || out[len(out)-1].value != prefix+item.value) {
 			item.value = prefix + item.value
-			item.description = strings.Join(strings.Fields(item.description), " ")
+			item.description = printable(strings.Join(strings.Fields(item.description), " "))
 			out = append(out, item)
 		}
 	}
 	return out
 }
 
-func completeValue(name, current string, _ map[string]string) []completionItem {
+func completeValue(name, current string, values map[string]string) []completionItem {
+	if name == "task" || name == "agent" || name == "assign" {
+		return completeServiceValue(name, values)
+	}
 	var items []completionItem
 	for _, value := range strings.Fields(map[string]string{
 		"as": "operator agent browser", "progress": "waiting working finished cancelled",
@@ -273,15 +293,17 @@ func completionCommand(command, shell string, stdout io.Writer) error {
 var completionScripts = map[string]string{
 	"bash": `# a-stack completion: candidates come from the CLI's help and flag tables.
 _a_stack() {
-    local value description word previous='' i
+    local value description word previous='' i at=0
     local -a words=()
     COMPREPLY=()
     # Readline treats '=' as a word break. Join it again for the CLI parser.
-    for ((i=1; i<=COMP_CWORD; i++)); do
+    for ((i=1; i<${#COMP_WORDS[@]}; i++)); do
         word=${COMP_WORDS[i]}
-        if [[ $word == = || $previous == = ]]; then
+        if [[ ( $word == = || $previous == = ) && ${#words[@]} -gt 0 ]]; then
+            [[ $i == "$COMP_CWORD" ]] && at=$((${#words[@]}-1))
             words[${#words[@]}-1]+=$word
         else
+            [[ $i == "$COMP_CWORD" ]] && at=${#words[@]}
             words+=("$word")
         fi
         previous=$word
@@ -291,7 +313,7 @@ _a_stack() {
             value=${value#*=}
         fi
         COMPREPLY+=("$value")
-    done < <(command "${COMP_WORDS[0]}" __complete "${words[@]}" 2>/dev/null)
+    done < <(command "${COMP_WORDS[0]}" __complete "--at=$at" "${words[@]}" 2>/dev/null)
     if [[ ${#COMPREPLY[@]} == 1 && ${COMPREPLY[0]} == */ ]]; then
         compopt -o nospace 2>/dev/null || :
     fi
@@ -302,13 +324,22 @@ complete -F _a_stack a-stack
 	"zsh": `#compdef a-stack
 # Candidates come from the CLI's help and flag tables.
 _a_stack() {
-    local row
-    local -a values descriptions
-    for row in "${(@f)$(command "${words[1]}" __complete "${(@)words[2,CURRENT]}" 2>/dev/null)}"; do
-        values+=("${row%%$'\t'*}")
-        descriptions+=("${row%%$'\t'*} -- ${row#*$'\t'}")
+    local row value description
+    local -a values descriptions directories directory_descriptions
+    for row in "${(@f)$(command "${words[1]}" __complete "--at=$((CURRENT-2))" "${(@)words[2,-1]}" 2>/dev/null)}"; do
+        value=${row%%$'\t'*}
+        description="$value -- ${row#*$'\t'}"
+        if [[ $value == */ ]]; then
+            directories+=("$value")
+            directory_descriptions+=("$description")
+        else
+            values+=("$value")
+            descriptions+=("$description")
+        fi
     done
+    (( ${#directories} )) && compadd -S '' -d directory_descriptions -- "${directories[@]}"
     (( ${#values} )) && compadd -d descriptions -- "${values[@]}"
+    return 0
 }
 if [[ $funcstack[1] == _a-stack ]]; then
     _a_stack "$@"
@@ -318,9 +349,15 @@ fi
 `,
 	"fish": `# Candidates come from the CLI's help and flag tables.
 function __a_stack_complete
-    set -l words (commandline -opc)
+    set -l before (commandline -opc)
+    set -l all (commandline -op)
     set -l current (commandline -ct)
-    command $words[1] __complete $words[2..-1] "$current" 2>/dev/null
+    set -l next (math (count $before) + 2)
+    if test -z "$current"
+        set next (math (count $before) + 1)
+    end
+    set -l at (math (count $before) - 1)
+    command $before[1] __complete "--at=$at" $before[2..-1] "$current" $all[$next..-1] 2>/dev/null
 end
 complete -c a-stack -f -a '(__a_stack_complete)'
 `,
@@ -328,18 +365,25 @@ complete -c a-stack -f -a '(__a_stack_complete)'
 Register-ArgumentCompleter -Native -CommandName a-stack,a-stack.exe -ScriptBlock {
     param($wordToComplete, $commandAst, $cursorPosition)
     $words = @()
+    $at = -1
     foreach ($element in $commandAst.CommandElements | Select-Object -Skip 1) {
-        if ($element.Extent.StartOffset -ge $cursorPosition) { break }
-        if ($element.Extent.EndOffset -ge $cursorPosition) { break }
+        if ($at -lt 0 -and $element.Extent.EndOffset -ge $cursorPosition) {
+            $at = $words.Count
+            $words += '--current=' + $wordToComplete.Trim("'", '"')
+            if ($element.Extent.StartOffset -lt $cursorPosition) { continue }
+        }
         if ($element -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
             $words += $element.Value
         } else {
             $words += $element.Extent.Text
         }
     }
-    $words += '--current=' + $wordToComplete.Trim("'", '"')
+    if ($at -lt 0) {
+        $at = $words.Count
+        $words += '--current=' + $wordToComplete.Trim("'", '"')
+    }
     $exe = $commandAst.CommandElements[0].Value
-    & $exe __complete @words 2>$null | ForEach-Object {
+    & $exe __complete "--at=$at" @words 2>$null | ForEach-Object {
         $parts = $_ -split "` + "`t" + `", 2
         $value = $parts[0]
         $description = $parts[1]

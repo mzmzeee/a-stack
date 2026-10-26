@@ -209,18 +209,35 @@ COMP_WORDS=("$2" task status --progress = wor); COMP_CWORD=5; _a_stack
 					t.Fatalf("bash completion: %v %s", err, out)
 				}
 			} else if shell == "zsh" {
+				dir := filepath.Join(t.TempDir(), "some dir")
+				if err := os.Mkdir(dir, 0700); err != nil {
+					t.Fatal(err)
+				}
 				script := `compdef() { :; }
-compadd() { shift 3; print -rl -- "$@"; }
+compadd() {
+    local nospace=false
+    if [[ $1 == -S && $2 == '' ]]; then nospace=true; shift 2; fi
+    shift 3
+    [[ $1 == */ && $nospace == false ]] && exit 18
+    print -rl -- "$@"
+}
 source "$1"
 words=("$2" upd); CURRENT=2; _a_stack
+words=("$2" --state-dir "$3"); CURRENT=3; _a_stack
 `
-				if out, err := exec.Command(bin, "-f", "-c", script, "test", path, cli).CombinedOutput(); err != nil || string(out) != "update\n" {
+				if out, err := exec.Command(bin, "-f", "-c", script, "test", path, cli, dir).CombinedOutput(); err != nil || string(out) != "update\n"+dir+"/\n" {
 					t.Fatalf("zsh completion: %v %s", err, out)
 				}
 			} else if shell == "fish" {
 				t.Setenv("PATH", filepath.Dir(cli)+string(os.PathListSeparator)+os.Getenv("PATH"))
-				if out, err := exec.Command(bin, "--no-config", "-c", "source "+shellQuote(path)+"; complete -C 'a-stack upd'").CombinedOutput(); err != nil || !strings.Contains(string(out), "update\t") {
-					t.Fatalf("fish completion: %v %s", err, out)
+				for _, line := range []string{"a-stack upd", "a-stack task status --progress wor"} {
+					want := "update\t"
+					if strings.Contains(line, "progress") {
+						want = "working"
+					}
+					if out, err := exec.Command(bin, "--no-config", "-c", "source "+shellQuote(path)+"; complete -C "+shellQuote(line)).CombinedOutput(); err != nil || !strings.Contains(string(out), want) {
+						t.Fatalf("fish completion: %v %s", err, out)
+					}
 				}
 			}
 		})

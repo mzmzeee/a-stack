@@ -8,6 +8,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Added
 
+- `--task` completes open Task IDs, with titles where the shell supports descriptions; `--agent` and `--assign` complete Agent names. The hidden completion helper reuses the service's list commands with the command line's credential and context, times out after one second and stays silent on errors. It never starts the service.
 - Tab completion for bash, zsh, fish and PowerShell, from the CLI's help and flag tables: commands, flags, fixed values and paths. `a-stack completion install` detects the shell and writes its per-user script; `uninstall` removes it. PowerShell prints a profile line without editing the profile. Homebrew installs the scripts; Scoop and the install script show a setup hint. See [Tab completion](docs/install.md#tab-completion).
 - Parser fuzz tests for mention names, CLI flags, mail cursors and update archives, with a short smoke run in `scripts/check.sh`. See [Parser fuzzing](CONTRIBUTING.md#parser-fuzzing).
 - `a-stack session export --markdown` writes a Session summary for a PR or a hand-over: the Workspace folder, Tasks in dependency order with assignees, results and reports, open Needs you questions, the latest Operator answers and standing orders. Task mail is count-only; bodies are never read or exported. The Operator and Session Agents can use it, with `--output FILE`, `--include-archived` and `--json`. It uses existing reads and changes no data. See [Export a Session](docs/tasks.md#export-a-session).

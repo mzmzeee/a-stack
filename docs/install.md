@@ -114,6 +114,8 @@ Run `a-stack completion install` to detect your shell from `$SHELL`, or name it 
 
 Completion suggests commands, subcommands, their flags and fixed values such as `--progress working`. File flags such as `--credential-file` and `--body-file` suggest paths; `--state-dir` suggests folders. It uses the same command and flag tables as `--help`.
 
+`--task` suggests open Task IDs, with their titles as descriptions in zsh, fish and PowerShell. `--agent` and `--assign` suggest Agent names. The hidden `a-stack __complete` helper reads the existing Task and Agent lists from the running service, with the credential, state directory, Workspace and Session already on your command line (including flags after the cursor). An Agent credential can supply its own context. These reads share a one-second timeout and print nothing on an error; completion never starts the service. Commands, flags and paths still complete when the service is stopped.
+
 - **Bash:** installs in `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/a-stack`. With bash-completion loaded, a new terminal picks it up. To load it now, run the `source` line that the command prints.
 - **Zsh:** installs `_a-stack` in a per-user folder from `$FPATH`, or `${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions`. If needed, it prints the `fpath=(...)` line to add before `compinit` in `~/.zshrc`. Enable completion there with `autoload -Uz compinit; compinit`, then open a new terminal.
 - **Fish:** installs in `~/.config/fish/completions/a-stack.fish` (or `$XDG_CONFIG_HOME/fish/completions/a-stack.fish`). Open a new terminal to load it.
