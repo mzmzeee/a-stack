@@ -118,7 +118,7 @@ Completion suggests commands, subcommands, their flags and fixed values such as 
 
 - **Bash:** installs in `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/a-stack`. With bash-completion loaded, a new terminal picks it up. To load it now, run the `source` line that the command prints.
 - **Zsh:** installs `_a-stack` in a per-user folder from `$FPATH`, or `${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions`. If needed, it prints the `fpath=(...)` line to add before `compinit` in `~/.zshrc`. Enable completion there with `autoload -Uz compinit; compinit`, then open a new terminal.
-- **Fish:** installs in `~/.config/fish/completions/a-stack.fish` (or `$XDG_CONFIG_HOME/fish/completions/a-stack.fish`). Open a new terminal to load it.
+- **Fish:** installs in `~/.config/fish/completions/a-stack.fish` (or `$XDG_CONFIG_HOME/fish/completions/a-stack.fish`). Open a new terminal to load it. Paths with spaces work with backslash escapes, single quotes or double quotes, even before you close the quote.
 - **PowerShell:** prints `a-stack completion powershell | Out-String | Invoke-Expression` for you to add to `$PROFILE`. It never edits your profile. Reload the profile or open a new terminal.
 
 To print a script without installing it, run `a-stack completion bash`, `zsh`, `fish` or `powershell`. Homebrew installs the bash, zsh and fish scripts for you. Scoop prints the PowerShell setup hint.

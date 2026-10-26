@@ -357,6 +357,7 @@ function __a_stack_complete
         set next (math (count $before) + 1)
     end
     set -l at (math (count $before) - 1)
+    set current (string unescape -- "$current")
     command $before[1] __complete "--at=$at" $before[2..-1] "$current" $all[$next..-1] 2>/dev/null
 end
 complete -c a-stack -f -a '(__a_stack_complete)'

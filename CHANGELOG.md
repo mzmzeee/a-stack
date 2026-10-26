@@ -16,6 +16,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Fixed
 
+- Fish path completion continues inside directories with spaces, whether escaped or quoted, including an unfinished quote. The adapter safely unescapes the current token without evaluating it.
 - On Windows, `install.ps1` warns and names another `a-stack` earlier on `PATH`, without changing the order of existing entries. Task Scheduler preserves literal `%VAR%` in binary and state paths with an encoded PowerShell action, and reinstalling replaces older unsafe actions. The browser opener initializes a single-threaded COM apartment on its OS thread before `ShellExecuteW`.
 
 ## [0.1.7] - 2026-10-26

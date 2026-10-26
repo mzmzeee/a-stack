@@ -239,6 +239,37 @@ words=("$2" --state-dir "$3"); CURRENT=3; _a_stack
 						t.Fatalf("fish completion: %v %s", err, out)
 					}
 				}
+				root := t.TempDir()
+				dir := filepath.Join(root, "path fixture")
+				nested := filepath.Join(dir, "nested")
+				if err := os.MkdirAll(nested, 0700); err != nil {
+					t.Fatal(err)
+				}
+				for _, flag := range []string{"--body-file", "--credential-file", "--state-dir"} {
+					for _, token := range []string{
+						filepath.Join(root, "path"),
+						strings.ReplaceAll(dir, " ", `\ `) + "/",
+						`"` + dir + `/"`, `"` + dir + `/`,
+						"'" + dir + "/'", "'" + dir + "/",
+					} {
+						line := "a-stack " + flag + " " + token
+						want := nested + "/"
+						if token == filepath.Join(root, "path") {
+							want = dir + "/"
+						}
+						if out, err := exec.Command(bin, "--no-config", "-c", "source "+shellQuote(path)+"; complete -C \"$argv[1]\"", "--", line).CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != want {
+							t.Errorf("fish path %q: %v %q", line, err, out)
+						}
+					}
+				}
+				for _, token := range []string{"", `"`, "'"} {
+					line := "a-stack --body-file " + token
+					command := exec.Command(bin, "--no-config", "-c", "source "+shellQuote(path)+"; complete -C \"$argv[1]\"", "--", line)
+					command.Dir = root
+					if out, err := command.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "path fixture/" {
+						t.Errorf("fish empty token %q: %v %q", line, err, out)
+					}
+				}
 			}
 		})
 	}
