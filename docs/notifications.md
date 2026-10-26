@@ -20,10 +20,11 @@ Notices are turned on for a harness only after a native fixture showed how it qu
 | --- | --- | --- |
 | Codex | 0.164.0 up to, not including, 0.165 | native Codex 0.164.0, 2026-10-24 ([fixture](#native-codex-fixture)) |
 | Pi | 1.4.0 up to, not including, 1.5 | native Pi 1.4.0, 2026-10-25 ([fixture](#native-pi-fixture)) |
+| Claude Code | 2.1.310 up to, not including, 2.2 | native Claude Code 2.1.310, 2026-10-26 ([fixture](#native-claude-code-fixture)) |
 
 Herdr is accepted when its running server reports private protocol 22, the protocol of Herdr 0.9.5 that the fixtures used, and says that the CLI and the endpoint are compatible (`herdr status server --json`). a-stack does not compare the Herdr release string.
 
-All other harnesses, versions outside these lines and other Herdr protocols stay mail-only. That includes Claude Code and OpenCode, which `herdr bind` can bind, until a native fixture verifies them. In Pi, `/new`, `/resume` and `/fork` change the session file, so Herdr's metadata no longer matches the binding and notices stop until the Operator rebinds the Agent, as with a new Claude Code session ID. A Codex 0.165 or a Pi 1.5 needs a new fixture run before it gets notices. A test-only fixture service allows one exact disposable binding, for isolated checks. Production delivery always needs the complete identity checks below.
+All other harnesses, versions outside these lines and other Herdr protocols stay mail-only. That includes OpenCode, which `herdr bind` can bind, until a native fixture verifies it. In Pi, `/new`, `/resume` and `/fork` change the session file, so Herdr's metadata no longer matches the binding and notices stop until the Operator rebinds the Agent, as with a new Claude Code session ID. A Codex 0.165, a Pi 1.5 or a Claude Code 2.2 needs a new fixture run before it gets notices. A test-only fixture service allows one exact disposable binding, for isolated checks. Production delivery always needs the complete identity checks below.
 
 The Codex fixture had Herdr client and server 0.9.5 with protocol 22, and the actual native `/status` (gpt-6.1-sol, OpenAI, xhigh, Full Access) through the existing oc/YOLO launcher.
 
@@ -129,6 +130,8 @@ a-stack notifications drain --state-dir "$state_dir" \
 
 `notifications status` lists 50 Agents by default and 100 at most. To get the next page, give the `data.next` value with `--after`. The Operator can select one Agent with `--agent`. An Agent sees only itself. The status shows whether notices are enabled, a safe reason, the time of the next attempt (`-1` while it waits for a new binding), and the number of references in each state. It never shows private bindings, mail bodies or read positions.
 
+`agent list` shows the separate `runtime_state` reported by the a-stack hooks. Without those hooks it can stay `unknown` even when notices work. Notice eligibility uses Herdr's current `agent_status` and native session, not this hook state. Use `notifications status` to check delivery.
+
 `notifications drain` runs one bounded maintenance pass over the durable batches. It does not change mail, and it does not resend anything. If you run it again, it never resends `submitted` or `uncertain` references.
 
 The HTTP endpoints are authenticated `POST /v1/notifications/status` and `POST /v1/notifications/drain`, with explicit Workspace and Session and the same fields. Browser credentials cannot use either endpoint.
@@ -199,16 +202,15 @@ On 2026-10-25 a real Pi 1.4.0 TUI ran in a pane of an isolated Herdr 0.9.5 serve
 
 The scripted model ran a mail check only after a notice, so this fixture shows how Pi takes queued input, not how a real model reacts to the notice text. Pi, like OpenCode in the same setup, dropped input typed in the first seconds after it started; a bound Agent has run its own `herdr bind` by then.
 
-### Claude Code: partial fixture
+### Native Claude Code fixture
 
-Claude Code is not in the table yet. On 2026-10-25 a real Claude Code 2.1.310 ran in an isolated Herdr 0.9.5 server (protocol 22) with Herdr's Claude integration hook, against a disposable a-stack service. No prompt was sent to it, so it used no credits. This showed:
+On 2026-10-26 a real Claude Code 2.1.310 TUI ran from a private, pinned install, with a private config folder and a local scripted Anthropic Messages API. It ran in a private Herdr 0.9.5 server (protocol 22) with Herdr's Claude integration, against a disposable a-stack service with the production notice checks. No account or real API was used. Claude ran its own `herdr bind` from the pane; Herdr reported kind `id`, source `herdr:claude` and the native session ID. Then three mentions:
 
-- Herdr's Claude hook reports the session at start (`agent_session` with source `herdr:claude` and the Claude session ID), so `herdr agent get` returns harness `claude`, the pane, the terminal and the session.
-- `a-stack herdr bind`, run with the pane's `HERDR_*` values, renamed the unnamed pane to `a-02-claude`, read `claude --version` as 2.1.310 and attached the Agent.
-- A mention for that Agent stayed `pending` with reason `unsupported_harness` and next attempt `-1`. The pane's screen did not change.
-- `a-stack herdr focus` checked the binding and focused the pane.
+- Idle: the notice started a turn and one authorized mail check, which returned the new mention.
+- Working: during a 20-second foreground Bash command, the notice was submitted, but no mail check ran yet. When the command ended, Claude put the notice in a `system-reminder` in the tool result. The scripted model then ran one own mail check, which returned the mention. This is native mid-turn steering after a tool step, not a promise to wait until the whole turn ends.
+- Permission dialog open: Herdr reported `blocked`. For eight seconds the notice stayed `pending` with `runtime_unavailable`, the first choice stayed selected, and the command awaiting approval did not run. After the fixture explicitly approved the dialog in the private pane, a retry submitted the notice and started one own mail check.
 
-Before Claude Code goes into the table, a fixture run like the Codex one must show three things with real turns: a notice sent while Claude is working is queued and leads to the Agent's own mail check, a notice sent while it is idle starts one own mail check, and a notice sent while a permission dialog is open does not answer the dialog. That needs several prompts and a signed-in Claude Code.
+The fixture ended with three submitted notices and three own mail checks. Its scripted model ran a mail check only when it saw the notice, including Claude's mid-turn reminder. This verifies native input handling, not how a real model will react. It does not promise that every working-state notice waits for a tool or a turn boundary.
 
 ### Tests
 

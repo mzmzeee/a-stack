@@ -130,7 +130,7 @@ func TestHelpJSONStaysCompatible(t *testing.T) {
 	if len(help.Data.Commands) != len(old)+16 || strings.Join(help.Data.Commands[:len(old)], ",") != strings.Join(old, ",") || strings.Join(help.Data.Commands[len(old):], ",") != "new,skill install,skill uninstall,update,view revoke,service install,service uninstall,service status,status,watch,hook install,hook uninstall,hook,statusline,herdr bind,herdr focus" {
 		t.Fatalf("commands changed: %v", help.Data.Commands)
 	}
-	added := map[string]bool{"-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true, "--no-restart": true, "--no-refresh": true, "--all": true, "--notify": true, "--notify-text": true, "--claude": true, "--codex": true, "--pi": true, "--opencode": true, "--orchestrator": true, "--no-stop-guard": true, "--no-mail-nudge": true, "--assign": true, "--question-id": true, "--text": true}
+	added := map[string]bool{"-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true, "--no-restart": true, "--no-refresh": true, "--all": true, "--notify": true, "--notify-text": true, "--claude": true, "--codex": true, "--pi": true, "--opencode": true, "--orchestrator": true, "--no-stop-guard": true, "--no-mail-nudge": true, "--assign": true, "--question-id": true, "--text": true, "--markdown": true, "--output": true, "--include-archived": true}
 	before := []string{}
 	for _, f := range help.Data.Flags {
 		if !added[f] {
