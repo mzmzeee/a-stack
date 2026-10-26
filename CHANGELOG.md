@@ -6,7 +6,9 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
-Upgrading from v0.1.7, v0.1.6 or v0.1.5: run `a-stack update`, then restart the service. The first start copies the database to `state.db.pre-v9` from v0.1.7, `state.db.pre-v8` from v0.1.6 or `state.db.pre-v7` from v0.1.5, then moves it to schema 10. Allow free space of three times the size of `state.db` from v0.1.7 or v0.1.6, or four times from v0.1.5. With less, the service stops before the copy and migration. Older versions cannot open schema 10. To go back, install the older version, stop the service and restore its pre-migration copy in a new state directory in the same place; later changes are lost. See [Go back to an older version](docs/install.md#go-back-to-an-older-version).
+## [0.1.8] - 2026-10-26
+
+Upgrading from v0.1.7, v0.1.6 or v0.1.5: run `a-stack update`, restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`), then run `a-stack update --refresh` to install the new skill and hook files. The older `update` does neither of these; from v0.1.8 on, `a-stack update` restarts the service and refreshes the files itself. The first start copies the database to `state.db.pre-v9` from v0.1.7, `state.db.pre-v8` from v0.1.6 or `state.db.pre-v7` from v0.1.5, then moves it to schema 10. Allow free space of three times the size of `state.db` from v0.1.7 or v0.1.6, or four times from v0.1.5. With less, the service stops before the copy and migration. Older versions cannot open schema 10. To go back, install the older version, stop the service and restore its pre-migration copy in a new state directory in the same place; later changes are lost. See [Go back to an older version](docs/install.md#go-back-to-an-older-version).
 
 Operation receipts now expire after 30 days. Task history and mail stay. Older operation IDs remain reserved and return `operation_expired` instead of applying a change twice; inspect the retained history before making a new change.
 
@@ -329,7 +331,8 @@ The first release.
 - One static Linux binary for `amd64` and `arm64`, with SQLite built in. It accepts connections only on `127.0.0.1`.
 - An install script that checks the download against the release checksums.
 
-[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.7...HEAD
+[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.8...HEAD
+[0.1.8]: https://github.com/mzmzeee/a-stack/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/mzmzeee/a-stack/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/mzmzeee/a-stack/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/mzmzeee/a-stack/compare/v0.1.4...v0.1.5
