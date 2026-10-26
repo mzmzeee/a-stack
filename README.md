@@ -92,6 +92,8 @@ To update, run `a-stack update` and restart the service. If you installed with H
 
 To start a-stack at login and restart it after a crash, run `a-stack service install`. It uses systemd on Linux, launchd on macOS and Task Scheduler on Windows. See [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
 
+For [Tab completion](docs/install.md#tab-completion), run `a-stack completion install`.
+
 ## Quick start
 
 Teach your coding agents to use a-stack. You do this once:

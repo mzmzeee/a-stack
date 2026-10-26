@@ -29,6 +29,7 @@ class AStack < Formula
 
   def install
     bin.install "a-stack"
+    generate_completions_from_executable(bin/"a-stack", "completion")
   end
 
   test do

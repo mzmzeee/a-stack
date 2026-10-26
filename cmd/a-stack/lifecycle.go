@@ -58,6 +58,12 @@ func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 // space at both ends. Help uses the same list.
 func acceptedFlags(command string) string {
 	// No service and no credential.
+	if isCompletionCommand(command) {
+		if command == "completion install" || command == "completion uninstall" {
+			return " shell help "
+		}
+		return " help "
+	}
 	if command == "version" {
 		return " json help "
 	} else if command == "skill install" {

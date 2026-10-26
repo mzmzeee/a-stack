@@ -36,6 +36,14 @@ var helpGroups = []helpGroup{
 		{"hook uninstall", "", "Remove this folder's a-stack hooks"},
 		{"hook", "", "Handle one hook event (run by the harness)"},
 	}},
+	{"Tab completion", []helpRow{
+		{"completion bash", "", "Print the bash completion script"},
+		{"completion zsh", "", "Print the zsh completion script"},
+		{"completion fish", "", "Print the fish completion script"},
+		{"completion powershell", "", "Print the PowerShell completion script"},
+		{"completion install", "", "Install completion for your shell"},
+		{"completion uninstall", "", "Remove your shell's completion file"},
+	}},
 	{"Service", []helpRow{
 		{"serve", "", "Run the service in the foreground"},
 		{"health", "", "Check the running service"},
@@ -180,7 +188,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus", "completion bash", "completion zsh", "completion fish", "completion powershell", "completion install", "completion uninstall")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string
@@ -305,7 +313,7 @@ var flagValues = map[string]string{
 	"reason": "TEXT", "summary": "TEXT", "question": "TEXT", "question-id": "ID", "text": "TEXT", "note": "TEXT", "location": "PATH",
 	"reference-revision": "REV", "reference": "ID", "from": "ID", "to": "ID", "body-file": "FILE",
 	"page-kind": "KIND", "read-revision": "N", "known-revision": "N", "body": "TEXT", "mention": "NAME",
-	"cursor": "CURSOR", "cursor-file": "FILE", "after-task": "TOKEN", "task-limit": "N", "assign": "AGENT",
+	"cursor": "CURSOR", "cursor-file": "FILE", "after-task": "TOKEN", "task-limit": "N", "assign": "AGENT", "shell": "SHELL",
 }
 
 // hookFlagText is the text of shared flags that mean something else in the
