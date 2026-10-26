@@ -105,6 +105,8 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	tasks.register(fs)
 	var mail mailFlags
 	mail.register(fs)
+	var exporting exportFlags
+	exporting.register(fs)
 	var watching watchFlags
 	watching.register(fs)
 	var hooks hookFlags
@@ -144,6 +146,14 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 	if err := validateCommandFlags(cmd, seen); err != nil {
 		return err
+	}
+	if cmd == "session export" {
+		if exporting.markdown && machine {
+			return invalid("choose --markdown or --json")
+		}
+		if seen["output"] && exporting.output == "" {
+			return invalid("--output must name a file")
+		}
 	}
 	if repeated && cmd != "task create" {
 		return invalid("--after is given more than once")
@@ -296,6 +306,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 		return writeData(stdout, data)
+	}
+	if cmd == "session export" {
+		return exportSession(ctx, client, lifecycle, exporting, machine, stdout)
 	}
 	if isLifecycleCommand(cmd) {
 		data, err := lifecycleRequest(ctx, client, cmd, lifecycle)
