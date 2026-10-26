@@ -12,7 +12,7 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-var lifecycleCommands = []string{"workspace create", "workspace list", "workspace orders show", "workspace orders set", "workspace orders clear", "session create", "session list", "session inspect", "session close", "session reopen", "session appoint", "agent register", "agent list", "agent attach", "agent rebind", "agent observe"}
+var lifecycleCommands = []string{"workspace create", "workspace list", "workspace orders show", "workspace orders set", "workspace orders clear", "session create", "session list", "session inspect", "session export", "session close", "session reopen", "session appoint", "agent register", "agent list", "agent attach", "agent rebind", "agent observe"}
 
 func isLifecycleCommand(command string) bool {
 	for _, c := range lifecycleCommands {
@@ -126,6 +126,8 @@ func acceptedFlags(command string) string {
 		allowed += "workspace session limit after "
 	case "session inspect":
 		allowed += "workspace session "
+	case "session export":
+		allowed += "workspace session markdown output include-archived "
 	case "session close", "session reopen":
 		allowed += "workspace session operation-id expected-revision "
 	case "session appoint":

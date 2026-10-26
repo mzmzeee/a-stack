@@ -56,6 +56,7 @@ var helpGroups = []helpGroup{
 		{"session create", "", "Create a Session in a Workspace"},
 		{"session list", "", "List the Sessions of a Workspace"},
 		{"session inspect", "", "Show one Session"},
+		{"session export", "", "Export a Session's Tasks and reports, without mail bodies"},
 		{"session close", "", "Close a Session"},
 		{"session reopen", "", "Reopen a closed Session"},
 		{"session appoint", "", "Appoint the Orchestrator of a Session"},
@@ -300,7 +301,7 @@ func flagLabel(fs *flag.FlagSet, name string) string {
 // flagValues names the value of each flag that takes one. A test checks that
 // no help shows the fallback VALUE.
 var flagValues = map[string]string{
-	"state-dir": "DIR", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE",
+	"state-dir": "DIR", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE", "output": "FILE",
 	"herdr-executable": "FILE", "workspace": "ID", "session": "ID", "operation-id": "ID", "path": "DIR",
 	"name": "NAME", "orchestrator": "NAME", "agent": "ID", "worktree": "DIR", "new-credential-file": "FILE", "runtime-id": "ID",
 	"runtime-file": "FILE", "runtime-state": "STATE", "expected-revision": "N", "limit": "N", "after": "CURSOR",
