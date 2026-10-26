@@ -170,3 +170,4 @@ fail() {
 
 # The whole script is parsed before main runs, so a cut-off download does nothing.
 main "$@"
+echo "For Tab completion, run: a-stack completion install"
