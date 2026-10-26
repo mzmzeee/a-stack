@@ -148,9 +148,10 @@ func newReleases() releases {
 }
 
 // get downloads a release file. With optional, a file that does not exist
-// returns nil and no error.
-func (r releases) get(rawURL string, limit int64, optional bool) ([]byte, error) {
+// returns nil and no error. show shows the download, or is nil.
+func (r releases) get(rawURL string, limit int64, optional bool, show *progress) ([]byte, error) {
 	var body io.ReadCloser
+	size := int64(-1)
 	if file, ok := strings.CutPrefix(rawURL, "file://"); ok && r.mirror {
 		f, err := os.Open(file)
 		if optional && errors.Is(err, fs.ErrNotExist) {
@@ -158,6 +159,9 @@ func (r releases) get(rawURL string, limit int64, optional bool) ([]byte, error)
 		}
 		if err != nil {
 			return nil, updateFailed("cannot read " + rawURL)
+		}
+		if info, err := f.Stat(); err == nil {
+			size = info.Size()
 		}
 		body = f
 	} else {
@@ -176,10 +180,11 @@ func (r releases) get(rawURL string, limit int64, optional bool) ([]byte, error)
 			resp.Body.Close()
 			return nil, updateFailed("download failed: " + rawURL + ": " + resp.Status)
 		}
-		body = resp.Body
+		body, size = resp.Body, resp.ContentLength
 	}
 	defer body.Close()
-	data, err := io.ReadAll(io.LimitReader(body, limit+1))
+	defer show.end()
+	data, err := io.ReadAll(io.LimitReader(show.download(body, path.Base(rawURL), size), limit+1))
 	if err != nil {
 		return nil, updateFailed("download failed: " + rawURL)
 	}
@@ -217,13 +222,13 @@ func (r releases) latest() (string, error) {
 // download returns the verified a-stack binary of a release. It trusts
 // SHA256SUMS only after its signature checks out with releaseKey; signed is
 // false for a release from before signedSince that has no signature.
-func (r releases) download(tag string) (binary []byte, signed bool, err error) {
+func (r releases) download(tag string, show *progress) (binary []byte, signed bool, err error) {
 	dir := r.base + "/download/" + tag + "/"
-	sums, err := r.get(dir+"SHA256SUMS", maxSums, false)
+	sums, err := r.get(dir+"SHA256SUMS", maxSums, false, nil)
 	if err != nil {
 		return nil, false, err
 	}
-	sig, err := r.get(dir+"SHA256SUMS.sig", 1024, true)
+	sig, err := r.get(dir+"SHA256SUMS.sig", 1024, true, nil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -231,14 +236,18 @@ func (r releases) download(tag string) (binary []byte, signed bool, err error) {
 	if sig == nil && slices.Compare(n[:], signedSince[:]) >= 0 {
 		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "release " + tag + " has no SHA256SUMS.sig, but every release since v0.1.5 is signed; nothing changed"}
 	}
+	if sig != nil {
+		show.step("Checking the signature of SHA256SUMS")
+	}
 	if sig != nil && !ed25519.Verify(releaseKey, sums, sig) {
 		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "the signature of SHA256SUMS for " + tag + " is not valid; nothing changed"}
 	}
 	name := releaseArchive(runtime.GOOS, runtime.GOARCH)
-	archive, err := r.get(dir+name, maxArchive, false)
+	archive, err := r.get(dir+name, maxArchive, false, show)
 	if err != nil {
 		return nil, false, err
 	}
+	show.step("Checking the checksum of " + name)
 	sum := sha256.Sum256(archive)
 	if !slices.Contains(strings.Split(string(sums), "\n"), hex.EncodeToString(sum[:])+"  "+name) {
 		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "checksum mismatch for " + name + "; nothing changed"}
@@ -381,7 +390,7 @@ func runVersion(binary string) (string, error) {
 	return result.Data.Version, nil
 }
 
-func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) error {
+func updateCommand(release versionFlag, check, machine bool, stdout, stderr io.Writer) error {
 	target := release.value
 	if !slices.Contains(updateSystems, runtime.GOOS+"/"+runtime.GOARCH) {
 		return invalid("a-stack update supports Linux, macOS and Windows on amd64 and arm64 only")
@@ -455,7 +464,8 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	}
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
-	binary, signed, err := r.download(target)
+	show := newProgress(stderr, machine)
+	binary, signed, err := r.download(target, show)
 	if err != nil {
 		return err
 	}
@@ -476,9 +486,11 @@ func updateCommand(release versionFlag, check, machine bool, stdout io.Writer) e
 	if err != nil {
 		return updateFailed("cannot write to " + dir + "; nothing changed")
 	}
+	show.step("Checking that a-stack " + target + " runs")
 	if got, err := runVersion(tmp.Name()); err != nil || got != target {
 		return updateFailed("the downloaded a-stack " + target + " does not run on this system; nothing changed")
 	}
+	show.step("Replacing " + exe)
 	if err = replaceBinary(tmp.Name(), exe, runtime.GOOS == "windows"); err != nil {
 		return updateFailed("cannot replace " + exe + ": " + err.Error())
 	}

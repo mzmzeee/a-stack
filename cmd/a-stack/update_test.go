@@ -262,7 +262,7 @@ func TestUpdateHTTPSOnlyWithoutMirror(t *testing.T) {
 	if r.base != defaultReleases || r.client.CheckRedirect(&http.Request{URL: plain}, nil) == nil {
 		t.Fatal("a redirect to http is allowed without a mirror")
 	}
-	if _, err := r.get("http://example.com/a", 10, false); err == nil {
+	if _, err := r.get("http://example.com/a", 10, false, nil); err == nil {
 		t.Fatal("an http URL is allowed without a mirror")
 	}
 	for _, v := range [][2]string{{"v0.2.0", "v0.1.9"}, {"v1.0.0", "v1.0.0-rc.1"}, {"v1.0.0-rc.2", "v1.0.0-rc.1"}, {"v0.0.1", "dev"}} {
