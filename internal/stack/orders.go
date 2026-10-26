@@ -53,14 +53,14 @@ func sessionOrders(ctx context.Context, tx *sql.Tx, workspace string) (*Standing
 	return &o, nil
 }
 
-// validOrders allows plain text: UTF-8 without control characters other
-// than tab and line breaks.
-func validOrders(body string) error {
-	if err := validText("standing orders", body, MaxOrdersBytes, true); err != nil {
+// validPlainText allows plain text, as in standing orders and answers:
+// UTF-8 without control characters other than tab and line breaks.
+func validPlainText(field, body string, max int) error {
+	if err := validText(field, body, max, true); err != nil {
 		return err
 	}
 	if strings.ContainsFunc(body, func(r rune) bool { return (r < 0x20 && r != '\t' && r != '\n' && r != '\r') || r == 0x7f }) {
-		return failure("invalid_input", "standing orders must be plain text without control characters")
+		return failure("invalid_input", field+" must be plain text without control characters")
 	}
 	return nil
 }
@@ -124,7 +124,7 @@ func (s *Store) ChangeOrders(ctx context.Context, token string, r OrdersRequest)
 			return Receipt{}, failure("invalid_input", "clear takes no body")
 		}
 		if !r.Clear {
-			if err := validOrders(r.Body); err != nil {
+			if err := validPlainText("standing orders", r.Body, MaxOrdersBytes); err != nil {
 				return Receipt{}, err
 			}
 		}

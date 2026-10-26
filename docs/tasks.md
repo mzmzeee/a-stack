@@ -155,7 +155,7 @@ a-stack answer --workspace "$workspace" --session "$session" --task "$task" \
   --question-id "$question" --text 'Google first, then GitHub.' --operation-id answer-login-1
 ```
 
-`task show` prints the open question with its `id` under `question`. `--question-id` takes that ID. For a longer answer, use `--body-file FILE`, or `--body-file -` for stdin. An answer is plain UTF-8 text of 4,096 bytes at most.
+`task show` prints the open question with its `id` under `question`. `--question-id` takes that ID. `--body TEXT` is the same as `--text`. For a longer answer, use `--body-file FILE`, or `--body-file -` for stdin. An answer is plain UTF-8 text of 4,096 bytes at most, with no control characters other than tabs and line breaks, as for [standing orders](lifecycle.md#standing-orders).
 
 In one operation, `answer` saves the answer on the question, resolves the question, raises the Task's revision and sends the answer as Task mail from the Operator. The mail mentions every current assignee, so each one gets the usual [notice](notifications.md), and the mail nudge of the [hooks](hooks.md#task-mail-nudge) tells the Agent. An Agent that restarts finds the answer with `mail check`. The history entry is `task.answer` with `actor_kind` `operator`.
 

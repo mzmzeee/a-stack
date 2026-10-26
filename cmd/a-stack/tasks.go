@@ -87,7 +87,7 @@ func taskAllowedFlags(command string) string {
 	case "task attention resolve":
 		return "task operation-id expected-revision note body body-file"
 	case "answer":
-		return "task operation-id question-id text body-file"
+		return "task operation-id question-id text body body-file"
 	case "task reference add":
 		return "task operation-id expected-revision location reference-revision"
 	case "task reference remove":

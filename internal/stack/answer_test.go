@@ -118,6 +118,15 @@ func TestAnswerRefusals(t *testing.T) {
 	requireCode(t, answer(f.operator.Token, AnswerRequest{Answer: strings.Repeat("x", MaxAnswerBytes+1)}), "invalid_input")
 	requireCode(t, answer(f.operator.Token, AnswerRequest{Answer: " \n"}), "invalid_input")
 	requireCode(t, answer(f.operator.Token, AnswerRequest{Answer: "bad \xff"}), "invalid_input")
+	// Plain text, as for standing orders: no control characters but tab and
+	// line breaks.
+	for _, text := range []string{"A\x1b[31mRED", "title\x1b]0;x\a", "bell\a", "del\x7f", "nul\x00"} {
+		err := answer(f.operator.Token, AnswerRequest{Answer: text})
+		requireCode(t, err, "invalid_input")
+		if !strings.Contains(err.Error(), "answer must be plain text without control characters") {
+			t.Fatalf("%q: %v", text, err)
+		}
+	}
 	requireCode(t, answer(f.operator.Token, AnswerRequest{QuestionID: "-"}), "invalid_input")
 	// A Task of the other Session is not found in this one.
 	requireCode(t, answer(f.operator.Token, AnswerRequest{Context: f.ref(1)}), "not_found")
@@ -133,6 +142,10 @@ func TestAnswerRefusals(t *testing.T) {
 	if n := countTest(t, s, "SELECT count(*) FROM mail_messages"); n != 0 {
 		t.Fatal("a refused answer sent mail", n)
 	}
+	if _, err = s.AnswerQuestion(ctx, f.operator.Token, AnswerRequest{Context: f.ref(0), OperationID: opaqueID(), TaskID: id, QuestionID: f.show(t, id).Question.ID, Answer: "Yes,\ttomorrow.\r\nAt nine."}); err != nil {
+		t.Fatal("tab and line breaks:", err)
+	}
+	f.change(t, f.a.Token, "attention.set", TaskChangeRequest{TaskID: id, ExpectedRevision: 7, Question: "And the docs?"})
 	// A closed Session takes no answer.
 	if _, err = s.ChangeSession(ctx, f.operator.Token, "close", SessionChangeRequest{Context: f.ref(0), OperationID: opaqueID(), ExpectedRevision: 2}); err != nil {
 		t.Fatal(err)

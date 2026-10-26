@@ -765,7 +765,7 @@ function showAnswer(q,a) {
   if(inside&&answerBox.hidden)(answerNote.textContent?answerNote:close).focus(); // the focus stays near, on the note that says why
   if(answerFocus){answerFocus=false;if(!answerBox.hidden)answerInput.focus();}
 }
-const answerErrors={forbidden:'Open the view again with a-stack.',unauthorized:'Open the view again with a-stack.',session_closed:'This Session is closed, so it takes no more answers.',invalid_input:'The service refused the answer: it must be 1 to 4,096 bytes of text.',not_found:'This Task is no longer in the Session.'};
+const answerErrors={forbidden:'Open the view again with a-stack.',unauthorized:'Open the view again with a-stack.',session_closed:'This Session is closed, so it takes no more answers.',invalid_input:'The service refused the answer: it must be 1 to 4,096 bytes of plain text, without control characters.',not_found:'This Task is no longer in the Session.'};
 async function sendAnswer() {
   patchAnswer();if(answerSend.disabled||answer.busy)return;
   const task=answer.task, question=answer.question;

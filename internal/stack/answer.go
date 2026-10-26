@@ -33,7 +33,7 @@ func (s *Store) AnswerQuestion(ctx context.Context, token string, r AnswerReques
 		if _, err := OpenSession(ctx, tx, p, r.Context); err != nil {
 			return Receipt{}, err
 		}
-		if err := validText("answer", r.Answer, MaxAnswerBytes, true); err != nil {
+		if err := validPlainText("answer", r.Answer, MaxAnswerBytes); err != nil {
 			return Receipt{}, err
 		}
 		if !validToken(r.QuestionID) {
