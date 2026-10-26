@@ -9,7 +9,13 @@ The release workflow uses the section of a version as the notes of its GitHub re
 ### Added
 
 - Tab completion for bash, zsh, fish and PowerShell, from the CLI's help and flag tables: commands, flags, fixed values and paths. `a-stack completion install` detects the shell and writes its per-user script; `uninstall` removes it. PowerShell prints a profile line without editing the profile. Homebrew installs the scripts; Scoop and the install script show a setup hint. See [Tab completion](docs/install.md#tab-completion).
+- Parser fuzz tests for mention names, CLI flags, mail cursors and update archives, with a short smoke run in `scripts/check.sh`. See [Parser fuzzing](CONTRIBUTING.md#parser-fuzzing).
 - `a-stack session export --markdown` writes a Session summary for a PR or a hand-over: the Workspace folder, Tasks in dependency order with assignees, results and reports, open Needs you questions, the latest Operator answers and standing orders. Task mail is count-only; bodies are never read or exported. The Operator and Session Agents can use it, with `--output FILE`, `--include-archived` and `--json`. It uses existing reads and changes no data. See [Export a Session](docs/tasks.md#export-a-session).
+- Mention notices reach Claude Code 2.1.x from 2.1.310 (below 2.2). A native fixture with a private Claude Code 2.1.310 install, a scripted API and an isolated Herdr 0.9.5 verified idle delivery, native mid-turn delivery after a foreground tool step, and notices held back while a permission dialog is open. Each notice led to the Agent's own mail check. See [Native Claude Code fixture](docs/notifications.md#native-claude-code-fixture).
+
+### Fixed
+
+- On Windows, `install.ps1` warns and names another `a-stack` earlier on `PATH`, without changing the order of existing entries. Task Scheduler preserves literal `%VAR%` in binary and state paths with an encoded PowerShell action, and reinstalling replaces older unsafe actions. The browser opener initializes a single-threaded COM apartment on its OS thread before `ShellExecuteW`.
 
 ## [0.1.7] - 2026-10-26
 

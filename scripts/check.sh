@@ -55,6 +55,14 @@ CGO_ENABLED=0 go test -count=1 -run TestStartWithoutCgo ./internal/stack  # sqli
 step go test -race
 go test -race -count=1 ./...
 
+step "fuzz smoke (3 seconds per target)"
+for target in FuzzSplitFlags FuzzExtractTarGz FuzzExtractZip; do
+  go test ./cmd/a-stack -run '^$' -fuzz "^$target$" -fuzztime=3s -parallel=2
+done
+for target in FuzzMentionNames FuzzMailCursor FuzzMailCheckCursor; do
+  go test ./internal/stack -run '^$' -fuzz "^$target$" -fuzztime=3s -parallel=2
+done
+
 step "go build (.tmp/a-stack)"
 go build -o .tmp/a-stack ./cmd/a-stack
 

@@ -12,7 +12,7 @@ func bindFixture(t *testing.T, harnessOutput string) (*noticeFixture, func(strin
 	t.Helper()
 	f := noticeTestFixture(t)
 	bin := t.TempDir()
-	for _, harness := range []string{"codex", "pi", "opencode"} {
+	for _, harness := range []string{"claude", "codex", "pi", "opencode"} {
 		if err := os.WriteFile(filepath.Join(bin, harness), []byte("#!/bin/sh\necho '"+harnessOutput+"'\n"), 0700); err != nil {
 			t.Fatal(err)
 		}
@@ -42,6 +42,44 @@ func TestHerdrBindReadsOwnPane(t *testing.T) {
 	f.n.adapter.verified = verifiedHarness
 	if reason := f.n.adapter.verify(ctx, *binding); reason != "" {
 		t.Fatal("bound pane fails the notice check", reason)
+	}
+}
+
+// The native Claude Code 2.1.310 fixture verified idle, working and dialog
+// delivery. Binding uses the session ID from Herdr's Claude integration.
+func TestHerdrBindReadsClaudePane(t *testing.T) {
+	f, env := bindFixture(t, "2.1.310 (Claude Code)")
+	f.config.Mode = "claude"
+	f.config.Binding.NativeSessionID = "01a177e8-1ea1-7623-a669-4a9689138d05"
+	f.write(t)
+	binding, err := HerdrBind(ctx, f.n.adapter.executable, "03-worker", env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binding.Harness != "claude" || binding.HarnessVersion != "2.1.310" || binding.NativeSessionID != f.config.Binding.NativeSessionID {
+		t.Fatalf("Claude binding %+v", *binding)
+	}
+	f.n.adapter.verified = verifiedHarness
+	for _, status := range []string{"idle", "working", "done", "blocked", "unknown"} {
+		f.config.Status = status
+		f.write(t)
+		reason := f.n.adapter.verify(ctx, *binding)
+		if status == "blocked" || status == "unknown" {
+			if reason != "runtime_unavailable" {
+				t.Fatal("dialog/unknown target accepted:", status, reason)
+			}
+		} else if reason != "" {
+			t.Fatal("verified Claude pane rejected:", status, reason)
+		}
+	}
+	f.config.Status = "idle"
+	f.write(t)
+	if state, reason := f.n.adapter.submit(ctx, *binding); state != NoticeSubmitted {
+		t.Fatal("notice to bound Claude pane was not submitted:", reason)
+	}
+	binding.NativeSessionID = "replacement-session"
+	if _, reason := f.n.adapter.current(ctx, *binding); reason != "identity_changed" {
+		t.Fatal("changed Claude session matched:", reason)
 	}
 }
 

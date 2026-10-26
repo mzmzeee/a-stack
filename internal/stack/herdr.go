@@ -26,10 +26,10 @@ var herdrName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,31}$`)
 // verifiedHarnesses holds, per harness, the version whose queued input a
 // native fixture verified with Herdr protocol 22 (docs/notifications.md).
 // Notices accept that minor line from that version up: codex >=0.164.0 <0.165,
-// pi >=1.4.0 <1.5.
+// pi >=1.4.0 <1.5, claude >=2.1.310 <2.2.
 // Herdr metadata reports identity, not the harness version; herdr bind or the
 // runtime file declares it.
-var verifiedHarnesses = map[string]string{"codex": "0.164.0", "pi": "1.4.0"}
+var verifiedHarnesses = map[string]string{"codex": "0.164.0", "pi": "1.4.0", "claude": "2.1.310"}
 
 // versionParts parses a plain MAJOR.MINOR.PATCH version without prerelease.
 func versionParts(s string) ([3]int, bool) {

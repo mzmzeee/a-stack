@@ -11,7 +11,7 @@ import (
 
 // The Windows parts of update, tested on every system.
 
-func zipArchive(t *testing.T, files ...string) []byte {
+func zipArchive(t testing.TB, files ...string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
