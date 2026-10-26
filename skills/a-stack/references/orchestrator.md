@@ -6,6 +6,8 @@ The Operator follows the Session through its Task graph, so plan the work as a g
 
 Set up `me` as [SKILL.md](../SKILL.md) shows, with your own credential. If nobody gave you one, make it yourself with `a-stack new --orchestrator 01-orchestrator --no-browser --json` (see SKILL.md); do not ask the Operator for IDs. For each command's flags, see [commands.md](commands.md).
 
+Inside Herdr, bind yourself too: run `me agent list` for your current revision, then `me herdr bind --agent YOUR_AGENT_ID --expected-revision R --operation-id orch-bind-1`. `me session inspect` gives `your_agent_id`. For `integration_missing`, have the Operator install the named integration and restart your harness in that pane, then bind again.
+
 ## 1. Register the Agents
 
 Make one private credential folder for the Agents that you register. It must be outside every Git checkout, because a-stack rejects a credential file inside one:
@@ -21,6 +23,7 @@ me agent register --name 02-worker --new-credential-file "$CREDS/02-worker.json"
 - Your own Agent credential is enough. Never use the Operator credential, and never run the Operator commands `a-stack` with no command, `a-stack new` or `a-stack -r`: they use the Operator credential and the current folder, and can create Workspaces, Sessions or a second service.
 - If the response is lost, run the same command again with the same operation ID and file name. Never delete a credential file because a response was lost.
 - To link the Agent's own worktree, add `--worktree ABSOLUTE_DIR`.
+- Give each new Herdr tab a new Agent. Before reusing a name with a live binding, have the Operator run `agent rebind --clear-runtime` and deliver the new credential. An Agent can replace its own binding with `herdr bind` only when Herdr proves the old target is stale.
 
 ## 2. Create, link and assign each Task in one command
 
@@ -96,6 +99,7 @@ Other assignees you can @mention: 01-orchestrator
 - `me session snapshot --known-revision N` returns `unchanged: true` while nothing changed since read revision N. Then you need not read the pages again.
 - `me task show --task T` shows the report, and `me task history --task T` shows every change.
 - `me mail check --cursor-file /your/private/folder/mail.json` reads the new mail of the Tasks that you are assigned to.
+- If an Agent seems not to react, check `me notifications status` for your own notices, and ask the Operator to check it for the team. A mention cannot wake an unbound or unavailable runtime.
 
 When a Task shows `needs_you`, the Operator must answer. You cannot answer for the Operator. The Operator answers with `a-stack answer` or in the browser view, and the Task's assignees get the answer as Task mail from the Operator.
 

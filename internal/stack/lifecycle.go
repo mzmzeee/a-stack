@@ -488,6 +488,10 @@ func validateBinding(binding *RuntimeBinding, required bool) error {
 	return nil
 }
 func (s *Store) BindAgent(ctx context.Context, token, action string, r AgentBindingRequest) (Receipt, error) {
+	return s.bindAgent(ctx, token, action, r, nil)
+}
+
+func (s *Store) bindAgent(ctx context.Context, token, action string, r AgentBindingRequest, check *herdrBindCheck) (Receipt, error) {
 	if action != "attach" && action != "rebind" {
 		return Receipt{}, failure("invalid_input", "unknown binding action")
 	}
@@ -516,8 +520,11 @@ func (s *Store) BindAgent(ctx context.Context, token, action string, r AgentBind
 		if err = expectedRevision(r.ExpectedRevision, agent.Revision); err != nil {
 			return Receipt{}, err
 		}
-		if action == "attach" && agent.RuntimeAttached {
-			return Receipt{}, failure("conflict", "established binding requires Operator rebind")
+		if check != nil && check.err != nil {
+			return Receipt{}, check.err
+		}
+		if action == "attach" && agent.RuntimeAttached && (check == nil || !check.replace) {
+			return Receipt{}, liveBindingConflict(agent.Name)
 		}
 		var runtimeID, binding any
 		if r.Runtime != nil {
@@ -544,7 +551,7 @@ func (s *Store) BindAgent(ctx context.Context, token, action string, r AgentBind
 				return Receipt{}, err
 			}
 		}
-		if action == "rebind" {
+		if action == "rebind" || check != nil && check.replace {
 			if _, err = tx.ExecContext(ctx, "DELETE FROM runtime_claims WHERE agent_id=?", agent.ID); err != nil {
 				return Receipt{}, err
 			}
@@ -567,7 +574,7 @@ func (s *Store) BindAgent(ctx context.Context, token, action string, r AgentBind
 		}
 		// A new binding gets its pending notices tried at once; the commit
 		// wakes the notifier. No timer retries a parked binding.
-		if _, err = tx.ExecContext(ctx, "UPDATE notice_targets SET failures=0,next_attempt=0 WHERE session_id=? AND recipient_id=? AND (failures!=0 OR next_attempt!=0)", session.ID, agent.ID); err != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE notice_targets SET reason='pending',failures=0,next_attempt=0 WHERE session_id=? AND recipient_id=?", session.ID, agent.ID); err != nil {
 			return Receipt{}, err
 		}
 		if err = bumpSessionRead(ctx, tx, session.ID); err != nil {

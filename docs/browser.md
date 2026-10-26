@@ -2,6 +2,8 @@
 
 The browser view shows one Session: its Task graph, its Agents and the details of each Task. It is read-only, with one exception: it can answer a Needs you question (see [The one write](#the-one-write)). It shows the Task mail of a Task, but it cannot send other mail or change anything else.
 
+In the Agents panel, **Notices off** marks an Agent whose mention notices are unavailable. Hover the marker for the stored reason and fix. It is read-only and shows no private runtime identity. See [Mention notice diagnostics](notifications.md#diagnostics-and-maintenance).
+
 ## Open the view
 
 The view needs a running service: a user service set up with [`a-stack service install`](install.md#start-a-stack-automatically), or `a-stack serve` in a terminal. The [shorter commands](#open-the-last-session) start one for you when none runs. To open one Workspace and Session by its IDs:

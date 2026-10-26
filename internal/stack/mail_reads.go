@@ -208,6 +208,10 @@ func (s *Store) CheckMail(ctx context.Context, token string, r MailCheckRequest)
 		return empty, err
 	}
 	result := MailCheckPage{Tasks: []MailPage{}}
+	result.NoticeWarning, err = s.noticeWarningTx(ctx, tx, r.SessionID, p.SubjectID)
+	if err != nil {
+		return empty, err
+	}
 	used := jsonBytes(result)
 	messages := 0
 	last := ""

@@ -17,10 +17,13 @@ import (
 )
 
 type fakeHerdrConfig struct {
-	Binding RuntimeBinding   `json:"binding"`
-	Targets []RuntimeBinding `json:"targets,omitempty"`
-	Status  string           `json:"status"`
-	Mode    string           `json:"mode"`
+	Binding     RuntimeBinding   `json:"binding"`
+	Targets     []RuntimeBinding `json:"targets,omitempty"`
+	Status      string           `json:"status"`
+	Mode        string           `json:"mode"`
+	MissingPane string           `json:"missing_pane,omitempty"`
+	OldPane     string           `json:"old_pane,omitempty"`
+	OldMode     string           `json:"old_mode,omitempty"`
 }
 type fakeHerdrCall struct{ Args, Env []string }
 
@@ -65,7 +68,14 @@ func TestHerdrExecutableHelper(t *testing.T) {
 		_ = json.NewEncoder(os.Stdout).Encode(status)
 		os.Exit(0)
 	}
+	if len(args) == 3 && args[0] == "agent" && args[1] == "get" && args[2] == config.MissingPane {
+		fmt.Fprintln(os.Stderr, `{"error":{"code":"agent_not_found","message":"agent target not found"}}`)
+		os.Exit(1)
+	}
 	if len(args) >= 3 {
+		if args[2] == config.OldPane {
+			config.Mode = config.OldMode
+		}
 		for _, binding := range config.Targets {
 			if args[2] == binding.HerdrAlias || args[2] == binding.PaneID {
 				config.Binding = binding
@@ -89,6 +99,9 @@ func TestHerdrExecutableHelper(t *testing.T) {
 	}
 	if len(args) == 3 && args[0] == "agent" && args[1] == "get" {
 		switch config.Mode {
+		case "pane_missing":
+			fmt.Fprintln(os.Stderr, `{"error":{"code":"not_found","message":"pane not found"}}`)
+			os.Exit(1)
 		case "mismatch":
 			agent["terminal_id"] = "different-terminal"
 		case "alias_reused":
@@ -97,6 +110,8 @@ func TestHerdrExecutableHelper(t *testing.T) {
 			agent["pane_id"] = "w1:p99"
 		case "native_changed":
 			agent["agent_session"].(map[string]any)["value"] = "replacement-native"
+		case "native_bad":
+			agent["agent_session"].(map[string]any)["value"] = "bad\nsession"
 		case "kind_changed":
 			agent["agent"] = "pi"
 		case "remove_executable":

@@ -289,6 +289,7 @@ func TestCLIStartedServiceStopsCleanlyOnHangup(t *testing.T) {
 }
 
 func TestCLINewHandsOffToOrchestrator(t *testing.T) {
+	t.Setenv("HERDR_ENV", "1")
 	root := t.TempDir()
 	dir := filepath.Join(root, "state")
 	launch(t, dir)
@@ -330,7 +331,7 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	// The brief names the hook install for the agent's harness; a state
 	// directory that is not the default goes into it.
 	install := "run a-stack hook install --state-dir " + shellQuote(dir) + " --credential-file " + shellQuote(got.Credential) + " --claude (or --codex, --pi or --opencode"
-	for _, want := range []string{got.Credential, got.WorkspaceID, got.SessionID, "01-orch", "orchestrator reference", install} {
+	for _, want := range []string{got.Credential, got.WorkspaceID, got.SessionID, "01-orch", "orchestrator reference", install, "me herdr bind --agent " + got.OrchestratorID, "restart your harness in this pane", "me agent list"} {
 		if !strings.Contains(got.Brief, want) {
 			t.Fatalf("brief lacks %q: %s", want, got.Brief)
 		}
@@ -424,6 +425,7 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 }
 
 func TestOrchestratorJSONDoesNotOpenView(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
 	root := t.TempDir()
 	dir := filepath.Join(root, "state")
 	launch(t, dir)
@@ -447,6 +449,9 @@ func TestOrchestratorJSONDoesNotOpenView(t *testing.T) {
 	}
 	if strings.Contains(data.Data.URL, "#") {
 		t.Error("JSON agent handoff contains a view credential fragment")
+	}
+	if strings.Contains(out.String(), "Herdr: bind yourself") {
+		t.Error("non-Herdr handoff asks for a Herdr binding")
 	}
 	if launched {
 		t.Error("JSON agent handoff launches browser")

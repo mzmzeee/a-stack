@@ -13,6 +13,7 @@ type NoticeRequest struct {
 }
 type NoticeTargetStatus struct {
 	AgentID     string              `json:"agent_id"`
+	AgentName   string              `json:"agent_name"`
 	Reason      string              `json:"reason"`
 	NextAttempt int64               `json:"next_attempt_unix_ms"`
 	UpdatedAt   string              `json:"updated_at,omitempty"`
@@ -61,7 +62,7 @@ func (s *Service) notificationStatus(ctx context.Context, token string, r Notice
 			break
 		}
 		row := NoticeTargetStatus{AgentID: id, Counts: map[NoticeState]int{}}
-		if err = tx.QueryRowContext(ctx, "SELECT COALESCE(d.reason,'pending'),COALESCE(d.next_attempt,0),COALESCE(d.updated_at,'') FROM agents a LEFT JOIN notice_targets d ON d.recipient_id=a.id AND d.session_id=a.session_id WHERE a.id=?", id).Scan(&row.Reason, &row.NextAttempt, &row.UpdatedAt); err != nil {
+		if err = tx.QueryRowContext(ctx, "SELECT a.name,COALESCE(d.reason,'pending'),COALESCE(d.next_attempt,0),COALESCE(d.updated_at,'') FROM agents a LEFT JOIN notice_targets d ON d.recipient_id=a.id AND d.session_id=a.session_id WHERE a.id=?", id).Scan(&row.AgentName, &row.Reason, &row.NextAttempt, &row.UpdatedAt); err != nil {
 			return result, storageError()
 		}
 		// Enumerate the bounded states so the existing state/recipient index does

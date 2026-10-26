@@ -63,7 +63,7 @@ Once, in the folder you work in, install the a-stack hooks for your harness: `a-
 
 ## If you run inside Herdr
 
-If `HERDR_PANE_ID` is set in your shell, bind yourself to your pane once, so that a mention can reach you as a short notice: `me herdr bind --agent YOUR_AGENT_ID --expected-revision 1 --operation-id 02-worker-bind-1`. `me session inspect` shows your Agent ID as `your_agent_id`. If it fails with `integration_missing`, tell the Operator the `herdr integration install` command from the message; do not run it yourself. A `conflict` that says the binding is established means you are already bound. Mail works the same without a binding.
+If `HERDR_PANE_ID` is set in your shell, bind yourself to your pane once, so that a mention can reach you as a short notice: `me herdr bind --agent YOUR_AGENT_ID --expected-revision 1 --operation-id 02-worker-bind-1`. `me session inspect` shows your Agent ID as `your_agent_id`. If it fails with `integration_missing`, tell the Operator the `herdr integration install` command from the message and restart your harness in that pane after installation; do not install it yourself. An existing live binding needs the Operator's `agent rebind --clear-runtime` and a new credential before you bind again; a stale Herdr target can be replaced by your own `herdr bind`. Use your current revision from `me agent list`. Mail works the same without a binding.
 
 ## Standing orders
 

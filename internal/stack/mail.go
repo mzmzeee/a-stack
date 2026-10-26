@@ -85,9 +85,10 @@ type MailCheckRequest struct {
 // MailCheckPage.More is true when a Task page has more or next_task is set:
 // more mail is waiting than this response holds.
 type MailCheckPage struct {
-	Tasks    []MailPage `json:"tasks"`
-	NextTask string     `json:"next_task,omitempty"`
-	More     bool       `json:"more"`
+	Tasks         []MailPage     `json:"tasks"`
+	NextTask      string         `json:"next_task,omitempty"`
+	More          bool           `json:"more"`
+	NoticeWarning *NoticeWarning `json:"notice_warning,omitempty"`
 }
 
 func nameStart(c byte) bool {
