@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"encoding/xml"
 	"os"
 	"path/filepath"
 	"slices"
@@ -106,6 +107,61 @@ func TestTaskXML(t *testing.T) {
 	}
 	if utf16File("a\n")[0] != 0xff || string(utf16File("a\n")[2:]) != "a\x00\r\x00\n\x00" {
 		t.Fatal("utf16File")
+	}
+}
+
+func TestTaskXMLPreservesPercentPaths(t *testing.T) {
+	for _, paths := range [][2]string{
+		{`C:\bin%PATH%\a-stack.exe`, `C:\state`},
+		{`C:\bin\a-stack.exe`, `C:\state%TEMP%\`},
+		{`C:\100%\a-stack.exe`, `C:\state`},
+		{`C:\O'Brien %PATH%\a-stack.exe`, `C:\état & 'quoted' %TEMP%\`},
+	} {
+		task, err := renderTask("me", paths[0], paths[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var action struct {
+			Command string `xml:"Actions>Exec>Command"`
+			Args    string `xml:"Actions>Exec>Arguments"`
+		}
+		if err := xml.Unmarshal([]byte(task[strings.Index(task, "<Task"):]), &action); err != nil {
+			t.Fatal(err)
+		}
+		if action.Command != taskPowerShell || strings.ContainsAny(action.Args, "%") {
+			t.Fatalf("literal path can be expanded: %q %q", action.Command, action.Args)
+		}
+		if binary, state, enabled := taskCommand(task); binary != paths[0] || state != paths[1] || !enabled {
+			t.Fatalf("lost literal paths: %q %q %v", binary, state, enabled)
+		}
+	}
+	for _, bad := range []string{taskEncodedPrefix + "!", taskEncodedPrefix + "YQ==", "-EncodedCommand "} {
+		if exe, args := decodeTaskArguments(bad); exe != "" || args != "" {
+			t.Fatal("malformed action accepted")
+		}
+	}
+	if _, err := renderTask("me", `C:\%PATH%\a-stack.exe`, "C:\\bad\nstate"); err == nil {
+		t.Fatal("encoding hid a control character")
+	}
+}
+
+func TestSchtasksReplacesUnescapedPercentAction(t *testing.T) {
+	f, exe, state := schtasksSetup(t)
+	state = filepath.Join(state, "%PATH%")
+	startTestService(t, state)
+	// A task written by an older a-stack, with correct but unsafe literal paths.
+	var command, args strings.Builder
+	_ = xml.EscapeText(&command, []byte(windowsArg(exe)))
+	_ = xml.EscapeText(&args, []byte("serve --state-dir "+windowsArg(state)))
+	f.task = `<Task><Settings><Enabled>true</Enabled></Settings><Actions><Exec><Command>` + command.String() + `</Command><Arguments>` + args.String() + `</Arguments></Exec></Actions></Task>`
+	out, _ := runService(t, 0, "install", "--state-dir", state)
+	if !strings.Contains(out, "Updated the Task Scheduler task") || !strings.Contains(f.task, taskEncodedPrefix) {
+		t.Fatal("unsafe old action kept", out)
+	}
+	f.calls = nil
+	out, _ = runService(t, 0, "install", "--state-dir", state)
+	if !strings.Contains(out, "Kept the Task Scheduler task") || len(f.calls) != 1 {
+		t.Fatal("encoded action was not idempotent", out, f.calls)
 	}
 }
 

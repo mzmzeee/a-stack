@@ -28,7 +28,7 @@ func fakeBinary(tag string) string {
 	return "#!/bin/sh\nif [ \"$1\" = skill ]; then echo \"$*\" >> \"$A_STACK_TEST_LOG\"; echo '{\"data\":{\"installed\":[\"/skills/a-stack\"]}}'; exit 0; fi\necho '{\"data\":{\"version\":\"" + tag + "\"}}'\n"
 }
 
-func tarGz(t *testing.T, files map[string]string) []byte {
+func tarGz(t testing.TB, files map[string]string) []byte {
 	t.Helper()
 	var buf bytes.Buffer
 	gz := gzip.NewWriter(&buf)

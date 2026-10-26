@@ -12,6 +12,48 @@ import (
 	"testing"
 )
 
+func TestPowerShellInstallerWarnsAboutShadowing(t *testing.T) {
+	source, err := os.ReadFile(filepath.Join("..", "..", "install.ps1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Load the real installer functions without downloading or changing PATH
+	// in the registry. The final Install-AStack invocation is the only code.
+	end := strings.LastIndex(string(source), "\nInstall-AStack")
+	if end < 0 {
+		t.Fatal("installer entry point not found")
+	}
+	dir := t.TempDir()
+	old, target := filepath.Join(dir, "old copy", "a-stack.exe"), filepath.Join(dir, "new %copy%", "a-stack.exe")
+	for _, path := range []string{old, target} {
+		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, nil, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, shell := range []string{"powershell", "pwsh"} {
+		t.Run(shell, func(t *testing.T) {
+			command, err := exec.LookPath(shell)
+			if err != nil {
+				t.Skip(err)
+			}
+			for _, shadowed := range []bool{true, false} {
+				path := filepath.Dir(target)
+				if shadowed {
+					path = filepath.Dir(old) + ";" + path
+				}
+				script := string(source[:end]) + "\n$env:Path = " + powershellLiteral(path) + "; Warn-AStackShadowing " + powershellLiteral(target)
+				out, err := exec.Command(command, "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
+				if err != nil || strings.Contains(string(out), "earlier on PATH") != shadowed || shadowed && (!strings.Contains(string(out), old) || !strings.Contains(string(out), target)) {
+					t.Fatalf("shadowed=%v: %v: %s", shadowed, err, out)
+				}
+			}
+		})
+	}
+}
+
 // Exercise the installer itself: a valid checksum must not let a broken
 // executable replace an existing installation. No PATH or service changes.
 func TestPowerShellInstallerRejectsBrokenDownload(t *testing.T) {
