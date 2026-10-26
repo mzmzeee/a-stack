@@ -114,6 +114,22 @@ When an Agent stops before its Task is done, for example at a usage limit or aft
 
 The brief is plain text in Markdown. `--json` prints the same as `{"data":{"task":...,"asker_name":...,"unfinished_prerequisites":[...],"assignees":[...],"mail":{"readable":true,"total":37,"messages":[...]},"standing_orders":{...}}}`, where `standing_orders` is left out when there are none. The command only reads, with the same reads as `task show`, `task dependencies`, `task assignees`, `mail read` and `session inspect`, so it changes nothing. Only assignees read Task mail: for anyone else, such as the Operator or an Orchestrator that is not assigned, the brief gives the number of messages and says that the credential cannot read them. Text from Agents keeps its line breaks; other control characters are replaced. The command needs no new service: it works with a v0.1.6 service too, which has no standing orders.
 
+## Export a Session
+
+`session export --markdown` writes a Session summary for a PR or a hand-over. The Operator and every registered Agent of the Session can run it, also after the Session closes:
+
+```sh
+a-stack session export --workspace "$workspace_id" --session "$session_id" \
+  --markdown --output session-summary.md
+# An Agent can use --as agent --credential-file PRIVATE_FILE instead of the IDs.
+```
+
+The summary gives the Session name and full Workspace folder, then the Tasks in dependency order: prerequisites before dependents. Each Task has its title, progress, assignees, result summary, report and Task mail count. It includes open Needs you questions and the latest question answered by the Operator for each Task, with the answer. Standing orders are included in full when there are some.
+
+Markdown is the default. `--output FILE` writes to a file instead of stdout, replacing an existing file only after the complete export is written. `--include-archived` includes archived Tasks; otherwise they are left out. `--json` writes the same data as `{"data":{"session_id":...,"name":...,"workspace_id":...,"workspace_path":...,"read_revision":...,"tasks":[...],"standing_orders":{...}}}`. Do not combine `--json` and `--markdown`.
+
+The command only reads through existing endpoints. It never requests or exports Task mail bodies, even for an assignee. It collects paged Tasks, dependencies, assignments and full Task details at one Session read revision. If the Session changes during collection, it returns `conflict` without writing stdout or replacing the output file; run it again. It exports current reports and results, not their history. Review the reports, answers, orders and local folder path before sharing the file.
+
 ## Text input and limits
 
 Instead of a text flag, you can give `--body TEXT` or `--body-file FILE`. They supply this field:
