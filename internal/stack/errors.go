@@ -180,7 +180,7 @@ func statusCode(e *Error) int {
 		return http.StatusForbidden
 	case "not_found":
 		return http.StatusNotFound
-	case "conflict", "operation_conflict", "session_closed":
+	case "conflict", "operation_conflict", "operation_expired", "session_closed":
 		return http.StatusConflict
 	case "rate_limited":
 		return http.StatusTooManyRequests

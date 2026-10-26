@@ -101,6 +101,7 @@ Always give `mail check` a cursor file in your private folder. The check saves i
 | `invalid_input` | 2 | A flag, ID or text is wrong. The message names it, and may suggest a close command or flag. Fix the command; use a new operation ID. |
 | `conflict` | 1 | The revision changed (`current_revision`, `current_progress`), or a question is already open (`current_question`). Read again, rethink, retry with a new operation ID. |
 | `operation_conflict` | 1 | This operation ID was already used for a different change. Use a new ID. |
+| `operation_expired` | 1 | This ID is older than 30 days. The change was not applied again, and its receipt is no longer available. Read the Task or retained history to establish the result before making any new change; blindly changing the ID could duplicate it. |
 | `forbidden` | 1 | You are not allowed, for example you are not an assignee of the Task or not the Orchestrator. |
 | `not_found` | 1 | The ID does not exist in your Session. |
 | `session_closed` | 1 | The Operator closed the Session. Reads still work. Wait or ask the Operator. |
@@ -109,7 +110,7 @@ Always give `mail check` a cursor file in your private folder. The check saves i
 | `rate_limited` | 1 | You stored too much text in a short time, for example in a loop. Wait `retry_after_seconds`, then retry the same command with the same operation ID. Check that you are not repeating a command by mistake. |
 | `storage_unavailable` | 1 | The service is not running, not reachable or failed, and `retryable` is `true`. Your change may have been made. Retry the same command with the same operation ID later. If the service stays down, ask the Operator to start it. Never start the service yourself. |
 
-If a response gets lost, send the same command again with the same operation ID and the same flags. You get the original receipt, and nothing changes twice.
+If a response gets lost, send the same command again with the same operation ID and the same flags. For 30 days you get the original receipt, and nothing changes twice. Older IDs return `operation_expired`, never another effect. Read the retained Task history or mail to establish what happened before making a new change.
 
 ## Orchestrator commands
 

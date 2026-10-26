@@ -46,7 +46,7 @@ func TestPopulatedV3MailUpgradeAndFailureRecovery(t *testing.T) {
 			ref := Context{workspace, session}
 			// Today's Task code counts mail and writes the v6 archive columns. Stand-ins
 			// let this v3 store write its Task and receipts; they are undone before the upgrade.
-			if _, err = db.Exec("CREATE TABLE mail_messages(task_id TEXT,sequence INTEGER,received_at TEXT); CREATE TABLE task_claims(task_id TEXT,path TEXT);" + migration6); err != nil {
+			if _, err = db.Exec("CREATE TABLE mail_messages(task_id TEXT,sequence INTEGER,received_at TEXT); CREATE TABLE task_claims(task_id TEXT,path TEXT); CREATE TABLE expired_operations(actor TEXT,operation_id TEXT,outcome TEXT);" + migration6); err != nil {
 				t.Fatal(err)
 			}
 			request := TaskCreateRequest{Context: ref, OperationID: "v3-retained-task", Title: "Retained v3 Task", Description: "Keep this report-independent body"}
@@ -58,7 +58,7 @@ func TestPopulatedV3MailUpgradeAndFailureRecovery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = db.Exec(undoMigration6 + dropExpires + "DROP TABLE mail_messages; DROP TABLE task_claims"); err != nil {
+			if _, err = db.Exec(undoMigration6 + dropExpires + "DROP TABLE mail_messages; DROP TABLE task_claims; DROP TABLE expired_operations"); err != nil {
 				t.Fatal(err)
 			}
 			if fail {

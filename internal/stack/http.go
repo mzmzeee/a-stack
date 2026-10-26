@@ -76,16 +76,18 @@ type Health struct {
 	Version       string `json:"version"`
 }
 type Service struct {
-	Store     *Store
-	Discovery Discovery
-	Version   string // running build, for health and the browser view; set before Serve
-	Notice    string // one line for stderr when the last port was taken, else empty
-	server    *http.Server
-	listener  net.Listener
-	lock      *stateLock
-	once      sync.Once
-	closeErr  error
-	notifier  *notifier
+	Store         *Store
+	Discovery     Discovery
+	Version       string // running build, for health and the browser view; set before Serve
+	Notice        string // one line for stderr when the last port was taken, else empty
+	server        *http.Server
+	listener      net.Listener
+	lock          *stateLock
+	once          sync.Once
+	closeErr      error
+	notifier      *notifier
+	receiptCancel context.CancelFunc
+	receiptDone   chan struct{}
 }
 
 // lastPortFile remembers the port of the last start without --listen, so that
@@ -194,6 +196,7 @@ func Start(ctx context.Context, dir, address string) (*Service, error) {
 		return nil, err
 	}
 	success = true
+	s.startReceiptExpiry()
 	return s, nil
 }
 func (s *Service) Serve() error {
@@ -218,6 +221,10 @@ func (s *Service) Close(ctx context.Context) error {
 			s.notifier.mu.Lock()
 			//lint:ignore SA2001 barrier: wait for an HTTP-initiated drain to finish before the database closes.
 			s.notifier.mu.Unlock()
+		}
+		if s.receiptCancel != nil {
+			s.receiptCancel()
+			<-s.receiptDone
 		}
 		if err := s.Store.db.Close(); err != nil {
 			s.closeErr = storageError(err)
