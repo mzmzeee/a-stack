@@ -32,6 +32,17 @@ scripts/check.sh
 
 It runs formatting, linters, vulnerability and secret scans, the tests with coverage, the race tests, the build and the quick validation run. It runs on Linux only; CI also builds, vets and tests a-stack on macOS and Windows. To check that the Windows code compiles on Linux, run `GOOS=windows CGO_ENABLED=0 go vet ./...`. [Quality checks](docs/quality.md) lists the tool versions and rule choices. After a change that can affect speed or storage, also run the full [validation runner](docs/validation.md) and the [stress test](docs/performance.md#run-it).
 
+### Parser fuzzing
+
+`scripts/check.sh` runs each parser fuzz target for 3 seconds with two workers. Ordinary `go test ./...` runs their seed corpora without fuzzing. To investigate for longer, run each target separately, for example:
+
+```sh
+go test ./internal/stack -run '^$' -fuzz '^FuzzMentionNames$' -fuzztime=2m -parallel=2
+go test ./cmd/a-stack -run '^$' -fuzz '^FuzzExtractZip$' -fuzztime=2m -parallel=2
+```
+
+The targets are `FuzzMentionNames`, `FuzzMailCursor` and `FuzzMailCheckCursor` in `internal/stack`, and `FuzzSplitFlags`, `FuzzExtractTarGz` and `FuzzExtractZip` in `cmd/a-stack`. They cover malformed text, quoting, duplicate flags, foreign and oversized cursors, damaged archives, unsafe paths and oversized archive entries. They do not execute CLI commands or write extracted files. If Go finds a failure, keep the regression input in the package's `testdata/fuzz/TARGET/` folder with the fix.
+
 ## Releasing
 
 Before you tag, move the Unreleased entries in `CHANGELOG.md` into a section for the new version. The release uses that section as its notes, and stops if it is missing.
