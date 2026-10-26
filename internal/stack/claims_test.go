@@ -162,6 +162,29 @@ func TestTaskClaimsCrossSessionAndWorkspace(t *testing.T) {
 	if err != nil || after.ReadRevision <= before.ReadRevision {
 		t.Fatal("other view not invalidated")
 	}
+	title := "Renamed claiming Task"
+	for i := range 2 {
+		before = after
+		renamed, err := s.ChangeTask(ctx, other.Token, "edit", TaskChangeRequest{Context: f.ref(1), TaskID: second.ResourceID, OperationID: opaqueID(), ExpectedRevision: result.Revision, Title: &title})
+		if err != nil {
+			t.Fatal(err)
+		}
+		result.Revision = renamed.Revision
+		after, err = s.InspectSession(ctx, f.a.Token, f.ref(0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if i == 0 && after.ReadRevision <= before.ReadRevision {
+			t.Fatal("other Session title changed but overlap view read revision stayed unchanged")
+		}
+		if i == 1 && after.ReadRevision != before.ReadRevision {
+			t.Fatal("unchanged title invalidated another Session")
+		}
+		warnings := f.show(t, id).ClaimWarnings
+		if len(warnings) != 1 || warnings[0].TaskID != second.ResourceID || warnings[0].Title != title {
+			t.Fatalf("renamed overlap warning: %+v", warnings)
+		}
+	}
 	// Another Workspace inside this same Store must not produce a warning.
 	workspace, err := s.CreateWorkspace(ctx, f.operator.Token, WorkspaceCreateRequest{OperationID: opaqueID(), Path: privateTestDir(t)})
 	if err != nil {
