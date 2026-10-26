@@ -151,6 +151,8 @@ The Agents tab shows one card per Agent, in a grid of columns at least 400px wid
 
 ### Task details
 
+The details show the Task's file claims and a warning when another open Task of the same Workspace claims an overlapping path. The warning names that Task and its Agents. Claims are read-only here, and they never lock files or prevent work. See [File claims](tasks.md#file-claims).
+
 The details of a Task start with a list of properties: Status, Agents, Ticket, Requires and Required by. Requires names the Task's prerequisites and Required by its dependents, each with its status icon, open Tasks first. A click on one opens its details. Then come the sections that have content, in this order: Needs you (highlighted), Answered, Latest report, Description, Reason, Result and File references. Answered shows the question you answered last, your answer and its time, from `answered_question` in `task show`. Empty sections and an empty Ticket are hidden. Task mail comes last. The footnote at the bottom says that viewing changes nothing and that only Send answers a question, and gives the read revision and the time of the report.
 
 ### Answer a question

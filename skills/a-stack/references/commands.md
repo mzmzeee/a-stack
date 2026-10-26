@@ -61,6 +61,12 @@ Instead of the text flag, give `--body-file FILE`, or `--body-file -` for stdin.
 
 a-stack rejects text that is too long. It never cuts it.
 
+## File claims
+
+Before editing shared files, run `me task claim --task T --path src --path docs/api.md --expected-revision R --operation-id 02-worker-claim-1`. Paths are literal files or folders relative to the Workspace root, not globs. Use `.` for the whole Workspace. Give at most 100 paths; a Task holds at most 100 claims. Read `data.warnings`: each overlap names the other Task, its paths and its current Agents. Coordinate in Task mail; claims warn but never block another Task. The receipt raises the Task revision, so use it as your next `R`.
+
+`me task claims --task T` returns current `claims` and `warnings`. `task show` carries `claims` and `claim_warnings`; `session inspect` carries its Tasks' claim metadata. `me task unclaim --task T --path src --expected-revision R --operation-id 02-worker-unclaim-1` releases paths. Any current assignee may change the Task's claims. Finishing or cancelling releases them all; reopening does not restore them. Claims in closed Sessions do not warn until the Session reopens. Warnings may name Tasks and Agents in other Sessions of the same Workspace, but carry no reports or mail.
+
 ## Task mail
 
 Only the current assignees of a Task can send or read its mail. Mail needs no revision.

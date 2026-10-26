@@ -139,6 +139,9 @@ func (s *Store) InspectSession(ctx context.Context, token string, ref Context) (
 		session.YourAgentID = p.SubjectID
 	}
 	session.StandingOrders, err = sessionOrders(ctx, tx, session.WorkspaceID)
+	if err == nil {
+		session.Claims, err = sessionClaims(ctx, tx, session.ID)
+	}
 	return session, err
 }
 

@@ -730,7 +730,7 @@ for(const [key,label]of Object.entries({status:'Status',owners:'Agents',ticket:'
   const row=el('div','detail-prop'),dd=el('dd');row.append(el('dt','',label),dd);props.append(row);propRows[key]=row;detailFields[key]=dd;
 }
 detailFields.status.append(detailStatus);
-for(const [key,label]of Object.entries({question:'Needs you',answered:'Answered',report:'Latest report',description:'Description',reason:'Reason',result:'Result',references:'File references'})){
+for(const [key,label]of Object.entries({question:'Needs you',answered:'Answered',report:'Latest report',description:'Description',reason:'Reason',result:'Result',claims:'File claims',claimWarnings:'Overlapping claims',references:'File references'})){
   const section=el('section','detail-section'),h=el('h3','',label),content=el('div','detail-text');section.append(h,content);section.hidden=true;body.append(section);detailFields[key]=content;
 }
 detailFields.question.parentElement.classList.add('detail-question');
@@ -829,7 +829,7 @@ dialog.append(top,body);
 dialog.addEventListener('close',()=>{detailEpoch++;state.selected=null;detailKey='';render();if(returnFocus?.isConnected&&!returnFocus.closest('[inert]')&&!returnFocus.closest('[hidden]'))returnFocus.focus();else $(state.view+'-tab').focus();});
 function setFocus(id) {state.focus=id;state.unlinked=false;if(!id)peekID=null;render();}
 $('archived').addEventListener('click',()=>{state.archived=!state.archived;save('a-stack-archived',state.archived?'1':'0');render();});
-function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){resetMail(id);resetAnswer(id);for(const name of ['description','report','reason','result','question','answered','references'])detailText(name,'');delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
+function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){resetMail(id);resetAnswer(id);for(const name of ['description','report','reason','result','question','answered','claims','claimWarnings','references'])detailText(name,'');delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
 const archiveReasons={command:'Archived with task archive.',chain:'Archived: every Task that depends on it is finished or cancelled.',age:'Archived: it ended more than 24 hours ago.'};
 function patchDetailMetadata(t) {
   setText(detailTitle,t.title);status(detailStatus,t);setText(detailArchive,t.archived?archiveReasons[t.archived_reason] || 'Archived.':'');detailArchive.hidden=!t.archived;
@@ -906,7 +906,7 @@ document.addEventListener('keydown',e=>{
 async function loadDetail() {
   const t=model.tasks.find(t=>t.id===state.selected);if(!t)return;
   patchDetailMetadata(t);
-  const key=t.id+':'+t.revision+':'+t.reference_count;
+  const key=t.id+':'+t.revision+':'+t.reference_count+':'+model.snapshot.session.read_revision;
   if(detailKey===key)return;detailKey=key;const epoch=++detailEpoch,revision=model.snapshot.session.read_revision;
   setText(detailLoading,'Loading current details…');
   try{
@@ -915,6 +915,8 @@ async function loadDetail() {
     for(const name of ['description','report','reason','result'])detailText(name,detail.data[name]);
     const q=detail.data.question;detailText('question',q?`${q.question}\nAsked by ${model.agents.find(a=>a.id===q.asker_id)?.name || q.asker_id} at ${new Date(q.asked_at).toLocaleString()}${q.note?'\n'+q.note:''}`:'');showAnswer(q,detail.data.answered_question);
     const a=detail.data.answered_question;detailText('answered',a?`${a.question}\nAnswer: ${a.answer}\nAnswered at ${new Date(a.resolved_at).toLocaleString()}`:'');
+    detailText('claims',(detail.data.claims || []).join('\n'));
+    detailText('claimWarnings',(detail.data.claim_warnings || []).map(w=>`Warning: overlaps ${w.title} (${w.task_id}) · Agents: ${w.agents.join(', ') || 'Unassigned'} · ${w.paths.join(', ')}`).join('\n'));
     const referencesKey=JSON.stringify(refs);
     if(detailFields.references.dataset.key!==t.id+referencesKey){detailFields.references.dataset.key=t.id+referencesKey;detailFields.references.replaceChildren(...refs.map(ref=>{const row=el('div','reference'),text=el('code','',ref.location+(ref.revision?' @ '+ref.revision:'')),copy=el('button','plain-button','Copy');copy.setAttribute('aria-label','Copy reference '+ref.location);copy.onclick=async()=>{try{await navigator.clipboard.writeText(ref.location);copy.textContent='Copied';}catch{copy.textContent='Select text to copy';}};row.append(text,copy);return row;}));
     }

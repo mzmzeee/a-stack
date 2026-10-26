@@ -31,13 +31,17 @@ type lifecycleFlags struct {
 	// afters has each --after: task create takes several prerequisites; the
 	// other commands take one cursor, after.
 	afters []string
+	paths  []string
 }
 
 func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.workspace, "workspace", "", "Workspace ID")
 	fs.StringVar(&f.session, "session", "", "Session ID")
 	fs.StringVar(&f.operationID, "operation-id", "", "Your ID for this change: 8–128 letters, digits, _ or -; reuse it to retry")
-	fs.StringVar(&f.path, "path", "", "Absolute project folder")
+	fs.Func("path", "Absolute project folder; task claim/unclaim: relative file or folder, repeatable", func(value string) error {
+		f.path, f.paths = value, append(f.paths, value)
+		return nil
+	})
 	fs.StringVar(&f.name, "name", "", "Session or Agent name")
 	fs.StringVar(&f.agent, "agent", "", "Agent ID, or its name in the Session")
 	fs.StringVar(&f.worktree, "worktree", "", "Absolute working folder of the Agent")

@@ -13,7 +13,7 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-var taskCommands = []string{"task create", "task list", "task show", "task edit", "task assign", "task unassign", "task status", "task reopen", "task archive", "task unarchive", "task report", "task history", "task assignees", "task references", "task dependencies", "task handoff", "task attention set", "task attention resolve", "task reference add", "task reference remove", "dependency add", "dependency remove", "dependency history", "session snapshot", "session page", "answer"}
+var taskCommands = []string{"task claim", "task unclaim", "task claims", "task create", "task list", "task show", "task edit", "task assign", "task unassign", "task status", "task reopen", "task archive", "task unarchive", "task report", "task history", "task assignees", "task references", "task dependencies", "task handoff", "task attention set", "task attention resolve", "task reference add", "task reference remove", "dependency add", "dependency remove", "dependency history", "session snapshot", "session page", "answer"}
 
 func isTaskCommand(command string) bool {
 	for _, c := range taskCommands {
@@ -64,8 +64,10 @@ func taskAllowedFlags(command string) string {
 		return "operation-id title description body body-file ticket after assign"
 	case "task list":
 		return "limit after read-revision"
-	case "task show":
+	case "task show", "task claims":
 		return "task read-revision"
+	case "task claim", "task unclaim":
+		return "task operation-id expected-revision path"
 	case "task handoff":
 		return "task limit"
 	case "task history", "task assignees", "task references", "task dependencies":
@@ -183,7 +185,9 @@ func taskRequest(ctx context.Context, client *stack.Client, command string, l li
 	switch command {
 	case "task create":
 		body = stack.TaskCreateRequest{Context: ref, OperationID: l.operationID, Title: f.title, Description: f.description, TicketRef: f.ticket, PrerequisiteIDs: l.afters, AgentIDs: f.assign}
-	case "task show":
+	case "task claim", "task unclaim":
+		body = stack.ClaimRequest{Context: ref, OperationID: l.operationID, TaskID: f.task, ExpectedRevision: l.revision, Paths: l.paths}
+	case "task show", "task claims":
 		body = stack.TaskReadRequest{Context: ref, TaskID: f.task, ReadRevision: f.readRevision}
 	case "task list", "task history", "task assignees", "task references", "task dependencies", "session page", "dependency history":
 		kind := f.pageKind

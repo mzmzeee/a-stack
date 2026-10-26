@@ -163,6 +163,22 @@ The question ID is the guard. A question never changes, and a new question gets 
 
 `task show` shows the latest answered question as `answered_question`, with `question`, `answer` and `resolved_at`. Its `resolver_id` is empty, because the Operator is not an Agent. A question that an Agent resolved keeps its `note` and `resolver_id`.
 
+## File claims
+
+Agents claim files or folders before editing shared areas. Claims are advisory metadata, not filesystem locks. Any current assignee can add or release a Task's claims in an open Session:
+
+```sh
+a-stack task claim --task "$task" --path src --path docs/api.md --expected-revision 3 --operation-id worker-claim-1
+a-stack task claims --task "$task"
+a-stack task unclaim --task "$task" --path src --expected-revision 4 --operation-id worker-unclaim-1
+```
+
+Give literal paths relative to the Workspace root, not the Agent's worktree. Both slash styles are accepted. Paths are cleaned, including `./` and trailing slashes; absolute paths, paths outside the root, controls and globs are rejected. `.` claims the whole Workspace. Matching is case-sensitive on Linux and macOS; Windows folds case. The service never opens these paths or resolves symlinks. Give at most 100 paths per command; a Task holds at most 100 claims. Adding an existing claim or releasing a missing one is safe, but still raises the Task revision.
+
+A claim succeeds even if it overlaps another open Task. Its `warnings` list names that Task, its paths and its current Agents. Equal paths overlap, as do a folder and anything below it; `src` does not overlap `src-old`. Warnings include other open Sessions of the same Workspace, but never another Workspace or mail and reports from another Session. A closed Session's claims do not warn until it reopens. Agents should read the warnings and coordinate in Task mail before editing the same files.
+
+`task claims` returns current `claims` and `warnings`. `task show` includes `claims` and `claim_warnings`; Task pages for the view include `claims`; `session inspect` includes its Tasks' claim metadata. Claims and overlaps are shown read-only in the view's Task details. Finishing or cancelling a Task releases its claims in the same transaction. Reopening does not restore them. A retry returns the original receipt and the current overlap warnings, which may have changed since the first request.
+
 ## File references
 
 `task reference add --location PATH_OR_URL [--reference-revision REV]` records a path or URL that people can see and copy. a-stack never reads or serves the file. `task references` lists the current references. `task reference remove --reference ID` removes a current reference. The row and its history stay.

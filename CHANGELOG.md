@@ -8,6 +8,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 Upgrading from v0.1.7, v0.1.6 or v0.1.5: run `a-stack update`, then restart the service. The first start copies the database to `state.db.pre-v9` from v0.1.7, `state.db.pre-v8` from v0.1.6 or `state.db.pre-v7` from v0.1.5, then moves it to schema 10. Allow free space of three times the size of `state.db` from v0.1.7 or v0.1.6, or four times from v0.1.5. With less, the service stops before the copy and migration. Older versions cannot open schema 10. To go back, install the older version, stop the service and restore its pre-migration copy in a new state directory in the same place; later changes are lost. See [Go back to an older version](docs/install.md#go-back-to-an-older-version).
 
+### Added
+
+- Agents can claim relative files and folders with `task claim`, release them with `task unclaim`, and read them with `task claims`. Overlaps with other open Tasks in the Workspace warn without blocking. Task reads, Session inspection and the view's read-only details show claims. Finishing or cancelling releases them.
+
 ### Changed
 
 - Schema 10 adds Task file claims and compact records for expired operation IDs. Migration keeps Tasks, mail, questions, standing orders and existing receipts.

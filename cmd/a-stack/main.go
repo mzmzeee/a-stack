@@ -142,7 +142,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 			}
 			value = args[i]
 		}
-		if given[name] && name != "mention" && name != "after" && name != "assign" {
+		if given[name] && name != "mention" && name != "after" && name != "assign" && name != "path" {
 			return invalid("--" + name + " is given more than once")
 		}
 		repeated = repeated || given[name] && name == "after"
@@ -186,6 +186,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 	if err := validateCommandFlags(cmd, seen); err != nil {
 		return err
+	}
+	if len(lifecycle.paths) > 1 && cmd != "task claim" && cmd != "task unclaim" {
+		return invalid("--path is given more than once")
 	}
 	if repeated && cmd != "task create" {
 		return invalid("--after is given more than once")

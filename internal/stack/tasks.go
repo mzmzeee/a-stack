@@ -51,33 +51,34 @@ const MaxTaskNoteBytes = 2048
 // LastMailAt is the time of the latest Task mail. Quiet marks a Working Task with no change and no Task mail
 // for QuietAfter that does not wait for the Operator's answer (see QuietAt).
 type Task struct {
-	ReportPreview                                   string `json:"report_preview,omitempty"`
-	QuestionPreview                                 string `json:"question_preview,omitempty"`
-	LastAction                                      string `json:"last_action,omitempty"`
-	MailCount                                       int64  `json:"mail_count"`
-	LastMailAt                                      string `json:"last_mail_at,omitempty"`
-	Quiet                                           bool   `json:"quiet"`
-	Archived                                        bool   `json:"archived"`
-	ArchivedReason                                  string `json:"archived_reason,omitempty"`
-	ArchivedAt                                      string `json:"archived_at,omitempty"`
-	EndedAt                                         string `json:"ended_at,omitempty"`
-	ID                                              string `json:"id"`
-	SessionID                                       string `json:"session_id"`
-	Title                                           string `json:"title"`
-	TicketRef                                       string `json:"ticket_ref,omitempty"`
-	Progress                                        string `json:"progress"`
-	Revision                                        int64  `json:"revision"`
-	AssigneeCount                                   int    `json:"assignee_count"`
-	Unassigned                                      bool   `json:"unassigned"`
-	NeedsYou                                        bool   `json:"needs_you"`
-	ReferenceCount                                  int    `json:"reference_count"`
-	PrerequisiteCount                               int    `json:"prerequisite_count"`
-	CancelledPrerequisiteCount                      int    `json:"cancelled_prerequisite_count"`
-	CreatedBy                                       string `json:"created_by"`
-	UpdatedBy                                       string `json:"updated_by"`
-	CreatedAt                                       string `json:"created_at"`
-	UpdatedAt                                       string `json:"updated_at"`
-	ReportAt                                        string `json:"report_at,omitempty"`
+	Claims                                          []string `json:"claims"`
+	ReportPreview                                   string   `json:"report_preview,omitempty"`
+	QuestionPreview                                 string   `json:"question_preview,omitempty"`
+	LastAction                                      string   `json:"last_action,omitempty"`
+	MailCount                                       int64    `json:"mail_count"`
+	LastMailAt                                      string   `json:"last_mail_at,omitempty"`
+	Quiet                                           bool     `json:"quiet"`
+	Archived                                        bool     `json:"archived"`
+	ArchivedReason                                  string   `json:"archived_reason,omitempty"`
+	ArchivedAt                                      string   `json:"archived_at,omitempty"`
+	EndedAt                                         string   `json:"ended_at,omitempty"`
+	ID                                              string   `json:"id"`
+	SessionID                                       string   `json:"session_id"`
+	Title                                           string   `json:"title"`
+	TicketRef                                       string   `json:"ticket_ref,omitempty"`
+	Progress                                        string   `json:"progress"`
+	Revision                                        int64    `json:"revision"`
+	AssigneeCount                                   int      `json:"assignee_count"`
+	Unassigned                                      bool     `json:"unassigned"`
+	NeedsYou                                        bool     `json:"needs_you"`
+	ReferenceCount                                  int      `json:"reference_count"`
+	PrerequisiteCount                               int      `json:"prerequisite_count"`
+	CancelledPrerequisiteCount                      int      `json:"cancelled_prerequisite_count"`
+	CreatedBy                                       string   `json:"created_by"`
+	UpdatedBy                                       string   `json:"updated_by"`
+	CreatedAt                                       string   `json:"created_at"`
+	UpdatedAt                                       string   `json:"updated_at"`
+	ReportAt                                        string   `json:"report_at,omitempty"`
 	descriptionRef, reportRef, reasonRef, resultRef string
 	chainDone                                       bool
 }
@@ -95,6 +96,7 @@ type Question struct {
 	ResolvedAt string `json:"resolved_at,omitempty"`
 }
 type TaskDetail struct {
+	ClaimWarnings []ClaimWarning `json:"claim_warnings"`
 	Task
 	ReadRevision int64     `json:"read_revision"`
 	Description  string    `json:"description"`
@@ -141,6 +143,7 @@ type TaskChangeRequest struct {
 	ReferenceID       string  `json:"reference_id,omitempty"`
 }
 type TaskChange struct {
+	Paths       []string `json:"paths,omitempty"`
 	Title       *string  `json:"title,omitempty"`
 	TicketRef   *string  `json:"ticket_ref,omitempty"`
 	TextIDs     []string `json:"text_ids,omitempty"`
@@ -189,7 +192,7 @@ type DependencyRequest struct {
 // out of one reached Task, instead of scanning every edge of the Session.
 const cycleCheckSQL = `WITH RECURSIVE reachable(id) AS (SELECT ? UNION SELECT d.dependent_id FROM reachable p CROSS JOIN dependencies d WHERE d.session_id=? AND d.prerequisite_id=p.id) SELECT count(*) FROM reachable WHERE id=?`
 
-const taskColumns = `t.id,t.session_id,t.title,t.ticket_ref,t.progress,t.revision,t.created_by,t.updated_by,t.created_at,t.updated_at,t.report_at,COALESCE(t.description_ref,''),COALESCE(t.report_ref,''),COALESCE(t.reason_ref,''),COALESCE(t.result_ref,''),
+const taskColumns = `COALESCE((SELECT json_group_array(path) FROM (SELECT path FROM task_claims WHERE task_id=t.id ORDER BY path)),'[]'),t.id,t.session_id,t.title,t.ticket_ref,t.progress,t.revision,t.created_by,t.updated_by,t.created_at,t.updated_at,t.report_at,COALESCE(t.description_ref,''),COALESCE(t.report_ref,''),COALESCE(t.reason_ref,''),COALESCE(t.result_ref,''),
  (SELECT count(*) FROM task_assignees a WHERE a.task_id=t.id),EXISTS(SELECT 1 FROM task_questions q WHERE q.task_id=t.id AND q.resolved_at IS NULL),
  (SELECT count(*) FROM task_references r WHERE r.task_id=t.id AND r.removed_at IS NULL),
  (SELECT count(*) FROM dependencies d WHERE d.session_id=t.session_id AND d.dependent_id=t.id),
@@ -211,7 +214,11 @@ const taskByID = "SELECT " + taskColumns + " FROM tasks t WHERE t.id=? AND t.ses
 
 func scanTask(row interface{ Scan(...any) error }) (Task, error) {
 	var t Task
-	err := row.Scan(&t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction, &t.MailCount, &t.LastMailAt, &t.ArchivedAt, &t.EndedAt, &t.chainDone)
+	var claims string
+	err := row.Scan(&claims, &t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction, &t.MailCount, &t.LastMailAt, &t.ArchivedAt, &t.EndedAt, &t.chainDone)
+	if err == nil {
+		err = json.Unmarshal([]byte(claims), &t.Claims)
+	}
 	t.Unassigned = t.AssigneeCount == 0
 	at := clockNow()
 	deriveArchive(&t, at)
@@ -668,6 +675,9 @@ func (e *taskEdit) assignment() error {
 		return err
 	}
 	e.change.AgentID = r.AgentID
+	if len(e.task.Claims) > 0 {
+		return bumpWorkspaceClaims(ctx, tx, r.WorkspaceID)
+	}
 	return nil
 }
 func (e *taskEdit) status() error {
@@ -708,6 +718,17 @@ func (e *taskEdit) status() error {
 	e.change.Progress = r.Progress
 	if r.Progress == "finished" || r.Progress == "cancelled" {
 		task.EndedAt = now()
+		result, removeErr := e.tx.ExecContext(e.ctx, "DELETE FROM task_claims WHERE task_id=?", task.ID)
+		if removeErr != nil {
+			return removeErr
+		}
+		if count, countErr := result.RowsAffected(); countErr != nil {
+			return countErr
+		} else if count > 0 {
+			if err := bumpWorkspaceClaims(e.ctx, e.tx, r.WorkspaceID); err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
