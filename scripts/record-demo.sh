@@ -68,9 +68,10 @@ GIF_COLORS=64 GIF_LOSSY=40
 # The terminal: 100 columns fit most commands on one line, 8 rows fit the
 # picker.
 TERM_COLS=100 TERM_ROWS=8
-# The browser shows 1200x600 CSS pixels at 0.8 in the GIF. It renders at 1.6x,
+# Stay above the 600px short-window layout so the footer and minimap fit.
+# The browser shows 1280x640 CSS pixels at 0.75 in the GIF. It renders at 1.6x,
 # so the text stays sharp when the overlay zooms in.
-VIEW_CSS_WIDTH=1200 VIEW_CSS_HEIGHT=600 VIEW_DEVICE_SCALE=1.6
+VIEW_CSS_WIDTH=1280 VIEW_CSS_HEIGHT=640 VIEW_DEVICE_SCALE=1.6
 # How far the overlay zooms in on a card.
 ZOOM=1.5
 
@@ -147,9 +148,8 @@ trap 'exit 143' TERM
 step "build a-stack"
 mkdir -p "$work_dir/bin" "$cred_dir" "$demo_home/.local/state/a-stack" "$demo_home/code/oauth-app"
 bin="$work_dir/bin/a-stack"
-# The footer of the view shows this version: the latest release tag, not the
-# development build in between.
-GOCACHE="$build_cache" go build -ldflags "-X main.version=$(git describe --tags --abbrev=0)" -o "$bin" ./cmd/a-stack
+# Override the latest release tag when recording before the next tag exists.
+GOCACHE="$build_cache" go build -ldflags "-X main.version=${DEMO_VERSION:-$(git describe --tags --abbrev=0)}" -o "$bin" ./cmd/a-stack
 
 # a-stack new and a-stack -r call xdg-open with the view URL. In the demo this
 # stand-in shows the URL in the recording browser instead.
@@ -490,8 +490,13 @@ overlay "$(scene_field 1 2)"
 appoint 01-orchestrator
 for name in 02-backend 03-frontend 04-reviewer; do register "$name"; done
 poll
-callout "$(element h1)" 'Your Session, live in the browser'
-hold
+callout "$(element '[data-bar=session]')" 'Collapse the header; press again to show it' below
+sleep 2.25
+click "$(element '[data-bar=session]')"
+wait_for "document.getElementById('session-content').hidden"
+sleep 2.25
+click "$(element '[data-bar=session]')"
+wait_for "!document.getElementById('session-content').hidden"
 
 scene 2 # The Orchestrator plans Tasks.
 new_task app 'Register the OAuth app' AUTH-1 'Create the provider app; load its client ID and secret from config.'
@@ -532,13 +537,16 @@ wait_graph rec 4 3
 zoom "$(card token)" 1.25
 callout "$(card token)" 'Curved lines show which Task waits for which' below
 hold
-click "$(card ui)"
-wait_for "document.getElementById('task-dialog').open"
+rec focus "#graph-panel [data-open-task='${task_id[ui]}']" >/dev/null
+rec press Space >/dev/null
+wait_for "!document.getElementById('peek').hidden"
 beat
-js "demo.escape()"
-callout "$(card ui)" 'A click lights up its lines and fades the rest'
+rec press Escape >/dev/null
+rec press l >/dev/null
+wait_for "document.activeElement.dataset.openTask === $(json "${task_id[token]}")"
+callout "$(card token)" 'l follows the link to the next Task' below
 hold
-js "demo.escape()"
+rec press Escape >/dev/null
 beat
 
 scene 5 # Agents talk in Task mail.
@@ -731,7 +739,7 @@ hold
 shot click '#graph-tab' >/dev/null
 shot wait --fn "document.querySelectorAll('#graph-panel .task-card').length > 40" >/dev/null
 shot eval "document.getElementById('zoom-reset').click();for(let i=0;i<5;i++)document.getElementById('zoom-out').click()" >/dev/null
-shot eval "[...document.querySelectorAll('#graph-panel .task-title')].find(n=>n.textContent==='Pipeline 2: step 7').closest('.task-unit').scrollIntoView({block:'center',inline:'center'})" >/dev/null
+shot eval "[...document.querySelectorAll('#graph-panel .task-title')].find(n=>n.textContent==='Pipeline 2: step 7').closest('.task-unit').scrollIntoView({block:'center',inline:'center'}); window.scrollTo(0,0)" >/dev/null
 shot wait --fn "!document.getElementById('minimap').hidden && parseInt(document.getElementById('zoom-reset').textContent) === 40" >/dev/null
 screenshot graph-overview.png
 js "document.getElementById('zoom-out').click();document.getElementById('zoom-out').click()"
