@@ -9,6 +9,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 ### Added
 
 - Tab completion for bash, zsh, fish and PowerShell, from the CLI's help and flag tables: commands, flags, fixed values and paths. `a-stack completion install` detects the shell and writes its per-user script; `uninstall` removes it. PowerShell prints a profile line without editing the profile. Homebrew installs the scripts; Scoop and the install script show a setup hint. See [Tab completion](docs/install.md#tab-completion).
+- `a-stack session export --markdown` writes a Session summary for a PR or a hand-over: the Workspace folder, Tasks in dependency order with assignees, results and reports, open Needs you questions, the latest Operator answers and standing orders. Task mail is count-only; bodies are never read or exported. The Operator and Session Agents can use it, with `--output FILE`, `--include-archived` and `--json`. It uses existing reads and changes no data. See [Export a Session](docs/tasks.md#export-a-session).
 
 ## [0.1.7] - 2026-10-26
 
