@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mzmzeee/a-stack/skills"
 )
 
 // Opt in only: this creates and removes one transient, differently named
@@ -43,6 +45,15 @@ func TestUpdateDisposableSystemd(t *testing.T) {
 	for _, name := range []string{"XDG_STATE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"} {
 		t.Setenv(name, t.TempDir())
 	}
+	folders, err := skillFolders(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skillFile := filepath.Join(folders[0], "SKILL.md")
+	oldSkill, err := os.ReadFile(filepath.Join(filepath.Dir(source), "testdata", "refresh", "skill-v0.1.4.md"))
+	if err != nil || os.MkdirAll(folders[0], 0o700) != nil || os.WriteFile(skillFile, oldSkill, 0o644) != nil {
+		t.Fatal("old installed skill fixture", err)
+	}
 	state := filepath.Join(t.TempDir(), "state")
 	unit := fmt.Sprintf("a-stack-update-test-%d", time.Now().UnixNano())
 	t.Setenv("A_STACK_SERVICE_UNIT", unit)
@@ -70,8 +81,12 @@ func TestUpdateDisposableSystemd(t *testing.T) {
 		t.Fatalf("before: %v %v", h, err)
 	}
 	out, _ := runUpdate(t, 0)
-	if !strings.Contains(out, "Restarted the service; it runs v0.2.0") {
+	if !strings.Contains(out, "Restarted the service; it runs v0.2.0") || !strings.Contains(out, "Refreshed "+skillFile) {
 		t.Fatal(out)
+	}
+	currentSkill, _ := skills.FS.ReadFile("a-stack/SKILL.md")
+	if got, err := os.ReadFile(skillFile); err != nil || string(got) != string(currentSkill) {
+		t.Fatal("replacement binary did not refresh the skill", err)
 	}
 	h, _, err = health(state)
 	if err != nil || h.Version != "v0.2.0" {

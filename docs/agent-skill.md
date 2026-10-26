@@ -16,7 +16,7 @@ This is the recommended way. The `a-stack` binary carries the skill of its own v
 
 Releases up to v0.1.3 do not have `skill install`; update a-stack first or use one of the ways below.
 
-The command replaces an older copy of the a-stack skill whole, so no removed files stay behind. It does not touch other skills. `a-stack update` updates the copies that exist. `skill install --refresh` does the same and writes no new copies. `a-stack skill uninstall` removes the copies, and takes `--project` too.
+An explicit `skill install` replaces an older copy of the a-stack skill whole, so no removed files stay behind. It does not touch other skills. `a-stack update` safely refreshes existing files in the home folder and the current project: only files that match a known released version are replaced. Edited, foreign, linked and missing files, and extra user files, stay untouched. `skill install --refresh` does the same for skill files, and takes `--project`; it prints one line per changed file. Use `a-stack update --no-refresh` to skip automatic refresh, or `a-stack update --refresh` in another project folder to refresh its copies without downloading a binary. `a-stack skill uninstall` removes the copies, and takes `--project` too.
 
 You can also use the [`skills`](https://github.com/vercel-labs/skills) CLI, which knows where many agents look for skills. It needs Node.js:
 

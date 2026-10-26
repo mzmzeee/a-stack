@@ -16,7 +16,10 @@ import (
 // skillHome gives the test an empty home folder and no CLAUDE_CONFIG_DIR.
 func skillHome(t *testing.T) string {
 	t.Helper()
-	home := t.TempDir()
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home) // the home folder on Windows
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
@@ -174,17 +177,22 @@ func TestSkillInstallProjectAndJSON(t *testing.T) {
 func TestSkillInstallRefreshWritesOnlyExistingCopies(t *testing.T) {
 	home := skillHome(t)
 	claude := filepath.Join(home, ".claude", "skills", "a-stack")
-	if out := runSkill(t, "skill", "install", "--refresh"); !strings.HasPrefix(out, "The a-stack skill is not installed in ") {
+	if out := runSkill(t, "skill", "install", "--refresh"); out != "No unchanged older a-stack skill files to refresh.\n" {
 		t.Fatalf("output %q", out)
 	}
-	if err := os.MkdirAll(filepath.Join(claude, "old"), 0o700); err != nil {
+	if err := os.MkdirAll(claude, 0o700); err != nil {
 		t.Fatal(err)
+	}
+	old, err := os.ReadFile("testdata/refresh/skill-v0.1.4.md")
+	if err != nil || os.WriteFile(filepath.Join(claude, "SKILL.md"), old, 0o644) != nil {
+		t.Fatal("older skill fixture", err)
 	}
 	var refreshed struct{ Data struct{ Installed []string } }
 	if out := runSkill(t, "skill", "install", "--refresh", "--json"); json.Unmarshal([]byte(out), &refreshed) != nil || !reflect.DeepEqual(refreshed.Data.Installed, []string{claude}) {
 		t.Fatalf("output %q", out)
 	}
-	checkInstalled(t, claude)
+	current, _ := skills.FS.ReadFile("a-stack/SKILL.md")
+	checkFile(t, filepath.Join(claude, "SKILL.md"), string(current))
 	if _, err := os.Stat(filepath.Join(home, ".agents")); !os.IsNotExist(err) {
 		t.Fatalf("--refresh wrote a new copy: %v", err)
 	}
