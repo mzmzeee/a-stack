@@ -58,23 +58,8 @@ func mustBase64(s string) []byte {
 // releaseTag is a release version as the release workflow builds it.
 var releaseTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$`)
 
-// Tests replace these.
-var (
-	executable = os.Executable
-	// serviceRuns reports whether the service manager runs exe as the a-stack
-	// service, so that an update of exe needs a restart of the service.
-	// Another a-stack service, such as one of another home folder or one
-	// that runs another binary, is none of its business.
-	serviceRuns = func(exe string) bool {
-		binary, running := serviceProgram()
-		if !running {
-			return false
-		}
-		a, err := os.Stat(binary)
-		b, errB := os.Stat(exe)
-		return err == nil && errB == nil && os.SameFile(a, b)
-	}
-)
+// Tests replace this.
+var executable = os.Executable
 
 // updateSystems are the systems with release archives.
 var updateSystems = []string{"linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64", "windows/amd64", "windows/arm64"}
@@ -390,7 +375,7 @@ func runVersion(binary string) (string, error) {
 	return result.Data.Version, nil
 }
 
-func updateCommand(release versionFlag, check, machine bool, stdout, stderr io.Writer) error {
+func updateCommand(release versionFlag, check, noRestart, noRefresh, machine bool, stdout, stderr io.Writer) error {
 	target := release.value
 	if !slices.Contains(updateSystems, runtime.GOOS+"/"+runtime.GOARCH) {
 		return invalid("a-stack update supports Linux, macOS and Windows on amd64 and arm64 only")
@@ -404,6 +389,9 @@ func updateCommand(release versionFlag, check, machine bool, stdout, stderr io.W
 	current := buildVersion()
 	r := newReleases()
 	write := func(data map[string]any, lines ...string) error {
+		if _, ok := data["restarted"]; !ok {
+			data["restarted"], data["service_version"] = false, ""
+		}
 		if machine {
 			return json.NewEncoder(stdout).Encode(map[string]any{"data": data})
 		}
@@ -509,22 +497,33 @@ func updateCommand(release versionFlag, check, machine bool, stdout, stderr io.W
 	}
 	data["warnings"] = warnings
 	lines = append(lines, warnings...)
-	refreshed, ok := refreshSkills(exe)
-	if !ok {
-		lines = append(lines, "a-stack "+target+" cannot update the agent skill; the copies stay as they are.")
-	} else if len(refreshed) > 0 {
-		lines = append(lines, "Updated the a-stack skill in:")
-		for _, folder := range refreshed {
-			lines = append(lines, "  "+folder)
+	folders, files := []string{}, []string{}
+	if !noRefresh {
+		var ok bool
+		folders, files, ok = refreshInstalls(exe)
+		if !ok {
+			warning := "Warning: a-stack " + target + " could not safely refresh the installed skill and Pi/OpenCode files; run a-stack update --refresh with a version that supports it."
+			warnings = append(warnings, warning)
+			data["warnings"] = warnings
+			lines = append(lines, warning)
+		}
+		for _, file := range files {
+			lines = append(lines, "Refreshed "+file)
 		}
 	}
-	data["skills"] = refreshed
-	hint := "If a-stack serve is running, stop it with Ctrl-C and run a-stack serve again."
-	if serviceRuns(exe) {
-		hint = "Restart the service: " + stack.ServiceCommand("restart")
+	data["skills"], data["refreshed_files"] = folders, files
+	data["restarted"], data["service_version"] = false, ""
+	if !machine {
+		if err := write(data, lines...); err != nil {
+			return err
+		}
+		lines = nil
 	}
-	data["restart_hint"] = hint
-	return write(data, append(lines, hint, "Then run a-stack to open the view.")...)
+	result, err := restartUpdatedService(target, noRestart, machine, stdout, data)
+	if err != nil {
+		return err
+	}
+	return write(data, append(lines, result, "Then run a-stack to open the view.")...)
 }
 
 // replaceBinary renames the new binary tmp over exe. Windows cannot replace
@@ -582,34 +581,20 @@ func syncDir(dir string) error {
 	return f.Sync()
 }
 
-// refreshSkills runs the new binary's skill install --refresh for the user
-// and the project skill copies that exist, so they match the new version.
-// It creates no skill folders. ok is false when the new binary cannot do it.
-func refreshSkills(exe string) (refreshed []string, ok bool) {
-	refreshed = []string{}
-	for _, project := range []bool{false, true} {
-		folders, err := skillFolders(project)
-		if err != nil || !slices.ContainsFunc(folders, func(f string) bool { _, err := os.Lstat(f); return err == nil }) {
-			continue
-		}
-		args := []string{"skill", "install", "--refresh", "--json"}
-		if project {
-			args = append(args, "--project")
-		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		out, err := exec.CommandContext(ctx, exe, args...).Output()
-		cancel()
-		var result struct {
-			Data struct{ Installed []string } `json:"data"`
-		}
-		if err != nil || json.Unmarshal(out, &result) != nil {
-			return refreshed, false
-		}
-		for _, folder := range result.Data.Installed {
-			if !slices.Contains(refreshed, folder) {
-				refreshed = append(refreshed, folder)
-			}
-		}
+// refreshInstalls asks the replacement binary for its embedded files. The
+// distinct command fails safely on old versions without guarded refresh.
+func refreshInstalls(exe string) (folders, files []string, ok bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, exe, "update", "--refresh", "--json").Output()
+	var result struct {
+		Data struct {
+			Skills []string `json:"skills"`
+			Files  []string `json:"refreshed_files"`
+		} `json:"data"`
 	}
-	return refreshed, true
+	if json.Unmarshal(out, &result) != nil || result.Data.Skills == nil || result.Data.Files == nil {
+		return []string{}, []string{}, false
+	}
+	return result.Data.Skills, result.Data.Files, err == nil
 }

@@ -88,7 +88,7 @@ scoop bucket add mzmzeee https://github.com/mzmzeee/scoop-bucket
 scoop install mzmzeee/a-stack
 ```
 
-To update, run `a-stack update` and restart the service. If you installed with Homebrew or Scoop, update with `brew upgrade` or `scoop update a-stack` instead. See [Update](docs/install.md#update).
+To update, run `a-stack update`; it refreshes unchanged skill and hook files, restarts a running installed service and checks its version. If you installed with Homebrew or Scoop, update with `brew upgrade` or `scoop update a-stack` instead. See [Update](docs/install.md#update).
 
 To start a-stack at login and restart it after a crash, run `a-stack service install`. It uses systemd on Linux, launchd on macOS and Task Scheduler on Windows. See [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
 

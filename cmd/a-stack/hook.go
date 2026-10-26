@@ -533,7 +533,14 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 	var client *stack.Client
 	connect := func() error {
 		if client == nil {
-			client, err = stack.NewClient(id.state, id.credential, stack.AgentCapability)
+			state := id.state
+			if state == "" {
+				state, err = stack.DefaultStateDir()
+				if err != nil {
+					return err
+				}
+			}
+			client, err = stack.NewClient(state, id.credential, stack.AgentCapability)
 		}
 		return err
 	}

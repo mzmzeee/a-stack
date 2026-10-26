@@ -253,6 +253,14 @@ func queryTask(name string) (content string, ok bool) {
 	return out, err == nil && strings.Contains(out, "<Task")
 }
 
+// taskRunning uses the numeric Task Scheduler state, not the localized
+// status text from schtasks. A stopped installed task must not be started
+// by update.
+func taskRunning(name string) bool {
+	out, err := runCommand("powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "[int](Get-ScheduledTask -TaskName '"+name+"').State")
+	return err == nil && strings.TrimSpace(out) == "4"
+}
+
 // schtasksCommand runs service install, uninstall or status with Task
 // Scheduler.
 func schtasksCommand(command, name, state string, data map[string]any) ([]string, error) {

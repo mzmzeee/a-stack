@@ -53,6 +53,45 @@ func TestCLILegacyCredentialFileGetsItsContextFromTheService(t *testing.T) {
 	}
 }
 
+// Without --state-dir, hook install must discover the default-state service
+// too. Older files always need that lookup; modern files need it for the name.
+func TestHookInstallDefaultStateContextLookup(t *testing.T) {
+	for _, legacy := range []bool{true, false} {
+		t.Run(map[bool]string{true: "legacy", false: "modern"}[legacy], func(t *testing.T) {
+			f := newTeam(t)
+			home := hookHome(t)
+			withShims(t, true)
+			t.Setenv("XDG_STATE_HOME", t.TempDir())
+			state, err := stack.DefaultStateDir()
+			if err != nil || stack.MkdirPrivate(state) != nil {
+				t.Fatal("default state folder", err)
+			}
+			// Default discovery points to the fixture's running service.
+			discovery, err := os.ReadFile(filepath.Join(f.state, "service.json"))
+			if err != nil || os.WriteFile(filepath.Join(state, "service.json"), discovery, 0o600) != nil {
+				t.Fatal("default discovery", err)
+			}
+			credential := f.workerFile
+			if legacy {
+				credential = legacyCopy(t, credential)
+			}
+			before, _ := os.ReadFile(credential)
+			var out, errout bytes.Buffer
+			code := run([]string{"hook", "install", "--pi", "--credential-file", credential, "--worktree", f.project}, &out, &errout)
+			if code != 0 {
+				t.Fatalf("install without state/context flags: exit %d %s %s", code, out.String(), errout.String())
+			}
+			c := commands(readSettings(t, filepath.Join(home, ".pi", "agent", "a-stack-hooks.json")), "Stop")
+			if len(c) != 1 || !strings.Contains(c[0], " --workspace "+f.workspace+" --session "+f.session+" --agent "+f.worker+" ") || strings.Contains(c[0], "--state-dir") {
+				t.Fatalf("hook command: %v", c)
+			}
+			if after, _ := os.ReadFile(credential); !bytes.Equal(before, after) {
+				t.Fatal("credential file changed")
+			}
+		})
+	}
+}
+
 // A service before v0.1.7 cannot name the context; the error then says which
 // flags to add and where to find the IDs.
 func TestLegacyCredentialFileWithAnOldService(t *testing.T) {

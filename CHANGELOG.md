@@ -6,6 +6,15 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Changed
+
+- `a-stack update` refreshes installed skill files in the home/current-project folders and the Pi/OpenCode shims. It replaces only files that still match known released contents, preserves edits and hook settings, and prints one line per changed file. `--no-refresh` skips this; `update --refresh` refreshes without downloading a binary. `skill install --refresh` now uses the same safe per-file checks.
+- `a-stack update` restarts a running installed systemd, launchd or Task Scheduler service after replacing the binary, and waits up to 15 seconds for the new version. Errors name a stale service binary or the manual restart command. `--no-restart` keeps the manual hint; stopped and hand-started services stay alone. JSON adds `restarted` and `service_version`.
+
+### Fixed
+
+- `hook install` without `--state-dir` now uses default-state discovery when looking up an Agent's context or name. Credential files from before v0.1.5 no longer cause a false "service is not running" error when Workspace and Session flags are omitted.
+
 ### Added
 
 - Parser fuzz tests for mention names, CLI flags, mail cursors and update archives, with a short smoke run in `scripts/check.sh`. See [Parser fuzzing](CONTRIBUTING.md#parser-fuzzing).
