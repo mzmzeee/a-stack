@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-10-26
+
 Upgrading from v0.1.6: run `a-stack update`, then restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`). The first start copies the database to `state.db.pre-v8`, moves it to schema 9 and prints one line that names the copy. Schema 9 adds the standing orders and rebuilds the Task mail table, so that a message can come from the Operator; Agent mail reads the same as before. It needs free space of up to three times the size of `state.db`; with less, it stops before it changes anything and says how much it needs. After the upgrade, v0.1.6 cannot open the database. To go back, run `a-stack update --version v0.1.6`, stop the service, and put `state.db.pre-v8` back as `state.db` in a new state directory in the same place, as in [Go back to an older version](docs/install.md#go-back-to-an-older-version); changes made after the upgrade are lost. Then delete the Agents' mail cursor files and the hooks' cursor folder, because they can point past the restored mail.
 
 Upgrading from v0.1.5 works the same in one step, from schema 7 to 9: the copy is `state.db.pre-v7`, and the start needs free space of up to four times the size of `state.db`, because it rebuilds the mail table for schema 8 and again for schema 9. To go back, run `a-stack update --version v0.1.5` and put `state.db.pre-v7` back. After the upgrade, the database file keeps the pages that the migration freed, which can be half of it; a backup and a restore make it small again.
@@ -296,7 +298,8 @@ The first release.
 - One static Linux binary for `amd64` and `arm64`, with SQLite built in. It accepts connections only on `127.0.0.1`.
 - An install script that checks the download against the release checksums.
 
-[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.6...HEAD
+[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.7...HEAD
+[0.1.7]: https://github.com/mzmzeee/a-stack/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/mzmzeee/a-stack/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/mzmzeee/a-stack/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/mzmzeee/a-stack/compare/v0.1.3...v0.1.4

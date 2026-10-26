@@ -3,7 +3,7 @@
 # $HERDR_PLUGIN_CONFIG_DIR/a-stack.env, see README.md.
 id = "mzmzeee.a-stack"
 name = "a-stack"
-version = "0.1.6"
+version = "0.1.7"
 min_herdr_version = "0.9.5"
 description = "Open the a-stack view of a Session, or watch it in a popup"
 platforms = ["linux", "macos"]
