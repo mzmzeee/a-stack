@@ -170,6 +170,12 @@ func (s *Store) ShowTask(ctx context.Context, token string, r TaskReadRequest) (
 		return TaskDetail{}, err
 	}
 	detail := TaskDetail{Task: task, ReadRevision: session.ReadRevision}
+	detail.ClaimWarnings = []ClaimWarning{}
+	if len(task.Claims) > 0 {
+		if detail.ClaimWarnings, err = claimWarnings(ctx, tx, r.WorkspaceID, task.ID); err != nil {
+			return TaskDetail{}, err
+		}
+	}
 	for _, field := range []struct {
 		ref    string
 		target *string

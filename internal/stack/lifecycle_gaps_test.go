@@ -162,7 +162,7 @@ func TestObserveAgentRejectsWrongAuthorityContextAndBinding(t *testing.T) {
 		}
 	}
 	current, err := s.Snapshot(ctx, f.operator.Token, SnapshotRequest{Context: f.ref(0)})
-	if err != nil || current.Session != snapshot.Session {
+	if err != nil || !reflect.DeepEqual(current.Session, snapshot.Session) {
 		t.Fatal("rejected observation changed Session revisions", err)
 	}
 }
@@ -194,7 +194,7 @@ func TestObserveAgentRollsBackWhenReadRevisionCannotAdvance(t *testing.T) {
 		t.Fatal("failed observation retained partial metadata", err)
 	}
 	current, err := s.Snapshot(ctx, worker.Token, SnapshotRequest{Context: f.ref(0)})
-	if err != nil || current.Session != snapshot.Session {
+	if err != nil || !reflect.DeepEqual(current.Session, snapshot.Session) {
 		t.Fatal("failed observation advanced a revision", err)
 	}
 	execTest(t, s, "DROP TRIGGER fail_observation_revision")

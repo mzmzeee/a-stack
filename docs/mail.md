@@ -96,11 +96,11 @@ Names from the body and from `--mention` are counted once each. One message can 
 
 When an Agent is unassigned from a Task, it loses read access, send access and receipt replay for that Task immediately. In the same transaction, a-stack suppresses that Agent's `pending` and `submitting` notices for the Task. If the Agent rejoins, it can read the full history again, including the messages from while it was away. Its suppressed notices stay suppressed. Messages that it sent stay in the history.
 
-Finishing or cancelling a Task does not end its mail. A closed Session still allows authorized reads and the recovery of matching receipts, but it rejects new mail.
+Finishing or cancelling a Task does not end its mail. A closed Session still allows authorized reads and the recovery of matching receipts within 30 days, but it rejects new mail.
 
 ## Retries
 
-Choose an operation ID before you send, and keep it. If a response is lost, or the service restarts, send the same unchanged request with the same ID. It returns the original receipt, if the sender still has read access. A changed payload causes a conflict. After the Session is closed, a retry can still recover a committed send, but a send that was never committed stays rejected.
+Choose an operation ID before you send, and keep it. If a response is lost, or the service restarts, send the same unchanged request with the same ID. For 30 days it returns the original receipt, if the sender still has read access. A changed payload causes a conflict. After that, the same ID returns `operation_expired`, without sending again. The message and its history stay. Read the Task mail to establish the result before choosing a new operation ID; blindly changing the ID could send twice. After the Session is closed, a retry can still recover a committed send, but a send that was never committed stays rejected.
 
 The body, the sequence number, the resolved mentions and the compact receipt commit together. If a write fails, or the process crashes before the commit, none of them becomes visible. Reads, membership changes and closure run in order with sends, inside the SQLite transaction.
 

@@ -9,7 +9,7 @@ import (
 
 // undoMigration9 turns a current database back into the schema 8 layout of
 // v0.1.6: no standing orders, and Task mail always from an Agent.
-const undoMigration9 = `PRAGMA foreign_keys=OFF;
+const undoMigration9 = undoMigration10 + `PRAGMA foreign_keys=OFF;
 DROP TABLE workspace_orders;
 DROP TRIGGER mail_mentions_task;
 DROP TRIGGER mail_mentions_task_change;
@@ -59,13 +59,13 @@ func TestMigration9KeepsAgentMailAndAllowsOperatorMail(t *testing.T) {
 
 	f.service = serveTest(t, state, "127.0.0.1:0")
 	s = f.service.Store
-	if countTest(t, s, "PRAGMA user_version") != 9 || countTest(t, s, "PRAGMA foreign_keys") != 1 {
+	if countTest(t, s, "PRAGMA user_version") != schemaVersion || countTest(t, s, "PRAGMA foreign_keys") != 1 {
 		t.Fatal("not migrated, or foreign keys stay off")
 	}
 	if _, err := os.Stat(path + ".pre-v8"); err != nil {
 		t.Fatal("no copy before the migration:", err)
 	}
-	if !strings.Contains(s.Migrated, "from schema 8 to 9") {
+	if !strings.Contains(s.Migrated, "from schema 8 to 10") {
 		t.Fatal("migration line:", s.Migrated)
 	}
 	if after := schema8Reads(t, f, tasks); after != before {

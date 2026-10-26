@@ -6,24 +6,28 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
-### Changed
+Upgrading from v0.1.7, v0.1.6 or v0.1.5: run `a-stack update`, then restart the service. The first start copies the database to `state.db.pre-v9` from v0.1.7, `state.db.pre-v8` from v0.1.6 or `state.db.pre-v7` from v0.1.5, then moves it to schema 10. Allow free space of three times the size of `state.db` from v0.1.7 or v0.1.6, or four times from v0.1.5. With less, the service stops before the copy and migration. Older versions cannot open schema 10. To go back, install the older version, stop the service and restore its pre-migration copy in a new state directory in the same place; later changes are lost. See [Go back to an older version](docs/install.md#go-back-to-an-older-version).
 
-- `a-stack update` refreshes installed skill files in the home/current-project folders and the Pi/OpenCode shims. It replaces only files that still match known released contents, preserves edits and hook settings, and prints one line per changed file. `--no-refresh` skips this; `update --refresh` refreshes without downloading a binary. `skill install --refresh` now uses the same safe per-file checks.
-- `a-stack update` restarts a running installed systemd, launchd or Task Scheduler service after replacing the binary, and waits up to 15 seconds for the new version. Errors name a stale service binary or the manual restart command. `--no-restart` keeps the manual hint; stopped and hand-started services stay alone. JSON adds `restarted` and `service_version`.
-
-### Fixed
-
-- `hook install` without `--state-dir` now uses default-state discovery when looking up an Agent's context or name. Credential files from before v0.1.5 no longer cause a false "service is not running" error when Workspace and Session flags are omitted.
+Operation receipts now expire after 30 days. Task history and mail stay. Older operation IDs remain reserved and return `operation_expired` instead of applying a change twice; inspect the retained history before making a new change.
 
 ### Added
 
 - Parser fuzz tests for mention names, CLI flags, mail cursors and update archives, with a short smoke run in `scripts/check.sh`. See [Parser fuzzing](CONTRIBUTING.md#parser-fuzzing).
+- Agents can claim relative files and folders with `task claim`, release them with `task unclaim`, and read them with `task claims`. Overlaps with other open Tasks in the Workspace warn without blocking. Task reads, Session inspection and the view's read-only details show claims. Finishing or cancelling releases them.
 - `a-stack session export --markdown` writes a Session summary for a PR or a hand-over: the Workspace folder, Tasks in dependency order with assignees, results and reports, open Needs you questions, the latest Operator answers and standing orders. Task mail is count-only; bodies are never read or exported. The Operator and Session Agents can use it, with `--output FILE`, `--include-archived` and `--json`. It uses existing reads and changes no data. See [Export a Session](docs/tasks.md#export-a-session).
 - Mention notices reach Claude Code 2.1.x from 2.1.310 (below 2.2). A native fixture with a private Claude Code 2.1.310 install, a scripted API and an isolated Herdr 0.9.5 verified idle delivery, native mid-turn delivery after a foreground tool step, and notices held back while a permission dialog is open. Each notice led to the Agent's own mail check. See [Native Claude Code fixture](docs/notifications.md#native-claude-code-fixture).
 - `a-stack mcp --credential-file FILE`: a stdio MCP server for one Agent, with 15 Session, Task, dependency and mail tools over the same HTTP API. It keeps the CLI's operation IDs, revisions, permissions and errors, supports MCP 2026-07-28 and the legacy initialize handshake, and exposes no Operator-only action. See [Agent tools over MCP](docs/mcp.md) for Claude Code, Codex and Pi setup.
 
+### Changed
+
+- `a-stack update` refreshes installed skill files in the home/current-project folders and the Pi/OpenCode shims. It replaces only files that still match known released contents, preserves edits and hook settings, and prints one line per changed file. `--no-refresh` skips this; `update --refresh` refreshes without downloading a binary. `skill install --refresh` now uses the same safe per-file checks.
+- `a-stack update` restarts a running installed systemd, launchd or Task Scheduler service after replacing the binary, and waits up to 15 seconds for the new version. Errors name a stale service binary or the manual restart command. `--no-restart` keeps the manual hint; stopped and hand-started services stay alone. JSON adds `restarted` and `service_version`.
+- The service expires operation receipts after 30 days in batches of 200 on start and once a day, keeping only the actor, operation ID and result kind. Late retries return `operation_expired`, even before cleanup, and never run again. `storage status` reports receipt and expired-ID counts and the next cleanup time.
+- Schema 10 adds Task file claims and compact records for expired operation IDs. Migration keeps Tasks, mail, questions, standing orders and existing receipts.
+
 ### Fixed
 
+- `hook install` without `--state-dir` now uses default-state discovery when looking up an Agent's context or name. Credential files from before v0.1.5 no longer cause a false "service is not running" error when Workspace and Session flags are omitted.
 - On Windows, `install.ps1` warns and names another `a-stack` earlier on `PATH`, without changing the order of existing entries. Task Scheduler preserves literal `%VAR%` in binary and state paths with an encoded PowerShell action, and reinstalling replaces older unsafe actions. The browser opener initializes a single-threaded COM apartment on its OS thread before `ShellExecuteW`.
 
 ## [0.1.7] - 2026-10-26

@@ -15,10 +15,11 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
-const schemaVersion = 9
+const schemaVersion = 10
 const applicationID = 0x4153544b
 const migration1 = `
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -40,15 +41,16 @@ CREATE TABLE operation_receipts (
 `
 
 type Store struct {
-	db            *sql.DB
-	path          string
-	id            string
-	sqliteVersion string
-	noticeWake    func()
-	budget        writeBudget
-	disk          diskSpace
-	marksMu       sync.Mutex
-	marks         map[string]archiveMarkState // by Session ID
+	db                *sql.DB
+	path              string
+	id                string
+	sqliteVersion     string
+	noticeWake        func()
+	budget            writeBudget
+	disk              diskSpace
+	marksMu           sync.Mutex
+	marks             map[string]archiveMarkState // by Session ID
+	nextReceiptExpiry atomic.Int64                // next scheduled pass, Unix seconds
 	// Migrated is one line for stderr after a schema migration, else empty.
 	Migrated string
 }
@@ -356,6 +358,19 @@ CREATE TRIGGER mail_mentions_task_change BEFORE UPDATE OF message_id,task_id ON 
  BEGIN SELECT RAISE(ABORT,'FOREIGN KEY constraint failed'); END;
 `
 
+const migration10 = `
+CREATE TABLE task_claims(
+ task_id TEXT NOT NULL REFERENCES tasks(id), path TEXT NOT NULL,
+ claimed_by TEXT NOT NULL REFERENCES agents(id), claimed_at TEXT NOT NULL,
+ PRIMARY KEY(task_id,path)
+) WITHOUT ROWID;
+CREATE INDEX operation_receipts_age ON operation_receipts(received_at,actor,operation_id);
+CREATE TABLE expired_operations(
+ actor TEXT NOT NULL, operation_id TEXT NOT NULL, outcome TEXT NOT NULL,
+ PRIMARY KEY(actor,operation_id)
+) WITHOUT ROWID;
+`
+
 // migrate runs every migration the database lacks in one transaction.
 // Schema 8 rebuilds tables that other tables reference, which SQLite allows
 // only with foreign keys off, and it cannot change that inside a transaction.
@@ -469,6 +484,14 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=9"); err != nil {
+			return storageError(err)
+		}
+	}
+	if version < 10 {
+		if _, err = tx.ExecContext(ctx, migration10); err != nil {
+			return storageError(err)
+		}
+		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=10"); err != nil {
 			return storageError(err)
 		}
 	}
@@ -629,6 +652,13 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	var oldDigest string
 	err = tx.QueryRowContext(ctx, `SELECT digest,operation_id,resource_id,revision,outcome,body_ref,received_at FROM operation_receipts WHERE actor=? AND operation_id=?`, actor, op.ID).Scan(&oldDigest, &r.OperationID, &r.ResourceID, &r.Revision, &r.Outcome, &r.BodyRef, &r.ReceivedAt)
 	if err == nil {
+		received, parseErr := time.Parse(time.RFC3339Nano, r.ReceivedAt)
+		if parseErr != nil {
+			return empty, storageError(parseErr)
+		}
+		if !received.After(clockNow().Add(-ReceiptAge)) {
+			return empty, expiredOperation()
+		}
 		// A different command may use another resource type. A digest mismatch
 		// discloses no saved data and must not enter that command's typed replay.
 		if oldDigest != digest {
@@ -641,6 +671,13 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return empty, operationError(op.Name, err)
+	}
+	var expired bool
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM expired_operations WHERE actor=? AND operation_id=?)", actor, op.ID).Scan(&expired); err != nil {
+		return empty, operationError(op.Name, err)
+	}
+	if expired {
+		return empty, expiredOperation()
 	}
 	// A replay above is never limited: it stores nothing new.
 	if p.Kind == AgentCapability {
@@ -656,7 +693,7 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 		return empty, failure("invalid_input", "receipt must contain bounded references and a scalar outcome")
 	}
 	r.OperationID = op.ID
-	r.ReceivedAt = time.Now().UTC().Format(time.RFC3339Nano)
+	r.ReceivedAt = now()
 	_, err = tx.ExecContext(ctx, `INSERT INTO operation_receipts(actor,operation_id,name,scope,digest,resource_id,revision,outcome,body_ref,received_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, actor, op.ID, op.Name, op.Scope, digest, r.ResourceID, r.Revision, r.Outcome, r.BodyRef, r.ReceivedAt)
 	if err != nil {
 		return empty, operationError(op.Name, err)
@@ -674,10 +711,13 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 }
 
 type StorageStatus struct {
-	DatabaseID    string `json:"database_id"`
-	DatabaseBytes int64  `json:"database_bytes"`
-	WALBytes      int64  `json:"wal_bytes"`
-	SHMBytes      int64  `json:"shm_bytes"`
+	ReceiptCount          int64  `json:"receipt_count"`
+	ExpiredOperationCount int64  `json:"expired_operation_count"`
+	NextReceiptExpiryAt   string `json:"next_receipt_expiry_at,omitempty"`
+	DatabaseID            string `json:"database_id"`
+	DatabaseBytes         int64  `json:"database_bytes"`
+	WALBytes              int64  `json:"wal_bytes"`
+	SHMBytes              int64  `json:"shm_bytes"`
 	// FreeBytes is the free space of the database's file system, measured at
 	// most diskCheckInterval ago. It is absent when it cannot be measured.
 	FreeBytes *uint64 `json:"free_bytes,omitempty"`
@@ -692,6 +732,12 @@ type StorageStatus struct {
 
 func (s *Store) Status() (StorageStatus, error) {
 	status := StorageStatus{DatabaseID: s.id}
+	if err := s.db.QueryRow("SELECT (SELECT count(*) FROM operation_receipts),(SELECT count(*) FROM expired_operations)").Scan(&status.ReceiptCount, &status.ExpiredOperationCount); err != nil {
+		return status, storageError(err)
+	}
+	if next := s.nextReceiptExpiry.Load(); next != 0 {
+		status.NextReceiptExpiryAt = time.Unix(next, 0).UTC().Format(time.RFC3339)
+	}
 	for suffix, target := range map[string]*int64{"": &status.DatabaseBytes, "-wal": &status.WALBytes, "-shm": &status.SHMBytes} {
 		info, err := os.Stat(s.path + suffix)
 		if os.IsNotExist(err) && suffix != "" {

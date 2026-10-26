@@ -55,16 +55,17 @@ type Workspace struct {
 	CreatedAt string `json:"created_at"`
 }
 type Session struct {
-	ID             string  `json:"id"`
-	WorkspaceID    string  `json:"workspace_id"`
-	Name           string  `json:"name"`
-	Closed         bool    `json:"closed"`
-	OrchestratorID *string `json:"orchestrator_id"`
-	Revision       int64   `json:"revision"`
-	GraphRevision  int64   `json:"graph_revision"`
-	ReadRevision   int64   `json:"read_revision"`
-	CreatedAt      string  `json:"created_at"`
-	UpdatedAt      string  `json:"updated_at"`
+	Claims         []FileClaim `json:"claims,omitempty"`
+	ID             string      `json:"id"`
+	WorkspaceID    string      `json:"workspace_id"`
+	Name           string      `json:"name"`
+	Closed         bool        `json:"closed"`
+	OrchestratorID *string     `json:"orchestrator_id"`
+	Revision       int64       `json:"revision"`
+	GraphRevision  int64       `json:"graph_revision"`
+	ReadRevision   int64       `json:"read_revision"`
+	CreatedAt      string      `json:"created_at"`
+	UpdatedAt      string      `json:"updated_at"`
 	// YourAgentID is the calling Agent, set only by session inspect.
 	YourAgentID string `json:"your_agent_id,omitempty"`
 	// StandingOrders are the Workspace's standing orders, set only by
@@ -347,6 +348,13 @@ func (s *Store) ChangeSession(ctx context.Context, token, action string, r Sessi
 				return Receipt{ResourceID: session.ID, Revision: session.Revision, Outcome: outcome}, nil
 			}
 			_, err = tx.ExecContext(ctx, "UPDATE sessions SET closed=?,revision=revision+1,read_revision=read_revision+1,updated_at=? WHERE id=?", closed, now(), session.ID)
+			if err == nil {
+				var hasClaims bool
+				err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM task_claims c JOIN tasks t ON t.id=c.task_id WHERE t.session_id=?)", session.ID).Scan(&hasClaims)
+				if err == nil && hasClaims {
+					err = bumpWorkspaceClaims(ctx, tx, session.WorkspaceID)
+				}
+			}
 		}
 		if err != nil {
 			return Receipt{}, err

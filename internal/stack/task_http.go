@@ -4,7 +4,7 @@ import "net/http"
 
 func taskReadEndpoint(path string) bool {
 	switch path {
-	case "/v1/session/snapshot", "/v1/session/page", "/v1/task/list", "/v1/task/show", "/v1/task/history", "/v1/task/assignees", "/v1/task/references", "/v1/task/dependencies":
+	case "/v1/task/claims", "/v1/session/snapshot", "/v1/session/page", "/v1/task/list", "/v1/task/show", "/v1/task/history", "/v1/task/assignees", "/v1/task/references", "/v1/task/dependencies":
 		return true
 	}
 	return false
@@ -17,8 +17,10 @@ func (s *Service) taskHTTP(w http.ResponseWriter, r *http.Request, token string)
 		request = &SnapshotRequest{}
 	case "/v1/session/page", "/v1/task/list", "/v1/task/history", "/v1/task/assignees", "/v1/task/references", "/v1/task/dependencies":
 		request = &SnapshotPageRequest{}
-	case "/v1/task/show":
+	case "/v1/task/show", "/v1/task/claims":
 		request = &TaskReadRequest{}
+	case "/v1/task/claim", "/v1/task/unclaim":
+		request = &ClaimRequest{}
 	case "/v1/task/create":
 		request = &TaskCreateRequest{}
 	case "/v1/task/edit":
@@ -68,7 +70,13 @@ func (s *Service) taskHTTP(w http.ResponseWriter, r *http.Request, token string)
 		knownArchiveMark(r, q)
 		data, err = s.Store.Snapshot(r.Context(), token, *q)
 	case *TaskReadRequest:
-		data, err = s.Store.ShowTask(r.Context(), token, *q)
+		if r.URL.Path == "/v1/task/claims" {
+			data, err = s.Store.ReadClaims(r.Context(), token, *q)
+		} else {
+			data, err = s.Store.ShowTask(r.Context(), token, *q)
+		}
+	case *ClaimRequest:
+		data, err = s.Store.ChangeClaims(r.Context(), token, r.URL.Path == "/v1/task/unclaim", *q)
 	case *SnapshotPageRequest:
 		kind := ""
 		switch r.URL.Path {

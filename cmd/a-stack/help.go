@@ -84,6 +84,9 @@ var helpGroups = []helpGroup{
 		{"task history", "", "List a Task's changes"},
 		{"task assignees", "", "List a Task's Agents"},
 		{"task references", "", "List a Task's file references"},
+		{"task claim", "", "Claim relative files or folders; overlaps warn, never block"},
+		{"task unclaim", "", "Release Task file claims"},
+		{"task claims", "", "Read a Task's claims and overlap warnings"},
 		{"task dependencies", "", "List a Task's dependencies"},
 		{"task handoff", "", "Print a brief that hands a Task to a fresh Agent"},
 		{"task attention set", "", "Ask the Operator a Needs you question"},
@@ -138,7 +141,7 @@ var requiredFlags = map[string]string{
 	"workspace orders show": "workspace", "workspace orders set": "workspace", "workspace orders clear": "workspace",
 	"session appoint": "agent", "agent attach": "agent", "agent rebind": "agent new-credential-file",
 	"agent observe": "agent runtime-id runtime-state", "task assign": "agent", "task unassign": "agent",
-	"task create": "title", "task status": "progress", "task reference add": "location",
+	"task claim": "path", "task unclaim": "path", "task create": "title", "task status": "progress", "task reference add": "location",
 	"task reference remove": "reference", "dependency add": "from to", "dependency remove": "from to",
 	"session page": "page-kind", "answer": "question-id", "herdr bind": "agent", "herdr focus": "agent",
 }

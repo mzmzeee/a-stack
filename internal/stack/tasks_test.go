@@ -462,7 +462,7 @@ func TestPopulatedV2UpgradeAndV3FailureRecovery(t *testing.T) {
 			if _, err = db.Exec("INSERT INTO workspaces VALUES(?,?,?);INSERT INTO sessions(id,workspace_id,name,created_at,updated_at) VALUES(?,?,?,?,?);INSERT INTO agents(id,workspace_id,session_id,name,runtime_id,binding,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?);UPDATE sessions SET orchestrator_id=?,revision=2,read_revision=3 WHERE id=?", w, privateTestDir(t), timestamp, session, w, "v2", timestamp, timestamp, agent, w, session, "retained-agent", "v2-runtime", `{"instance_id":"v2-runtime"}`, timestamp, timestamp, agent, session); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = db.Exec(expiresStandIn); err != nil {
+			if _, err = db.Exec(expiresStandIn + "CREATE TABLE expired_operations(actor TEXT,operation_id TEXT,outcome TEXT);"); err != nil {
 				t.Fatal(err)
 			}
 			old := &Store{db: db, path: path, id: id}
@@ -474,7 +474,7 @@ func TestPopulatedV2UpgradeAndV3FailureRecovery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = db.Exec(dropExpires); err != nil {
+			if _, err = db.Exec(dropExpires + "DROP TABLE expired_operations;"); err != nil {
 				t.Fatal(err)
 			}
 			if failMigration {

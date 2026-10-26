@@ -149,6 +149,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if err := validateCommandFlags(cmd, seen); err != nil {
 		return err
 	}
+	if len(lifecycle.paths) > 1 && cmd != "task claim" && cmd != "task unclaim" {
+		return invalid("--path is given more than once")
+	}
 	if cmd == "session export" {
 		if exporting.markdown && machine {
 			return invalid("choose --markdown or --json")

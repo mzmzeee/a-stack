@@ -212,6 +212,8 @@ During the restart, Agent commands fail with `storage_unavailable` and `retryabl
 
 When the new version has a new database schema, the first start migrates the database. Before that, it writes a private copy of the database, `state.db.pre-vN`, in the state directory (N is the old schema version). After the migration, `serve` writes one line to its output (the journal under systemd, the log file under launchd and Task Scheduler). It names the copy, says that an older a-stack cannot open the database now, and links to the next section.
 
+Schema 10 adds Task file claims and expired-operation records. From v0.1.7 it copies to `state.db.pre-v9`; from v0.1.6 to `state.db.pre-v8`; from v0.1.5 to `state.db.pre-v7`. Allow free space of three times `state.db` from v0.1.7 or v0.1.6, or four times from v0.1.5. The existing free-space check and private copy run before any migration. After the upgrade, full operation receipts expire after 30 days, while their IDs stay reserved. A late retry returns `operation_expired` and changes nothing; Task history and mail stay. See [Operation IDs and receipts](foundation.md#operation-ids-and-receipts).
+
 The migration needs free space in the state directory. For schema 8 (v0.1.6) and schema 9 (after v0.1.6), plan for up to three times the size of `state.db`: one copy, and twice the size of the tables that it rebuilds (Task texts and mail, or only mail for schema 9), first in the WAL file and then in the database file. From v0.1.5 straight to schema 9, both rebuilds run in one step: plan for up to four times the size of `state.db`. If less space is free, `serve` stops before it writes anything and says how much it needs. If a start fails after the copy, the next start of the unchanged database uses that copy again instead of writing another one. After the migration, the database file keeps the freed pages; to make it small again, make a backup and restore it (see [Backup and restore](foundation.md#backup-and-restore)).
 
 ### Go back to an older version
@@ -228,14 +230,14 @@ To put the copy back, install the older version first with `a-stack update --ver
 - If launchd runs the service on macOS, run `launchctl bootout gui/$(id -u)/dev.a-stack`. launchd keeps starting an older a-stack that stops with exit code 4, so `kill TERM` is not enough.
 - If Task Scheduler runs the service on Windows, run `schtasks /Change /TN a-stack-SID /DISABLE` and then `schtasks /End /TN a-stack-SID`.
 
-Move the state directory aside, and put the copy and the Operator credential in a new state directory in the same place. `state.db.pre-v8` is the copy of a v0.1.6 database that a newer a-stack made before it moved it to schema 9 (`state.db.pre-v7` is the one that v0.1.6 or later made of a v0.1.5 database); use the name that `serve` printed after the migration:
+Move the state directory aside, and put the copy and the Operator credential in a new state directory in the same place. For rollback from schema 10, use `state.db.pre-v9` for v0.1.7, `state.db.pre-v8` for v0.1.6 or `state.db.pre-v7` for v0.1.5. Use the exact name that `serve` printed after the migration, which may have a numbered suffix. This example restores v0.1.7:
 
 ```sh
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/a-stack"
 old_dir="$state_dir.before-restore-$(date +%Y%m%d-%H%M%S)"
 mv "$state_dir" "$old_dir"
 mkdir -m 700 "$state_dir"
-install -m 600 "$old_dir/state.db.pre-v8" "$state_dir/state.db"
+install -m 600 "$old_dir/state.db.pre-v9" "$state_dir/state.db"
 install -m 600 "$old_dir/operator.json" "$state_dir/operator.json"
 ```
 

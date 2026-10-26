@@ -61,6 +61,12 @@ Instead of the text flag, give `--body-file FILE`, or `--body-file -` for stdin.
 
 a-stack rejects text that is too long. It never cuts it.
 
+## File claims
+
+Before editing shared files, run `me task claim --task T --path src --path docs/api.md --expected-revision R --operation-id 02-worker-claim-1`. Paths are literal files or folders relative to the Workspace root, not globs. Use `.` for the whole Workspace. Give at most 100 paths; a Task holds at most 100 claims. Read `data.warnings`: each overlap names the other Task, its paths and its current Agents. Coordinate in Task mail; claims warn but never block another Task. The receipt raises the Task revision, so use it as your next `R`.
+
+`me task claims --task T` returns current `claims` and `warnings`. `task show` carries `claims` and `claim_warnings`; `session inspect` carries its Tasks' claim metadata. `me task unclaim --task T --path src --expected-revision R --operation-id 02-worker-unclaim-1` releases paths. Any current assignee may change the Task's claims. Finishing or cancelling releases them all; reopening does not restore them. Claims in closed Sessions do not warn until the Session reopens. Warnings may name Tasks and Agents in other Sessions of the same Workspace, but carry no reports or mail.
+
 ## Task mail
 
 Only the current assignees of a Task can send or read its mail. Mail needs no revision.
@@ -95,6 +101,7 @@ Always give `mail check` a cursor file in your private folder. The check saves i
 | `invalid_input` | 2 | A flag, ID or text is wrong. The message names it, and may suggest a close command or flag. Fix the command; use a new operation ID. |
 | `conflict` | 1 | The revision changed (`current_revision`, `current_progress`), or a question is already open (`current_question`). Read again, rethink, retry with a new operation ID. |
 | `operation_conflict` | 1 | This operation ID was already used for a different change. Use a new ID. |
+| `operation_expired` | 1 | This ID is older than 30 days. The change was not applied again, and its receipt is no longer available. Read the Task or retained history to establish the result before making any new change; blindly changing the ID could duplicate it. |
 | `forbidden` | 1 | You are not allowed, for example you are not an assignee of the Task or not the Orchestrator. |
 | `not_found` | 1 | The ID does not exist in your Session. |
 | `session_closed` | 1 | The Operator closed the Session. Reads still work. Wait or ask the Operator. |
@@ -103,7 +110,7 @@ Always give `mail check` a cursor file in your private folder. The check saves i
 | `rate_limited` | 1 | You stored too much text in a short time, for example in a loop. Wait `retry_after_seconds`, then retry the same command with the same operation ID. Check that you are not repeating a command by mistake. |
 | `storage_unavailable` | 1 | The service is not running, not reachable or failed, and `retryable` is `true`. Your change may have been made. Retry the same command with the same operation ID later. If the service stays down, ask the Operator to start it. Never start the service yourself. |
 
-If a response gets lost, send the same command again with the same operation ID and the same flags. You get the original receipt, and nothing changes twice.
+If a response gets lost, send the same command again with the same operation ID and the same flags. For 30 days you get the original receipt, and nothing changes twice. Older IDs return `operation_expired`, never another effect. Read the retained Task history or mail to establish what happened before making a new change.
 
 ## Orchestrator commands
 
