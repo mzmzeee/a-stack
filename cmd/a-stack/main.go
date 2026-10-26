@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -112,50 +111,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	watching.register(fs)
 	var hooks hookFlags
 	hooks.register(fs)
-	// stdlib flag stops at the first positional; set known flags here so the
-	// same explicit flags work before or after the command without a CLI
-	// dependency.
-	var command []string
-	given := map[string]bool{}
-	repeated := false // --after more than once, which only task create takes
-	for i := 0; i < len(args); i++ {
-		a := args[i]
-		if !strings.HasPrefix(a, "-") {
-			command = append(command, a)
-			continue
-		}
-		name, value, hasValue := strings.Cut(strings.TrimLeft(a, "-"), "=")
-		f := fs.Lookup(name)
-		if f == nil {
-			return unknownFlag(fs, name)
-		}
-		// --version takes a release only when one follows, as in
-		// `update --version v0.1.3`; alone it prints the version.
-		if name == "version" && !hasValue && i+1 < len(args) && releaseTag.MatchString(args[i+1]) {
-			i++
-			value, hasValue = args[i], true
-		}
-		if b, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && b.IsBoolFlag() && !hasValue {
-			value = "true"
-		} else if !hasValue {
-			i++
-			if i >= len(args) || strings.HasPrefix(args[i], "--") && fs.Lookup(strings.TrimLeft(strings.SplitN(args[i], "=", 2)[0], "-")) != nil {
-				return invalid("--" + name + " requires a value")
-			}
-			value = args[i]
-		}
-		if given[name] && name != "mention" && name != "after" && name != "assign" {
-			return invalid("--" + name + " is given more than once")
-		}
-		repeated = repeated || given[name] && name == "after"
-		given[name] = true
-		if fs.Set(name, value) != nil {
-			message := "invalid value " + strconv.Quote(short(value)) + " for --" + name
-			if flagValues[name] == "N" {
-				message += "; give a whole number"
-			}
-			return invalid(message)
-		}
+	command, repeated, err := splitFlags(fs, args)
+	if err != nil {
+		return err
 	}
 	command, help = aliasCommands(command, help, release.set)
 	if help {

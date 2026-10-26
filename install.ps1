@@ -123,6 +123,7 @@ function Install-AStack {
 	} elseif (Add-AStackPath $dir) {
 		Write-Host "Added $dir to your user PATH. Open a new terminal to use it."
 	}
+	Warn-AStackShadowing $target
 	Write-Host 'To teach your coding agents a-stack, run: a-stack skill install'
 	Write-Host 'To update a-stack next time, run: a-stack update'
 }
@@ -135,6 +136,15 @@ function Get-AStackVersion([string]$exe) {
 		return ($out | ConvertFrom-Json).data.version
 	} catch {
 		return ''
+	}
+}
+
+# Keep existing PATH order (including package-manager installs), but name a
+# copy that would run instead. Prepending user PATH cannot beat system PATH.
+function Warn-AStackShadowing([string]$target) {
+	$command = Get-Command a-stack -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+	if ($command -and [IO.Path]::GetFullPath($command.Source) -ne [IO.Path]::GetFullPath($target)) {
+		Write-Warning "Another a-stack is earlier on PATH: $($command.Source). This install is $target. Move its folder earlier on PATH, remove the other copy, or run this one by its full path."
 	}
 }
 
