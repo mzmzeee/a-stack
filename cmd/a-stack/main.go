@@ -208,7 +208,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return skillCommand(cmd, project, refresh, machine, stdout)
 	}
 	if cmd == "update" {
-		return updateCommand(release, check, machine, stdout)
+		return updateCommand(release, check, machine, stdout, stderr)
 	}
 	stateFlag := state
 	if state == "" {
