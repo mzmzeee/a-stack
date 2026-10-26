@@ -340,7 +340,7 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"data": status})
 	default:
-		if !s.notificationHTTP(w, r, token) && !s.herdrHTTP(w, r, token) && !s.browserHTTP(w, r, token) && !s.mailHTTP(w, r, token) && !s.taskHTTP(w, r, token) && !s.lifecycleHTTP(w, r, token) {
+		if !s.notificationHTTP(w, r, token) && !s.herdrBindHTTP(w, r, token) && !s.herdrHTTP(w, r, token) && !s.browserHTTP(w, r, token) && !s.mailHTTP(w, r, token) && !s.taskHTTP(w, r, token) && !s.lifecycleHTTP(w, r, token) {
 			writeError(w, failure("not_found", "endpoint not found"))
 		}
 	}

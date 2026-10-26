@@ -56,8 +56,9 @@ type SnapshotPage struct {
 }
 type SnapshotAgent struct {
 	Agent
-	RuntimeSource   string `json:"runtime_source"`
-	RuntimeVerified bool   `json:"runtime_verified"`
+	RuntimeSource   string         `json:"runtime_source"`
+	RuntimeVerified bool           `json:"runtime_verified"`
+	NoticeWarning   *NoticeWarning `json:"notice_warning,omitempty"`
 }
 type Assignment struct {
 	TaskID    string `json:"task_id"`
@@ -337,7 +338,7 @@ func (s *Store) SnapshotPage(ctx context.Context, token string, r SnapshotPageRe
 			result.Next = encodeSnapshotCursor(r, session.ReadRevision, last)
 			break
 		}
-		item, err := snapshotItem(ctx, tx, r, id)
+		item, err := s.snapshotItem(ctx, tx, r, id)
 		if err != nil {
 			return empty, publicError(err)
 		}
@@ -358,7 +359,7 @@ func (s *Store) SnapshotPage(ctx context.Context, token string, r SnapshotPageRe
 	}
 	return result, nil
 }
-func snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequest, id string) (any, error) {
+func (s *Store) snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequest, id string) (any, error) {
 	switch r.Kind {
 	case "tasks":
 		return taskInSession(ctx, tx, id, r.SessionID)
@@ -368,7 +369,11 @@ func snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequest, id str
 		if agent.ObservedAt != "" {
 			source = "caller-observation"
 		}
-		return SnapshotAgent{Agent: agent, RuntimeSource: source, RuntimeVerified: false}, err
+		if err != nil {
+			return nil, err
+		}
+		warning, err := s.noticeWarningTx(ctx, tx, r.SessionID, id)
+		return SnapshotAgent{Agent: agent, RuntimeSource: source, RuntimeVerified: false, NoticeWarning: warning}, err
 	case "dependencies":
 		var edge Dependency
 		err := tx.QueryRowContext(ctx, "SELECT d.id,d.prerequisite_id,d.dependent_id,p.progress,n.progress,d.created_by,d.created_at FROM dependencies d JOIN tasks p ON p.id=d.prerequisite_id JOIN tasks n ON n.id=d.dependent_id WHERE d.id=? AND d.session_id=?", id, r.SessionID).Scan(&edge.ID, &edge.PrerequisiteID, &edge.DependentID, &edge.PrerequisiteProgress, &edge.DependentProgress, &edge.CreatedBy, &edge.CreatedAt)

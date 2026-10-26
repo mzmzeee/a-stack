@@ -18,7 +18,7 @@ func isHerdrCommand(command string) bool {
 
 // herdrRequest runs herdr focus in the service, which holds the bindings.
 // herdr bind binds the calling Agent to its own Herdr pane: it reads the pane
-// from Herdr, then sends the same request as agent attach.
+// from Herdr, then lets the service verify any stale binding it replaces.
 func herdrRequest(ctx context.Context, client *stack.Client, command string, f lifecycleFlags, executable string) ([]byte, error) {
 	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}
 	if f.workspace == "" || f.session == "" || f.agent == "" {
@@ -42,5 +42,5 @@ func herdrRequest(ctx context.Context, client *stack.Client, command string, f l
 	if err != nil {
 		return nil, err
 	}
-	return client.Do(ctx, "POST", "/v1/agent/attach", stack.AgentBindingRequest{Context: ref, OperationID: f.operationID, AgentID: f.agent, ExpectedRevision: f.revision, Runtime: binding})
+	return client.Do(ctx, "POST", "/v1/herdr/bind", stack.AgentBindingRequest{Context: ref, OperationID: f.operationID, AgentID: f.agent, ExpectedRevision: f.revision, Runtime: binding})
 }

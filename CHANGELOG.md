@@ -32,6 +32,7 @@ Operation receipts now expire after 30 days. Task history and mail stay. Older o
 
 ### Fixed
 
+- An Agent's `herdr bind` can replace its own proven stale pane or native session without rotating its credential; live or unverifiable bindings still need the Operator's `agent rebind --clear-runtime`. Notice status names Agents, own mail checks and the Agents panel show why notices are off, and Herdr Orchestrator briefs say to bind themselves.
 - `hook install` without `--state-dir` now uses default-state discovery when looking up an Agent's context or name. Credential files from before v0.1.5 no longer cause a false "service is not running" error when Workspace and Session flags are omitted.
 - On Windows, `install.ps1` warns and names another `a-stack` earlier on `PATH`, without changing the order of existing entries. Task Scheduler preserves literal `%VAR%` in binary and state paths with an encoded PowerShell action, and reinstalling replaces older unsafe actions. The browser opener initializes a single-threaded COM apartment on its OS thread before `ShellExecuteW`.
 

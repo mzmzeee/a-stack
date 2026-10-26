@@ -111,11 +111,11 @@ var helpGroups = []helpGroup{
 		{"mail check", "", "Check new mail on all your Tasks"},
 	}},
 	{"Herdr", []helpRow{
-		{"herdr bind", "", "Bind your Agent to its own Herdr pane"},
+		{"herdr bind", "", "Bind your Agent to its own Herdr pane; replace a proven stale target (live: Operator agent rebind --clear-runtime first)"},
 		{"herdr focus", "", "Show an Agent's Herdr pane (Operator)"},
 	}},
 	{"Notices", []helpRow{
-		{"notifications status", "", "Show Herdr notice delivery"},
+		{"notifications status", "", "Show Herdr notice delivery by Agent name and ID"},
 		{"notifications drain", "", "Send pending Herdr notices now"},
 	}},
 }

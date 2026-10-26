@@ -1,0 +1,58 @@
+package stack
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+)
+
+// NoticeWarning is bounded public guidance, never runtime identity or raw
+// Herdr output. Reads use the binding and the last delivery diagnostic only.
+type NoticeWarning struct {
+	Reason string `json:"reason"`
+	Fix    string `json:"fix"`
+}
+
+func noticeWarning(reason string) *NoticeWarning {
+	fix := ""
+	switch reason {
+	case "binding_incomplete":
+		fix = "Run herdr bind in your harness pane; if integration_missing, install the named Herdr integration and restart the harness in that pane."
+	case "runtime_unavailable", "identity_changed":
+		fix = "Check that your harness is running in its bound pane; in a new pane or session, run herdr bind again. A live binding needs the Operator's agent rebind --clear-runtime first."
+	case "unsupported_harness":
+		fix = "Use a supported harness version and bind again; until then, check mail normally."
+	case "integration_disabled":
+		fix = "Ask the Operator to enable the service's Herdr adapter with --herdr-executable; check mail normally."
+	case "herdr_unavailable", "unsupported_herdr":
+		fix = "Ask the Operator to check the Herdr server and supported protocol; check mail normally."
+	case "runtime_blocked":
+		fix = "Resolve the harness dialog in its pane; notices retry without answering it for you."
+	}
+	if fix == "" {
+		return nil
+	}
+	return &NoticeWarning{Reason: reason, Fix: fix}
+}
+
+func (s *Store) noticeWarningTx(ctx context.Context, tx *sql.Tx, session, agent string) (*NoticeWarning, error) {
+	var encoded, reason string
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(a.binding,''),COALESCE(d.reason,'') FROM agents a
+ LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id WHERE a.session_id=? AND a.id=?`, session, agent).Scan(&encoded, &reason); err != nil {
+		return nil, storageError()
+	}
+	var binding RuntimeBinding
+	_ = json.Unmarshal([]byte(encoded), &binding)
+	if !completeHerdrBinding(binding) {
+		reason = "binding_incomplete"
+	} else if !verifiedHarness(binding) {
+		reason = "unsupported_harness"
+	}
+	if warning := noticeWarning(reason); warning != nil {
+		return warning, nil
+	}
+	if s.noticeWake == nil {
+		return noticeWarning("integration_disabled"), nil
+	}
+	return nil, nil
+}

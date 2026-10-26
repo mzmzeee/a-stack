@@ -89,7 +89,7 @@ Credential files from before v0.1.5 have only the kind and the token. For such a
 
 ## Runtime bindings
 
-A runtime binding links an Agent registration to the running process that acts as that Agent. Only the Agent's own credential can attach a binding to its new, unbound registration. After that, only the Operator can change the binding, with `agent rebind`:
+A runtime binding links an Agent registration to the running process that acts as that Agent. Only the Agent's own credential can attach a binding to its new, unbound registration. After that, a live or unverifiable binding needs the Operator's `agent rebind`. The one exception is an Agent's own `herdr bind` when the configured service adapter proves that its old pane or terminal is gone, or the pane reports a different native harness session:
 
 ```sh
 a-stack agent rebind --workspace "$workspace_id" --session "$session_id" \
@@ -100,11 +100,11 @@ a-stack agent rebind --workspace "$workspace_id" --session "$session_id" \
 
 To remove the binding instead, use `--clear-runtime` in place of a new runtime. The Agent is then unattached and has a rotated credential. A rebind works only in an open Session. To recover a credential in a closed Session, reopen the Session first. If a rebind fails with a conflict, a-stack rolls back the credential, the binding claims, the history and the receipt together.
 
-An Agent that runs inside Herdr binds itself to its own pane with `a-stack herdr bind`, in place of `agent attach`. It works for Claude Code, Codex, Pi and OpenCode panes. It takes the same `--agent`, `--expected-revision` and `--operation-id`, reads the pane, the terminal, the native session and the harness version from Herdr and the harness, and sends them as an `agent attach`. For Pi, the native session is the path of its session file. Mention notices reach only Codex and Pi for now. See [Enroll a recipient](notifications.md#enroll-a-recipient).
+An Agent that runs inside Herdr binds itself to its own pane with `a-stack herdr bind`, in place of `agent attach`. It works for Claude Code, Codex, Pi and OpenCode panes. It takes the same `--agent`, `--expected-revision` and `--operation-id`, reads the pane, the terminal, the native session and the harness version from Herdr and the harness, and sends them to the service's guarded Herdr bind. The service can replace a stale target without rotating the credential; a live target still needs the Operator's `agent rebind --clear-runtime` and a new credential file, then the Agent binds again. Use the current Agent revision from `agent list`. For Pi, the native session is the path of its session file. Mention notices reach the verified Codex, Pi and Claude Code versions. See [Enroll a recipient](notifications.md#enroll-a-recipient).
 
 Instead of `--runtime-id`, you can give `--runtime-file PRIVATE_JSON`. The file has `instance_id` and these optional fields: `endpoint`, `pane_id`, `terminal_id`, `native_session_id`, `herdr_alias`, `harness` and `harness_version`. a-stack reads it with the same bounded reader as credential files. An instance ID can be 128 UTF-8 bytes at most, and each optional value 512 bytes at most. List, inspect and receipt output never show the binding. `agent attach` and `agent rebind` run no Herdr command.
 
-The service reserves each concrete target: the instance ID, each endpoint and pane pair, each endpoint and terminal pair, and the native session ID. It treats native session IDs as globally unique. So a new instance ID or alias cannot take over a target that another registration or Session already holds. Only an Operator rebind releases or replaces these reservations, in one transaction.
+The service reserves each concrete target: the instance ID, each endpoint and pane pair, each endpoint and terminal pair, and the native session ID. It treats native session IDs as globally unique. So a new instance ID or alias cannot take over a target that another registration or Session already holds. An Operator rebind, or a verified stale-target `herdr bind` by that same Agent, releases or replaces these reservations in one transaction.
 
 The target data is only what the caller says. a-stack treats a partial binding or an instance-only binding as unverified, and neither gets automatic notices. The optional [notice adapter](notifications.md) checks the current harness identity before it sends anything. An alias or a pane alone never proves which Agent is there.
 
@@ -112,7 +112,7 @@ The target data is only what the caller says. a-stack treats a partial binding o
 
 `agent observe --agent ID --expected-revision N --runtime-id ID --runtime-state unknown|working|idle|done|stopped|blocked` records the latest runtime state. The Operator or the Agent itself can run it. In one transaction, the service checks the context, the binding identity and the Agent revision.
 
-Observations also work when the Session is closed. They do not change the lifecycle revision, the Agent revision, roles or work. Each observation replaces the previous one, and it adds no receipt or history entry. `done` describes the runtime only. It does not finish a Task or delete the Agent. a-stack never releases a target automatically when a process exits or its state is unknown.
+Observations also work when the Session is closed. They do not change the lifecycle revision, the Agent revision, roles or work. Each observation replaces the previous one, and it adds no receipt or history entry. `done` describes the runtime only. It does not finish a Task or delete the Agent. a-stack never releases a target from an observation alone when a process exits or its state is unknown.
 
 ## Close, reopen and inspect
 

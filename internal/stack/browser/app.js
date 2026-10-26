@@ -351,11 +351,11 @@ function agentGroups() {
   return groups.sort((x,y)=>{const a=key(x),b=key(y);for(let i=0;i<a.length;i++)if(a[i]!==b[i])return a[i]<b[i]?-1:1;return x.a.name<y.a.name?-1:x.a.name>y.a.name?1:0;});
 }
 function makeAgentCard(id) {
-  const section=el('section','agent-row'),heading=el('header','agent-heading'),identity=el('div','agent-identity'),avatar=el('span','agent-avatar'),names=el('div'),name=el('h2','agent-name'),meta=el('div','agent-meta'),chips=el('div','chips');
+  const section=el('section','agent-row'),heading=el('header','agent-heading'),identity=el('div','agent-identity'),avatar=el('span','agent-avatar'),names=el('div'),name=el('h2','agent-name'),meta=el('div','agent-meta'),notice=el('span','chip notice-off','Notices off'),chips=el('div','chips');
   const open=el('ul','task-rows'),moreWaiting=el('button','fold'),moreDone=el('button','fold'),doneList=el('ul','task-rows done'),empty=el('p','agent-empty');
-  avatar.setAttribute('aria-hidden','true');identity.append(avatar,names);names.append(name,meta);heading.append(identity,chips);section.append(heading,open,moreWaiting,moreDone,doneList,empty);
+  avatar.setAttribute('aria-hidden','true');identity.append(avatar,names);names.append(name,meta,notice);heading.append(identity,chips);section.append(heading,open,moreWaiting,moreDone,doneList,empty);
   for(const [button,kind] of [[moreWaiting,'w'],[moreDone,'d']]){button.append(iconNode('chevron'),el('span'));button.onclick=()=>{const k=kind+id;if(!folds.delete(k))folds.add(k);patchAgents();};}
-  return {section,name,avatar,meta,chips,open,moreWaiting,moreDone,doneList,empty,rows:new Map()};
+  return {section,name,avatar,meta,notice,chips,open,moreWaiting,moreDone,doneList,empty,rows:new Map()};
 }
 function makeRow(t) {
   const li=el('li'),b=el('button','task-row'),st=el('span','row-status'),main=el('span','row-main'),title=el('span','row-title'),question=el('span','row-question'),others=el('span','row-meta'),side=el('span','row-side'),quiet=chip(),mail=el('span','mail-count'),when=el('time','now-age');
@@ -381,6 +381,8 @@ function patchAgents() {
     if(id!=='unassigned'){if(n)needs++;if(w)working++;if(!n&&!w&&!wait)idle++;}
     let r=rows.get(id);if(!r){r=makeAgentCard(id);rows.set(id,r);}
     setText(r.name,g.a.name);setText(r.avatar,g.a.name.slice(0,2));setText(r.meta,id==='unassigned'?'No assignee':agentMeta(g.a));
+    const warning=g.a.notice_warning;r.notice.hidden=!warning;r.notice.title=warning?`${warning.reason}: ${warning.fix}`:'';
+    r.notice.setAttribute('aria-label',warning?`Notices off: ${r.notice.title}`:'');
     r.section.classList.toggle('urgent',n>0);r.section.classList.toggle('idle',!n&&!w&&!wait);
     const chipKey=g.counts.join();
     if(r.chips.dataset.key!==chipKey){r.chips.dataset.key=chipKey;r.chips.replaceChildren(...chipKinds.flatMap(([kind,name,word],i)=>{if(!g.counts[i])return [];const c=el('span','chip '+kind);c.append(iconNode(name),document.createTextNode(`${g.counts[i]} ${word}`));return [c];}));}

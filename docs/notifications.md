@@ -24,7 +24,7 @@ Notices are turned on for a harness only after a native fixture showed how it qu
 
 Herdr is accepted when its running server reports private protocol 22, the protocol of Herdr 0.9.5 that the fixtures used, and says that the CLI and the endpoint are compatible (`herdr status server --json`). a-stack does not compare the Herdr release string.
 
-All other harnesses, versions outside these lines and other Herdr protocols stay mail-only. That includes OpenCode, which `herdr bind` can bind, until a native fixture verifies it. In Pi, `/new`, `/resume` and `/fork` change the session file, so Herdr's metadata no longer matches the binding and notices stop until the Operator rebinds the Agent, as with a new Claude Code session ID. A Codex 0.165, a Pi 1.5 or a Claude Code 2.2 needs a new fixture run before it gets notices. A test-only fixture service allows one exact disposable binding, for isolated checks. Production delivery always needs the complete identity checks below.
+All other harnesses, versions outside these lines and other Herdr protocols stay mail-only. That includes OpenCode, which `herdr bind` can bind, until a native fixture verifies it. In Pi, `/new`, `/resume` and `/fork` change the session file, so Herdr's metadata no longer matches the binding and notices stop until the Agent runs `herdr bind` again, as with a new Claude Code session ID. A Codex 0.165, a Pi 1.5 or a Claude Code 2.2 needs a new fixture run before it gets notices. A test-only fixture service allows one exact disposable binding, for isolated checks. Production delivery always needs the complete identity checks below.
 
 The Codex fixture had Herdr client and server 0.9.5 with protocol 22, and the actual native `/status` (gpt-6.1-sol, OpenAI, xhigh, Full Access) through the existing oc/YOLO launcher.
 
@@ -47,9 +47,11 @@ The command does these steps:
 3. The pane must hold Claude Code, Codex, Pi or OpenCode, with a native session that Herdr's integration reported. For Claude Code, Codex and OpenCode that is the session ID. Herdr's Pi integration reports the absolute path of Pi's session file, and a-stack keeps that path as the native session. Otherwise it fails with `integration_missing`, and the message names the `herdr integration install` command.
 4. If the pane's agent has no Herdr name yet, it names it `a-` plus the lowercase a-stack name, cut to 32 characters, with `herdr agent rename`. It renames only its own pane. If Herdr refuses the name, it fails with `conflict`.
 5. It runs the harness's own `--version`, such as `codex --version`, and keeps the first `MAJOR.MINOR.PATCH`.
-6. It sends the same request as `agent attach`, with the instance ID `herdr:` plus the terminal ID. The binding never goes to a file, and the receipt does not show it.
+6. It sends the binding to the service, with the instance ID `herdr:` plus the terminal ID. With its Herdr adapter enabled, the service checks the new target before it changes a binding. Without the adapter, only a fresh attach works. The binding never goes to a file, and the receipt does not show it.
 
-Give `--herdr-executable` when `herdr` is not on your `PATH`. A retry with the same operation ID returns the original receipt, as long as the pane and the harness version are unchanged. `herdr bind` attaches only a new, unbound registration. To replace a binding that is already set, the Operator must run `agent rebind`, which also rotates the credential. a-stack never reports agent state or sessions to Herdr, because Herdr restarts a pane with a reported session after a server restart.
+The authenticated `POST /v1/herdr/bind` takes the same fields as `agent attach`; only the named Agent's own credential can use it. The service, not a client flag, decides whether the old target is stale.
+
+Give `--herdr-executable` when `herdr` is not on your `PATH`. A retry with the same operation ID returns the original receipt, as long as the pane and the harness version are unchanged. `herdr bind` can attach a new registration or replace its own proven stale Herdr target. With the service's Herdr adapter enabled, it checks the old endpoint and pane: an explicit missing-pane response, a different terminal, or a different native harness session proves staleness. It checks the new pane too, then rechecks the Agent revision and replaces the target claims atomically. Take the current revision from `agent list`; it is no longer 1 after the first bind. The credential stays the same. An unavailable server, malformed metadata, changed alias or blocked/stopped runtime is not proof. A live or unverifiable binding still needs the Operator's `agent rebind --clear-runtime`, with a new credential file, followed by the Agent's bind. Ordinary `agent attach` cannot replace any binding. a-stack never reports agent state or sessions to Herdr, because Herdr restarts a pane with a reported session after a server restart.
 
 Without Herdr's integration, or for another tool, you can attach a binding by hand with `agent attach --runtime-file PRIVATE_FILE`. Keep it in a private JSON file like this one:
 
@@ -77,7 +79,7 @@ Before a delivery, the adapter checks all of these:
 
 A target in the state Working, Idle or Done accepts normal queued input. A target that is Blocked, Unknown, stopped, missing or changed does not. a-stack does not wait for the target to be idle.
 
-Herdr's `agent get` does not report the harness version. So `harness_version` is what `herdr bind` read from the harness, or what you declared in the file, and it is separate from the queue-test evidence. When you upgrade the harness to another minor line, the Operator must rebind the Agent.
+Herdr's `agent get` does not report the harness version. So `harness_version` is what `herdr bind` read from the harness, or what you declared in the file, and it is separate from the queue-test evidence. When you upgrade the harness to another minor line, bind the new native session again, or have the Operator rebind a still-live binding. Unsupported versions stay mail-only.
 
 ## How a-stack calls Herdr
 
@@ -128,7 +130,11 @@ a-stack notifications drain --state-dir "$state_dir" \
   --workspace "$workspace_id" --session "$session_id" --limit 4 --json
 ```
 
-`notifications status` lists 50 Agents by default and 100 at most. To get the next page, give the `data.next` value with `--after`. The Operator can select one Agent with `--agent`. An Agent sees only itself. The status shows whether notices are enabled, a safe reason, the time of the next attempt (`-1` while it waits for a new binding), and the number of references in each state. It never shows private bindings, mail bodies or read positions.
+`notifications status` lists 50 Agents by default and 100 at most. To get the next page, give the `data.next` value with `--after`. The Operator can select one Agent with `--agent`. An Agent sees only itself. Each row names the Agent and its ID. The status shows whether notices are enabled, a safe reason, the time of the next attempt (`-1` while it waits for a new binding), and the number of references in each state. It never shows private bindings, mail bodies or read positions.
+
+The Agent's own `mail check` adds one `notice_warning` with a reason and a fix when its binding is incomplete, its harness is unsupported, the service adapter is disabled, or the last delivery check could not reach it. The browser's Agents panel shows a small **Notices off** marker with the same reason in its tooltip. These read only the stored binding and last delivery diagnostic, run no Herdr command and change no mail position on the service. A new bind clears the old diagnostic; a changed delivery warning refreshes the view. They are not a live probe and do not prove that a notice was read. Mail checks work without notices.
+
+When `a-stack new --orchestrator` runs inside Herdr (`HERDR_ENV=1`), its brief tells the Orchestrator to bind itself too. Missing integrations must be installed and the harness restarted in that pane before binding.
 
 `agent list` shows the separate `runtime_state` reported by the a-stack hooks. Without those hooks it can stay `unknown` even when notices work. Notice eligibility uses Herdr's current `agent_status` and native session, not this hook state. Use `notifications status` to check delivery.
 
@@ -201,6 +207,8 @@ On 2026-10-25 a real Pi 1.4.0 TUI ran in a pane of an isolated Herdr 0.9.5 serve
 - Dialog open: an extension dialog was open, and Herdr reported the pane as `blocked`. a-stack kept the notice `pending` (`runtime_unavailable`) and sent no input, so the dialog stayed open with its first choice still selected. After the dialog was answered in the pane, the next retry submitted the notice, and it started one own mail check.
 
 The scripted model ran a mail check only after a notice, so this fixture shows how Pi takes queued input, not how a real model reacts to the notice text. Pi, like OpenCode in the same setup, dropped input typed in the first seconds after it started; a bound Agent has run its own `herdr bind` by then.
+
+On 2026-10-26 the same isolated Herdr 0.9.5/Pi 1.4.0 setup checked stale-target recovery. Pi bound itself, then its pane was closed. A mention stayed pending with `runtime_unavailable`. The same a-stack Agent and credential started in a new Pi pane and ran its own `herdr bind` again, at its current revision. The service verified the old pane was gone and attached the new one. Both the pending mention and a fresh mention reached the replacement Pi and started its own authorized mail check. This used the production identity checks, not a fixture-only delivery override.
 
 ### Native Claude Code fixture
 

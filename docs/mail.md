@@ -62,6 +62,8 @@ A returned cursor points to the last message that the response actually contains
 
 ### Check all your Tasks
 
+`mail check` includes one `notice_warning` (`reason` and `fix`) when the caller's mention notices are unavailable. It uses the stored binding and last delivery diagnostic, not a new Herdr request. Mail still works. See [Diagnostics](notifications.md#diagnostics-and-maintenance).
+
 `mail check` reads the caller's current Tasks in Task ID order. It reads 50 Tasks by default. Use `--task-limit` with a value from 1 to 100. The message limit and the size limit apply to the whole response.
 
 `more: true` in the response means that more mail is waiting than the response holds: a Task's page has `more: true`, or `next_task` is set.

@@ -155,6 +155,21 @@ func TestCLIMailInputIndependentCursorsRemovalAndRejoin(t *testing.T) {
 	if json.Unmarshal(checkData, &check) != nil || len(check.Tasks) != 1 || len(check.Tasks[0].Messages) != 1 {
 		t.Fatal("CLI check cursors")
 	}
+	for _, machine := range []bool{false, true} {
+		command := args(aFile, "mail", "check")
+		if !machine {
+			for i, arg := range command {
+				if arg == "--json" {
+					command = append(command[:i], command[i+1:]...)
+					break
+				}
+			}
+		}
+		var result stack.MailCheckPage
+		if json.Unmarshal(invoke(command, 0), &result) != nil || result.NoticeWarning == nil || result.NoticeWarning.Reason != "binding_incomplete" || !strings.Contains(result.NoticeWarning.Fix, "herdr bind") {
+			t.Fatal("mail check lacks the own-notices hint", machine, result.NoticeWarning)
+		}
+	}
 	var saved map[string]string
 	after, _ := os.ReadFile(cursorFile)
 	if json.Unmarshal(after, &saved) != nil || len(saved) != 1 || saved[task.ResourceID] != check.Tasks[0].Cursor {

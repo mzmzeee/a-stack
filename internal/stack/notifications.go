@@ -169,11 +169,14 @@ func recordNoticeTarget(ctx context.Context, tx *sql.Tx, t noticeTarget, reason 
 		return err
 	}
 	failures := 0
-	if !success {
-		err = tx.QueryRowContext(ctx, "SELECT failures FROM notice_targets WHERE session_id=? AND recipient_id=?", t.session, t.agent).Scan(&failures)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return err
-		}
+	var previous string
+	err = tx.QueryRowContext(ctx, "SELECT failures,reason FROM notice_targets WHERE session_id=? AND recipient_id=?", t.session, t.agent).Scan(&failures, &previous)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if success {
+		failures = 0
+	} else {
 		if failures < 6 {
 			failures++
 		}
@@ -188,6 +191,9 @@ func recordNoticeTarget(ctx context.Context, tx *sql.Tx, t noticeTarget, reason 
 		next = clock.Add(time.Duration(min(seconds, 30)) * time.Second).UnixMilli()
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO notice_targets VALUES(?,?,?,?,?,?) ON CONFLICT(session_id,recipient_id) DO UPDATE SET reason=excluded.reason,failures=excluded.failures,next_attempt=excluded.next_attempt,updated_at=excluded.updated_at`, t.session, t.agent, reason, failures, next, clock.UTC().Format(time.RFC3339Nano))
+	if err == nil && previous != reason && (noticeWarning(previous) != nil || noticeWarning(reason) != nil) {
+		err = bumpSessionRead(ctx, tx, t.session)
+	}
 	return err
 }
 func (n *notifier) unavailable(ctx context.Context, t noticeTarget, reason string) error {

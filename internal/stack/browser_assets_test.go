@@ -35,6 +35,12 @@ func TestBrowserAssetsStayReadOnly(t *testing.T) {
 			t.Errorf("app.js lacks %s", want)
 		}
 	}
+	// Notice markers use the existing Agent read, with no new endpoint or write.
+	for _, want := range []string{"el('span','chip notice-off','Notices off')", "g.a.notice_warning", "r.notice.hidden=!warning", "${warning.reason}: ${warning.fix}", "r.notice.setAttribute('aria-label'"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("notice marker lacks %s", want)
+		}
+	}
 	// Storage can be missing or throw (private windows, blocked site data): every access sits in a try.
 	for i, line := range strings.Split(js, "\n") {
 		if (strings.Contains(line, "localStorage") || strings.Contains(line, "sessionStorage")) && !strings.Contains(line, "try") {
