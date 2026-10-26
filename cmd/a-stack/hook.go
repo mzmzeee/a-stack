@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -378,6 +379,10 @@ var shims = map[string]struct{ path, content, header, name string }{
 	"opencode": {filepath.Join("plugins", "a-stack.js"), opencode.Plugin, opencode.Header, "OpenCode plugin"},
 }
 
+// shimsSupported is false on Windows, where the shims cannot run their
+// hooks: both start each hook command with /bin/sh.
+var shimsSupported = runtime.GOOS != "windows"
+
 // writeShim writes a harness's shim next to its hook list. On uninstall,
 // once the list has no hooks left, it removes the shim and the empty list.
 // It returns the shim's path and whether it changed it. It never touches
@@ -438,6 +443,13 @@ func (h *hookInstall) run(ctx context.Context) error {
 	}
 	if canonical, err := stack.ResolvePath(id.worktree); err == nil {
 		id.worktree = canonical
+	}
+	if !h.remove && !shimsSupported && (h.flags.pi || h.flags.opencode) {
+		flag := "--pi"
+		if h.flags.opencode {
+			flag = "--opencode"
+		}
+		return invalid(flag + " needs /bin/sh, so it works only on Linux and macOS")
 	}
 	command := ""
 	if !h.remove {

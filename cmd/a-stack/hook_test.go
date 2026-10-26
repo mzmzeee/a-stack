@@ -181,7 +181,16 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 
 // --pi writes the hook list and the extension into Pi's agent folder, and
 // nothing else. Uninstall removes both once no folder has hooks left.
+// withShims sets whether this system runs the Pi extension and the
+// OpenCode plugin, for one test.
+func withShims(t *testing.T, on bool) {
+	old := shimsSupported
+	shimsSupported = on
+	t.Cleanup(func() { shimsSupported = old })
+}
+
 func TestHookInstallPiWritesTheExtension(t *testing.T) {
+	withShims(t, true)
 	f := newTeam(t)
 	home := hookHome(t)
 	t.Chdir(f.project)
@@ -244,6 +253,7 @@ func TestHookInstallPiWritesTheExtension(t *testing.T) {
 // --opencode writes the hook list and the plugin into OpenCode's config
 // folder, below XDG_CONFIG_HOME or OPENCODE_CONFIG_DIR, and nothing else.
 func TestHookInstallOpenCodeWritesThePlugin(t *testing.T) {
+	withShims(t, true)
 	f := newTeam(t)
 	home := hookHome(t)
 	t.Chdir(f.project)
@@ -295,6 +305,30 @@ func TestHookInstallOpenCodeWritesThePlugin(t *testing.T) {
 	}
 	if _, errout, code = f.run("", append(install, "--project")...); code != 2 || !strings.Contains(errout, "--opencode has no --project") {
 		t.Fatalf("--project --opencode: %d %s", code, errout)
+	}
+}
+
+// The Pi extension and the OpenCode plugin run hooks with /bin/sh, so on
+// Windows install refuses them and changes nothing; uninstall still works.
+func TestHookInstallRefusesPiAndOpenCodeOnWindows(t *testing.T) {
+	withShims(t, false)
+	f := newTeam(t)
+	home := hookHome(t)
+	t.Chdir(f.project)
+	for _, flag := range []string{"--pi", "--opencode"} {
+		_, errout, code := f.run("", "hook", "install", flag, "--credential-file", f.workerFile)
+		if code != 2 || !strings.Contains(errout, flag+" needs /bin/sh, so it works only on Linux and macOS") {
+			t.Fatalf("install %s: %d %s", flag, code, errout)
+		}
+		if out := runSkill(t, "hook", "uninstall", flag); out != "No a-stack hooks for "+f.project+" were installed.\n" {
+			t.Fatalf("uninstall %s: %q", flag, out)
+		}
+	}
+	if entries, err := os.ReadDir(home); err != nil || len(entries) != 0 {
+		t.Fatalf("install wrote %v %v", entries, err)
+	}
+	if _, errout, code := f.run("", "hook", "install", "--claude", "--credential-file", f.workerFile); code != 0 {
+		t.Fatalf("install --claude: %d %s", code, errout)
 	}
 }
 
