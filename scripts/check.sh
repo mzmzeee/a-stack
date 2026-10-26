@@ -28,6 +28,12 @@ trap 'chmod -R u+w "$TMPDIR" 2>/dev/null; rm -rf "$TMPDIR"' EXIT
 
 step() { printf '\n== %s\n' "$*"; }
 
+step "merge conflict markers"
+if git grep -nE '^(<<<<<<<|>>>>>>>)( |$)|^=======$'; then
+  echo "leftover merge conflict markers" >&2
+  exit 1
+fi
+
 step gofmt
 unformatted="$(gofmt -l cmd internal)"
 if [ -n "$unformatted" ]; then
