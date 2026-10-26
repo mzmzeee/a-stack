@@ -252,8 +252,7 @@ func TestServiceInstallFailureRemovesANewUnit(t *testing.T) {
 
 // The upgrade test: with a unit that systemd loads from elsewhere, such as
 // from a package or another config folder, status said "not installed" next
-// to "enabled" and "active", and update told the user to restart a service
-// that runs another binary.
+// to "enabled" and "active". Update also needs that unit's state directory.
 func TestServiceFromAnotherUnitFile(t *testing.T) {
 	f, exe, state, file := serviceSetup(t)
 	other := filepath.Join(t.TempDir(), "a-stack.service")
@@ -271,16 +270,11 @@ func TestServiceFromAnotherUnitFile(t *testing.T) {
 			t.Fatalf("status lacks %q:\n%s", want, out)
 		}
 	}
-	// The restart hint of update is for the service that runs this binary.
-	if !serviceRuns(exe) {
-		t.Fatal("the service runs this binary")
-	}
-	another := filepath.Join(t.TempDir(), "a-stack")
-	if os.WriteFile(another, nil, 0o755) != nil || serviceRuns(another) {
-		t.Fatal("the service runs another binary")
+	if binary, dir, running := serviceProgram(); binary != exe || dir != "/other/state" || !running {
+		t.Fatalf("service program: %q %q %v", binary, dir, running)
 	}
 	f.replies["is-active --quiet a-stack"] = func() (string, error) { return "", errExit }
-	if serviceRuns(exe) {
+	if _, _, running := serviceProgram(); running {
 		t.Fatal("the service does not run")
 	}
 }

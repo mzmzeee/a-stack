@@ -65,14 +65,14 @@ func launchdPrint(label string) (state, path string) {
 
 // launchdProgram is the binary in the loaded agent's plist, and whether it
 // runs.
-func launchdProgram(label string) (binary string, running bool) {
-	state, path := launchdPrint(label)
+func launchdProgram(label string) (binary, state string, running bool) {
+	active, path := launchdPrint(label)
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
-	binary, _ = plistCommand(string(content))
-	return binary, state == "running"
+	binary, state = plistCommand(string(content))
+	return binary, state, active == "running"
 }
 
 func launchdFailed(step, out string) error {

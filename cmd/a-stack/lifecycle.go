@@ -65,7 +65,7 @@ func acceptedFlags(command string) string {
 	} else if command == "skill uninstall" {
 		return " project json help "
 	} else if command == "update" {
-		return " check version json help "
+		return " check version no-restart json help "
 	} else if command == "statusline" {
 		return " state-dir help "
 	} else if command == "hook" {

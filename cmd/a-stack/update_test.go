@@ -113,9 +113,9 @@ func updateSetup(t *testing.T, current string, release *fakeRelease) (exe, log s
 	if err := os.WriteFile(exe, []byte("old"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	oldVersion, oldExecutable, oldActive, oldKey := version, executable, serviceRuns, releaseKey
-	version, executable, serviceRuns, releaseKey = current, func() (string, error) { return exe, nil }, func(string) bool { return false }, testKey.Public().(ed25519.PublicKey)
-	t.Cleanup(func() { version, executable, serviceRuns, releaseKey = oldVersion, oldExecutable, oldActive, oldKey })
+	oldVersion, oldExecutable, oldService, oldKey := version, executable, updateService, releaseKey
+	version, executable, updateService, releaseKey = current, func() (string, error) { return exe, nil }, func() (string, string, bool) { return "", "", false }, testKey.Public().(ed25519.PublicKey)
+	t.Cleanup(func() { version, executable, updateService, releaseKey = oldVersion, oldExecutable, oldService, oldKey })
 	return exe, log
 }
 
@@ -161,8 +161,8 @@ func TestUpdateReplacesTheBinary(t *testing.T) {
 	}
 	runSkill(t, "skill", "install", "--project")
 	release.latest, release.archives["v0.3.0"] = "v0.3.0", tarGz(t, map[string]string{"./a-stack": fakeBinary("v0.3.0")})
-	serviceRuns = func(string) bool { return true }
-	out, _ = runUpdate(t, 0, "--json")
+	updateService = func() (string, string, bool) { return exe, "", true }
+	out, _ = runUpdate(t, 0, "--json", "--no-restart")
 	var result struct {
 		Data struct {
 			Previous, Version, Path string
@@ -216,7 +216,7 @@ func TestUpdateCheckVersionAndRefusals(t *testing.T) {
 	if out, _ := runUpdate(t, 0, "--check"); out != "a-stack v0.2.0 is available; you have v0.1.9. Run a-stack update to install it.\n" {
 		t.Fatalf("check %q", out)
 	}
-	if out, _ := runUpdate(t, 0, "--check", "--json"); out != `{"data":{"latest":"v0.2.0","update_available":true,"version":"v0.1.9"}}`+"\n" {
+	if out, _ := runUpdate(t, 0, "--check", "--json"); out != `{"data":{"latest":"v0.2.0","restarted":false,"service_version":"","update_available":true,"version":"v0.1.9"}}`+"\n" {
 		t.Fatalf("check json %q", out)
 	}
 	version = "v0.2.0"

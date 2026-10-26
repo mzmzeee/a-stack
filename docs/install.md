@@ -154,7 +154,7 @@ The output shows the version that you installed:
 
 ## Update
 
-Your data stays in the state directory when you update. The service needs a restart before it uses the new version.
+Your data stays in the state directory when you update. After replacing the binary, `a-stack update` restarts a running installed service and checks that it answers with the new version.
 
 1. Optional: back up your data first. The service must be running for this:
 
@@ -175,6 +175,8 @@ Your data stays in the state directory when you update. The service needs a rest
 
    If you installed the agent skill with `a-stack skill install`, the update also updates those copies, in your home folder and in the current folder. It does not create new ones.
 
+   - `a-stack update --no-restart` leaves the service alone and prints the manual restart command. No service, a stopped service and a hand-started `a-stack serve` are left alone too. An already-current binary never triggers a restart.
+   - With `--json`, `restarted` says whether the service answered with the new version, and `service_version` is that version (empty when no restart was checked). The other fields stay the same.
    - `a-stack update --check` only compares the versions. When a newer release exists, it prints `a-stack v0.1.4 is available; you have v0.1.3. Run a-stack update to install it.` Otherwise it says that your version is the latest. It exits with 0 in both cases. With `--json`, `update_available` is `true` or `false`.
    - `a-stack update --version v0.1.2` installs that release, also an older one. For an older version it prints a warning: an older a-stack may not open the current database. See [Go back to an older version](#go-back-to-an-older-version).
    - A build from source has no release version. It updates only with `--version`.
@@ -190,7 +192,9 @@ Your data stays in the state directory when you update. The service needs a rest
 
    To pick a version with the script, set `A_STACK_VERSION` as in [Install script](#install-script).
 
-3. Restart the service. Until then, the running service keeps the old version. `a-stack update` prints the restart command when the service runs the binary that it replaced.
+3. The update prints a line before restarting a running installed service. It waits up to 15 seconds for the new version, then prints `Restarted the service; it runs vX`. If the old version still answers, the error names the binary in the unit, plist or task: check for a stale `ExecStart` or a Homebrew Cellar path. If the service does not come back, the error gives the manual restart command.
+
+   With `--no-restart`, or after using a package manager or the install script, restart it yourself. Until then, the service keeps the old version:
 
    - If you started `a-stack serve` by hand, press Ctrl-C in its terminal and run `a-stack serve` again.
    - If systemd runs the service, run `systemctl --user restart a-stack`.

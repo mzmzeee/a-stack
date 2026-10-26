@@ -80,7 +80,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var state, credential, kind, listen, destination, herdrExecutable, orchestrator string
-	var machine, help, noBrowser, resume, project, refresh, check, all bool
+	var machine, help, noBrowser, resume, project, refresh, check, noRestart, all bool
 	var release versionFlag
 	fs.StringVar(&state, "state-dir", "", "State directory (default "+stateDirDefault+")")
 	fs.StringVar(&credential, "credential-file", "", "Credential file (default: operator.json)")
@@ -97,6 +97,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&project, "project", false, "Use .claude and .agents in the current folder, not in your home folder")
 	fs.BoolVar(&refresh, "refresh", false, "Replace only the skill copies that exist; write no new ones")
 	fs.BoolVar(&check, "check", false, "Only print the current and the latest version")
+	fs.BoolVar(&noRestart, "no-restart", false, "Leave the service running on the old version after update")
 	fs.BoolVar(&all, "all", false, "Every Session")
 	fs.StringVar(&herdrExecutable, "herdr-executable", "", "The herdr binary; serve turns on mention notices with it")
 	fs.StringVar(&orchestrator, "orchestrator", "", "Also register an Agent with this name and appoint it as the Orchestrator")
@@ -208,7 +209,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return skillCommand(cmd, project, refresh, machine, stdout)
 	}
 	if cmd == "update" {
-		return updateCommand(release, check, machine, stdout, stderr)
+		return updateCommand(release, check, noRestart, machine, stdout, stderr)
 	}
 	stateFlag := state
 	if state == "" {
