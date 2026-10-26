@@ -84,8 +84,8 @@ func TestHerdrExecutableHelper(t *testing.T) {
 			session["value"] = "sessions/relative.jsonl"
 		}
 		agent["agent"], agent["agent_session"] = "pi", session
-	case "opencode":
-		agent["agent"], agent["agent_session"] = "opencode", map[string]any{"agent": "opencode", "kind": "id", "source": "herdr:opencode", "value": config.Binding.NativeSessionID}
+	case "claude", "opencode":
+		agent["agent"], agent["agent_session"] = config.Mode, map[string]any{"agent": config.Mode, "kind": "id", "source": "herdr:" + config.Mode, "value": config.Binding.NativeSessionID}
 	}
 	if len(args) == 3 && args[0] == "agent" && args[1] == "get" {
 		switch config.Mode {
@@ -817,6 +817,8 @@ func TestNotificationsProductionHarnessSupportPredicate(t *testing.T) {
 		// The verified minor line from the fixture version up, nothing else.
 		{"codex", "0.164.0", true}, {"codex", "0.164.1", true}, {"codex", "0.164.27", true}, {"codex", "0.165.0", false}, {"codex", "1.164.0", false},
 		{"codex", "0.163.9", false}, {"codex", "0.164.0-dev", false}, {"codex", "0.164", false}, {"codex", "0.164.01", false}, {"codex", "v0.164.0", false},
+		{"claude", "2.1.310", true}, {"claude", "2.1.311", true}, {"claude", "2.1.309", false}, {"claude", "2.2.0", false}, {"claude", "3.1.310", false},
+		{"claude", "2.1.310-dev", false}, {"claude", "2.1.0310", false}, {"claude", "2.1", false}, {"Claude", "2.1.310", false},
 		{"codex", "0.164.0.1", false}, {"codex", "", false}, {"pi", "0.164.0", false}, {"pi", "1.4.0", true}, {"pi", "1.4.2", true}, {"pi", "1.5.0", false}, {"pi", "1.3.9", false}, {"claude", "0.164.0", false}, {"Codex", "0.164.0", false}, {"unknown", "0.164.0", false},
 	} {
 		t.Run(test.kind+"/"+test.version, func(t *testing.T) {
@@ -831,7 +833,7 @@ func TestNotificationsProductionHarnessSupportPredicate(t *testing.T) {
 	if reason := f.n.adapter.verify(ctx, f.config.Binding); reason != "" {
 		t.Fatal("verified production combination rejected", reason)
 	}
-	for _, pair := range [][2]string{{"codex", "0.165.0"}, {"pi", "0.164.0"}, {"unknown", "0.164.0"}, {"codex", ""}} {
+	for _, pair := range [][2]string{{"codex", "0.165.0"}, {"claude", "2.1.309"}, {"claude", "2.2.0"}, {"pi", "0.164.0"}, {"unknown", "0.164.0"}, {"codex", ""}} {
 		binding := f.config.Binding
 		binding.Harness, binding.HarnessVersion = pair[0], pair[1]
 		before := len(f.calls(t))

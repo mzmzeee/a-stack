@@ -6,6 +6,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- Mention notices reach Claude Code 2.1.x from 2.1.310 (below 2.2). A native fixture with a private Claude Code 2.1.310 install, a scripted API and an isolated Herdr 0.9.5 verified idle delivery, native mid-turn delivery after a foreground tool step, and notices held back while a permission dialog is open. Each notice led to the Agent's own mail check. See [Native Claude Code fixture](docs/notifications.md#native-claude-code-fixture).
+
 ## [0.1.7] - 2026-10-26
 
 Upgrading from v0.1.6: run `a-stack update`, then restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`). The first start copies the database to `state.db.pre-v8`, moves it to schema 9 and prints one line that names the copy. Schema 9 adds the standing orders and rebuilds the Task mail table, so that a message can come from the Operator; Agent mail reads the same as before. It needs free space of up to three times the size of `state.db`; with less, it stops before it changes anything and says how much it needs. After the upgrade, v0.1.6 cannot open the database. To go back, run `a-stack update --version v0.1.6`, stop the service, and put `state.db.pre-v8` back as `state.db` in a new state directory in the same place, as in [Go back to an older version](docs/install.md#go-back-to-an-older-version); changes made after the upgrade are lost. Then delete the Agents' mail cursor files and the hooks' cursor folder, because they can point past the restored mail.
