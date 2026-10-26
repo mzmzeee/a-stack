@@ -88,6 +88,8 @@ function load(key) { try { return localStorage.getItem(key); } catch { return nu
 function save(key,value) { try { localStorage.setItem(key,value); } catch {} }
 if (views.includes(load('a-stack-view'))) state.view = load('a-stack-view');
 state.archived = load('a-stack-archived') === '1';
+const barNames={top:'top bar',session:'Session header',footer:'footer'}, collapsedBars={};
+for(const name of Object.keys(barNames))collapsedBars[name]=load('a-stack-bar-'+name)==='1';
 window.addEventListener('hashchange',connect);
 const labels = {waiting:'Waiting',working:'Working',finished:'Finished',cancelled:'Cancelled'};
 function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className=cls; if (text !== undefined) n.textContent=text; return n; }
@@ -519,6 +521,7 @@ function render() {
   const count=model.tasks.filter(matches).length, attention=model.tasks.filter(t=>t.needs_you);
   const attentionText=attention.length?`Needs you (${attention.length})`:'All clear';
   if($('attention').textContent!==attentionText)$('attention').replaceChildren(iconNode(attention.length?'attention':'finished'),document.createTextNode(attentionText));$('attention').disabled=!attention.length;
+  patchCompactAttention();
   setText($('result-count'),state.query||state.filter!=='all'?`${count} of ${model.tasks.length} tasks`:'');
   // The service decides which Tasks are archived (command, chain or age); the graph hides them unless the Archived toggle is on.
   graphTasks=state.archived?model.tasks:model.tasks.filter(t=>!t.archived);
@@ -586,9 +589,11 @@ function updateSource(message) {
   // While polls succeed, "just now" keeps the footer still, so it causes no layout every second.
   const text=message || (notice?'No access · run a-stack':lastSuccess?`${stale?'Saved · stale':service} · checked ${!stale&&Date.now()-lastSuccess<60000?'just now':age(new Date(lastSuccess).toISOString())}`:service+' · connecting');
   updateHint();
-  setText(document.querySelector('.preview-label'),text);setText(document.querySelector('.preview-short'),stale?'Saved · stale':'Read-only');
+  setText(document.querySelector('.preview-label'),version || 'Version unknown');
+  const full=text.startsWith(service)?text:service+' · '+text;$('about-button').title=full;
+  $('about-button').classList.toggle('lost',stale||!!notice);
   setText($('source-info'),`${text}${model?'. Snapshot captured '+model.snapshot.captured_at+' · revision '+model.snapshot.session.read_revision+'. Runtime observations have their own age and are unverified.':''}`);
-  $('about-button').setAttribute('aria-label',text+'. About this read-only view');
+  $('about-button').setAttribute('aria-label',full+'. About this read-only view');
   updateTitle();
 }
 // The tab title and icon count the Needs you requests, so a background tab shows them.
@@ -683,6 +688,42 @@ function setZoom(value) {
   const old=state.zoom;state.zoom=Math.max(.0001,Math.min(1.5,value));
   const x=(panel.scrollLeft+panel.clientWidth/2)/old,y=(panel.scrollTop+panel.clientHeight/2)/old;applyZoom();panel.scrollLeft=x*state.zoom-panel.clientWidth/2;panel.scrollTop=y*state.zoom-panel.clientHeight/2;
 }
+function patchCompactAttention() {
+  const b=$('compact-attention'), n=model?model.tasks.filter(t=>t.needs_you).length:0;
+  if((!collapsedBars.session||!n)&&document.activeElement===b)document.querySelector('[data-bar="session"]').focus({preventScroll:true});
+  b.hidden=!collapsedBars.session||!n;
+  $('collapsed-title').hidden=!collapsedBars.session;setText($('collapsed-title'),model?.snapshot.session.name || 'Session');
+  const text=`Needs you (${n})`;if(b.textContent!==text)b.replaceChildren(iconNode('attention'),document.createTextNode(text));
+}
+function sizeBars() {
+  const css=document.documentElement.style;
+  css.setProperty('--top',$('top-bar').offsetHeight+'px');css.setProperty('--foot',$('footer-bar').offsetHeight+'px');css.setProperty('--strip',collapsedBars.session?'28px':'0px');
+  redrawMinimap();
+}
+function patchBars() {
+  for(const [name,label] of Object.entries(barNames)){
+    const hidden=!!collapsedBars[name], content=$(name+'-content'), button=document.querySelector(`[data-bar="${name}"]`);
+    if(hidden&&content.contains(document.activeElement))button.focus({preventScroll:true});
+    content.hidden=hidden;$(name+'-bar').classList.toggle('collapsed',hidden);button.setAttribute('aria-expanded',String(!hidden));
+    button.setAttribute('aria-label',`${hidden?'Expand':'Collapse'} ${label}`);button.title=button.getAttribute('aria-label');
+  }
+  patchCompactAttention();sizeBars();
+}
+// Keep the same world point at the centre, without re-laying out cards or resetting zoom. On a scrolling page,
+// keep the graph at its screen position too (unless the shorter page reaches its end).
+function toggleBars(names,hidden) {
+  const visible=state.view==='graph', z=state.zoom, top=panel.getBoundingClientRect().top, scrollY=window.scrollY;
+  const x=(panel.scrollLeft+panel.clientWidth/2-Math.max(0,(panel.clientWidth-width*z)/2))/z;
+  const y=(panel.scrollTop+panel.clientHeight/2-Math.max(0,(panel.clientHeight-height*z)/2))/z;
+  for(const name of names){collapsedBars[name]=hidden;save('a-stack-bar-'+name,hidden?'1':'0');}
+  patchBars();
+  if(visible){
+    panel.scrollLeft=x*z+Math.max(0,(panel.clientWidth-width*z)/2)-panel.clientWidth/2;
+    panel.scrollTop=y*z+Math.max(0,(panel.clientHeight-height*z)/2)-panel.clientHeight/2;
+    if(scrollY)window.scrollBy(0,panel.getBoundingClientRect().top-top);
+  }
+}
+for(const b of document.querySelectorAll('[data-bar]'))b.onclick=()=>toggleBars([b.dataset.bar],!collapsedBars[b.dataset.bar]);
 for(const b of document.querySelectorAll('[data-view]')) {
   b.addEventListener('click',()=>{state.view=b.dataset.view;save('a-stack-view',state.view);render();});
   b.addEventListener('keydown',e=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;e.preventDefault();const i=views.indexOf(state.view),v=e.key==='Home'?views[0]:e.key==='End'?views.at(-1):views[(i+(e.key==='ArrowRight'?1:views.length-1))%views.length];$(v+'-tab').click();$(v+'-tab').focus();});
@@ -714,13 +755,14 @@ function renderAttention() {
   for(const [id,b] of attentionChoices)if(!ids.has(id)){b.remove();attentionChoices.delete(id);}
   placeAll(list,tasks.map(t=>{
     let b=attentionChoices.get(t.id);
-    if(!b){b=el('button','dependency choice');b.dataset.attentionTask=t.id;b.append(el('span','dependency-name'),el('time','now-age'),el('span','choice-question'));b.onclick=()=>{$('attention-dialog').close();openTask(t.id,$('attention'));};attentionChoices.set(t.id,b);}
+    if(!b){b=el('button','dependency choice');b.dataset.attentionTask=t.id;b.append(el('span','dependency-name'),el('time','now-age'),el('span','choice-question'));b.onclick=()=>{$('attention-dialog').close();openTask(t.id,collapsedBars.session?$('compact-attention'):$('attention'));};attentionChoices.set(t.id,b);}
     setText(b.children[0],t.title);stamp(b.children[1],t.updated_at);setText(b.children[2],t.question_preview || '');return b;
   }));
-  if(!tasks.length && $('attention-dialog').open){$('attention-dialog').close();$(state.view+'-tab').focus();}
+  if(!tasks.length && $('attention-dialog').open){$('attention-dialog').close();(collapsedBars.top?$({now:'now-panel',graph:'graph-panel',agents:'agents-panel'}[state.view]):$(state.view+'-tab')).focus();}
   else if(oldIndex>=0&&!focused.isConnected)list.children[Math.min(oldIndex,tasks.length-1)]?.focus();
 }
-$('attention').onclick=()=>{const tasks=model.tasks.filter(t=>t.needs_you);if(tasks.length===1)openTask(tasks[0].id,$('attention'));else{renderAttention();$('attention-dialog').showModal();}};
+$('attention').onclick=()=>{const tasks=model.tasks.filter(t=>t.needs_you);if(tasks.length===1)openTask(tasks[0].id,collapsedBars.session?$('compact-attention'):$('attention'));else{renderAttention();$('attention-dialog').showModal();}};
+$('compact-attention').onclick=()=>$('attention').click();
 const dialog=$('task-dialog');
 const top=el('div','detail-top'),kicker=el('span','detail-kicker','TASK DETAILS'),close=el('button','icon-button');close.setAttribute('aria-label','Close task details');close.append(iconNode('close'));close.onclick=()=>dialog.close();top.append(kicker,close);
 // The details: a property grid (status, Agents, Ticket, both directions of dependencies), then the sections that
@@ -826,8 +868,8 @@ mailToggle.onclick=()=>{
 };
 mailMore.onclick=()=>fetchMail();
 dialog.append(top,body);
-dialog.addEventListener('close',()=>{detailEpoch++;state.selected=null;detailKey='';render();if(returnFocus?.isConnected&&!returnFocus.closest('[inert]')&&!returnFocus.closest('[hidden]'))returnFocus.focus();else $(state.view+'-tab').focus();});
-function setFocus(id) {state.focus=id;state.unlinked=false;if(!id)peekID=null;render();}
+dialog.addEventListener('close',()=>{detailEpoch++;state.selected=null;detailKey='';render();if(returnFocus?.isConnected&&!returnFocus.closest('[inert]')&&!returnFocus.closest('[hidden]'))returnFocus.focus();else (collapsedBars.top?$({now:'now-panel',graph:'graph-panel',agents:'agents-panel'}[state.view]):$(state.view+'-tab')).focus();});
+function setFocus(id) {linkCycle=null;state.focus=id;state.unlinked=false;if(!id)peekID=null;render();}
 $('archived').addEventListener('click',()=>{state.archived=!state.archived;save('a-stack-archived',state.archived?'1':'0');render();});
 function openTask(id,focus) {if(state.view==='graph')state.focus=id;if(state.selected!==id){resetMail(id);resetAnswer(id);for(const name of ['description','report','reason','result','question','answered','claims','claimWarnings','references'])detailText(name,'');delete detailFields.references.dataset.key;}returnFocus=focus || returnFocus;state.selected=id;detailKey='';detailEpoch++;render();if(!dialog.open){dialog.showModal();close.focus();}}
 const archiveReasons={command:'Archived with task archive.',chain:'Archived: every Task that depends on it is finished or cancelled.',age:'Archived: it ended more than 24 hours ago.'};
@@ -877,30 +919,63 @@ function patchPeek() {
   setText(peekFields.mail,t.mail_count?plural(t.mail_count,'message'):'None');stamp(peekWhen,t.updated_at);setText(peekNew,isNew(t)?' · new since you looked':'');setText(peekReport,t.report_preview || 'No report yet.');
   patchDependencies(t,peekFields,peekRows,4,o=>cards.get(o.id)&&!cards.get(o.id).article.inert?goTo(o.id):openTask(o.id,c.button));
 }
-// j, k and u: focus a card and highlight it; an open peek follows.
+// Navigation focuses and highlights a card; an open peek follows.
 function goTo(id) {const b=cards.get(id).button;b.focus({preventScroll:true});b.scrollIntoView({block:'nearest',inline:'nearest'});if(peekID)peekID=id;setFocus(id);}
+function navigationHint(text) {const n=$('navigation-hint');n.textContent='';requestAnimationFrame(()=>{n.textContent=text;});}
+// Use every direct dependency, including implied lines. Filtered and hidden archived cards are not destinations.
+// H/L keep the starting Task as their anchor until another motion or selection, so they visit siblings, not a chain.
+function linkedTask(id,direction,cycle) {
+  const previous=cycle&&linkCycle?.direction===direction&&linkCycle.last===id&&positions.has(linkCycle.anchor)?linkCycle:null, anchor=previous?previous.anchor:id;
+  if(!positions.has(anchor))return;
+  const from=direction==='h'?'dependent_id':'prerequisite_id', to=direction==='h'?'prerequisite_id':'dependent_id';
+  const ids=[...new Set(model.dependencies.filter(e=>e[from]===anchor).map(e=>e[to]))].filter(id=>cards.has(id)&&!cards.get(id).article.inert);
+  const y=id=>positions.get(id).y+(ports.get(id) || 0), origin=y(anchor);
+  ids.sort((a,b)=>y(a)-y(b)||a.localeCompare(b));
+  if(!ids.length){navigationHint(`No visible ${direction==='h'?'prerequisite':'dependent'}.`);return;}
+  const nearest=ids.reduce((a,b)=>Math.abs(y(b)-origin)<Math.abs(y(a)-origin)?b:a);
+  const next=previous&&ids.includes(id)?ids[(ids.indexOf(id)+1)%ids.length]:nearest;
+  goTo(next);if(cycle)linkCycle={anchor,direction,last:next};
+}
 // Keys. Single-key shortcuts work only while the focus is in the Graph tab (its peek included) or the Agents tab
 // (WCAG 2.1.4), so typing elsewhere never triggers one; never with Ctrl, Alt or Meta, and never under a modal dialog.
-// Every key only moves around or shows something: none changes the Session.
-let gAt=0;
+// Every key only moves around or shows something: none changes the Session. Ctrl-d/u remain browser shortcuts.
+let prefix='', prefixAt=0, linkCycle=null;
+const resetKeys=()=>{prefix='';linkCycle=null;};
+document.addEventListener('pointerdown',resetKeys);
+document.addEventListener('focusin',()=>{prefix='';});
 $('keys-button').onclick=()=>$('keys-dialog').showModal();
 document.addEventListener('keydown',e=>{
   if(e.key==='Escape'&&e.target===$('search')&&state.query){e.preventDefault();$('search').value='';state.query='';render();return;} // the search text goes first
-  if(e.ctrlKey||e.metaKey||e.altKey||e.isComposing||document.querySelector('dialog[open]'))return;
-  if(e.key==='Escape'){if(state.view!=='graph')return;if(peekID){e.preventDefault();closePeek();}else if(state.focus||state.unlinked){e.preventDefault();setFocus(null);}return;}
-  const where=panel.contains(e.target)||peekBox.contains(e.target)?'graph':agentsPanel.contains(e.target)?'agents':'', k=e.key, g=Date.now()-gAt<1500;
-  if(!where||e.target.closest('input, select, textarea'))return;
-  gAt=0;
-  const card=e.target.closest('.task-card'), act={
-    '?':()=>$('keys-dialog').showModal(), '/':()=>$('search').focus(), g:()=>{gAt=Date.now();},
-    u:()=>{const list=where==='graph'?layoutCards():[...agentsPanel.querySelectorAll('.task-row')], asks=list.filter(b=>where==='graph'?b.dataset.status==='needs-you':b.querySelector('.row-status.needs-you')), i=asks.findIndex(b=>list.indexOf(b)>list.indexOf(e.target.closest('.task-card, .task-row')));const b=asks[i<0?0:i];if(!b)return;if(where==='graph')goTo(b.dataset.openTask);else{b.focus({preventScroll:true});b.scrollIntoView({block:'nearest'});}},
+  if(e.ctrlKey||e.metaKey||e.altKey||e.isComposing||document.querySelector('dialog[open]')){resetKeys();return;}
+  const where=panel.contains(e.target)||peekBox.contains(e.target)?'graph':agentsPanel.contains(e.target)?'agents':'', k=e.key;
+  if(!where||e.target.closest('input, select, textarea')||e.target.isContentEditable){resetKeys();return;}
+  const pending=Date.now()-prefixAt<1500?prefix:'';prefix='';
+  if(k!=='H'&&k!=='L'&&k!=='Shift')linkCycle=null;
+  if(k==='Escape'){if(where!=='graph')return;if(peekID){e.preventDefault();closePeek();}else if(state.focus||state.unlinked){e.preventDefault();setFocus(null);}return;}
+  const card=e.target.closest('.task-card'), current=card?.dataset.openTask || state.focus;
+  const end=last=>{const list=layoutCards(), b=last?list.at(-1):list[0];if(b)goTo(b.dataset.openTask);};
+  const centre=()=>{const b=cards.get(current)?.button;if(b&&!b.closest('[inert]'))b.scrollIntoView({block:'center',inline:'center'});else navigationHint('Focus a Task to centre it.');};
+  const needs=direction=>{
+    const list=where==='graph'?layoutCards():[...agentsPanel.querySelectorAll('.task-row')].filter(b=>!b.closest('[hidden], [inert]'));
+    const asks=list.filter(b=>where==='graph'?b.dataset.status==='needs-you':b.querySelector('.row-status.needs-you'));
+    const i=list.indexOf(e.target.closest('.task-card, .task-row') || cards.get(current)?.button);
+    const b=direction>0?(asks.find(b=>list.indexOf(b)>i)||asks[0]):(asks.findLast(b=>i<0||list.indexOf(b)<i)||asks.at(-1));
+    if(!b){navigationHint('No visible Task needs you.');return;}
+    if(where==='graph')goTo(b.dataset.openTask);else{b.focus({preventScroll:true});b.scrollIntoView({block:'nearest'});}
+  };
+  const act={
+    '?':()=>$('keys-dialog').showModal(), '/':()=>{if(collapsedBars.session)toggleBars(['session'],false);$('search').focus();},
+    g:e.repeat?null:()=>{prefix='g';prefixAt=Date.now();}, u:()=>needs(1), ']':()=>needs(1), '[':()=>needs(-1),
+    t:e.repeat?null:()=>toggleBars(Object.keys(barNames),!Object.values(collapsedBars).every(Boolean)),
   };
   if(where==='graph')Object.assign(act,{
-    j:()=>step(1), k:()=>step(-1), ' ':card?()=>{const id=card.dataset.openTask;if(peekID===id)closePeek();else peek(id);}:null,
+    j:()=>step(1), k:()=>step(-1), h:()=>linkedTask(current,'h',false), l:()=>linkedTask(current,'l',false), H:()=>linkedTask(current,'h',true), L:()=>linkedTask(current,'l',true),
+    G:()=>end(true), c:centre, z:e.repeat?null:()=>{prefix='z';prefixAt=Date.now();}, ' ':card?()=>{const id=card.dataset.openTask;if(peekID===id)closePeek();else peek(id);}:null,
     f:()=>$('zoom-fit').click(), '+':()=>$('zoom-in').click(), '=':()=>$('zoom-in').click(), '-':()=>$('zoom-out').click(), '0':()=>$('zoom-reset').click(), m:e.repeat?null:()=>setMinimap(!mapOn),
   });
   function step(d) {const list=layoutCards();if(!list.length)return;let i=list.indexOf(card || cards.get(state.focus)?.button);i=i<0?(d>0?0:list.length-1):Math.max(0,Math.min(list.length-1,i+d));goTo(list[i].dataset.openTask);}
-  const run=g&&['n','g','a'].includes(k)?()=>{const v={n:'now',g:'graph',a:'agents'}[k];$(v+'-tab').click();({now:nowPanel,graph:panel,agents:agentsPanel})[v].focus();}:Object.hasOwn(act,k)&&act[k];
+  const run=pending==='g'&&['n','v','a'].includes(k)?()=>{const v={n:'now',v:'graph',a:'agents'}[k];$(v+'-tab').click();({now:nowPanel,graph:panel,agents:agentsPanel})[v].focus();}:
+    !e.repeat&&where==='graph'&&pending==='g'&&k==='g'?()=>end(false):!e.repeat&&where==='graph'&&pending==='z'&&k==='z'?centre:Object.hasOwn(act,k)&&act[k];
   if(!run)return;e.preventDefault();run();
 });
 async function loadDetail() {
@@ -973,6 +1048,8 @@ function updated(assets) {
 $('reload').onclick=()=>location.reload();
 document.addEventListener('visibilitychange',()=>{document.documentElement.classList.toggle('tab-hidden',document.hidden);if(document.hidden){markSeen();if(!busy)schedule();}else{clearTimeout(timer);render();refresh();}});
 setInterval(()=>{if(!document.hidden&&model){updateSource();updateRuntimeAges();updateNowAges();}},1000);
+patchBars();
+const barObserver=new ResizeObserver(sizeBars);for(const name of Object.keys(barNames))barObserver.observe($(name+'-bar'));
 patchNotify();
 render();
 connect();

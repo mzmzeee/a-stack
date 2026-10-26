@@ -105,7 +105,8 @@
   .footer-hint, #result-count { font-size: 12px; color: var(--muted); }
   .footer-hint.lost { display: inline; color: var(--attention); }
   .preview-button { display: flex; align-items: center; gap: 7px; min-height: 32px; border: none; padding: 0 2px; margin-left: auto; background: transparent; font-size: 12px; color: var(--muted); white-space: nowrap; }
-  .preview-short { display: none; }
+  .preview-button.lost { color: var(--attention); background: var(--attention-bg); border-radius: 4px; }
+  .preview-button.lost::before { content: "!"; font-weight: 700; }
   .preview-button { min-width: 0; } .preview-label { overflow: hidden; text-overflow: ellipsis; }
   .preview-button:hover { color: var(--ink); text-decoration: underline; }
   .preview-button svg { width: 14px; height: 14px; }
@@ -176,8 +177,6 @@
     .search { order: 2; width: 100%; }
     .status-filter { order: 3; width: 132px; }
     .footer { padding: 8px 14px; gap: 10px; min-height: 56px; flex-wrap: wrap; }
-    .preview-button .preview-label { display: none; }
-    .preview-short { display: inline; }
     #result-count { margin-left: auto; }
     .detail-panel { margin: 12px 12px 12px auto; max-height: calc(100dvh - 24px); }
   }
@@ -314,22 +313,34 @@
 .graph-world > .task-unit { contain: layout style; }
 .graph-world.cv > .task-unit { content-visibility: auto; contain-intrinsic-size: 274px var(--uh); }
 
-/* Short or narrow windows: the page scrolls, so the view gets the height. Only the tabs stay at the top,
-   and in the Graph tab the footer with the zoom controls stays at the bottom. */
+/* Each bar leaves a 28px strip and its arrow. Hidden content is also out of the Tab order. */
+.bar { position: relative; flex-shrink: 0; }
+.bar-toggle { position: absolute; top: 4px; right: 6px; z-index: 1; display: grid; place-items: center; width: 28px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 5px; background: var(--chrome); color: var(--muted); }
+.bar-toggle:hover { color: var(--ink); border-color: var(--strong-line); }
+.bar-toggle:focus-visible { outline-offset: 1px; }
+.bar-toggle svg { width: 14px; height: 14px; transform: rotate(-90deg); }
+.bar-toggle[aria-expanded="false"] svg { transform: rotate(90deg); }
+#footer-bar .bar-toggle svg { transform: rotate(90deg); }
+#footer-bar .bar-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
+.bar.collapsed { min-height: 28px; background: var(--chrome); border-bottom: 1px solid var(--line); }
+.bar.collapsed .bar-toggle { top: 1px; }
+#footer-bar.collapsed { border-top: 1px solid var(--line); border-bottom: 0; }
+.appbar, .workspacebar, .footer { padding-right: 46px; }
+.bar-attention { position: absolute; top: 1px; right: 42px; min-height: 24px; height: 24px; padding: 0 8px; font-size: 12px; }
+.bar-attention svg { width: 14px; height: 14px; }
+
+/* Short or narrow windows: the page scrolls. The top bar, a collapsed Session strip and the Graph footer stay
+   visible. Measured bar heights also place the minimap and peek above a wrapped or collapsed footer. */
 @media (max-height: 600px), (max-width: 700px) {
-  :root { --top: 68px; --foot: 58px; }
   .app { height: auto; min-height: 100dvh; overflow: visible; }
-  .appbar { position: sticky; top: 0; z-index: 3; }
+  #top-bar { position: sticky; top: 0; z-index: 4; }
+  #session-bar.collapsed { position: sticky; top: var(--top); z-index: 3; }
   main { flex: none; min-height: 40dvh; }
   .view { height: auto; overflow: visible; }
   .now-layout { height: auto; }
   .now-list, .feed-list { max-height: calc(100dvh - var(--top) - 64px); }
-  #graph-panel { height: calc(100dvh - var(--top) - var(--foot)); overflow: auto; }
-  .app:has(#graph-panel:not([hidden])) .footer { position: sticky; bottom: 0; z-index: 3; }
-}
-@media (max-width: 700px) {
-  :root { --top: 49px; --foot: 100px; }
-  .appbar { top: -59px; }
+  #graph-panel { height: calc(100dvh - var(--top) - var(--foot) - var(--strip)); overflow: auto; }
+  .app:has(#graph-panel:not([hidden])) #footer-bar { position: sticky; bottom: 0; z-index: 3; }
 }
 
 /* Task mail: an envelope and the count, at the right of the status line. Compact blocks leave it out. */

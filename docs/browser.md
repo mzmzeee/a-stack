@@ -91,7 +91,9 @@ The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It has three 
 - New since you looked: cards, Agent rows and Latest changes items that changed after you last looked have a small dot in the accent color, at the top right of a card or left of a row. Screen readers hear "Changed since you looked". The browser keeps the time you last looked in local storage, for each Session path, and saves it when the tab is hidden or closed, so changes that come while you look elsewhere get the dot. Mark all seen in the footer, shown while something is new, clears the dots now. The first visit shows no dots. Without local storage, such as in some private windows, nothing is marked new and the view works as before. The time stays in this browser; the service never learns it.
 - Progress and Needs you requests are shown separately. The Needs you button in the header counts the open requests, such as "Needs you (2)", or says "All clear". When several Tasks need input, it opens a chooser: oldest request first, each with its title, the first part of the question and the age of the last change. Viewing a Task never resolves its request.
 - The chooser buttons keep their identity across unrelated refreshes. If the focused request is resolved somewhere else, the focus moves to a remaining choice, or to the view tab when the chooser is empty.
-- In a window lower than 600px or narrower than 700px, such as a phone or a browser at 200% zoom, the whole page scrolls. Only the tabs stay at the top. In the Graph tab, the footer with the zoom controls stays at the bottom; on Now and Agents, it is at the end of the page.
+- Each of the three bars has an arrow button: the top bar (name, tabs and theme), the Session header (title, counts, Standing orders and filters), and the footer. Collapse one to leave a thin strip with its arrow; press it again to expand. With focus in Graph or Agents, `t` hides all three, or shows them if all are hidden. Each choice stays in this browser's local storage, also after a restart. If storage is blocked, the buttons still work for this page.
+- When the Session header is collapsed, its strip still shows a compact Needs you button while a Task needs you. It opens the same question or chooser. Service warnings stay visible outside the hidden bars. The graph keeps its zoom and centre when the space changes; it does not reset to the first card.
+- In a window lower than 600px or narrower than 700px, such as a phone or a browser at 200% zoom, the whole page scrolls. The top bar and a collapsed Session strip stay at the top. In the Graph tab, the footer with the zoom controls stays at the bottom; on Now and Agents, it is at the end of the page. A collapsed footer leaves only its strip, and the minimap and peek move to use the space.
 - The runtime state has an "unverified" label and the age of its last observation. The age increases also when polls succeed.
 
 ### Now
@@ -178,16 +180,20 @@ Reading mail in the view changes nothing. It stores no read position, writes no 
 ## Keyboard and controls
 
 - The arrow keys, Home and End switch between the tabs.
-- In search, Enter moves the focus to the first matching card of the current tab, and Escape clears the search text. Only an empty search lets Escape go on to the peek or the graph focus.
+- In search, Enter moves the focus to the first matching card of the current tab, and Escape clears the search text. Escape in search does not change the graph selection.
 - In the Graph tab, Tab moves through the cards column by column, from top to bottom, in the order of the layout.
 - On a card, Enter opens the details. Escape closes them and returns the focus. In the Graph tab, Escape then closes the peek, and the next Escape clears the focus highlight.
 - Search looks at Agent names, titles, Ticket references and the short report preview.
 - The status filter includes Cancelled and Needs you.
 - Drag anywhere in the graph to move it, also on a card. A click without a drag still opens the Task. Zoom and Fit are separate controls.
-- Single keys work only while the focus is in the Graph tab, its peek included, or in the Agents tab, so typing in the search or anywhere else never triggers one (WCAG 2.1.4). Tab into the tab first, or click a card. They do nothing with Ctrl, Alt or Meta, or while a dialog is open. No key changes anything; they only move around:
-  - `g n`, `g g` and `g a` open Now, Graph and Agents and put the focus in that tab.
-  - `/` moves the focus to the search, `u` to the next Task that needs you (a card in the graph, a row in Agents), and `?` opens the keyboard map.
-  - In the graph: `j` and `k` focus the next or previous card in layout order, Space opens or closes the peek, Enter opens the details, `f` fits, `+`, `-` and `0` zoom in, out and to 100%, and `m` turns the minimap off or on, like the Minimap button. Holding `m` down does not repeat it.
+- Single keys work only while the focus is in the Graph tab, its peek included, or in the Agents tab, so typing in the search, another text field or editable content never triggers one (WCAG 2.1.4). Tab into the panel first, or click a card. They do nothing with Ctrl, Alt or Meta, or while a modal dialog is open. Ctrl-D and Ctrl-U keep their browser actions. These navigation keys never write to the Session:
+  - `g n`, `g v` and `g a` open Now, Graph and Agents and put the focus in that panel. `g v` replaces the old `g g` for Graph; `g g` now means the first card. A two-key sequence must finish within 1.5 seconds, without moving focus.
+  - `/` moves the focus to search, expanding the Session header if needed. `u` or `]` moves to the next visible Task that needs you; `[` moves to the previous one. They wrap at either end and skip filtered or hidden archived Tasks. In Agents they move between visible Task rows.
+  - `t` hides all three bars, or shows them if all are hidden. Holding it down does not repeat it. `?` opens the keyboard map.
+  - In the graph, `j` and `k` focus the next or previous card in layout order. `h` moves to a visible prerequisite and `l` to a visible dependent, choosing the linked card nearest vertically. They use all direct dependencies, including the dashed implied lines. Without a visible link in that direction, the focus stays and a screen reader hears a short hint.
+  - `H` and `L` (Shift-H and Shift-L) cycle through the starting Task's prerequisites or dependents: nearest first, then top to bottom, wrapping. The starting Task stays the anchor until another motion or selection, so these keys visit its neighbours rather than following a chain. The peek follows all these motions.
+  - `g g` and `G` focus the first and last visible cards. `z z` or `c` centres the focused card.
+  - Space opens or closes the peek, Enter opens the details, `f` fits, `+` (or `=`), `-` and `0` zoom in, out and to 100%, and `m` turns the minimap off or on, like the Minimap button. Holding `m` down does not repeat it.
 - In the answer box of a Task's details, Ctrl+Enter or Cmd+Enter sends the answer, like Send. It is the only key that changes something.
 - The Keyboard button in the footer opens the same map. It is hidden on phones. Buttons with a key name it in `aria-keyshortcuts`, so screen readers can announce it.
 - At 2,000 Tasks, a `j` or `k` step takes about 100 ms until the next frame, because the browser restyles the faded cards around the new focus.
@@ -218,7 +224,7 @@ The tab title counts the open Needs you requests, such as `(2) Needs you · OAut
 
 ### Footer and banners
 
-- The footer shows the version of the local service and the time of the last successful check with it. The About panel shows when the snapshot was captured, and its revision. A poll with no changes does not change the report or runtime times.
+- The footer shows only the version, such as `v0.1.7`, also on a phone. Its tooltip and screen-reader label keep the full local-service status and the time of the last successful check. When the service is stale or unreachable, the version has a warning color and an exclamation mark. The About panel shows the full status, when the snapshot was captured, and its revision. A poll with no changes does not change the report or runtime times.
 - If the last successful check is more than ten seconds old and the next one failed, a banner above the view says why, and the tab title starts with "Stale". The view stays, with muted colors.
   - If the service still answered the last request, the banner says that the service is busy: Task changes keep restarting the collection, and the page shows the last complete view.
   - If the service did not answer, the banner says since when, and that you can run `a-stack` again. That is needed only when the service came back on another port.
@@ -321,5 +327,7 @@ The layout places about 11,000 extra points for these lines at 2,000 Tasks; it r
 ## Checks
 
 Browser QA used disposable state and an isolated named browser session. It covered both themes, full names, literal injection strings, keyboard and chooser behavior, and preserved focus, positions and view after report-only changes. It also covered failure and recovery with saved data, a service restart, and the growing observation age during polls with no changes. Focused browser regression checks also covered repeated opens of populated and empty references, and the focus of the chooser and Copy buttons during polling. The Now tab, the feed, the Archived toggle and the focus highlight were checked at 1913×830, 1280×720 and 390×844 in both themes, also while Tasks changed during polling.
+
+The collapsible bars and navigation were checked on a disposable 151-Task Session at 1440×900 and 375×812, in light and dark, at 100% and 34% zoom. All eight bar combinations had zero axe violations (64 states). Keyboard-only checks cover linked motions, cycling, first/last, centring, Needs you in both directions, hidden search, and restoring bars. A Node check run by `TestBrowserNavigation` exercises the production key handler, including text fields, modifiers and modal scope; it is skipped if Node is unavailable. Asset tests guard the endpoint allowlist and wrapped storage access.
 
 Go tests cover the scope and permissions of issued capabilities, guarded assets, authenticated conditional reads, opener failure without credential leaks, replay, and UTF-8 boundaries of the report and question previews, and the last action after a report, a Needs you request and a progress change.

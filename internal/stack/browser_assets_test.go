@@ -1,6 +1,7 @@
 package stack
 
 import (
+	"os/exec"
 	"regexp"
 	"strings"
 	"testing"
@@ -41,7 +42,7 @@ func TestBrowserAssetsStayReadOnly(t *testing.T) {
 		}
 	}
 	// The peek is a non-modal dialog with its own live title; the keyboard map is a modal dialog with a footer button.
-	for _, want := range []string{`<aside class="peek" id="peek" role="dialog" aria-labelledby="peek-title" hidden>`, `id="keys-dialog"`, `id="keys-button" aria-keyshortcuts="?"`} {
+	for _, want := range []string{`<div class="peek" id="peek" role="dialog" aria-labelledby="peek-title" hidden>`, `id="keys-dialog"`, `id="keys-button" aria-keyshortcuts="?"`} {
 		if !strings.Contains(page, want) {
 			t.Errorf("index.html lacks %s", want)
 		}
@@ -56,7 +57,34 @@ func TestBrowserAssetsStayReadOnly(t *testing.T) {
 		}
 	}
 	// Single-key shortcuts work only with the focus in the Graph (with its peek) or the Agents tab (WCAG 2.1.4).
-	if !strings.Contains(js, "const where=panel.contains(e.target)||peekBox.contains(e.target)?'graph':agentsPanel.contains(e.target)?'agents':''") || !strings.Contains(js, "if(!where||e.target.closest('input, select, textarea'))return;") {
+	if !strings.Contains(js, "const where=panel.contains(e.target)||peekBox.contains(e.target)?'graph':agentsPanel.contains(e.target)?'agents':''") || !strings.Contains(js, "if(!where||e.target.closest('input, select, textarea')||e.target.isContentEditable){resetKeys();return;}") {
 		t.Error("the key handler must stay limited to the Graph and Agents tabs")
+	}
+	for _, bar := range []string{"top", "session", "footer"} {
+		if !strings.Contains(page, `data-bar="`+bar+`" aria-controls="`+bar+`-content" aria-expanded="true"`) {
+			t.Errorf("%s bar needs a labelled disclosure button", bar)
+		}
+	}
+	for _, want := range []string{"save('a-stack-bar-'+name", "load('a-stack-bar-'+name)", "function linkedTask(", "function toggleBars(", "e.repeat?null:()=>toggleBars", "setText(document.querySelector('.preview-label'),version ||", "getAttribute('aria-label')", "classList.toggle('lost',stale||!!notice)"} {
+		if !strings.Contains(js, want) {
+			t.Errorf("app.js lacks %s", want)
+		}
+	}
+	for _, want := range []string{`id="compact-attention"`, `id="collapsed-title"`, `id="navigation-hint" role="status"`, "<kbd>h</kbd> <kbd>l</kbd>", "<kbd>H</kbd> <kbd>L</kbd>", "<kbd>t</kbd>", "<kbd>z</kbd> <kbd>z</kbd>"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("index.html lacks %s", want)
+		}
+	}
+}
+
+// Node is part of the development checks. This runs the actual key handler against a small DOM stand-in;
+// browser QA covers layout, real focus, storage failure and accessibility with the embedded assets.
+func TestBrowserNavigation(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node.js is needed for browser navigation tests")
+	}
+	if out, err := exec.Command(node, "testdata/browser-navigation.cjs").CombinedOutput(); err != nil {
+		t.Fatalf("browser navigation: %v\n%s", err, out)
 	}
 }
