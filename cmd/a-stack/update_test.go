@@ -23,9 +23,9 @@ import (
 )
 
 // fakeBinary is a release binary: a script that prints its version, and
-// logs skill install calls to $A_STACK_TEST_LOG.
+// logs refresh calls to $A_STACK_TEST_LOG.
 func fakeBinary(tag string) string {
-	return "#!/bin/sh\nif [ \"$1\" = skill ]; then echo \"$*\" >> \"$A_STACK_TEST_LOG\"; echo '{\"data\":{\"installed\":[\"/skills/a-stack\"]}}'; exit 0; fi\necho '{\"data\":{\"version\":\"" + tag + "\"}}'\n"
+	return "#!/bin/sh\nif [ \"$1\" = update ]; then echo \"$*\" >> \"$A_STACK_TEST_LOG\"; if [ \"$A_STACK_TEST_REFRESH\" = 1 ]; then echo '{\"data\":{\"skills\":[\"/skills/a-stack\"],\"refreshed_files\":[\"/skills/a-stack/SKILL.md\",\"/pi/a-stack.ts\"]}}'; else echo '{\"data\":{\"skills\":[],\"refreshed_files\":[]}}'; fi; exit 0; fi\necho '{\"data\":{\"version\":\"" + tag + "\"}}'\n"
 }
 
 func tarGz(t testing.TB, files map[string]string) []byte {
@@ -105,17 +105,18 @@ func updateSetup(t *testing.T, current string, release *fakeRelease) (exe, log s
 	server := httptest.NewServer(release)
 	t.Cleanup(server.Close)
 	t.Setenv("A_STACK_BASE_URL", server.URL)
-	skillHome(t)
+	hookHome(t)
 	t.Chdir(t.TempDir())
 	log = filepath.Join(t.TempDir(), "log")
 	t.Setenv("A_STACK_TEST_LOG", log)
+	t.Setenv("A_STACK_TEST_REFRESH", "")
 	exe = filepath.Join(t.TempDir(), "a-stack")
 	if err := os.WriteFile(exe, []byte("old"), 0o750); err != nil {
 		t.Fatal(err)
 	}
-	oldVersion, oldExecutable, oldActive, oldKey := version, executable, serviceRuns, releaseKey
-	version, executable, serviceRuns, releaseKey = current, func() (string, error) { return exe, nil }, func(string) bool { return false }, testKey.Public().(ed25519.PublicKey)
-	t.Cleanup(func() { version, executable, serviceRuns, releaseKey = oldVersion, oldExecutable, oldActive, oldKey })
+	oldVersion, oldExecutable, oldService, oldKey := version, executable, updateService, releaseKey
+	version, executable, updateService, releaseKey = current, func() (string, error) { return exe, nil }, func() (string, string, bool) { return "", "", false }, testKey.Public().(ed25519.PublicKey)
+	t.Cleanup(func() { version, executable, updateService, releaseKey = oldVersion, oldExecutable, oldService, oldKey })
 	return exe, log
 }
 
@@ -150,8 +151,8 @@ func TestUpdateReplacesTheBinary(t *testing.T) {
 	if info, _ := os.Stat(exe); info.Mode().Perm() != 0o750 {
 		t.Fatalf("mode %v, want 0750", info.Mode())
 	}
-	if _, err := os.Stat(log); !os.IsNotExist(err) {
-		t.Fatal("update ran skill install without skill copies")
+	if data, _ := os.ReadFile(log); string(data) != "update --refresh --json\n" {
+		t.Fatalf("refresh calls %q", data)
 	}
 
 	// Up to date now; with a skill copy, a new version refreshes it.
@@ -160,9 +161,10 @@ func TestUpdateReplacesTheBinary(t *testing.T) {
 		t.Fatalf("output %q", out)
 	}
 	runSkill(t, "skill", "install", "--project")
+	t.Setenv("A_STACK_TEST_REFRESH", "1")
 	release.latest, release.archives["v0.3.0"] = "v0.3.0", tarGz(t, map[string]string{"./a-stack": fakeBinary("v0.3.0")})
-	serviceRuns = func(string) bool { return true }
-	out, _ = runUpdate(t, 0, "--json")
+	updateService = func() (string, string, bool) { return exe, "", true }
+	out, _ = runUpdate(t, 0, "--json", "--no-restart")
 	var result struct {
 		Data struct {
 			Previous, Version, Path string
@@ -178,8 +180,8 @@ func TestUpdateReplacesTheBinary(t *testing.T) {
 	if d.Previous != "v0.2.0" || d.Version != "v0.3.0" || d.Path != exe || !d.Updated || strings.Join(d.Skills, ",") != "/skills/a-stack" || d.RestartHint != "Restart the service: "+stack.ServiceCommand("restart") {
 		t.Fatalf("json %s", out)
 	}
-	if data, _ := os.ReadFile(log); string(data) != "skill install --refresh --json --project\n" {
-		t.Fatalf("skill install calls %q", data)
+	if data, _ := os.ReadFile(log); string(data) != "update --refresh --json\nupdate --refresh --json\n" {
+		t.Fatalf("refresh calls %q", data)
 	}
 	checkFile(t, exe, fakeBinary("v0.3.0"))
 }
@@ -216,7 +218,7 @@ func TestUpdateCheckVersionAndRefusals(t *testing.T) {
 	if out, _ := runUpdate(t, 0, "--check"); out != "a-stack v0.2.0 is available; you have v0.1.9. Run a-stack update to install it.\n" {
 		t.Fatalf("check %q", out)
 	}
-	if out, _ := runUpdate(t, 0, "--check", "--json"); out != `{"data":{"latest":"v0.2.0","update_available":true,"version":"v0.1.9"}}`+"\n" {
+	if out, _ := runUpdate(t, 0, "--check", "--json"); out != `{"data":{"latest":"v0.2.0","restarted":false,"service_version":"","update_available":true,"version":"v0.1.9"}}`+"\n" {
 		t.Fatalf("check json %q", out)
 	}
 	version = "v0.2.0"

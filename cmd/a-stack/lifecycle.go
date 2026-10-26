@@ -71,7 +71,7 @@ func acceptedFlags(command string) string {
 	} else if command == "skill uninstall" {
 		return " project json help "
 	} else if command == "update" {
-		return " check version json help "
+		return " check version no-restart no-refresh refresh json help "
 	} else if command == "statusline" {
 		return " state-dir help "
 	} else if command == "hook" {
@@ -126,7 +126,7 @@ func acceptedFlags(command string) string {
 		allowed += "workspace operation-id name "
 	case "session list", "agent list":
 		allowed += "workspace session limit after "
-	case "session inspect":
+	case "session inspect", "mcp":
 		allowed += "workspace session "
 	case "session export":
 		allowed += "workspace session markdown output include-archived "

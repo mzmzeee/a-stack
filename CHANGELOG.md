@@ -6,6 +6,15 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Changed
+
+- `a-stack update` refreshes installed skill files in the home/current-project folders and the Pi/OpenCode shims. It replaces only files that still match known released contents, preserves edits and hook settings, and prints one line per changed file. `--no-refresh` skips this; `update --refresh` refreshes without downloading a binary. `skill install --refresh` now uses the same safe per-file checks.
+- `a-stack update` restarts a running installed systemd, launchd or Task Scheduler service after replacing the binary, and waits up to 15 seconds for the new version. Errors name a stale service binary or the manual restart command. `--no-restart` keeps the manual hint; stopped and hand-started services stay alone. JSON adds `restarted` and `service_version`.
+
+### Fixed
+
+- `hook install` without `--state-dir` now uses default-state discovery when looking up an Agent's context or name. Credential files from before v0.1.5 no longer cause a false "service is not running" error when Workspace and Session flags are omitted.
+
 ### Added
 
 - `--task` completes open Task IDs, with titles where the shell supports descriptions; `--agent` and `--assign` complete Agent names. The hidden completion helper reuses the service's list commands with the command line's credential and context, times out after one second and stays silent on errors. It never starts the service.
@@ -13,6 +22,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - Parser fuzz tests for mention names, CLI flags, mail cursors and update archives, with a short smoke run in `scripts/check.sh`. See [Parser fuzzing](CONTRIBUTING.md#parser-fuzzing).
 - `a-stack session export --markdown` writes a Session summary for a PR or a hand-over: the Workspace folder, Tasks in dependency order with assignees, results and reports, open Needs you questions, the latest Operator answers and standing orders. Task mail is count-only; bodies are never read or exported. The Operator and Session Agents can use it, with `--output FILE`, `--include-archived` and `--json`. It uses existing reads and changes no data. See [Export a Session](docs/tasks.md#export-a-session).
 - Mention notices reach Claude Code 2.1.x from 2.1.310 (below 2.2). A native fixture with a private Claude Code 2.1.310 install, a scripted API and an isolated Herdr 0.9.5 verified idle delivery, native mid-turn delivery after a foreground tool step, and notices held back while a permission dialog is open. Each notice led to the Agent's own mail check. See [Native Claude Code fixture](docs/notifications.md#native-claude-code-fixture).
+- `a-stack mcp --credential-file FILE`: a stdio MCP server for one Agent, with 15 Session, Task, dependency and mail tools over the same HTTP API. It keeps the CLI's operation IDs, revisions, permissions and errors, supports MCP 2026-07-28 and the legacy initialize handshake, and exposes no Operator-only action. See [Agent tools over MCP](docs/mcp.md) for Claude Code, Codex and Pi setup.
 
 ### Fixed
 

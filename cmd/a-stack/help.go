@@ -35,6 +35,7 @@ var helpGroups = []helpGroup{
 		{"hook install", "", "Add a-stack hooks for one Agent to Claude Code and Codex, or Pi or OpenCode"},
 		{"hook uninstall", "", "Remove this folder's a-stack hooks"},
 		{"hook", "", "Handle one hook event (run by the harness)"},
+		{"mcp", "", "Serve Agent tools over MCP stdio (requires an Agent credential)"},
 	}},
 	{"Tab completion", []helpRow{
 		{"completion bash", "", "Print the bash completion script"},
@@ -139,7 +140,7 @@ Docs: https://github.com/mzmzeee/a-stack
 // required wherever a command accepts them are in alwaysRequired.
 var alwaysRequired = " operation-id expected-revision "
 var requiredFlags = map[string]string{
-	"open": "workspace session", "storage backup": "destination",
+	"open": "workspace session", "storage backup": "destination", "mcp": "credential-file",
 	"workspace create": "path", "session create": "workspace name",
 	"session list": "workspace", "agent register": "name new-credential-file",
 	"workspace orders show": "workspace", "workspace orders set": "workspace", "workspace orders clear": "workspace",
@@ -189,7 +190,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus", "completion bash", "completion zsh", "completion fish", "completion powershell", "completion install", "completion uninstall")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus", "completion bash", "completion zsh", "completion fish", "completion powershell", "completion install", "completion uninstall", "mcp")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string

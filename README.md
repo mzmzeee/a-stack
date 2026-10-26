@@ -88,7 +88,7 @@ scoop bucket add mzmzeee https://github.com/mzmzeee/scoop-bucket
 scoop install mzmzeee/a-stack
 ```
 
-To update, run `a-stack update` and restart the service. If you installed with Homebrew or Scoop, update with `brew upgrade` or `scoop update a-stack` instead. See [Update](docs/install.md#update).
+To update, run `a-stack update`; it refreshes unchanged skill and hook files, restarts a running installed service and checks its version. If you installed with Homebrew or Scoop, update with `brew upgrade` or `scoop update a-stack` instead. See [Update](docs/install.md#update).
 
 To start a-stack at login and restart it after a crash, run `a-stack service install`. It uses systemd on Linux, launchd on macOS and Task Scheduler on Windows. See [Start a-stack automatically](docs/install.md#start-a-stack-automatically).
 
@@ -126,6 +126,7 @@ To brief the coding agent yourself, run `a-stack new --orchestrator 01-orchestra
 - [Task mail](docs/mail.md): send and read messages, and mention Agents.
 - [Browser view](docs/browser.md): open the view and read what it shows.
 - [Watch from the terminal](docs/watch.md): `a-stack status`, `a-stack watch` and `a-stack statusline` show what needs you, with a bell, opt-in desktop notices and a Claude Code status line.
+- [Agent tools over MCP](docs/mcp.md): `a-stack mcp` exposes one Agent's Task and mail tools to Claude Code, Codex, Pi and other MCP clients.
 - [Agent hooks](docs/hooks.md): `a-stack hook install` reminds Claude Code, Codex, Pi and OpenCode agents of their Tasks after a compaction, reports their runtime state, keeps them from stopping without a report and tells them about new Task mail.
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.

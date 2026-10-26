@@ -158,7 +158,7 @@ func TestLaunchdLoadedWithoutItsPlist(t *testing.T) {
 			t.Fatalf("status lacks %q:\n%s", want, out)
 		}
 	}
-	if binary, running := launchdProgram("dev.a-stack"); binary != exe || !running {
+	if binary, _, running := launchdProgram("dev.a-stack"); binary != exe || !running {
 		t.Fatal("program", binary, running)
 	}
 	f.calls = nil

@@ -45,6 +45,8 @@ The targets are `FuzzMentionNames`, `FuzzMailCursor` and `FuzzMailCheckCursor` i
 
 ## Releasing
 
+When changing the embedded skill or Pi/OpenCode shim files, add the SHA-256 hashes of their previous released contents to `installedHashes` in `cmd/a-stack/refresh.go`, keeping the older hashes. The update uses these to recognize unedited installed files; a filename or header alone is not enough. The hashes come from `git show vX.Y.Z:PATH | sha256sum`.
+
 Before you tag, move the Unreleased entries in `CHANGELOG.md` into a section for the new version. The release uses that section as its notes, and stops if it is missing.
 
 Push a version tag from `main`:

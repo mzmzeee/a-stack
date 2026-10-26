@@ -150,6 +150,7 @@ func renderUnit(exe, state, home string) (string, error) {
 func unitCommand(unit, home string) (binary, state string) {
 	for _, line := range strings.Split(unit, "\n") {
 		if rest, ok := strings.CutPrefix(line, "ExecStart="); ok {
+			binary, state = "", ""
 			words := unitWords(rest, home)
 			for i, w := range words {
 				if i == 0 {
@@ -158,21 +159,24 @@ func unitCommand(unit, home string) (binary, state string) {
 					state = words[i+1]
 				}
 			}
-			return binary, state
 		}
 	}
-	return "", ""
+	return binary, state
 }
 
 // health asks the service of state, like a-stack health.
 func health(state string) (stack.Health, string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return healthContext(ctx, state)
+}
+
+func healthContext(ctx context.Context, state string) (stack.Health, string, error) {
 	var h stack.Health
 	client, err := stack.NewClient(state, "", stack.OperatorCapability)
 	if err != nil {
 		return h, "", err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 	data, err := client.Do(ctx, "GET", "/v1/health", nil)
 	if err != nil {
 		return h, "", err
@@ -423,27 +427,31 @@ func systemdUnitFile(unit string) string {
 
 // serviceProgram is the binary that the service manager runs as the a-stack
 // service, from the unit, plist or task it loaded, and whether it runs now.
-func serviceProgram() (binary string, running bool) {
+func serviceProgram() (binary, state string, running bool) {
 	unit, err := unitName()
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
 	switch serviceOS {
 	case "darwin":
 		return launchdProgram(launchdLabel(unit))
 	case "windows":
 		content, ok := queryTask(unit)
-		binary, _, _ = taskCommand(content)
-		return binary, ok
+		binary, state, _ = taskCommand(content)
+		return binary, state, ok && taskRunning(unit)
 	}
 	home, err := os.UserHomeDir()
 	content, readErr := os.ReadFile(systemdUnitFile(unit))
 	if err != nil || readErr != nil {
-		return "", false
+		return "", "", false
 	}
-	binary, _ = unitCommand(string(content), home)
+	// cat includes drop-ins, whose last ExecStart overrides the main unit.
+	if loaded, err := systemctl("cat", unit); err == nil && loaded != "" {
+		content = []byte(loaded)
+	}
+	binary, state = unitCommand(string(content), home)
 	_, err = systemctl("is-active", "--quiet", unit)
-	return binary, err == nil
+	return binary, state, err == nil
 }
 
 func serviceStatus(unit, file, state, home string, data map[string]any) []string {

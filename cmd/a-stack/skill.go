@@ -45,21 +45,25 @@ func skillFolders(project bool) ([]string, error) {
 }
 
 // skillCommand runs skill install or skill uninstall. It needs no service
-// and no credential. With refresh, install replaces only the copies that
-// exist, as update does after it installs a new binary.
+// and no credential. With refresh, install replaces only unchanged known
+// files, as update does after it installs a new binary.
 func skillCommand(command string, project, refresh, machine bool, stdout io.Writer) error {
 	folders, err := skillFolders(project)
 	if err != nil {
 		return err
 	}
-	done := []string{}
+	done, refreshed := []string{}, []string{}
 	for _, folder := range folders {
 		found := true
 		if command == "skill install" {
-			if _, err = os.Lstat(folder); refresh && err != nil {
-				continue
+			if refresh {
+				var files []string
+				files, err = refreshSkill(folder)
+				refreshed = append(refreshed, files...)
+				found = len(files) > 0
+			} else {
+				err = installSkill(folder)
 			}
-			err = installSkill(folder)
 		} else {
 			found, err = removeSkill(folder)
 		}
@@ -78,10 +82,20 @@ func skillCommand(command string, project, refresh, machine bool, stdout io.Writ
 		text = "The a-stack skill is not installed in " + strings.Join(folders, " or ") + ".\n"
 	}
 	if machine {
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"skill": skillName, "version": buildVersion(), key: done}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"skill": skillName, "version": buildVersion(), key: done, "refreshed_files": refreshed}})
 	}
-	for _, folder := range done {
-		text += "  " + folder + "\n"
+	if refresh {
+		text = ""
+		for _, file := range refreshed {
+			text += "Refreshed " + file + "\n"
+		}
+		if len(refreshed) == 0 {
+			text = "No unchanged older a-stack skill files to refresh.\n"
+		}
+	} else {
+		for _, folder := range done {
+			text += "  " + folder + "\n"
+		}
 	}
 	_, err = io.WriteString(stdout, text)
 	return err

@@ -79,7 +79,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var state, credential, kind, listen, destination, herdrExecutable, orchestrator, shell string
-	var machine, help, noBrowser, resume, project, refresh, check, all bool
+	var machine, help, noBrowser, resume, project, refresh, check, noRestart, noRefresh, all bool
 	var release versionFlag
 	fs.StringVar(&state, "state-dir", "", "State directory (default "+stateDirDefault+")")
 	fs.StringVar(&credential, "credential-file", "", "Credential file (default: operator.json)")
@@ -94,8 +94,10 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&resume, "resume", false, "Pick a Session to open")
 	fs.BoolVar(&resume, "r", false, "Short for --resume")
 	fs.BoolVar(&project, "project", false, "Use .claude and .agents in the current folder, not in your home folder")
-	fs.BoolVar(&refresh, "refresh", false, "Replace only the skill copies that exist; write no new ones")
+	fs.BoolVar(&refresh, "refresh", false, "Refresh unchanged installed skill files; with update, also Pi/OpenCode shims")
 	fs.BoolVar(&check, "check", false, "Only print the current and the latest version")
+	fs.BoolVar(&noRestart, "no-restart", false, "Leave the service running on the old version after update")
+	fs.BoolVar(&noRefresh, "no-refresh", false, "Leave installed skill and Pi/OpenCode files alone after update")
 	fs.BoolVar(&all, "all", false, "Every Session")
 	fs.StringVar(&herdrExecutable, "herdr-executable", "", "The herdr binary; serve turns on mention notices with it")
 	fs.StringVar(&orchestrator, "orchestrator", "", "Also register an Agent with this name and appoint it as the Orchestrator")
@@ -143,7 +145,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if cmd != "" && cmd != "new" && !knownCommand(cmd) {
 		return unknownCommand(command, seen, stdout)
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && !isCompletionCommand(cmd) {
+	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && !isCompletionCommand(cmd) && cmd != "mcp" {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -184,7 +186,13 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return skillCommand(cmd, project, refresh, machine, stdout)
 	}
 	if cmd == "update" {
-		return updateCommand(release, check, machine, stdout, stderr)
+		if refresh {
+			if check || noRestart || noRefresh || release.set {
+				return invalid("update --refresh takes no --check, --version, --no-restart or --no-refresh")
+			}
+			return refreshInstalledFiles(machine, stdout)
+		}
+		return updateCommand(release, check, noRestart, noRefresh, machine, stdout, stderr)
 	}
 	stateFlag := state
 	if state == "" {
@@ -235,6 +243,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 			writeError(log, err)
 		}
 		return err
+	}
+	if cmd == "mcp" {
+		return mcpCommand(ctx, state, credential, kind, lifecycle, os.Stdin, stdout)
 	}
 	if isWatchCommand(cmd) {
 		connect := func() (*stack.Client, error) { return stack.NewClient(state, credential, stack.CapabilityKind(kind)) }
