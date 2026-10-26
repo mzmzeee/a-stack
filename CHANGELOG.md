@@ -22,6 +22,7 @@ Operation receipts now expire after 30 days. Task history and mail stay. Older o
 
 ### Changed
 
+- The agent skill names concrete load cues and requires a read before the first `a-stack` command and after a context reset. Agent briefs lead with loading the skill; session reminders, Task mail nudges and Herdr mention notices also name it.
 - `a-stack update` refreshes installed skill files in the home/current-project folders and the Pi/OpenCode shims. It replaces only files that still match known released contents, preserves edits and hook settings, and prints one line per changed file. `--no-refresh` skips this; `update --refresh` refreshes without downloading a binary. `skill install --refresh` now uses the same safe per-file checks.
 - `a-stack update` restarts a running installed systemd, launchd or Task Scheduler service after replacing the binary, and waits up to 15 seconds for the new version. Errors name a stale service binary or the manual restart command. `--no-restart` keeps the manual hint; stopped and hand-started services stay alone. JSON adds `restarted` and `service_version`.
 - The service expires operation receipts after 30 days in batches of 200 on start and once a day, keeping only the actor, operation ID and result kind. Late retries return `operation_expired`, even before cleanup, and never run again. `storage status` reports receipt and expired-ID counts and the next cleanup time.

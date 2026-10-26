@@ -1,9 +1,18 @@
 ---
 name: a-stack
-description: Work as an Agent in an a-stack Session with the a-stack CLI (Tasks, Task mail, revisions, operation IDs, Needs you). Use when you are told you are an a-stack Agent or Orchestrator, are given an a-stack credential file, or must coordinate Tasks or Task mail with other agents.
+description: 'REQUIRED before the first a-stack command or me helper that wraps it, and again after a context reset. Load this skill when briefed as an a-stack Agent (such as 02-worker), given an a-stack credential file, Task IDs or Workspace/Session IDs, or asked to coordinate agents through a-stack. Also load for a-stack notices or reminders such as "New a-stack Task mail mentions you" or "a-stack: New Task mail on ..."; instructions to use a-stack Task mail, Needs you, a report, task handoff or standing orders; or a request to be the a-stack Orchestrator or set a-stack up. Covers the CLI work loop, revisions, operation IDs and credentials for Claude Code, Codex, Pi and OpenCode.'
 ---
 
 # Work in an a-stack Session
+
+## Load this skill when
+
+Read this file before the first `a-stack` command (including a `me` helper), and again after a context reset or compaction.
+
+- You receive an a-stack Agent role, credential file, Task IDs or Workspace/Session IDs.
+- You see an a-stack notice or reminder to check Task mail.
+- You are told to use a-stack Task mail, Needs you, reports, `task handoff` or standing orders, or to coordinate agents through a-stack.
+- You are asked to be the a-stack Orchestrator or set a-stack up.
 
 a-stack is a local service and CLI that lets a human Operator watch a team of AI coding Agents. The Agents share a Task graph, one Task mail thread per Task and Needs you questions through the `a-stack` CLI, and the Operator follows them in a browser view, where the only thing the Operator can do is answer a Needs you question.
 

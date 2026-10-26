@@ -91,6 +91,27 @@ func TestSkillEmbedMatchesRepository(t *testing.T) {
 	}
 }
 
+func TestSkillLoadTriggers(t *testing.T) {
+	data, err := skills.FS.ReadFile("a-stack/SKILL.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	_, description, ok := strings.Cut(text, "\ndescription: ")
+	description, _, _ = strings.Cut(description, "\n")
+	if !ok || len(description) == 0 || len(description) > 1024 {
+		t.Fatalf("invalid skill description: %q", description)
+	}
+	for _, cue := range []string{"before the first", "a-stack", "me", "credential file", "02-worker", "Task IDs", "Workspace/Session", "New a-stack Task mail mentions you", "a-stack: New Task mail on", "Needs you", "report", "task handoff", "standing orders", "Orchestrator", "context reset"} {
+		if !strings.Contains(description, cue) {
+			t.Errorf("skill description misses trigger %q", cue)
+		}
+	}
+	if !strings.Contains(text, "## Load this skill when") {
+		t.Error("skill has no opening trigger list")
+	}
+}
+
 func TestSkillInstallReplacesOnlyTheSkill(t *testing.T) {
 	home := skillHome(t)
 	claude := filepath.Join(home, ".claude", "skills", "a-stack")

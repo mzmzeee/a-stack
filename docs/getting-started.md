@@ -314,7 +314,7 @@ It makes the Session (or opens the open Session of this folder's name), register
 ```text
 Run the hook install line of the brief for your coding agent first, so its hooks work from its first session. Then start the agent in this folder and give it this brief, with your goal:
 
-You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.
+Load the a-stack skill before running commands. You are the Orchestrator of an a-stack Session. Read its orchestrator reference.
 Credential file: /home/you/.local/state/a-stack-agents/1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4/01-orchestrator.json
 Workspace: 8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ   Session: 1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
 Your name: 01-orchestrator   Your private folder: make one with mktemp -d
@@ -388,7 +388,7 @@ Installed the a-stack skill v0.1.5 in:
 Start your coding agent in the project folder and give it this brief, with your values and your goal:
 
 ```text
-You are the Orchestrator of an a-stack Session. Load the a-stack skill and read its orchestrator reference.
+Load the a-stack skill before running commands. You are the Orchestrator of an a-stack Session. Read its orchestrator reference.
 Credential file: /home/you/.local/state/a-stack-agents/01-orchestrator.json
 Workspace: 8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ   Session: 1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4
 Your name: 01-orchestrator   Your private folder: /tmp/work/01-orchestrator/
