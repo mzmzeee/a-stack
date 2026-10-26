@@ -42,14 +42,14 @@ type handoffMail struct {
 // without --limit.
 const defaultHandoffMail = 20
 
-func taskHandoff(ctx context.Context, client *stack.Client, l lifecycleFlags, f taskFlags, machine bool, stdout io.Writer) error {
+func taskHandoff(ctx context.Context, client *stack.Client, l lifecycleFlags, f taskFlags, limited, machine bool, stdout io.Writer) error {
 	if l.workspace == "" || l.session == "" {
 		return invalid("explicit --workspace and --session required")
 	}
 	if f.task == "" {
 		return invalid("explicit --task required")
 	}
-	if l.limit < 0 || l.limit > 500 {
+	if limited && l.limit < 1 || l.limit > 500 {
 		return invalid("--limit takes 1 to 500 messages")
 	}
 	limit := l.limit
@@ -165,6 +165,9 @@ func (h handoff) text() string {
 	} else {
 		b.WriteString("No open question.\n")
 	}
+	if q := t.AnsweredQuestion; q != nil {
+		fmt.Fprintf(&b, "The Operator answered the latest question, %s:\n%s\nAnswer:\n%s\n", q.ResolvedAt, block(q.Question), block(q.Answer))
+	}
 	b.WriteString("\n## Unfinished prerequisites\n\n")
 	if len(h.Prerequisites) == 0 {
 		b.WriteString("None.\n")
@@ -194,7 +197,12 @@ func (h handoff) text() string {
 			fmt.Fprintf(&b, "\n[%d] %s %s:\n%s\n", m.Sequence, m.ReceivedAt, printable(m.SenderName), block(m.Body))
 		}
 	}
-	fmt.Fprintf(&b, "\n## Next\n\nRead the Task again with `task show --task %s` for its current revision, and check your Task mail before you change anything. `mail read --task %s` has the whole mail history.\n", t.ID, t.ID)
+	fmt.Fprintf(&b, "\n## Next\n\nRead the Task again with `task show --task %s` for its current revision", t.ID)
+	if h.Mail.Readable {
+		fmt.Fprintf(&b, ", and check your Task mail before you change anything. `mail read --task %s` has the whole mail history.\n", t.ID)
+	} else {
+		fmt.Fprintf(&b, ". Only assignees read its Task mail: once you are assigned, `mail read --task %s` has the whole mail history.\n", t.ID)
+	}
 	return b.String()
 }
 

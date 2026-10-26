@@ -107,7 +107,7 @@ When an Agent stops before its Task is done, for example at a usage limit or aft
 - the Task, Session and Workspace IDs, the progress and revision, and the reason or result;
 - the Workspace's [standing orders](lifecycle.md#standing-orders), in full, when there are some;
 - the description and the report;
-- the open Needs you question, who asked it and when;
+- the open Needs you question, who asked it and when, and the Operator's latest answer with its question;
 - the unfinished prerequisites: every prerequisite that is not Finished, with its progress and reason;
 - the assignees, as `@name` for mentions;
 - the latest Task mail, oldest first: 20 messages, or `--limit N` (1 to 500).
