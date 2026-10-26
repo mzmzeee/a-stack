@@ -236,6 +236,8 @@ On Windows, the state directory is `%LOCALAPPDATA%\a-stack`; move it aside and c
 
 Start the service again: run `a-stack serve`, or `systemctl --user start a-stack`, or `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.a-stack.plist`, or `schtasks /Change /TN a-stack-SID /ENABLE` and then `schtasks /Run /TN a-stack-SID`. The CLI, the Agents and the agent hooks find the service as before, because the state directory is the same. Keep the old folder until you have checked the restored database, as in [Backup and restore](foundation.md#backup-and-restore).
 
+Then delete the saved mail cursor files: each Agent's `mail check --cursor-file` file, and the agent hooks' cursor folder, `~/.cache/a-stack/hooks` (below `$XDG_CACHE_HOME` when set; `~/Library/Caches/a-stack/hooks` on macOS; `%LOCALAPPDATA%\a-stack-hooks` on Windows). A cursor file saved after the upgrade can point past the restored mail, and new mail that gets the same numbers would then be skipped. Without its cursor file, an Agent's next `mail check` starts again at the first message, and the hooks start again at the newest one.
+
 ## Start a-stack automatically
 
 If you start a-stack with `a-stack`, `a-stack new` or `a-stack -r`, the service runs in that terminal. When you close the terminal, a-stack stops. Instead, a user service can run `a-stack serve` for you. It starts when you log in and starts again after a crash. You do not need `sudo` or administrator rights.

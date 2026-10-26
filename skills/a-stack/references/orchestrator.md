@@ -68,7 +68,7 @@ Give each Agent only what it needs, in private:
 - The repository or worktree to work in, when the Task changes files.
 - The hook install command, which the Agent runs once in that folder with the flag of its harness: `a-stack hook install --credential-file /private/creds/02-worker.json --claude` (or `--codex`, `--pi`, `--opencode`), with `--state-dir` when it is not the default. The hooks remind the Agent who it is after a compaction, keep it from stopping with a working Task that has no report, and tell it about new Task mail.
 
-A harness reads its hooks when a session starts, so an Agent gets them from its next start or resume; when you start the Agent yourself, run its install first. A Claude Code subagent gets no hooks of its own: in the parent's folder its events are the parent's, and in a worktree that Claude Code makes for it, the folder is new. Brief it all the same; it works without hooks.
+A harness reads its hooks when a session starts, so an Agent gets them from its next start or resume; when you start the Agent yourself, run its install first. A Claude Code subagent gets no hooks of its own: in the parent's folder the parent's hooks skip its events, and in a worktree that Claude Code makes for it, the folder is new. Brief it all the same; it works without hooks.
 
 Keep the Operator credential, other Agents' credentials and the browser URL out of every brief.
 
