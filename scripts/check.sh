@@ -62,7 +62,8 @@ step "oxlint $OXLINT"
 node --check internal/stack/browser/app.js
 node --check scripts/demo-overlay.js
 node --check contrib/opencode/a-stack.js
-npx --yes "oxlint@$OXLINT" --deny-warnings internal/stack/browser/app.js scripts/demo-overlay.js contrib/opencode/a-stack.js
+node --test contrib/opencode/a-stack.test.mjs
+npx --yes "oxlint@$OXLINT" --deny-warnings internal/stack/browser/app.js scripts/demo-overlay.js contrib/opencode/a-stack.js contrib/opencode/a-stack.test.mjs
 
 step "ruff $RUFF"
 python3 -m py_compile scripts/validate-v1.py scripts/demo-terminal.py scripts/bench.py

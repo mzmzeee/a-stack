@@ -177,7 +177,7 @@ func (s *Store) backupBeforeMigration(ctx context.Context, version int) (string,
 				name = next
 			}
 		} else if err == nil && folded && info.Mode().IsRegular() && info.ModTime().Equal(source.ModTime()) && copyOf(ctx, next, version, id) {
-			if err = s.migrationSpace(source.Size(), false); err != nil {
+			if err = s.migrationSpace(source.Size(), version, false); err != nil {
 				return "", err
 			}
 			return next, nil
@@ -187,7 +187,7 @@ func (s *Store) backupBeforeMigration(ctx context.Context, version int) (string,
 	if name == "" {
 		return "", cannot
 	}
-	if err = s.migrationSpace(source.Size(), true); err != nil {
+	if err = s.migrationSpace(source.Size(), version, true); err != nil {
 		return "", err
 	}
 	// Only one serve holds the state directory, so a temporary file left
@@ -235,15 +235,19 @@ func copyOf(ctx context.Context, name string, version int, id string) bool {
 		db.QueryRowContext(ctx, "SELECT value FROM metadata WHERE key='database_id'").Scan(&got) == nil && got == id
 }
 
-// migrationSpace refuses a migration while the state directory has less free
-// space than it needs. The migrations rebuild the Task text and mail tables
-// (schema 8) or the mail table (schema 9), which hold most of the data: the
-// new tables go into the WAL first, and the checkpoint then grows the file by
-// as much, so the migration needs up to twice the database size, and the
-// copy, unless reused, once more. When the free space cannot be measured, the
-// migration tries anyway.
-func (s *Store) migrationSpace(size int64, withCopy bool) error {
+// migrationSpace refuses a migration from version while the state directory
+// has less free space than it needs. The migrations rebuild the Task text and
+// mail tables (schema 8) and the mail table (schema 9), which hold most of the
+// data. Each rebuild goes into the WAL, and the checkpoint grows the file by
+// one rebuild, because the second one reuses the pages that the first freed.
+// So the migration needs up to twice the database size from schema 8, three
+// times from schema 7 or older, and the copy, unless reused, once more. When
+// the free space cannot be measured, the migration tries anyway.
+func (s *Store) migrationSpace(size int64, version int, withCopy bool) error {
 	need := 2 * uint64(size)
+	if version < 8 {
+		need += uint64(size)
+	}
 	if withCopy {
 		need += uint64(size)
 	}

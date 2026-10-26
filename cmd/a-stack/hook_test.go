@@ -181,7 +181,16 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 
 // --pi writes the hook list and the extension into Pi's agent folder, and
 // nothing else. Uninstall removes both once no folder has hooks left.
+// withShims sets whether this system runs the Pi extension and the
+// OpenCode plugin, for one test.
+func withShims(t *testing.T, on bool) {
+	old := shimsSupported
+	shimsSupported = on
+	t.Cleanup(func() { shimsSupported = old })
+}
+
 func TestHookInstallPiWritesTheExtension(t *testing.T) {
+	withShims(t, true)
 	f := newTeam(t)
 	home := hookHome(t)
 	t.Chdir(f.project)
@@ -244,6 +253,7 @@ func TestHookInstallPiWritesTheExtension(t *testing.T) {
 // --opencode writes the hook list and the plugin into OpenCode's config
 // folder, below XDG_CONFIG_HOME or OPENCODE_CONFIG_DIR, and nothing else.
 func TestHookInstallOpenCodeWritesThePlugin(t *testing.T) {
+	withShims(t, true)
 	f := newTeam(t)
 	home := hookHome(t)
 	t.Chdir(f.project)
@@ -295,6 +305,30 @@ func TestHookInstallOpenCodeWritesThePlugin(t *testing.T) {
 	}
 	if _, errout, code = f.run("", append(install, "--project")...); code != 2 || !strings.Contains(errout, "--opencode has no --project") {
 		t.Fatalf("--project --opencode: %d %s", code, errout)
+	}
+}
+
+// The Pi extension and the OpenCode plugin run hooks with /bin/sh, so on
+// Windows install refuses them and changes nothing; uninstall still works.
+func TestHookInstallRefusesPiAndOpenCodeOnWindows(t *testing.T) {
+	withShims(t, false)
+	f := newTeam(t)
+	home := hookHome(t)
+	t.Chdir(f.project)
+	for _, flag := range []string{"--pi", "--opencode"} {
+		_, errout, code := f.run("", "hook", "install", flag, "--credential-file", f.workerFile)
+		if code != 2 || !strings.Contains(errout, flag+" needs /bin/sh, so it works only on Linux and macOS") {
+			t.Fatalf("install %s: %d %s", flag, code, errout)
+		}
+		if out := runSkill(t, "hook", "uninstall", flag); out != "No a-stack hooks for "+f.project+" were installed.\n" {
+			t.Fatalf("uninstall %s: %q", flag, out)
+		}
+	}
+	if entries, err := os.ReadDir(home); err != nil || len(entries) != 0 {
+		t.Fatalf("install wrote %v %v", entries, err)
+	}
+	if _, errout, code := f.run("", "hook", "install", "--claude", "--credential-file", f.workerFile); code != 0 {
+		t.Fatalf("install --claude: %d %s", code, errout)
 	}
 }
 
@@ -452,6 +486,67 @@ func TestHookSubagentEventsReachOnlyTheirOwnAgent(t *testing.T) {
 	// Nor is one whose session never ran there itself, below the folder.
 	if out := event(orch, "other", "a3", filepath.Join(f.project, ".claude"), "SubagentStart", ""); out != "" {
 		t.Fatalf("a subagent below the folder got the reminder: %q", out)
+	}
+}
+
+// A main session that starts in a folder above a worker's, such as the
+// Orchestrator's, and then cds into the worker's folder is not the worker.
+// Claude Code 2.1.310 reports the main session's folder after a cd. The
+// worker's hooks never act for it, and the worker's subagent of that session
+// keeps its hooks.
+func TestHookParentSessionInAWorkersFolderIsNotTheWorker(t *testing.T) {
+	f := newTeam(t)
+	hookHome(t)
+	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}
+	worktree := filepath.Join(f.project, ".claude", "worktrees", "agent-a1")
+	if os.MkdirAll(worktree, 0o700) != nil {
+		t.Fatal("fixture")
+	}
+	worker := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: worktree, ref: ref, noMailNudge: true}
+	event := func(session, agentID, cwd, event, extra string) string {
+		t.Helper()
+		var out bytes.Buffer
+		input := `{"session_id":"` + session + `","cwd":` + jsonString(cwd) + `,"hook_event_name":"` + event + `"`
+		if agentID != "" {
+			input += `,"agent_id":"` + agentID + `","agent_type":"general-purpose"`
+		}
+		runHook(worker, strings.NewReader(input+extra+`}`), &out)
+		return out.String()
+	}
+	f.taskChange(f.workerFile, "parent-working", 2, "status", "--progress", "working")
+	// Every Claude Code session runs the worker's hooks. The parent starts in
+	// the project folder, compacts there, then cds into the worker's folder.
+	if out := event("parent", "", f.project, "SessionStart", `,"source":"startup"`); out != "" {
+		t.Fatalf("the parent's start reached the worker: %q", out)
+	}
+	event("parent", "", f.project, "SessionStart", `,"source":"compact"`)
+	for _, step := range []struct{ event, extra string }{
+		{"PostToolUse", `,"tool_name":"Bash"`},
+		{"UserPromptSubmit", `,"prompt":"go"`},
+		{"Stop", `,"stop_hook_active":false`},
+		{"SessionStart", `,"source":"compact"`},
+	} {
+		if out := event("parent", "", worktree, step.event, step.extra); out != "" {
+			t.Fatalf("the parent's %s in the worker's folder reached the worker: %q", step.event, out)
+		}
+	}
+	// The worker's subagent of that parent keeps the worker's hooks.
+	if text := hookContextText(t, event("parent", "a1", worktree, "SubagentStart", ""), "SubagentStart"); !strings.Contains(text, "you are the Agent 02-worker") {
+		t.Fatalf("subagent reminder: %s", text)
+	}
+	if out := event("parent", "a1", worktree, "SubagentStop", `,"stop_hook_active":false`); !strings.Contains(out, `"decision":"block"`) {
+		t.Fatalf("the subagent's stop passed: %q", out)
+	}
+	// The worker's own session, started in its folder, keeps its hooks; a
+	// subagent of it in the same folder is not the worker.
+	if text := hookContextText(t, event("own", "", worktree, "SessionStart", `,"source":"startup"`), "SessionStart"); !strings.Contains(text, "you are the Agent 02-worker") {
+		t.Fatalf("own reminder: %s", text)
+	}
+	if out := event("own", "", worktree, "Stop", ""); !strings.Contains(out, `"decision":"block"`) {
+		t.Fatalf("the worker's own stop passed: %q", out)
+	}
+	if out := event("own", "b1", worktree, "SubagentStart", ""); out != "" {
+		t.Fatalf("a subagent in the worker's own folder got the reminder: %q", out)
 	}
 }
 
@@ -732,7 +827,7 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	}
 	var files []string
 	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".main") { // see ownSubagent
+		if !strings.HasSuffix(entry.Name(), ".main") { // see ownEvent
 			files = append(files, entry.Name())
 		}
 	}

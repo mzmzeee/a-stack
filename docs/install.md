@@ -205,7 +205,7 @@ During the restart, Agent commands fail with `storage_unavailable` and `retryabl
 
 When the new version has a new database schema, the first start migrates the database. Before that, it writes a private copy of the database, `state.db.pre-vN`, in the state directory (N is the old schema version). After the migration, `serve` writes one line to its output (the journal under systemd, the log file under launchd and Task Scheduler). It names the copy, says that an older a-stack cannot open the database now, and links to the next section.
 
-The migration needs free space in the state directory. For schema 8 (v0.1.6) and schema 9 (after v0.1.6), plan for up to three times the size of `state.db`: one copy, and twice the size of the tables that it rebuilds (Task texts and mail, or only mail for schema 9), first in the WAL file and then in the database file. If less space is free, `serve` stops before it writes anything and says how much it needs. If a start fails after the copy, the next start of the unchanged database uses that copy again instead of writing another one. After the migration, the database file keeps the freed pages; to make it small again, make a backup and restore it (see [Backup and restore](foundation.md#backup-and-restore)).
+The migration needs free space in the state directory. For schema 8 (v0.1.6) and schema 9 (after v0.1.6), plan for up to three times the size of `state.db`: one copy, and twice the size of the tables that it rebuilds (Task texts and mail, or only mail for schema 9), first in the WAL file and then in the database file. From v0.1.5 straight to schema 9, both rebuilds run in one step: plan for up to four times the size of `state.db`. If less space is free, `serve` stops before it writes anything and says how much it needs. If a start fails after the copy, the next start of the unchanged database uses that copy again instead of writing another one. After the migration, the database file keeps the freed pages; to make it small again, make a backup and restore it (see [Backup and restore](foundation.md#backup-and-restore)).
 
 ### Go back to an older version
 
@@ -221,7 +221,7 @@ To put the copy back, install the older version first with `a-stack update --ver
 - If launchd runs the service on macOS, run `launchctl bootout gui/$(id -u)/dev.a-stack`. launchd keeps starting an older a-stack that stops with exit code 4, so `kill TERM` is not enough.
 - If Task Scheduler runs the service on Windows, run `schtasks /Change /TN a-stack-SID /DISABLE` and then `schtasks /End /TN a-stack-SID`.
 
-Move the state directory aside, and put the copy and the Operator credential in a new state directory in the same place. `state.db.pre-v8` is the copy of a v0.1.6 database that a newer a-stack made before it moved it to schema 9 (`state.db.pre-v7` is the one that v0.1.6 made of a v0.1.5 database); use the name that `serve` printed after the migration:
+Move the state directory aside, and put the copy and the Operator credential in a new state directory in the same place. `state.db.pre-v8` is the copy of a v0.1.6 database that a newer a-stack made before it moved it to schema 9 (`state.db.pre-v7` is the one that v0.1.6 or later made of a v0.1.5 database); use the name that `serve` printed after the migration:
 
 ```sh
 state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/a-stack"
@@ -235,6 +235,8 @@ install -m 600 "$old_dir/operator.json" "$state_dir/operator.json"
 On Windows, the state directory is `%LOCALAPPDATA%\a-stack`; move it aside and copy the two files in the same way.
 
 Start the service again: run `a-stack serve`, or `systemctl --user start a-stack`, or `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/dev.a-stack.plist`, or `schtasks /Change /TN a-stack-SID /ENABLE` and then `schtasks /Run /TN a-stack-SID`. The CLI, the Agents and the agent hooks find the service as before, because the state directory is the same. Keep the old folder until you have checked the restored database, as in [Backup and restore](foundation.md#backup-and-restore).
+
+Then delete the saved mail cursor files: each Agent's `mail check --cursor-file` file, and the agent hooks' cursor folder, `~/.cache/a-stack/hooks` (below `$XDG_CACHE_HOME` when set; `~/Library/Caches/a-stack/hooks` on macOS; `%LOCALAPPDATA%\a-stack-hooks` on Windows). A cursor file saved after the upgrade can point past the restored mail, and new mail that gets the same numbers would then be skipped. Without its cursor file, an Agent's next `mail check` starts again at the first message, and the hooks start again at the newest one.
 
 ## Start a-stack automatically
 

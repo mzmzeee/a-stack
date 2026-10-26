@@ -93,11 +93,14 @@ async function AStack({ client, directory }) {
   const isRoot = (sessionID) => {
     if (!sessionID) return Promise.resolve(false)
     if (!roots.has(sessionID)) {
+      // A failed lookup, thrown or returned as an error, counts as a
+      // subagent's session: the hooks skip a session rather than act for a
+      // subagent. The next session.updated event sets the answer again.
       roots.set(
         sessionID,
         client.session.get({ path: { id: sessionID } }).then(
-          (r) => !r?.data?.parentID,
-          () => true,
+          (r) => Boolean(r?.data) && !r.data.parentID,
+          () => false,
         ),
       )
     }

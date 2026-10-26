@@ -88,6 +88,10 @@ func TestCLIAnswerIsTheOperatorsAndReachesTheAgentAsMail(t *testing.T) {
 	}
 	// Flag checks run before the service sees the answer.
 	answer("", 2, "--text", "Google", "--body-file", "-", "--operation-id", "answer-two-texts")
+	answer("", 2, "--text", "Google", "--body", "Google", "--operation-id", "answer-text-and-body")
+	if out := answer("", 2, "--body", "A\x1b[31mRED", "--operation-id", "answer-escape"); !strings.Contains(string(out), "answer must be plain text without control characters") {
+		t.Fatalf("answer with an escape: %s", out)
+	}
 	invoke("", 2, scoped("answer", "--task", task.ResourceID, "--question-id", "not an id", "--text", "x", "--operation-id", "answer-bad-id")...)
 	answer("", 2, "--text", "Google", "--expected-revision", "3", "--operation-id", "answer-revision")
 	if out := answer("", 2, "--text", strings.Repeat("x", stack.MaxAnswerBytes+1), "--operation-id", "answer-long"); !strings.Contains(string(out), "4096 bytes") {
@@ -101,7 +105,7 @@ func TestCLIAnswerIsTheOperatorsAndReachesTheAgentAsMail(t *testing.T) {
 	if answered.Outcome != "answered" || answered.Revision != 4 || receipt("", scoped("answer", "--task", task.ResourceID, "--question-id", question, "--body-file", text, "--operation-id", "answer-1")...) != answered {
 		t.Fatal("answer receipt or retry", answered)
 	}
-	if out := answer("", 1, "--text", "Again", "--operation-id", "answer-2"); !strings.Contains(string(out), "no open Needs you question") {
+	if out := answer("", 1, "--body", "Again", "--operation-id", "answer-2"); !strings.Contains(string(out), "no open Needs you question") {
 		t.Fatalf("second answer: %s", out)
 	}
 	// The Agent finds the answer in mail check and in task show.

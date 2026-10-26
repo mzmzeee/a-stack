@@ -76,11 +76,38 @@ func TestTaskHandoffBrief(t *testing.T) {
 	if code != 0 || !strings.Contains(out, "## Task mail\n\n3 messages. Only assignees read Task mail, and this credential is not one.\n") {
 		t.Fatalf("Operator handoff: %d %s %s", code, out, errout)
 	}
+	// Its next steps do not send it to the mail it cannot read.
+	if strings.Contains(out, "check your Task mail") || !strings.Contains(out, "for its current revision. Only assignees read its Task mail: once you are assigned, `mail read --task "+f.task+"`") {
+		t.Fatalf("Operator handoff next steps:\n%s", out)
+	}
+	if _, errout, code = f.run(f.workerFile, f.scoped("task", "handoff", "--task", f.task, "--limit", "0")...); code != 2 || !strings.Contains(errout, "--limit takes 1 to 500 messages") {
+		t.Fatalf("handoff --limit 0: %d %s", code, errout)
+	}
 	if snapshot() != before {
 		t.Fatal("task handoff changed the Session")
 	}
 	if _, errout, code = f.run(f.workerFile, f.scoped("task", "handoff")...); code != 2 || !strings.Contains(errout, "--task") {
 		t.Fatalf("handoff without --task: %d %s", code, errout)
+	}
+}
+
+// The brief shows the Operator's latest answer, also after a new question.
+func TestTaskHandoffShowsTheLatestAnswer(t *testing.T) {
+	f := newTeam(t)
+	f.taskChange(f.workerFile, "handoff-ask", 2, "attention", "set", "--question", "Strict or lenient?")
+	out, _, _ := f.run("", f.scoped("task", "show", "--task", f.task, "--json")...)
+	var shown struct {
+		Data struct {
+			Question struct{ ID string } `json:"question"`
+		} `json:"data"`
+	}
+	if json.Unmarshal([]byte(out), &shown) != nil || shown.Data.Question.ID == "" {
+		t.Fatalf("task show: %s", out)
+	}
+	f.receipt("", f.scoped("answer", "--task", f.task, "--question-id", shown.Data.Question.ID, "--body", "Lenient,\nwith warnings.", "--operation-id", "handoff-answer")...)
+	out, errout, code := f.run(f.workerFile, f.scoped("task", "handoff", "--task", f.task)...)
+	if code != 0 || !strings.Contains(out, "## Needs you\n\nNo open question.\nThe Operator answered the latest question, ") || !strings.Contains(out, ":\nStrict or lenient?\nAnswer:\nLenient,\nwith warnings.\n\n## Unfinished") {
+		t.Fatalf("handoff after the answer: %d %s\n%s", code, errout, out)
 	}
 }
 

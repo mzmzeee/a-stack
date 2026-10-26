@@ -135,7 +135,7 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 func pruneHookFiles(dir string) {
 	entries, _ := os.ReadDir(dir)
 	for _, e := range entries {
-		if info, err := e.Info(); err == nil && (strings.HasSuffix(e.Name(), ".json") || strings.HasSuffix(e.Name(), ".stop") || strings.HasSuffix(e.Name(), ".main")) && time.Since(info.ModTime()) > hookFilesKept {
+		if info, err := e.Info(); err == nil && (strings.HasSuffix(e.Name(), ".json") || strings.HasSuffix(e.Name(), ".stop") || strings.HasSuffix(e.Name(), ".main") || strings.HasSuffix(e.Name(), ".away")) && time.Since(info.ModTime()) > hookFilesKept {
 			_ = os.Remove(filepath.Join(dir, e.Name()))
 		}
 	}

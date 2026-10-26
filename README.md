@@ -24,7 +24,7 @@ Works with Claude Code, Codex, Pi and OpenCode (with hooks), [Herdr](https://her
 3. The Orchestrator divides the work into Tasks, assigns Agents to them and sets which Tasks depend on other Tasks.
 4. The Agents update their Tasks, write reports and send Task mail to the other Agents on the same Task.
 5. When an Agent needs your input, it marks its Task as Needs you, with a question.
-6. You follow the work in a read-only browser view.
+6. You follow the work in a browser view. It is read-only, except that you can answer a Needs you question there.
 
 The Agents use the `a-stack` command line for all of this. a-stack is one binary with one SQLite database. It keeps all data on your computer, accepts connections only on `127.0.0.1` and needs no account. View links work once, and releases are signed. Windows support is new and not yet tested on a real Windows machine.
 

@@ -320,7 +320,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return writeData(stdout, data)
 	}
 	if cmd == "task handoff" {
-		return taskHandoff(ctx, client, lifecycle, tasks, machine, stdout)
+		return taskHandoff(ctx, client, lifecycle, tasks, seen["limit"], machine, stdout)
 	}
 	if isTaskCommand(cmd) {
 		data, err := taskRequest(ctx, client, cmd, lifecycle, tasks, seen)
