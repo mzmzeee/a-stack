@@ -140,7 +140,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if cmd != "" && cmd != "new" && !knownCommand(cmd) {
 		return unknownCommand(command, seen, stdout)
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" {
+	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && cmd != "mcp" {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -235,6 +235,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 			writeError(log, err)
 		}
 		return err
+	}
+	if cmd == "mcp" {
+		return mcpCommand(ctx, state, credential, kind, lifecycle, os.Stdin, stdout)
 	}
 	if isWatchCommand(cmd) {
 		connect := func() (*stack.Client, error) { return stack.NewClient(state, credential, stack.CapabilityKind(kind)) }

@@ -124,6 +124,7 @@ To brief the coding agent yourself, run `a-stack new --orchestrator 01-orchestra
 - [Task mail](docs/mail.md): send and read messages, and mention Agents.
 - [Browser view](docs/browser.md): open the view and read what it shows.
 - [Watch from the terminal](docs/watch.md): `a-stack status`, `a-stack watch` and `a-stack statusline` show what needs you, with a bell, opt-in desktop notices and a Claude Code status line.
+- [Agent tools over MCP](docs/mcp.md): `a-stack mcp` exposes one Agent's Task and mail tools to Claude Code, Codex, Pi and other MCP clients.
 - [Agent hooks](docs/hooks.md): `a-stack hook install` reminds Claude Code, Codex, Pi and OpenCode agents of their Tasks after a compaction, reports their runtime state, keeps them from stopping without a report and tells them about new Task mail.
 - [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
