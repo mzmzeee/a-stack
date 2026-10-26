@@ -633,6 +633,11 @@ func (e *taskEdit) edit() error {
 		if err := validText("title", *r.Title, 256, true); err != nil {
 			return err
 		}
+		if *r.Title != e.task.Title && len(e.task.Claims) > 0 {
+			if err := bumpWorkspaceClaims(e.ctx, e.tx, r.WorkspaceID); err != nil {
+				return err
+			}
+		}
 		e.task.Title = *r.Title
 		e.change.Title = r.Title
 	}

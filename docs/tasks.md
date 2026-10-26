@@ -193,7 +193,7 @@ Give literal paths relative to the Workspace root, not the Agent's worktree. Bot
 
 A claim succeeds even if it overlaps another open Task. Its `warnings` list names that Task, its paths and its current Agents. Equal paths overlap, as do a folder and anything below it; `src` does not overlap `src-old`. Warnings include other open Sessions of the same Workspace, but never another Workspace or mail and reports from another Session. A closed Session's claims do not warn until it reopens. Agents should read the warnings and coordinate in Task mail before editing the same files.
 
-`task claims` returns current `claims` and `warnings`. `task show` includes `claims` and `claim_warnings`; Task pages for the view include `claims`; `session inspect` includes its Tasks' claim metadata. Claims and overlaps are shown read-only in the view's Task details. Finishing or cancelling a Task releases its claims in the same transaction. Reopening does not restore them. A retry returns the original receipt and the current overlap warnings, which may have changed since the first request.
+`task claims` returns current `claims` and `warnings`. `task show` includes `claims` and `claim_warnings`; Task pages for the view include `claims`; `session inspect` includes its Tasks' claim metadata. Claims and overlaps are shown read-only in the view's Task details. Renaming a Task with claims refreshes overlap warnings in other Sessions of the Workspace. Finishing or cancelling a Task releases its claims in the same transaction. Reopening does not restore them. A retry returns the original receipt and the current overlap warnings, which may have changed since the first request.
 
 ## File references
 

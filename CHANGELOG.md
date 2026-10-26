@@ -27,6 +27,7 @@ Operation receipts now expire after 30 days. Task history and mail stay. Older o
 
 ### Fixed
 
+- Renaming a Task with file claims refreshes overlap-warning titles in other Sessions of the Workspace.
 - `hook install` without `--state-dir` now uses default-state discovery when looking up an Agent's context or name. Credential files from before v0.1.5 no longer cause a false "service is not running" error when Workspace and Session flags are omitted.
 - On Windows, `install.ps1` warns and names another `a-stack` earlier on `PATH`, without changing the order of existing entries. Task Scheduler preserves literal `%VAR%` in binary and state paths with an encoded PowerShell action, and reinstalling replaces older unsafe actions. The browser opener initializes a single-threaded COM apartment on its OS thread before `ShellExecuteW`.
 
