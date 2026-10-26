@@ -6,6 +6,12 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+Upgrading from v0.1.7, v0.1.6 or v0.1.5: run `a-stack update`, then restart the service. The first start copies the database to `state.db.pre-v9` from v0.1.7, `state.db.pre-v8` from v0.1.6 or `state.db.pre-v7` from v0.1.5, then moves it to schema 10. Allow free space of three times the size of `state.db` from v0.1.7 or v0.1.6, or four times from v0.1.5. With less, the service stops before the copy and migration. Older versions cannot open schema 10. To go back, install the older version, stop the service and restore its pre-migration copy in a new state directory in the same place; later changes are lost. See [Go back to an older version](docs/install.md#go-back-to-an-older-version).
+
+### Changed
+
+- Schema 10 adds Task file claims and compact records for expired operation IDs. Migration keeps Tasks, mail, questions, standing orders and existing receipts.
+
 ## [0.1.7] - 2026-10-26
 
 Upgrading from v0.1.6: run `a-stack update`, then restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`). The first start copies the database to `state.db.pre-v8`, moves it to schema 9 and prints one line that names the copy. Schema 9 adds the standing orders and rebuilds the Task mail table, so that a message can come from the Operator; Agent mail reads the same as before. It needs free space of up to three times the size of `state.db`; with less, it stops before it changes anything and says how much it needs. After the upgrade, v0.1.6 cannot open the database. To go back, run `a-stack update --version v0.1.6`, stop the service, and put `state.db.pre-v8` back as `state.db` in a new state directory in the same place, as in [Go back to an older version](docs/install.md#go-back-to-an-older-version); changes made after the upgrade are lost. Then delete the Agents' mail cursor files and the hooks' cursor folder, because they can point past the restored mail.

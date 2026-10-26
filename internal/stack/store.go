@@ -18,7 +18,7 @@ import (
 	"time"
 )
 
-const schemaVersion = 9
+const schemaVersion = 10
 const applicationID = 0x4153544b
 const migration1 = `
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -356,6 +356,19 @@ CREATE TRIGGER mail_mentions_task_change BEFORE UPDATE OF message_id,task_id ON 
  BEGIN SELECT RAISE(ABORT,'FOREIGN KEY constraint failed'); END;
 `
 
+const migration10 = `
+CREATE TABLE task_claims(
+ task_id TEXT NOT NULL REFERENCES tasks(id), path TEXT NOT NULL,
+ claimed_by TEXT NOT NULL REFERENCES agents(id), claimed_at TEXT NOT NULL,
+ PRIMARY KEY(task_id,path)
+) WITHOUT ROWID;
+CREATE INDEX operation_receipts_age ON operation_receipts(received_at,actor,operation_id);
+CREATE TABLE expired_operations(
+ actor TEXT NOT NULL, operation_id TEXT NOT NULL, outcome TEXT NOT NULL,
+ PRIMARY KEY(actor,operation_id)
+) WITHOUT ROWID;
+`
+
 // migrate runs every migration the database lacks in one transaction.
 // Schema 8 rebuilds tables that other tables reference, which SQLite allows
 // only with foreign keys off, and it cannot change that inside a transaction.
@@ -469,6 +482,14 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 			return storageError(err)
 		}
 		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=9"); err != nil {
+			return storageError(err)
+		}
+	}
+	if version < 10 {
+		if _, err = tx.ExecContext(ctx, migration10); err != nil {
+			return storageError(err)
+		}
+		if _, err = tx.ExecContext(ctx, "PRAGMA user_version=10"); err != nil {
 			return storageError(err)
 		}
 	}
