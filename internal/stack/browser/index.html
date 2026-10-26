@@ -14,7 +14,9 @@
 </head>
 <body>
 <div class="app">
-  <header class="appbar">
+  <div class="bar" id="top-bar">
+  <button class="bar-toggle" data-bar="top" aria-controls="top-content" aria-expanded="true" aria-label="Collapse top bar"><span data-icon="chevron"></span></button>
+  <header class="appbar" id="top-content">
     <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none"><path d="M5 20L12 4l7 16M8 14h8" stroke="currentColor" stroke-width="2.6"/></svg></span>a-stack</div>
     <span class="project-name" id="project-name" title="Workspace folder" hidden></span>
     <nav class="tabs" role="tablist" aria-label="Workspace views">
@@ -28,6 +30,11 @@
       <button class="theme-button" data-theme="system" aria-pressed="true" aria-label="System" title="Follow the system setting"><span data-icon="system"></span><span class="theme-label">System</span></button>
     </div>
   </header>
+  </div>
+  <div class="bar" id="session-bar">
+  <button class="bar-toggle" data-bar="session" aria-controls="session-content" aria-expanded="true" aria-label="Collapse Session header"><span data-icon="chevron"></span></button>
+  <button class="attention-button bar-attention" id="compact-attention" hidden></button>
+  <div id="session-content">
   <section class="workspacebar" aria-label="Workspace and filters">
     <div class="workspace-title"><h1>Loading Session</h1><p class="workspace-subtitle">Connecting to local service</p></div>
     <label class="search"><span data-icon="search"></span><span class="sr-only">Find an agent or task</span><input id="search" type="search" aria-keyshortcuts="/" placeholder="Find an agent or task…" autocomplete="off" spellcheck="false"></label>
@@ -35,10 +42,13 @@
     <select class="status-filter" id="status-filter"><option value="all">All statuses</option><option value="working">Working</option><option value="blocked">Needs you</option><option value="waiting">Waiting</option><option value="finished">Finished</option><option value="cancelled">Cancelled</option></select>
     <button class="attention-button" id="attention" disabled><span data-icon="attention"></span>Needs you</button>
   </section>
+  <details class="orders" id="orders" hidden><summary>Standing orders</summary><pre id="orders-text"></pre></details>
+  </div>
+  </div>
   <p class="banner" id="banner" role="status" hidden></p>
   <div class="update-note" id="update-note" hidden><p id="update-text" role="status"></p><button class="plain-button" id="reload">Reload</button></div>
-  <details class="orders" id="orders" hidden><summary>Standing orders</summary><pre id="orders-text"></pre></details>
   <main>
+    <h1 class="sr-only" id="collapsed-title" hidden>Session</h1>
     <div class="view" id="now-panel" role="tabpanel" aria-labelledby="now-tab" tabindex="0" aria-description="What is happening now. Columns list the Tasks that need you, are working, are waiting, or finished recently. Select a task for details.">
       <div class="now-layout"><div class="now-board" id="now-board"></div><section class="now-column now-feed" aria-labelledby="feed-heading"><header class="now-head"><h2 id="feed-heading">Latest changes</h2></header><ol class="feed-list" id="feed-list"></ol><p class="now-empty" id="feed-empty">No changes yet.</p></section></div>
     </div>
@@ -46,14 +56,16 @@
       <div class="graph-space"><div class="graph-world" id="graph-world"></div></div>
     </div>
     <div class="minimap" id="minimap" aria-hidden="true" title="Minimap: click or drag to move the view. The Minimap button, or m in the graph, hides it." hidden><canvas></canvas></div>
-    <aside class="peek" id="peek" role="dialog" aria-labelledby="peek-title" hidden></aside>
+    <div class="peek" id="peek" role="dialog" aria-labelledby="peek-title" hidden></div>
     <div class="view" id="agents-panel" role="tabpanel" aria-labelledby="agents-tab" tabindex="0" hidden>
       <div class="agents-bar" hidden><p class="agents-summary" id="agents-summary"></p><div class="seg" role="group" aria-label="Sort Agents"><button data-sort="urgency" aria-pressed="true">Most urgent first</button><button data-sort="name" aria-pressed="false">By name</button></div></div>
       <div class="agent-list" id="agent-list"></div>
     </div>
     <div class="empty" id="empty" hidden><h2>No matching work</h2><p>Try another agent name, task, or status.</p><button class="plain-button" id="clear-filters">Clear filters</button></div>
   </main>
-  <footer class="footer">
+  <div class="bar" id="footer-bar">
+  <button class="bar-toggle" data-bar="footer" aria-controls="footer-content" aria-expanded="true" aria-label="Collapse footer"><span data-icon="chevron"></span></button>
+  <footer class="footer" id="footer-content">
     <div class="zoom-controls" id="zoom-controls" role="group" aria-label="Graph zoom">
       <button id="zoom-out" aria-label="Zoom out" aria-keyshortcuts="-"><span data-icon="minus"></span></button>
       <button id="zoom-reset" aria-label="Reset to 100 percent" aria-keyshortcuts="0">100%</button>
@@ -68,9 +80,11 @@
     <span id="result-count" role="status" aria-live="polite"></span>
     <button class="toggle-button" id="notify" aria-pressed="false" hidden><span data-icon="bell"></span>Notify me</button>
     <button class="keys-button" id="keys-button" aria-keyshortcuts="?">Keyboard <kbd aria-hidden="true">?</kbd></button>
-    <button class="preview-button" id="about-button"><span data-icon="info"></span><span class="preview-label">Local service · connecting</span><span class="preview-short" aria-hidden="true">Read-only</span><span class="sr-only">About this view</span></button>
+    <button class="preview-button" id="about-button"><span data-icon="info"></span><span class="preview-label">{{.Version}}</span><span class="sr-only">About this view</span></button>
   </footer>
+  </div>
 </div>
+<p class="sr-only" id="navigation-hint" role="status" aria-live="polite"></p>
 <dialog class="detail-panel" id="task-dialog" aria-labelledby="detail-title"></dialog>
 <dialog class="about-panel" id="about-dialog" aria-labelledby="about-title">
   <div class="detail-top"><span class="detail-kicker">READ-ONLY SESSION</span><button class="icon-button" data-close="about-dialog" aria-label="Close information"><span data-icon="close"></span></button></div>
@@ -79,8 +93,8 @@
 <dialog class="about-panel" id="keys-dialog" aria-labelledby="keys-title">
   <div class="detail-top"><h2 id="keys-title">Keyboard</h2><button class="icon-button" data-close="keys-dialog" aria-label="Close keyboard map"><span data-icon="close"></span></button></div>
   <div class="detail-body keys"><p>These keys work while the focus is in the Graph or Agents tab, so typing elsewhere never triggers them. They only move around and change nothing. The one exception is Ctrl+Enter in the answer box of a Task's details: it sends the answer.</p>
-    <section><h3>Graph and Agents</h3><dl><dt><kbd>g</kbd> <kbd>n</kbd></dt><dd>Now</dd><dt><kbd>g</kbd> <kbd>g</kbd></dt><dd>Graph</dd><dt><kbd>g</kbd> <kbd>a</kbd></dt><dd>Agents</dd><dt><kbd>/</kbd></dt><dd>Find an Agent or Task</dd><dt><kbd>u</kbd></dt><dd>Next Task that needs you</dd><dt><kbd>?</kbd></dt><dd>This map</dd></dl></section>
-    <section><h3>Graph</h3><dl><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next or previous Task</dd><dt><kbd>Space</kbd></dt><dd>Peek at the Task, or close the peek</dd><dt><kbd>Enter</kbd></dt><dd>Full details</dd><dt><kbd>Esc</kbd></dt><dd>Close the peek, then clear the highlight</dd><dt><kbd>f</kbd></dt><dd>Fit</dd><dt><kbd>+</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, zoom out, 100%</dd><dt><kbd>m</kbd></dt><dd>Minimap on or off</dd></dl></section>
+    <section><h3>Graph and Agents</h3><dl><dt><kbd>g</kbd> <kbd>n</kbd></dt><dd>Now</dd><dt><kbd>g</kbd> <kbd>v</kbd></dt><dd>Graph</dd><dt><kbd>g</kbd> <kbd>a</kbd></dt><dd>Agents</dd><dt><kbd>/</kbd></dt><dd>Find an Agent or Task</dd><dt><kbd>u</kbd> / <kbd>]</kbd></dt><dd>Next Task that needs you</dd><dt><kbd>[</kbd></dt><dd>Previous Task that needs you</dd><dt><kbd>t</kbd></dt><dd>Hide or show all three bars</dd><dt><kbd>?</kbd></dt><dd>This map</dd></dl></section>
+    <section><h3>Graph</h3><dl><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next or previous Task</dd><dt><kbd>h</kbd> <kbd>l</kbd></dt><dd>Nearest prerequisite or dependent</dd><dt><kbd>H</kbd> <kbd>L</kbd></dt><dd>Cycle the starting Task’s prerequisites or dependents (Shift)</dd><dt><kbd>g</kbd> <kbd>g</kbd> / <kbd>G</kbd></dt><dd>First or last Task</dd><dt><kbd>z</kbd> <kbd>z</kbd> / <kbd>c</kbd></dt><dd>Centre the focused Task</dd><dt><kbd>Space</kbd></dt><dd>Peek at the Task, or close the peek</dd><dt><kbd>Enter</kbd></dt><dd>Full details</dd><dt><kbd>Esc</kbd></dt><dd>Close the peek, then clear the highlight</dd><dt><kbd>f</kbd></dt><dd>Fit</dd><dt><kbd>+</kbd> / <kbd>=</kbd> <kbd>-</kbd> <kbd>0</kbd></dt><dd>Zoom in, zoom out, 100%</dd><dt><kbd>m</kbd></dt><dd>Minimap on or off</dd></dl></section>
   </div>
 </dialog>
 <dialog class="about-panel" id="attention-dialog" aria-labelledby="attention-title"><div class="detail-top"><h2 id="attention-title">Needs you</h2><button class="icon-button" data-close="attention-dialog" aria-label="Close Needs you"><span data-icon="close"></span></button></div><div class="detail-body" id="attention-list"></div></dialog>
