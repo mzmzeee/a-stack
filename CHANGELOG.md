@@ -10,6 +10,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 - `a-stack session export --markdown` writes a Session summary for a PR or a hand-over: the Workspace folder, Tasks in dependency order with assignees, results and reports, open Needs you questions, the latest Operator answers and standing orders. Task mail is count-only; bodies are never read or exported. The Operator and Session Agents can use it, with `--output FILE`, `--include-archived` and `--json`. It uses existing reads and changes no data. See [Export a Session](docs/tasks.md#export-a-session).
 - Mention notices reach Claude Code 2.1.x from 2.1.310 (below 2.2). A native fixture with a private Claude Code 2.1.310 install, a scripted API and an isolated Herdr 0.9.5 verified idle delivery, native mid-turn delivery after a foreground tool step, and notices held back while a permission dialog is open. Each notice led to the Agent's own mail check. See [Native Claude Code fixture](docs/notifications.md#native-claude-code-fixture).
+- `a-stack mcp --credential-file FILE`: a stdio MCP server for one Agent, with 15 Session, Task, dependency and mail tools over the same HTTP API. It keeps the CLI's operation IDs, revisions, permissions and errors, supports MCP 2026-07-28 and the legacy initialize handshake, and exposes no Operator-only action. See [Agent tools over MCP](docs/mcp.md) for Claude Code, Codex and Pi setup.
 
 ## [0.1.7] - 2026-10-26
 

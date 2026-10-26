@@ -120,7 +120,7 @@ func acceptedFlags(command string) string {
 		allowed += "workspace operation-id name "
 	case "session list", "agent list":
 		allowed += "workspace session limit after "
-	case "session inspect":
+	case "session inspect", "mcp":
 		allowed += "workspace session "
 	case "session export":
 		allowed += "workspace session markdown output include-archived "
