@@ -5,7 +5,8 @@
     "license": "MIT",
     "notes": [
         "To keep a-stack running, run: a-stack service install",
-        "Update with scoop update a-stack, not a-stack update."
+        "Update with scoop update a-stack, not a-stack update.",
+        "For Tab completion, run: a-stack completion install --shell powershell; add the printed line to $PROFILE."
     ],
     "architecture": {
         "64bit": {

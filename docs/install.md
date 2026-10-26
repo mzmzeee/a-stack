@@ -108,6 +108,23 @@ CGO_ENABLED=1 go install github.com/mzmzeee/a-stack/cmd/a-stack@latest
 
 Both install the release binary and check it against the release's `SHA256SUMS`. An AUR package (`a-stack-bin`) is prepared in [`contrib/`](../contrib/README.md) but not published yet. If you install a-stack with a package manager, update it with that package manager: `a-stack update` cannot replace a binary in `/usr/bin`, and on Windows it refuses to replace a binary in a Scoop or WinGet folder and names `scoop update a-stack` or `winget upgrade a-stack` instead.
 
+## Tab completion
+
+Run `a-stack completion install` to detect your shell from `$SHELL`, or name it with `--shell bash`, `--shell zsh`, `--shell fish` or `--shell powershell`. The command says where it wrote the script and how to load it. Running it again leaves an unchanged script alone.
+
+Completion suggests commands, subcommands, their flags and fixed values such as `--progress working`. File flags such as `--credential-file` and `--body-file` suggest paths; `--state-dir` suggests folders. It uses the same command and flag tables as `--help`.
+
+`--task` suggests open Task IDs, with their titles as descriptions in zsh, fish and PowerShell. `--agent` and `--assign` suggest Agent names. The hidden `a-stack __complete` helper reads the existing Task and Agent lists from the running service, with the credential, state directory, Workspace and Session already on your command line (including flags after the cursor). An Agent credential can supply its own context. These reads share a one-second timeout and print nothing on an error; completion never starts the service. Commands, flags and paths still complete when the service is stopped.
+
+- **Bash:** installs in `${XDG_DATA_HOME:-~/.local/share}/bash-completion/completions/a-stack`. With bash-completion loaded, a new terminal picks it up. To load it now, run the `source` line that the command prints.
+- **Zsh:** installs `_a-stack` in a per-user folder from `$FPATH`, or `${XDG_DATA_HOME:-~/.local/share}/zsh/site-functions`. If needed, it prints the `fpath=(...)` line to add before `compinit` in `~/.zshrc`. Enable completion there with `autoload -Uz compinit; compinit`, then open a new terminal.
+- **Fish:** installs in `~/.config/fish/completions/a-stack.fish` (or `$XDG_CONFIG_HOME/fish/completions/a-stack.fish`). Open a new terminal to load it. Paths with spaces work with backslash escapes, single quotes or double quotes, even before you close the quote.
+- **PowerShell:** prints `a-stack completion powershell | Out-String | Invoke-Expression` for you to add to `$PROFILE`. It never edits your profile. Reload the profile or open a new terminal.
+
+To print a script without installing it, run `a-stack completion bash`, `zsh`, `fish` or `powershell`. Homebrew installs the bash, zsh and fish scripts for you. Scoop prints the PowerShell setup hint.
+
+To remove the installed file, run `a-stack completion uninstall`, with `--shell` if needed. A second removal changes nothing. In PowerShell, remove the printed line from `$PROFILE` yourself. Open a new terminal to stop using a removed script.
+
 ## How releases are verified
 
 The release workflow on GitHub Actions builds every release. It signs the `SHA256SUMS` file with an Ed25519 key that only the workflow can use, and uploads the signature as `SHA256SUMS.sig`. The file has the raw 64-byte signature. The public key is in `install.sh` and in the `a-stack` binary:

@@ -78,7 +78,7 @@ func buildVersion() string {
 func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	var state, credential, kind, listen, destination, herdrExecutable, orchestrator string
+	var state, credential, kind, listen, destination, herdrExecutable, orchestrator, shell string
 	var machine, help, noBrowser, resume, project, refresh, check, noRestart, noRefresh, all bool
 	var release versionFlag
 	fs.StringVar(&state, "state-dir", "", "State directory (default "+stateDirDefault+")")
@@ -101,6 +101,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs.BoolVar(&all, "all", false, "Every Session")
 	fs.StringVar(&herdrExecutable, "herdr-executable", "", "The herdr binary; serve turns on mention notices with it")
 	fs.StringVar(&orchestrator, "orchestrator", "", "Also register an Agent with this name and appoint it as the Orchestrator")
+	fs.StringVar(&shell, "shell", "", "Shell: bash, zsh, fish or powershell (default: $SHELL)")
 	var lifecycle lifecycleFlags
 	lifecycle.register(fs)
 	var tasks taskFlags
@@ -113,6 +114,10 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	watching.register(fs)
 	var hooks hookFlags
 	hooks.register(fs)
+	if len(args) > 0 && args[0] == "__complete" {
+		writeCompletions(fs, args[1:], stdout)
+		return nil
+	}
 	command, repeated, err := splitFlags(fs, args)
 	if err != nil {
 		return err
@@ -140,7 +145,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if cmd != "" && cmd != "new" && !knownCommand(cmd) {
 		return unknownCommand(command, seen, stdout)
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && cmd != "mcp" {
+	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && !isCompletionCommand(cmd) && cmd != "mcp" {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -151,6 +156,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 	if len(lifecycle.paths) > 1 && cmd != "task claim" && cmd != "task unclaim" {
 		return invalid("--path is given more than once")
+	}
+	if isCompletionCommand(cmd) {
+		return completionCommand(cmd, shell, stdout)
 	}
 	if cmd == "session export" {
 		if exporting.markdown && machine {
