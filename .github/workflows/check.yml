@@ -98,7 +98,12 @@ jobs:
           (cd "$mirror" && sha256sum --binary a-stack_windows_amd64.zip > SHA256SUMS)
           python -m http.server 8765 --bind 127.0.0.1 --directory "$RUNNER_TEMP/mirror" &
           server=$!
-          sleep 2
+          # Wait until the mirror answers; a fixed sleep was sometimes too short.
+          for _ in $(seq 100); do
+            curl -fsS -o /dev/null http://127.0.0.1:8765/download/v0.0.1/SHA256SUMS && break
+            sleep 0.2
+          done
+          curl -fsS -o /dev/null http://127.0.0.1:8765/download/v0.0.1/SHA256SUMS
           export A_STACK_BASE_URL=http://127.0.0.1:8765 A_STACK_VERSION=v0.0.1 A_STACK_NO_PATH=1
           for shell in powershell pwsh; do
             export A_STACK_INSTALL_DIR="$RUNNER_TEMP\\install-$shell"
