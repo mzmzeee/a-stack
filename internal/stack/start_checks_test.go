@@ -288,8 +288,10 @@ func TestMigrationCopyIsWrittenAtomically(t *testing.T) {
 	}
 }
 
-// TestMigrationNeedsFreeSpace: the copy and the rebuild need up to three times
-// the database size; without it, the start stops before it writes anything.
+// TestMigrationNeedsFreeSpace: from schema 7 the copy and the two rebuilds,
+// schema 8 and 9 in one transaction, need up to four times the database size;
+// without it, the start stops before it writes anything. Measured with a
+// 94 MB v0.1.5 database: the state directory grew by 3.96 times its size.
 func TestMigrationNeedsFreeSpace(t *testing.T) {
 	path, _ := schema7Database(t, "")
 	db, err := sql.Open(driverName, fileURI(path)+"?_journal_mode=WAL")
@@ -310,23 +312,28 @@ func TestMigrationNeedsFreeSpace(t *testing.T) {
 		s.disk.free = func(string) (uint64, error) { return n, nil }
 		s.disk.at = time.Time{}
 	}
-	free(3*size - 1)
+	free(4*size - 1)
 	_, err = s.backupBeforeMigration(ctx, 7)
 	requireCode(t, err, "storage_unavailable")
 	if !strings.Contains(err.Error(), "the schema migration of state.db needs about") || !strings.Contains(err.Error(), "free some space and start a-stack again") || len(copies(path)) != 0 {
 		t.Fatal(err, copies(path))
 	}
-	free(3 * size)
+	free(4 * size)
 	if name, err := s.backupBeforeMigration(ctx, 7); err != nil || name != path+".pre-v7" {
 		t.Fatal(name, err)
 	}
-	// Reusing the copy needs room only for the rebuild.
-	free(2 * size)
+	// Reusing the copy needs room only for the rebuilds.
+	free(3 * size)
 	if name, err := s.backupBeforeMigration(ctx, 7); err != nil || name != path+".pre-v7" || len(copies(path)) != 1 {
 		t.Fatal(name, err, copies(path))
 	}
-	free(2*size - 1)
+	free(3*size - 1)
 	if _, err = s.backupBeforeMigration(ctx, 7); err == nil {
-		t.Fatal("a migration without room for the rebuild")
+		t.Fatal("a migration without room for the rebuilds")
+	}
+	// From schema 8, one rebuild: three times with the copy.
+	free(3 * size)
+	if s.migrationSpace(int64(size), 8, true) != nil || s.migrationSpace(int64(size)+1, 8, true) == nil {
+		t.Fatal("schema 8 needs three times the database size")
 	}
 }
