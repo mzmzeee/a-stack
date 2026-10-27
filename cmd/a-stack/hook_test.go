@@ -387,7 +387,7 @@ func TestHookRecordsRuntimeStateAndPrintsTheReminder(t *testing.T) {
 	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, runtimeID: "worker-runtime", worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}}
 
 	text := hookContextText(t, hookEvent(t, id, "SessionStart", `,"source":"compact"`), "SessionStart")
-	for _, want := range []string{"a-stack: you are the Agent 02-worker in the a-stack Session \"Build\"", "--credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace, "Your open Tasks:\n- Build the parser (Task " + f.task + "): working, waits for the Operator's answer\n", "Load the a-stack skill before running commands", "Run mail check now"} {
+	for _, want := range []string{"a-stack: you are the Agent 02-worker in the a-stack Session \"Build\"", "--credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace, "Your open Tasks:\n- Build the parser (Task " + f.task + "): working, waits for the Operator's answer\n", "Load the a-stack skill before running commands", "do it without a-stack", "Run mail check now"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("reminder misses %q:\n%s", want, text)
 		}
@@ -690,6 +690,25 @@ func TestHookStopGuardBlocksOnlyTheAgentThatSetTheTaskWorking(t *testing.T) {
 	f.receipt("", f.scoped("session", "close", "--expected-revision", "2", "--operation-id", "owner-close")...)
 	if out := stop(helper, "s4"); out != "" {
 		t.Fatalf("a closed Session blocked: %q", out)
+	}
+	if out := hookEvent(t, orch, "SessionStart", `,"session_id":"s5"`); out != "" {
+		t.Fatalf("a closed Session's reminder: %q", out)
+	}
+}
+
+// Hooks for the home folder, or a folder above it, would make every agent
+// started in the home folder this Agent, so install refuses them.
+func TestHookInstallRefusesTheHomeFolder(t *testing.T) {
+	f := newTeam(t)
+	home := hookHome(t)
+	for _, dir := range []string{home, filepath.Dir(home)} {
+		_, errout, code := f.run("", "hook", "install", "--pi", "--credential-file", f.workerFile, "--workspace", f.workspace, "--session", f.session, "--worktree", dir)
+		if code != 2 || !strings.Contains(errout, "not your home folder") {
+			t.Fatalf("install for %s: exit %d %s", dir, code, errout)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(home, ".pi")); !os.IsNotExist(err) {
+		t.Fatalf("install wrote Pi files: %v", err)
 	}
 }
 

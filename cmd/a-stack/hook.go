@@ -99,9 +99,11 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 		return
 	}
 	if in.Event == "SessionStart" || in.Event == "SubagentStart" {
-		if text, err := hookReminder(ctx, client, id); err == nil {
-			hookContext(stdout, in.Event, text)
+		text, err := hookReminder(ctx, client, id)
+		if err != nil {
+			return // a closed Session's hooks say nothing
 		}
+		hookContext(stdout, in.Event, text)
 		if !id.noMailNudge {
 			hookMailNudge(ctx, client, id, in) // reads up to the newest mail
 		}
@@ -201,6 +203,9 @@ func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (s
 	if err != nil {
 		return "", err
 	}
+	if session.Closed {
+		return "", invalid("the Session is closed")
+	}
 	agents, err := listPages[stack.Agent](ctx, client, "/v1/agent/list", id.ref)
 	if err != nil {
 		return "", err
@@ -224,10 +229,7 @@ func hookReminder(ctx context.Context, client *stack.Client, id hookIdentity) (s
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "a-stack: you are the Agent %s in the a-stack Session %q (Workspace %s, Session %s).", name, printable(session.Name), id.ref.WorkspaceID, id.ref.SessionID)
-	b.WriteString(" Load the a-stack skill before running commands.")
-	if session.Closed {
-		b.WriteString(" The Session is closed.")
-	}
+	b.WriteString(" Load the a-stack skill before running commands. Use a-stack only for this Session's work: a request about something else is no Task, so do it without a-stack.")
 	fmt.Fprintf(&b, "\nRun Task and mail commands as yourself, such as: %s task list\n", agentCommand(id))
 	open := 0
 	for _, t := range tasks {
@@ -444,6 +446,9 @@ func (h *hookInstall) run(ctx context.Context) error {
 	}
 	if canonical, err := stack.ResolvePath(id.worktree); err == nil {
 		id.worktree = canonical
+	}
+	if home, err := os.UserHomeDir(); err == nil && !h.remove && holdsHome(id.worktree, home) {
+		return invalid("hooks need the Agent's own folder, not your home folder or a folder above it: every agent started below it would act as this Agent; run hook install in the project folder or pass --worktree")
 	}
 	if !h.remove && !shimsSupported && (h.flags.pi || h.flags.opencode) {
 		flag := "--pi"

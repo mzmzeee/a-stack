@@ -298,6 +298,12 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	t.Setenv("USERPROFILE", homeDir)
 	t.Chdir(t.TempDir())
 	var stdout, stderr bytes.Buffer
+	t.Chdir(homeDir)
+	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "not your home folder") {
+		t.Fatalf("new in the home folder: exit %d %s", code, stderr.String())
+	}
+	stderr.Reset()
+	t.Chdir(t.TempDir())
 	if code := run([]string{"new", "--orchestrator", "bad name", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "--orchestrator takes an Agent name") {
 		t.Fatalf("bad name: exit %d %s", code, stderr.String())
 	}

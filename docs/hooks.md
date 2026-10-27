@@ -21,7 +21,7 @@ a-stack hook install --credential-file /path/to/02-worker.json \
 - `--name` finds the Agent's ID with the service. Instead, `--agent ID` gives the ID and needs no running service.
 - `--runtime-id` is the instance ID of the Agent's runtime binding, as in `agent attach --runtime-id`. a-stack records runtime state only for an attached Agent with the same runtime ID. Without `--runtime-id`, the hooks record no runtime state. The reminder, the Stop guard and the Task mail nudge still work. To attach a new Agent first, see [Runtime bindings](lifecycle.md#runtime-bindings).
 - `--state-dir` goes into the hook command when you give it.
-- `--worktree DIR` is the folder the hooks act in; it defaults to the current folder. The hooks do nothing in a session whose folder is outside it.
+- `--worktree DIR` is the folder the hooks act in; it defaults to the current folder. The hooks do nothing in a session whose folder is outside it. Install refuses your home folder and the folders above it: Pi, OpenCode and global Claude Code or Codex hooks run in every session, so every agent started below that folder would act as this Agent. `a-stack new` refuses those folders for the same reason.
 - `--no-stop-guard` and `--no-mail-nudge` turn off the Stop guard and the Task mail nudge. Both are on by default. Run install again without them to turn them on.
 
 The hook command names the a-stack binary, the credential file path, the Workspace, Session and Agent IDs, the runtime ID and the folder, all explicitly. It does not use environment variables or the current folder to choose an identity. The credential file stays where it is; the settings hold only its path.
@@ -71,7 +71,7 @@ Cursor CLI and GitHub Copilot CLI also read Claude Code's settings files: Cursor
 
 | Event | Pi event | OpenCode | What the hook does |
 | --- | --- | --- | --- |
-| `SessionStart` | `session_start`, `session_compact` | first request of a session, `session.compacted` | Prints the reminder as `hookSpecificOutput.additionalContext` JSON. The harnesses add it to the agent's context. Starts the Task mail nudge's cursor file. |
+| `SessionStart` | `session_start`, `session_compact` | first request of a session, `session.compacted` | Prints the reminder as `hookSpecificOutput.additionalContext` JSON. The harnesses add it to the agent's context. It tells the agent to do requests about other work without a-stack. In a closed Session it prints nothing. Starts the Task mail nudge's cursor file. |
 | `UserPromptSubmit`, `PostToolUse` | `before_agent_start`, `tool_result` | `chat.message`, `tool.execute.after` | Records `working`. Runs the Task mail nudge. |
 | `PermissionRequest` | `ui_prompt_start` | `permission.asked`, `question.asked` | Records `blocked`. The hook makes no permission decision. |
 | `Notification` with `elicitation_dialog` (Claude Code only) | | | Records `blocked`. |

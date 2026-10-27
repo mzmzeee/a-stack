@@ -177,6 +177,9 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 	if h.cwd == "" {
 		return invalid("cannot read the current folder")
 	}
+	if holdsHome(h.cwd, h.homeDir) {
+		return invalid("a-stack new needs a project folder, not your home folder or a folder above it: every agent started below it would join the Session; cd into the project and run it again")
+	}
 	// Check --orchestrator before anything is made.
 	if h.orchestrator != "" {
 		if !orchestratorName.MatchString(h.orchestrator) {
@@ -513,6 +516,16 @@ func (h *home) sessions(ctx context.Context, client *stack.Client) ([]sessionRow
 func within(dir, root string) bool {
 	_, ok := pathBelow(dir, root, windowsPaths)
 	return dir != "" && root != "" && ok
+}
+
+// holdsHome reports whether dir is the home folder or a folder above it. A
+// Workspace or hooks there would claim every agent started in the home
+// folder, whatever its work.
+func holdsHome(dir, home string) bool {
+	if canonical, err := stack.ResolvePath(home); err == nil {
+		home = canonical
+	}
+	return within(home, dir)
 }
 
 func later(t time.Time, stamp string) time.Time {

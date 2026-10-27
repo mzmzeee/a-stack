@@ -6,6 +6,11 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Fixed
+
+- `a-stack new` and `hook install` refuse your home folder and the folders above it. Pi and OpenCode hooks run in every session, so hooks for the home folder made every agent started anywhere below it act as that Session's Orchestrator: it loaded the skill and filed unrelated work as Tasks. To remove such hooks, run `a-stack hook uninstall --pi` (or `--opencode`, `--claude`, `--codex`) in that folder.
+- The session reminder tells the agent to do requests about other work without a-stack, and a closed Session's hooks no longer print a reminder.
+
 ## [0.1.8] - 2026-10-26
 
 Upgrading from v0.1.7, v0.1.6 or v0.1.5: run `a-stack update`, restart the service (`systemctl --user restart a-stack`, or Ctrl-C and `a-stack serve`), then run `a-stack update --refresh` to install the new skill and hook files. The older `update` does neither of these; from v0.1.8 on, `a-stack update` restarts the service and refreshes the files itself. The first start copies the database to `state.db.pre-v9` from v0.1.7, `state.db.pre-v8` from v0.1.6 or `state.db.pre-v7` from v0.1.5, then moves it to schema 10. Allow free space of three times the size of `state.db` from v0.1.7 or v0.1.6, or four times from v0.1.5. With less, the service stops before the copy and migration. Older versions cannot open schema 10. To go back, install the older version, stop the service and restore its pre-migration copy in a new state directory in the same place; later changes are lost. See [Go back to an older version](docs/install.md#go-back-to-an-older-version).
