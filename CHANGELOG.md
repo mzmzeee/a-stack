@@ -6,6 +6,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- Tailscale remote foundation: `serve --share` and `service install --share` configure an owned HTTPS Serve rule over the fixed loopback port. The server accepts only its configured MagicDNS Host and matching Origin, with request identity kept separate from bearer authorization. `connect NAME URL`, `connect list`, `connect remove NAME` and `--remote NAME` add private HTTPS profiles with database pinning. See [Remote service](docs/remote.md); Session linking and remote notices are not included.
+
 ### Fixed
 
 - `a-stack new` and `hook install` refuse your home folder and the folders above it. Pi and OpenCode hooks run in every session, so hooks for the home folder made every agent started anywhere below it act as that Session's Orchestrator: it loaded the skill and filed unrelated work as Tasks. To remove such hooks, run `a-stack hook uninstall --pi` (or `--opencode`, `--claude`, `--codex`) in that folder.

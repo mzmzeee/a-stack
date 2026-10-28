@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 )
@@ -74,8 +75,10 @@ type Health struct {
 	SQLiteVersion string `json:"sqlite_version"`
 	SchemaVersion int    `json:"schema_version"`
 	Version       string `json:"version"`
+	SharedURL     string `json:"shared_url,omitempty"`
 }
 type Service struct {
+	serveHost     atomic.Value // string; configured HTTPS name, empty for local-only
 	Store         *Store
 	Discovery     Discovery
 	Version       string // running build, for health and the browser view; set before Serve
@@ -238,16 +241,13 @@ func (s *Service) Close(ctx context.Context) error {
 	return s.closeErr
 }
 func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
-	if r.Host != strings.TrimPrefix(s.Discovery.URL, "http://") {
-		writeError(w, failure("forbidden", "invalid Host"))
+	r, shared, err := s.prepareRequest(r)
+	if err != nil {
+		writeError(w, err)
 		return
 	}
-	if origin := r.Header.Get("Origin"); origin != "" && origin != s.Discovery.URL {
-		writeError(w, failure("forbidden", "cross-origin requests are forbidden"))
-		return
-	}
-	if r.URL.RawQuery != "" || r.URL.User != nil {
-		writeError(w, failure("invalid_input", "query parameters are not supported"))
+	if shared && r.URL.Path == "/v1/health" {
+		s.remoteHealth(w, r)
 		return
 	}
 	if s.browserAsset(w, r) {
@@ -301,7 +301,7 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 			writeError(w, failure("invalid_input", "GET required"))
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"data": Health{s.Store.id, s.Store.sqliteVersion, schemaVersion, s.Version}})
+		writeJSON(w, http.StatusOK, map[string]any{"data": Health{s.Store.id, s.Store.sqliteVersion, schemaVersion, s.Version, s.SharedURL()}})
 	case "/v1/storage":
 		if r.Method != http.MethodGet {
 			writeError(w, failure("invalid_input", "GET required"))
@@ -409,6 +409,9 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 	}
 	response, err := c.HTTP.Do(req)
 	if err != nil {
+		if strings.HasPrefix(c.Discovery.URL, "https://") {
+			return nil, unreachable("cannot reach remote a-stack; check the server and Tailscale connection, then retry the same operation ID")
+		}
 		return nil, unreachable(serviceUnreachable)
 	}
 	defer response.Body.Close()

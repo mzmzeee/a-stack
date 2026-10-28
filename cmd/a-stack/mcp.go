@@ -35,11 +35,15 @@ type mcpRPCError struct {
 	Data    any    `json:"data,omitempty"`
 }
 
-func mcpCommand(ctx context.Context, state, credential, kind string, l lifecycleFlags, stdin io.Reader, stdout io.Writer) error {
+func mcpCommand(ctx context.Context, state, credential, kind string, l lifecycleFlags, stdin io.Reader, stdout io.Writer, remotes ...string) error {
 	if credential == "" || kind != "" && kind != "agent" {
 		return invalid("mcp requires --credential-file for one Agent; --as must be agent when given")
 	}
-	client, err := stack.NewClient(state, credential, stack.AgentCapability)
+	remote := ""
+	if len(remotes) > 0 {
+		remote = remotes[0]
+	}
+	client, err := commandClient(ctx, state, credential, string(stack.AgentCapability), remote)
 	if err != nil {
 		return err
 	}

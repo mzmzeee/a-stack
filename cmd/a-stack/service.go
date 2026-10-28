@@ -212,8 +212,8 @@ func systemdFailed(step, out string) error {
 }
 
 // serviceCommand runs service install, uninstall or status. It needs no
-// credential, and it never touches the state directory.
-func serviceCommand(command, state string, machine bool, stdout io.Writer) error {
+// credential. install records the requested sharing setting in the state directory.
+func serviceCommand(command, state string, machine bool, stdout io.Writer, sharing ...bool) error {
 	unit, err := unitName()
 	if err != nil {
 		return err
@@ -233,8 +233,16 @@ func serviceCommand(command, state string, machine bool, stdout io.Writer) error
 		}
 	}
 	data := map[string]any{"unit": unit}
+	if command == "service install" && len(sharing) > 0 {
+		data["share"] = sharing[0]
+	}
 	if file != "" {
 		data["unit_file"] = file
+	}
+	wasRunning := false
+	if enabled, _ := data["share"].(bool); enabled {
+		_, _, err := health(state)
+		wasRunning = err == nil
 	}
 	var lines []string
 	switch {
@@ -251,6 +259,29 @@ func serviceCommand(command, state string, machine bool, stdout io.Writer) error
 	}
 	if err != nil {
 		return err
+	}
+	if enabled, _ := data["share"].(bool); enabled {
+		deadline := time.Now().Add(serviceWait)
+		for {
+			h, _, healthErr := health(state)
+			if wasRunning {
+				// Its old Host setting can survive removal of the proxy rule. A restart
+				// rechecks ownership and applies the desired configuration together.
+				hint := "Restart the running service to apply sharing: " + stack.ServiceCommand("restart")
+				data["restart_hint"] = hint
+				lines = append(lines, hint)
+				break
+			}
+			if healthErr == nil && h.SharedURL != "" {
+				data["shared_url"] = h.SharedURL
+				lines = append(lines, "Shared at "+h.SharedURL)
+				break
+			}
+			if time.Now().After(deadline) {
+				return &stack.Error{Code: "integration_unavailable", Message: "service has not configured Tailscale Serve; check its log for Tailscale sign-in, HTTPS and port errors", Retryable: true}
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
 	}
 	if machine {
 		return json.NewEncoder(stdout).Encode(map[string]any{"data": data})
@@ -329,6 +360,9 @@ func serviceInstall(unit, file, state, home string, data map[string]any) ([]stri
 		if _, _, err := health(state); err == nil {
 			return nil, &stack.Error{Code: "conflict", Message: "a-stack serve already runs for " + state + " outside systemd; press Ctrl-C in its terminal first, then run a-stack service install again"}
 		}
+	}
+	if err := configureServiceShare(state, data); err != nil {
+		return nil, err
 	}
 	status, err := installFile(file, content)
 	if err != nil {
