@@ -35,6 +35,7 @@ var installedHashes = map[string][]string{
 		"836b537dcf2e1eee3d0d4dfc3345a11b24e1a357636b6ae9dad3fc50616d46ac",
 	},
 	"a-stack/references/orchestrator.md": {
+		"1028c12ff992947f722189640fe4f8454a307e41b12d3c20f125d7bc1253b007",
 		"29f27be25417eaba465287b85c0cf1ce47a8bed1725a600a5571e93607bea137",
 		"adc7235cb98612dc9ad4b7e7a6d50f8f7baa0b95d5470b1b9588adb2117e37e0",
 		"e3a9a0a5de8ad75c510fa884fdf573a6440790f9a0f731dccbec709d83b61530",
@@ -146,8 +147,38 @@ func refreshInstalledFiles(machine bool, stdout io.Writer) error {
 			}
 		}
 	}
+	warnings := []string{}
+	migrated := false
+	for _, project := range []bool{false, true} {
+		flags := hookFlags{claude: true, codex: true, pi: !project && shimsSupported, opencode: !project && shimsSupported}
+		configs, err := hookSettings(flags, project)
+		if err != nil {
+			refreshErr = errors.Join(refreshErr, err)
+			continue
+		}
+		for _, harness := range []string{"claude", "codex", "pi", "opencode"} {
+			file, ok := configs[harness]
+			if !ok {
+				continue
+			}
+			changed, err := refreshHookCommands(file, harness)
+			refreshErr = errors.Join(refreshErr, err)
+			if changed {
+				files = append(files, file)
+				migrated = true
+			}
+		}
+	}
+	if migrated {
+		warnings = append(warnings, hookMigrationNotice)
+	}
 	if machine {
-		return errors.Join(refreshErr, json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"skills": folders, "refreshed_files": files}}))
+		return errors.Join(refreshErr, json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"skills": folders, "refreshed_files": files, "warnings": warnings}}))
+	}
+	for _, warning := range warnings {
+		if _, err := io.WriteString(stdout, warning+"\n"); err != nil {
+			return err
+		}
 	}
 	for _, file := range files {
 		if _, err := io.WriteString(stdout, "Refreshed "+file+"\n"); err != nil {

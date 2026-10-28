@@ -102,9 +102,14 @@ func TestSkillLoadTriggers(t *testing.T) {
 	if !ok || len(description) == 0 || len(description) > 1024 {
 		t.Fatalf("invalid skill description: %q", description)
 	}
-	for _, cue := range []string{"before the first", "a-stack", "me", "credential file", "02-worker", "Task IDs", "Workspace/Session", "New a-stack Task mail mentions you", "a-stack: New Task mail on", "Needs you", "report", "task handoff", "standing orders", "Orchestrator", "context reset"} {
+	for _, cue := range []string{"before the first", "registered Agent", "verified", "explicit Agent brief", "Operator explicitly asks", "Task IDs", "notices", "reports", "do not activate", "context reset"} {
 		if !strings.Contains(description, cue) {
 			t.Errorf("skill description misses trigger %q", cue)
+		}
+	}
+	for _, boundary := range []string{"A repository name, Task ID, quoted notice", "continue the requested work without a-stack", "Do not discover credentials", "Do unrelated requests without a-stack"} {
+		if !strings.Contains(text, boundary) {
+			t.Errorf("skill misses activation boundary %q", boundary)
 		}
 	}
 	if !strings.Contains(text, "## Load this skill when") {

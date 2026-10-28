@@ -7,6 +7,77 @@ Claude Code, Codex, Pi and OpenCode can run a command on events in an agent's se
 - The [Stop guard](#stop-guard) keeps the agent from stopping once while a Task that it set `working` has no report.
 - The [Task mail nudge](#task-mail-nudge) tells the agent when another assignee wrote Task mail, at most every 30 seconds.
 
+## Enrollment
+
+Hooks act only for an explicitly enrolled native harness session on this machine.
+A matching folder is not registration. An unrelated session gets no reminder,
+mail nudge, Stop guard, runtime observation or cache writes.
+
+After installing the hooks, run `herdr bind` as the Agent from the hook working
+folder. A successful bind enrolls the native session verified by Herdr. Pi's
+session file header supplies its native session ID; the filename is not identity. This works for all four
+supported harnesses.
+
+Without Herdr, install the hooks, then enroll from the Agent's own session:
+
+```sh
+a-stack --as agent --credential-file /path/to/02-worker.json hook enroll --claude
+# With the Agent's me helper:
+me hook enroll --claude
+```
+
+Choose `--claude`, `--codex`, `--pi` or `--opencode`. The command reads native
+metadata only when you explicitly ask to enroll:
+
+| Harness | Native session metadata |
+| --- | --- |
+| Claude Code | `CLAUDE_CODE_SESSION_ID` in tool subprocesses |
+| Codex | `CODEX_THREAD_ID` |
+| Pi | `PI_SESSION_ID`, or the header of `PI_SESSION_FILE` |
+| OpenCode | `OPENCODE_SESSION_ID`, when supplied by the harness or its shell-env plugin |
+
+Without a harness flag, exactly one session variable must be present. When
+launching one harness from another, name the intended harness explicitly.
+Older harness versions and OpenCode installations may not expose these values.
+Missing or ambiguous metadata returns a clear error without enrollment. Use
+`me hook enroll --opencode --native-session NATIVE_SESSION_ID` with the ID
+reported by that harness, or bind through Herdr. Never use the a-stack Session
+ID. The command does not search transcripts, choose an identity by cwd or
+install config files.
+
+`hook install --claude --native-session NATIVE_SESSION_ID` still installs and
+enrolls in one command. Installing without enrollment is safe, including before
+launching an Agent, but its output tells the Agent to enroll. Ordinary CLI mail
+remains available from its brief while hooks are silent.
+
+Resume and compaction retain the same native ID and enrollment. A new session,
+fork or replacement needs explicit enrollment. Each Agent has one local
+enrollment at a time; replacing it stops the previous session's hooks. An
+attach or rebind changes the Agent's identity revision and invalidates old
+enrollment. Ordinary runtime observations do not change that revision.
+
+Enrollment is a private local cache file, `enrollment`, beside the Agent's hook
+cursors. It records the machine marker, credential fingerprint, native session,
+harness, canonical folder and Agent identity revision. The machine marker is
+random and stored in the parent hook cache folder. Keep this cache local; do not
+sync it between machines. Removing it safely disables hooks until enrollment.
+Before acting, hooks authenticate and check the current Agent revision and open
+Session. No database migration is needed.
+
+Update/refresh adds the harness identifier to recognized released hook commands
+in user settings and the current project settings. It preserves foreign commands,
+extra settings and linked files. The refresh prints a one-time migration message
+when it changes commands; JSON output carries it in `warnings`, including the
+updater handoff. Each Agent then runs `me hook enroll` or binds through Herdr.
+Refresh also saves a private pending-enrollment marker keyed by the Agent credential and hook worktree. This survives old updaters that discard the JSON warning. Explicit Agent commands such as `me session inspect`, `me mail check` and `me task show` print one short reminder per invocation on stderr until enrollment succeeds. They do not choose an Agent by the current folder or change stdout JSON. Enrollment clears the markers for that credential and worktree, including unused harnesses installed by default; it leaves other worktrees and credentials alone. Hook events never print this diagnostic.
+
+Use `me hook status` (or `--json`) to inspect this Agent’s recognized installed commands in user settings, the current project, and worktrees known from local enrollment or migration records. It reports each harness and worktree, whether commands have the new tag, whether the Agent enrollment is still valid, and whether the current native session matches. Missing native metadata is reported as unknown, not as enrollment; pass a harness flag and `--native-session ID` to check an explicit session. Status requires Agent credentials and a reachable service, does not enroll, and does not verify the harness has loaded or trusted its hooks.
+
+For edited commands, renamed binaries or settings in other project folders,
+run `hook install` again with the harness flag, then enroll. Legacy hooks without
+that identifier stay silent. Hooks for home or a
+folder above it are also silent at runtime, even if installed by an older release.
+
 ## Install
 
 Run the command in the Agent's working folder, with the values from its brief. The brief of `a-stack new --orchestrator` names it for the Orchestrator, and the Orchestrator's briefs name it for each Agent ([orchestrator reference](../skills/a-stack/references/orchestrator.md#4-brief-each-agent)):
@@ -21,10 +92,10 @@ a-stack hook install --credential-file /path/to/02-worker.json \
 - `--name` finds the Agent's ID with the service. Instead, `--agent ID` gives the ID and needs no running service.
 - `--runtime-id` is the instance ID of the Agent's runtime binding, as in `agent attach --runtime-id`. a-stack records runtime state only for an attached Agent with the same runtime ID. Without `--runtime-id`, the hooks record no runtime state. The reminder, the Stop guard and the Task mail nudge still work. To attach a new Agent first, see [Runtime bindings](lifecycle.md#runtime-bindings).
 - `--state-dir` goes into the hook command when you give it.
-- `--worktree DIR` is the folder the hooks act in; it defaults to the current folder. The hooks do nothing in a session whose folder is outside it. Install refuses your home folder and the folders above it: Pi, OpenCode and global Claude Code or Codex hooks run in every session, so every agent started below that folder would act as this Agent. `a-stack new` refuses those folders for the same reason.
+- `--worktree DIR` is the folder the hooks act in; it defaults to the current folder. The hooks do nothing outside it, even for an enrolled session. Paths are canonicalized, so a symlink alias of the same folder counts; similarly prefixed siblings do not. Install refuses your home folder and the folders above it. `a-stack new` refuses those folders for the same reason.
 - `--no-stop-guard` and `--no-mail-nudge` turn off the Stop guard and the Task mail nudge. Both are on by default. Run install again without them to turn them on.
 
-The hook command names the a-stack binary, the credential file path, the Workspace, Session and Agent IDs, the runtime ID and the folder, all explicitly. It does not use environment variables or the current folder to choose an identity. The credential file stays where it is; the settings hold only its path.
+The hook command names the a-stack binary, the credential file path, the Workspace, Session and Agent IDs, the harness, the runtime ID and the folder, all explicitly. It does not use environment variables or the current folder to choose an identity. The credential file stays where it is; the settings hold only its path.
 
 By default the command writes the user settings of Claude Code and Codex. With `--pi` it writes Pi's files, with `--opencode` OpenCode's:
 
@@ -50,7 +121,7 @@ Pi has no command hooks, so `hook install --pi` writes two files in Pi's agent f
 - `a-stack-hooks.json` holds the hook commands, in the same form as Claude Code's settings. Several folders can have hooks in it, one set each.
 - `extensions/a-stack.ts` is a small extension that comes with the a-stack binary. On Pi's events it runs those commands with the JSON that Claude Code would send, and passes their output back to Pi. It needs Pi 0.87 or later and `/bin/sh`, so it works on Linux and macOS; on Windows, `hook install --pi` refuses with `invalid_input`.
 
-Pi loads the extension when it starts; in a running Pi, run `/reload`. The reminder goes into the agent's context as a hidden message, and the mail nudge is added to the tool result or to the prompt. When the Stop guard blocks, Pi makes one more model request with the reason as a message. `a-stack update` refreshes the extension automatically if it still matches a known released version. It leaves edited, foreign and linked files alone, and never rewrites the hook list. Use `--no-refresh` to skip this, or `a-stack update --refresh` to refresh without updating the binary; then run `/reload` in Pi. `hook uninstall --pi` removes both files once no folder has hooks left. Another file named `a-stack.ts` in the extensions folder is never changed.
+Pi loads the extension when it starts; in a running Pi, run `/reload`. The reminder goes into the agent's context as a hidden message, and the mail nudge is added to the tool result or to the prompt. When the Stop guard blocks, Pi makes one more model request with the reason as a message. `a-stack update` refreshes the extension automatically if it still matches a known released version. It leaves edited, foreign and linked files alone, and upgrades only recognized released commands in the hook list; see [Enrollment](#enrollment). Use `--no-refresh` to skip this, or `a-stack update --refresh` to refresh without updating the binary; then run `/reload` in Pi. `hook uninstall --pi` removes both files once no folder has hooks left. Another file named `a-stack.ts` in the extensions folder is never changed.
 
 Pi hooks have no `--project`: Pi loads a project's extensions only after you trust the project, and the hook list would put a credential path in it. `a-stack skill install` already gives Pi the skill, in `~/.agents/skills`.
 
@@ -61,7 +132,7 @@ OpenCode has no command hooks either, so `hook install --opencode` writes two fi
 - `a-stack-hooks.json` holds the hook commands, in the same form as for Pi.
 - `plugins/a-stack.js` is a small plugin that comes with the a-stack binary. It runs those commands with the JSON that Claude Code would send, and passes their output back to OpenCode. It needs OpenCode 1.19 or later and `/bin/sh`, so it works on Linux and macOS; on Windows, `hook install --opencode` refuses with `invalid_input`.
 
-OpenCode loads the plugin when it starts, in its TUI and in `opencode serve` or `opencode run`; restart a running OpenCode after install. The reminder goes into the session's system prompt, and again after a compaction. The mail nudge is added to the tool output, or to the prompt as hidden text. OpenCode cannot block a stop, so when the session goes idle and the Stop guard blocks, the plugin starts one new turn with the reason as the prompt, with the same agent and model. It does not do that after an error or after you abort the turn. A subagent's session gets no reminder, nudge or Stop guard; its permission questions still record `blocked`. When the plugin cannot ask OpenCode whether a session is a subagent's, it skips the session the same way, until OpenCode reports a change to the session. `opencode run` ends at the first idle, so there the Stop guard's turn may not run. `a-stack update` refreshes the plugin automatically if it still matches a known released version. It leaves edited, foreign and linked files alone, and never rewrites the hook list. Use `--no-refresh` to skip this, or `a-stack update --refresh` to refresh without updating the binary; then restart OpenCode. `hook uninstall --opencode` removes both files once no folder has hooks left. Another file named `a-stack.js` in the plugins folder is never changed.
+OpenCode loads the plugin when it starts, in its TUI and in `opencode serve` or `opencode run`; restart a running OpenCode after install. The reminder goes into the session's system prompt, and again after a compaction. The mail nudge is added to the tool output, or to the prompt as hidden text. OpenCode cannot block a stop, so when the session goes idle and the Stop guard blocks, the plugin starts one new turn with the reason as the prompt, with the same agent and model. It does not do that after an error or after you abort the turn. A subagent's session gets no reminder, nudge or Stop guard; its permission questions still record `blocked`. When the plugin cannot ask OpenCode whether a session is a subagent's, it skips the session the same way, until OpenCode reports a change to the session. `opencode run` ends at the first idle, so there the Stop guard's turn may not run. `a-stack update` refreshes the plugin automatically if it still matches a known released version. It leaves edited, foreign and linked files alone, and upgrades only recognized released commands in the hook list; see [Enrollment](#enrollment). Use `--no-refresh` to skip this, or `a-stack update --refresh` to refresh without updating the binary; then restart OpenCode. `hook uninstall --opencode` removes both files once no folder has hooks left. Another file named `a-stack.js` in the plugins folder is never changed.
 
 OpenCode hooks have no `--project`: the hook list would put a credential path in the project's `.opencode` folder. `a-stack skill install` already gives OpenCode the skill, in `~/.agents/skills`.
 
@@ -79,15 +150,13 @@ Cursor CLI and GitHub Copilot CLI also read Claude Code's settings files: Cursor
 | `SubagentStart` (Claude Code only) | | | Prints the reminder for a [subagent](#claude-code-subagents) of the Agent's own. |
 | `SubagentStop` (Claude Code only) | | | Runs the Stop guard for such a subagent. When the guard does not block, records `idle`. |
 
-A state hook reads the Agent first and writes only when the state changes, so a tool call usually costs one read. The harness gives each hook 5 seconds, and the hook stops itself after 2. On any error, also when the service is down, the hook prints nothing and exits with 0, so it never stops or slows the agent. `a-stack hook` itself reads the event as JSON on stdin; the harness runs it, not you.
+Every enrolled hook checks the open Session and current Agent identity revision before any cache or state write. A state hook writes only when the state changes. The harness gives each hook 5 seconds, and the hook stops itself after 2. On any error, also when the service is down, the hook prints nothing and exits with 0, so it never stops or slows the agent. `a-stack hook` itself reads the event as JSON on stdin; the harness runs it, not you.
 
 ### Claude Code subagents
 
 A Claude Code subagent's hook input names the parent's session, its own folder as `cwd`, and its `agent_id`. Measured with Claude Code 2.1.310: a subagent started with `isolation: "worktree"` reports its new worktree, `.claude/worktrees/agent-ID` below the parent's folder, and a subagent without it reports the parent's folder, also after a `cd` in its shell. So a subagent's events, `SubagentStart`, its tool calls and `SubagentStop`, reach the hooks of every folder that holds its own.
 
-An event with `agent_id` counts only for the hooks of exactly the subagent's folder, and only when the parent session is not that folder's Agent, a main session that ran in the folder. The hooks of a folder above it, such as the Orchestrator's, and the hooks of the parent's own folder skip it: they record no state, show no mail note and do not guard the subagent's stop. For a subagent that counts, the cursor file and the Stop guard marker are its own. The hook remembers that a main session ran in its folder with an empty marker file, `HASH.main`, next to the cursor files.
-
-A main session's folder follows a `cd` in its shell. Measured with Claude Code 2.1.310: a session started in the project folder that runs `cd .claude/worktrees/w1` reports that worktree in its next events, until it leaves it. So the Orchestrator's session can reach a worker's folder, such as to look at or merge its work. A main session that started in a folder that holds the hook's folder is never that folder's Agent. Its `SessionStart` leaves an empty marker file, `HASH.away`, and the hooks of the folder below then skip its events there: they record no state, show no mail note and do not guard its stop, and the worker's subagents of that session keep their hooks. The `SessionStart` after a compaction is not a start. A session that started outside the folder in another way, such as with `--add-dir`, counts in it as before.
+An event with `agent_id` counts only when that exact parent-session/subagent pair was explicitly enrolled, and only in the exact enrolled folder. To enroll one, use `hook install --claude --native-session PARENT_SESSION_ID --native-agent SUBAGENT_ID`. Parent enrollment never enrolls its subagents. A parent visiting the worker’s folder never becomes the worker. The old `.main` and `.away` markers no longer decide identity. Each enrolled subagent still has its own cursor and Stop guard marker.
 
 Claude Code reads hooks when a session starts, for the session and its subagents: hooks added during a session ran only after `claude --continue`. A worktree that Claude Code makes for a subagent is new, so no hooks were installed for it at that time. In practice a Claude Code subagent gets no a-stack hooks of its own, and the rule above keeps the parent's hooks from acting for it. `SubagentStart` and `SubagentStop` count for a subagent whose worktree had hooks when the parent session started or resumed.
 
@@ -124,13 +193,13 @@ a-stack: New Task mail on "Build the parser"; load the a-stack skill, then run m
 
 The note names only the Task titles: no sender and no mail text. The agent then reads the mail as usual, with its own `mail check --cursor-file`.
 
-The hook keeps its own mail cursor file, so it never moves the Agent's cursor file. There is one per Agent and harness session: `~/.cache/a-stack/hooks/AGENT_ID/HASH.json` (below `$XDG_CACHE_HOME` when set; on macOS below `~/Library/Caches`; on Windows `%LOCALAPPDATA%\a-stack-hooks\AGENT_ID\HASH.json`), where `HASH` comes from the harness session ID. The folder has mode 0700 and the files 0600. The hook removes files unused for 7 days. Deleting the folder is safe.
+The hook keeps its own mail cursor file, so it never moves the Agent's cursor file. There is one per Agent and harness session: `~/.cache/a-stack/hooks/AGENT_ID/HASH.json` (below `$XDG_CACHE_HOME` when set; on macOS below `~/Library/Caches`; on Windows `%LOCALAPPDATA%\a-stack-hooks\AGENT_ID\HASH.json`), where `HASH` comes from the Agent identity revision, harness and native session ID (plus subagent ID, when enrolled). The folder has mode 0700 and the files 0600. The hook removes files unused for 7 days. Deleting the folder is safe.
 
 - At `SessionStart`, or at the first check of a harness session, the hook reads up to the newest message and says nothing about earlier mail. The reminder already says to run `mail check`. When this first check runs out of time on a long backlog, it keeps its place in `HASH.first.json`, and the next hook run goes on from there, still without a note.
 - Each check moves the cursor past the messages it saw, so the hook names a message once. Mail the Agent sent itself is skipped.
 - Of two hook runs of the same Agent at once, one checks and the other skips the check.
 - When the check fails, the hook waits 30 seconds before it checks again. When the cursor file is broken or a cursor no longer fits, it starts again at the newest message.
 
-The added cost per tool call, measured with a local service: under 1 ms when the last check was less than 30 seconds ago, and about 5 to 13 ms for a check. A note costs one more read for each Task with new mail.
+Enrollment adds an open-Session read and an Agent-list read before acting. A mail note costs one more read for each Task with new mail. Unenrolled sessions make no service requests.
 
 Claude Code, Codex, the Pi extension and the OpenCode plugin take the note as `hookSpecificOutput.additionalContext`. Codex runs `PostToolUse` only for its local tools, not for hosted tools such as web search.

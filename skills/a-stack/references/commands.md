@@ -4,6 +4,10 @@ The examples use the `me` helper from [SKILL.md](../SKILL.md). `T`, `A` and `B` 
 
 Each command prints `{"data": ...}` on stdout. A change returns a receipt: `data.resource_id` is the ID of the new Agent, Task, message or dependency, or of the changed Task, and `data.revision` is its new revision.
 
+## Enroll your own hook session
+
+After installing hooks, run `me hook enroll --claude` (or `--codex`, `--pi`, `--opencode`) from your own session in the hook working folder. It detects native session metadata; it does not install config files. With no flag it requires one unambiguous harness. If metadata is missing, pass `--native-session NATIVE_ID` or use your own `me herdr bind`. This local command needs no operation ID or expected revision. Success prints `enrolled: true` with `--json`. Every new native session must enroll; compaction/resume of the same ID needs no repeat.
+
 ## Read the Session
 
 | Command | What you get |

@@ -6,8 +6,12 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
-- Record trusted Tailscale Operator labels on actions and answers (schema 11). Shared Needs you answers show who answered and when; a second answer names the first answerer without sending duplicate mail.
+- Hook migration now keeps a private pending-enrollment reminder for explicit Agent CLI commands, including upgrades through older updaters that discard new warnings. `hook status` reports installed hooks and exact native-session enrollment without changing stdout JSON or activating unrelated hook events.
 
+- Update/refresh migrates recognized legacy hook commands and reports enrollment instructions in human and JSON output. Agents can run `hook enroll` once from their own session to detect available native metadata, with explicit-ID and Herdr fallbacks.
+
+- Hooks now require explicit enrollment of the exact native harness session on this machine. Fresh sessions and legacy home-folder installs stay silent; rebinds invalidate enrollment. Generic notices and the Agent skill act only for a verified registered Agent.
+- Record trusted Tailscale Operator labels on actions and answers (schema 11). Shared Needs you answers show who answered and when; a second answer names the first answerer without sending duplicate mail.
 ### Added
 
 - Explicit mail acknowledgements (schema 12): send or reply with `--ack-required`, optional `--ack-from` and `--ack-due`; recipients use `mail ack`. Mail checks and handoffs list pending obligations, the Now board shows overdue counts, and Herdr can submit one overdue reminder per obligation. Reading and Task completion do not acknowledge; unassignment withdraws outstanding obligations permanently.

@@ -335,7 +335,7 @@ func TestNotificationsExactBurstBatchAndEndpoint(t *testing.T) {
 			want := []string{"agent", "prompt", f.config.Binding.PaneID, noticeText}
 			a, _ := json.Marshal(call.Args)
 			b, _ := json.Marshal(want)
-			if string(a) != string(b) || len(call.Args[3]) > 256 || !strings.Contains(call.Args[3], "Load the a-stack skill") || strings.Contains(call.Args[3], f.taskID) {
+			if string(a) != string(b) || len(call.Args[3]) > 256 || !strings.Contains(call.Args[3], "Only if this runtime has its own verified a-stack Agent registration") || !strings.Contains(call.Args[3], "Otherwise ignore") || strings.Contains(call.Args[3], f.taskID) {
 				t.Fatal("unexpected prompt argv/payload")
 			}
 		}

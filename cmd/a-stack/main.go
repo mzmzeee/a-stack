@@ -234,13 +234,19 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 	if isHookCommand(cmd) {
-		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, noStopGuard: hooks.noStopGuard, noMailNudge: hooks.noMailNudge}
+		if (cmd == "hook enroll" || cmd == "hook status") && kind != "" && kind != "agent" {
+			return invalid(cmd + " requires Agent credentials")
+		}
+		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, noStopGuard: hooks.noStopGuard, noMailNudge: hooks.noMailNudge, harness: hooks.harness}
 		if cmd == "hook" {
 			runHook(id, os.Stdin, stdout)
 			return nil
 		}
 		id.state = stateFlag // the command names the state only when you did
-		h := hookInstall{identity: id, name: lifecycle.name, flags: hooks, project: project, remove: cmd == "hook uninstall", machine: machine, stdout: stdout}
+		if cmd == "hook status" {
+			return hookStatus(ctx, id, hooks, machine, stdout)
+		}
+		h := hookInstall{identity: id, name: lifecycle.name, flags: hooks, project: project, remove: cmd == "hook uninstall", enrollOnly: cmd == "hook enroll", machine: machine, stdout: stdout}
 		return h.run(ctx)
 	}
 	if cmd == "" || cmd == "new" {
@@ -286,6 +292,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if err = fillContext(client.Credential, &lifecycle, cmd); err != nil {
 		return err
 	}
+	if credential != "" && client.Credential.Kind == stack.AgentCapability {
+		pendingHookNotice(credential, stderr)
+	}
 	ref := stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}
 	if seen["agent"] {
 		if err = agentIDs(ctx, client, ref, "agent", &lifecycle.agent); err != nil {
@@ -310,7 +319,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return writeData(stdout, data)
 	}
 	if isHerdrCommand(cmd) {
-		data, err := herdrRequest(ctx, client, cmd, lifecycle, herdrExecutable)
+		data, err := herdrRequest(ctx, client, cmd, lifecycle, herdrExecutable, credential)
 		if err != nil {
 			return err
 		}
