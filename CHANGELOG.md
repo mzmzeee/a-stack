@@ -26,7 +26,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Fixed
 
-- Regression stories now prove each harness is eligible before checking closed-Session silence, and verify browser mail peeks leave persisted state unchanged.
+- Regression stories now prove each harness is eligible before checking closed-Session silence, and verify browser mail peeks leave persisted state unchanged. Their SQLite snapshot URIs handle Windows drive paths.
 
 - Mention notices no longer pile up while an Agent is busy. After one submission, later mentions wait for the Agent's own mail read or a 10-minute cooldown. Observed working runtimes also wait for idle or the cooldown while hooks can nudge them; notification status and the Agents panel show the hold.
 

@@ -438,8 +438,8 @@ func TestRegressionScenarios(t *testing.T) {
 // Snapshot every logical row, after view redemption, so even an unexpected
 // read receipt or notice update is visible without depending on WAL layout.
 func scenarioPersistedState(ts *testscript.TestScript) string {
-	uri := url.URL{Scheme: "file", Path: filepath.ToSlash(filepath.Join(ts.Getenv("STATE"), "state.db"))}
-	db, err := sql.Open("sqlite3", uri.String()+"?mode=ro")
+	uri := scenarioSQLiteURI(filepath.Join(ts.Getenv("STATE"), "state.db"), runtime.GOOS == "windows")
+	db, err := sql.Open("sqlite3", uri+"?mode=ro")
 	if err != nil {
 		ts.Fatalf("open fixture snapshot: %v", err)
 	}
@@ -499,6 +499,30 @@ func scenarioPersistedState(ts *testscript.TestScript) string {
 		fmt.Fprintf(&snapshot, "%s\n%s\n", name, strings.Join(encoded, "\n"))
 	}
 	return snapshot.String()
+}
+
+func scenarioSQLiteURI(path string, windows bool) string {
+	// Match stack.sqliteURI: a drive letter is a path, not a URI authority.
+	if windows {
+		path = "/" + strings.ReplaceAll(path, `\`, "/")
+	}
+	return (&url.URL{Scheme: "file", Path: path}).String()
+}
+
+func TestScenarioSQLiteURI(t *testing.T) {
+	for _, tc := range []struct {
+		path    string
+		windows bool
+		want    string
+	}{
+		{"C:/private folder/state.db", true, "file:///C:/private%20folder/state.db"},
+		{`C:\private folder\state.db`, true, "file:///C:/private%20folder/state.db"},
+		{"/tmp/private folder/state.db", false, "file:///tmp/private%20folder/state.db"},
+	} {
+		if got := scenarioSQLiteURI(tc.path, tc.windows); got != tc.want {
+			t.Errorf("URI for %q = %q, want %q", tc.path, got, tc.want)
+		}
+	}
 }
 
 func scenarioCacheRoot(ts *testscript.TestScript) string {
