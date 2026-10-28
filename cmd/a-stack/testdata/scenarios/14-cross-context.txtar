@@ -5,7 +5,9 @@ stderr 'context|Session|session'
 scope-cursors
 as WORKER mail check --cursor-file $WORK/agent-cursor.json
 stdout scope-canary
+cp $WORK/agent-cursor.json $WORK/cursor-before-browser.json
 browser-peek
+cmp $WORK/agent-cursor.json $WORK/cursor-before-browser.json
 as WORKER mail check --cursor-file $WORK/agent-cursor.json
 ! stdout scope-canary
 as WORKER mail read --task $TASK

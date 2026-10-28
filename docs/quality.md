@@ -43,7 +43,7 @@ To change a tool version, edit the variable at the top of `scripts/check.sh` and
 
 ## Regression gates
 
-Every fix ships a scenario that fails without it. Run that scenario against the parent revision or a narrowly seeded fault in a disposable copy, then against the fix. Coverage alone does not establish this.
+Every fix ships a scenario that fails without it. Run that scenario against the parent revision or a narrowly seeded fault in a disposable copy, then against the fix. Coverage alone does not establish this. Closed-session stories first prove each enrolled harness can block while open, then clear its one-shot marker before checking silence. Browser peeks compare all persisted database rows after view redemption and preserve the Agent's cursor file byte for byte.
 
 - **PR:** existing checks, deterministic testscript CLI stories, a short rapid graph/mail model run (100 histories), and a guard against test-only modules entering production dependencies. All 15 stories run, including exact-runtime enrollment boundaries. Platform-dependent symlink assertions run only where symlinks are supported; the other path assertions always run.
 - **Nightly:** `.github/workflows/nightly.yml` runs only on its schedule or manual dispatch, never on a PR. Each of six fuzz targets runs for five minutes. The recovery job runs seeds 0–99 through SIGKILL at body, mention, receipt or post-commit milestones, then 1,000 rapid histories. Logs and failing corpora are retained as artifacts for 14 days.

@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -213,17 +216,26 @@ func TestRegressionScenarios(t *testing.T) {
 					ts.Fatalf("concurrent callbacks produced %d nudges, want one", notices)
 				}
 			},
+			"reset-stop-markers": func(ts *testscript.TestScript, neg bool, args []string) {
+				if neg || len(args) != 0 {
+					ts.Fatalf("reset-stop-markers takes no arguments")
+				}
+				files, err := filepath.Glob(filepath.Join(hookCacheDir(scenarioCacheRoot(ts), ts.Getenv("WORKER_ID")), "*.stop"))
+				if err != nil || len(files) == 0 {
+					ts.Fatalf("positive Stop control did not leave a marker")
+				}
+				for _, file := range files {
+					if err := os.Remove(file); err != nil {
+						ts.Fatalf("remove fixture Stop marker: %v", err)
+					}
+				}
+			},
 			"age-hook-cache": func(ts *testscript.TestScript, neg bool, args []string) {
 				if neg || len(args) != 0 {
 					ts.Fatalf("age-hook-cache takes no arguments")
 				}
 				// Advance only fixture mtimes; no wall-clock sleep or production test knob.
-				root := ts.Getenv("XDG_CACHE_HOME")
-				if runtime.GOOS == "windows" {
-					root = ts.Getenv("LOCALAPPDATA")
-				} else if runtime.GOOS == "darwin" {
-					root = filepath.Join(ts.Getenv("HOME"), "Library", "Caches")
-				}
+				root := scenarioCacheRoot(ts)
 				err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 					if err != nil {
 						return err
@@ -406,6 +418,7 @@ func TestRegressionScenarios(t *testing.T) {
 				if err != nil {
 					ts.Fatalf("view redemption failed")
 				}
+				before := scenarioPersistedState(ts)
 				page, err := s.Store.ReadMail(context.Background(), token, stack.MailReadRequest{Context: ref, TaskID: ts.Getenv("TASK")})
 				if err != nil || len(page.Messages) == 0 {
 					ts.Fatalf("browser could not read its mail")
@@ -414,9 +427,88 @@ func TestRegressionScenarios(t *testing.T) {
 				if err == nil {
 					ts.Fatalf("browser crossed Session boundary")
 				}
+				if before != scenarioPersistedState(ts) {
+					ts.Fatalf("browser peek changed persisted database state")
+				}
 			},
 		},
 	})
+}
+
+// Snapshot every logical row, after view redemption, so even an unexpected
+// read receipt or notice update is visible without depending on WAL layout.
+func scenarioPersistedState(ts *testscript.TestScript) string {
+	uri := url.URL{Scheme: "file", Path: filepath.ToSlash(filepath.Join(ts.Getenv("STATE"), "state.db"))}
+	db, err := sql.Open("sqlite3", uri.String()+"?mode=ro")
+	if err != nil {
+		ts.Fatalf("open fixture snapshot: %v", err)
+	}
+	defer db.Close()
+	tx, err := db.Begin()
+	if err != nil {
+		ts.Fatalf("begin fixture snapshot: %v", err)
+	}
+	defer tx.Rollback()
+	tables, err := tx.Query("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
+	if err != nil {
+		ts.Fatalf("list snapshot tables: %v", err)
+	}
+	var names []string
+	for tables.Next() {
+		var name string
+		if err := tables.Scan(&name); err != nil {
+			ts.Fatalf("table name: %v", err)
+		}
+		names = append(names, name)
+	}
+	if err := tables.Err(); err != nil {
+		ts.Fatalf("snapshot tables: %v", err)
+	}
+	tables.Close()
+	var snapshot strings.Builder
+	for _, name := range names {
+		rows, err := tx.Query(`SELECT * FROM "` + strings.ReplaceAll(name, `"`, `""`) + `"`)
+		if err != nil {
+			ts.Fatalf("snapshot rows: %v", err)
+		}
+		columns, err := rows.Columns()
+		if err != nil {
+			ts.Fatalf("snapshot columns: %v", err)
+		}
+		var encoded []string
+		for rows.Next() {
+			values := make([]any, len(columns))
+			pointers := make([]any, len(columns))
+			for i := range values {
+				pointers[i] = &values[i]
+			}
+			if err := rows.Scan(pointers...); err != nil {
+				ts.Fatalf("snapshot row: %v", err)
+			}
+			data, err := json.Marshal(values)
+			if err != nil {
+				ts.Fatalf("encode snapshot: %v", err)
+			}
+			encoded = append(encoded, string(data))
+		}
+		if err := rows.Err(); err != nil {
+			ts.Fatalf("snapshot rows: %v", err)
+		}
+		rows.Close()
+		sort.Strings(encoded)
+		fmt.Fprintf(&snapshot, "%s\n%s\n", name, strings.Join(encoded, "\n"))
+	}
+	return snapshot.String()
+}
+
+func scenarioCacheRoot(ts *testscript.TestScript) string {
+	if runtime.GOOS == "windows" {
+		return ts.Getenv("LOCALAPPDATA")
+	}
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(ts.Getenv("HOME"), "Library", "Caches")
+	}
+	return ts.Getenv("XDG_CACHE_HOME")
 }
 
 func scenarioHookArgs(ts *testscript.TestScript) []string {

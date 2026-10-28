@@ -1,24 +1,86 @@
+# Prove each enrolled harness can block before testing its closed-session silence.
 as WORKER task status --task $TASK --progress working --expected-revision 2 --operation-id scenario-working
 as WORKER mail send --task $TASK --body retained --operation-id scenario-send
-as WORKER hook enroll --claude --native-session native-closed
-event claude SessionStart $PROJECT native-closed
+
+as WORKER hook enroll --claude --native-session native-claude
+event claude SessionStart $PROJECT native-claude
 stdin $WORK/event.json
 hook
 stdout 'you are the Agent worker'
-as OPERATOR session close --expected-revision 2 --operation-id scenario-close
-event claude SessionStart $PROJECT native-closed
+event claude Stop $PROJECT native-claude
+stdin $WORK/event.json
+hook
+stdout '"decision":"block"'
+reset-stop-markers
+as OPERATOR session close --expected-revision 2 --operation-id scenario-close-claude
+event claude SessionStart $PROJECT native-claude
 stdin $WORK/event.json
 hook
 ! stdout .
-event codex Stop $PROJECT native-closed
+event claude Stop $PROJECT native-claude
 stdin $WORK/event.json
 hook
 ! stdout .
-event pi SessionStart $PROJECT native-closed
+as OPERATOR session reopen --expected-revision 3 --operation-id scenario-reopen-claude
+
+as WORKER hook enroll --codex --native-session native-codex
+event codex SessionStart $PROJECT native-codex
+stdin $WORK/event.json
+hook
+stdout 'you are the Agent worker'
+event codex Stop $PROJECT native-codex
+stdin $WORK/event.json
+hook
+stdout '"decision":"block"'
+reset-stop-markers
+as OPERATOR session close --expected-revision 4 --operation-id scenario-close-codex
+event codex SessionStart $PROJECT native-codex
 stdin $WORK/event.json
 hook
 ! stdout .
-event opencode Stop $PROJECT native-closed
+event codex Stop $PROJECT native-codex
+stdin $WORK/event.json
+hook
+! stdout .
+as OPERATOR session reopen --expected-revision 5 --operation-id scenario-reopen-codex
+
+as WORKER hook enroll --pi --native-session native-pi
+event pi SessionStart $PROJECT native-pi
+stdin $WORK/event.json
+hook
+stdout 'you are the Agent worker'
+event pi Stop $PROJECT native-pi
+stdin $WORK/event.json
+hook
+stdout '"decision":"block"'
+reset-stop-markers
+as OPERATOR session close --expected-revision 6 --operation-id scenario-close-pi
+event pi SessionStart $PROJECT native-pi
+stdin $WORK/event.json
+hook
+! stdout .
+event pi Stop $PROJECT native-pi
+stdin $WORK/event.json
+hook
+! stdout .
+as OPERATOR session reopen --expected-revision 7 --operation-id scenario-reopen-pi
+
+as WORKER hook enroll --opencode --native-session native-opencode
+event opencode SessionStart $PROJECT native-opencode
+stdin $WORK/event.json
+hook
+stdout 'you are the Agent worker'
+event opencode Stop $PROJECT native-opencode
+stdin $WORK/event.json
+hook
+stdout '"decision":"block"'
+reset-stop-markers
+as OPERATOR session close --expected-revision 8 --operation-id scenario-close-opencode
+event opencode SessionStart $PROJECT native-opencode
+stdin $WORK/event.json
+hook
+! stdout .
+event opencode Stop $PROJECT native-opencode
 stdin $WORK/event.json
 hook
 ! stdout .
