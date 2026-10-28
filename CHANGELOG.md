@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Hook migration now keeps a private pending-enrollment reminder for explicit Agent CLI commands, including upgrades through older updaters that discard new warnings. `hook status` reports installed hooks and exact native-session enrollment without changing stdout JSON or activating unrelated hook events.
+
 - Update/refresh migrates recognized legacy hook commands and reports enrollment instructions in human and JSON output. Agents can run `hook enroll` once from their own session to detect available native metadata, with explicit-ID and Herdr fallbacks.
 
 - Hooks now require explicit enrollment of the exact native harness session on this machine. Fresh sessions and legacy home-folder installs stay silent; rebinds invalidate enrollment. Generic notices and the Agent skill act only for a verified registered Agent.

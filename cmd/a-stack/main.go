@@ -234,8 +234,8 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 	if isHookCommand(cmd) {
-		if cmd == "hook enroll" && kind != "" && kind != "agent" {
-			return invalid("hook enroll requires Agent credentials")
+		if (cmd == "hook enroll" || cmd == "hook status") && kind != "" && kind != "agent" {
+			return invalid(cmd + " requires Agent credentials")
 		}
 		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, noStopGuard: hooks.noStopGuard, noMailNudge: hooks.noMailNudge, harness: hooks.harness}
 		if cmd == "hook" {
@@ -243,6 +243,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 			return nil
 		}
 		id.state = stateFlag // the command names the state only when you did
+		if cmd == "hook status" {
+			return hookStatus(ctx, id, hooks, machine, stdout)
+		}
 		h := hookInstall{identity: id, name: lifecycle.name, flags: hooks, project: project, remove: cmd == "hook uninstall", enrollOnly: cmd == "hook enroll", machine: machine, stdout: stdout}
 		return h.run(ctx)
 	}
@@ -288,6 +291,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 	if err = fillContext(client.Credential, &lifecycle, cmd); err != nil {
 		return err
+	}
+	if credential != "" && client.Credential.Kind == stack.AgentCapability {
+		pendingHookNotice(credential, stderr)
 	}
 	ref := stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}
 	if seen["agent"] {

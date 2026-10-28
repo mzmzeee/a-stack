@@ -15,7 +15,7 @@ const hookMigrationNotice = "Hook commands were upgraded. Each Agent must enroll
 var legacyHookPattern = func() *regexp.Regexp {
 	q := `'(?:[^']|'\\'')*'`
 	id := `[A-Za-z0-9_-]{43}`
-	return regexp.MustCompile(`^(` + q + `) hook(?: --state-dir ` + q + `)? --credential-file ` + q + ` --workspace ` + id + ` --session ` + id + ` --agent ` + id + `(?: --runtime-id ` + q + `)?(?: --no-stop-guard)?(?: --no-mail-nudge)? --worktree ` + q + `$`)
+	return regexp.MustCompile(`^(` + q + `) hook(?: --state-dir ` + q + `)? --credential-file (` + q + `) --workspace ` + id + ` --session ` + id + ` --agent (` + id + `)(?: --runtime-id ` + q + `)?(?: --no-stop-guard)?(?: --no-mail-nudge)? --worktree (` + q + `)$`)
 }()
 
 func legacyHookCommand(command string) bool {
@@ -83,6 +83,10 @@ func refreshHookCommands(file, harness string) (bool, error) {
 				var kind, command string
 				if json.Unmarshal(hook["type"], &kind) != nil || kind != "command" || json.Unmarshal(hook["command"], &command) != nil || !legacyHookCommand(command) {
 					continue
+				}
+				id, _ := installedHookIdentity(command, harness)
+				if err := markHookPending(id); err != nil {
+					return false, err
 				}
 				hook["command"], _ = json.Marshal(command + " --harness " + harness)
 				groupChanged = true

@@ -24,7 +24,7 @@ import (
 // credential file, Workspace, Session and Agent ID, never the environment.
 
 func isHookCommand(command string) bool {
-	return command == "hook" || command == "hook install" || command == "hook uninstall" || command == "hook enroll"
+	return command == "hook" || command == "hook install" || command == "hook uninstall" || command == "hook enroll" || command == "hook status"
 }
 
 // isHookRun reports whether args run the hook handler, which always exits 0.

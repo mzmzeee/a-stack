@@ -122,7 +122,10 @@ func enrollHook(id hookIdentity, harness, session, subagent string, revision int
 	if err != nil {
 		return err
 	}
-	return writeAtomic(file, data, 0o600)
+	if err := writeAtomic(file, data, 0o600); err != nil {
+		return err
+	}
+	return clearHookPending(id, worktree)
 }
 
 func enrolledHook(id hookIdentity, in hookInput) int64 {

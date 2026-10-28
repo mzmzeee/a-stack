@@ -69,6 +69,10 @@ in user settings and the current project settings. It preserves foreign commands
 extra settings and linked files. The refresh prints a one-time migration message
 when it changes commands; JSON output carries it in `warnings`, including the
 updater handoff. Each Agent then runs `me hook enroll` or binds through Herdr.
+Refresh also saves a private pending-enrollment marker keyed by the Agent credential and hook worktree. This survives old updaters that discard the JSON warning. Explicit Agent commands such as `me session inspect`, `me mail check` and `me task show` print one short reminder per invocation on stderr until enrollment succeeds. They do not choose an Agent by the current folder or change stdout JSON. Enrollment clears the markers for that credential and worktree, including unused harnesses installed by default; it leaves other worktrees and credentials alone. Hook events never print this diagnostic.
+
+Use `me hook status` (or `--json`) to inspect this Agent’s recognized installed commands in user settings, the current project, and worktrees known from local enrollment or migration records. It reports each harness and worktree, whether commands have the new tag, whether the Agent enrollment is still valid, and whether the current native session matches. Missing native metadata is reported as unknown, not as enrollment; pass a harness flag and `--native-session ID` to check an explicit session. Status requires Agent credentials and a reachable service, does not enroll, and does not verify the harness has loaded or trusted its hooks.
+
 For edited commands, renamed binaries or settings in other project folders,
 run `hook install` again with the harness flag, then enroll. Legacy hooks without
 that identifier stay silent. Hooks for home or a
