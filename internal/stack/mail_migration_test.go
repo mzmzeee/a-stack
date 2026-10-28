@@ -32,7 +32,7 @@ func TestPopulatedV3MailUpgradeAndFailureRecovery(t *testing.T) {
 			if _, err = db.Exec("INSERT INTO metadata VALUES('database_id',?);INSERT INTO workspaces VALUES(?,?,?);INSERT INTO sessions(id,workspace_id,name,created_at,updated_at) VALUES(?,?,?,?,?);INSERT INTO agents(id,workspace_id,session_id,name,created_at,updated_at) VALUES(?,?,?,?,?,?);UPDATE sessions SET orchestrator_id=? WHERE id=?;INSERT INTO capabilities VALUES(?,'agent',?,?)", id, workspace, privateTestDir(t), timestamp, session, workspace, "v3", timestamp, timestamp, agent, workspace, session, "v3-agent", timestamp, timestamp, agent, session, tokenHash(credential.Token), agent, session); err != nil {
 				t.Fatal(err)
 			}
-			if _, err = db.Exec(expiresStandIn); err != nil {
+			if _, err = db.Exec(receiptActorStandIn + expiresStandIn); err != nil {
 				t.Fatal(err)
 			}
 			old := &Store{db: db, path: path, id: id}
@@ -46,7 +46,7 @@ func TestPopulatedV3MailUpgradeAndFailureRecovery(t *testing.T) {
 			ref := Context{workspace, session}
 			// Today's Task code counts mail and writes the v6 archive columns. Stand-ins
 			// let this v3 store write its Task and receipts; they are undone before the upgrade.
-			if _, err = db.Exec("CREATE TABLE mail_messages(task_id TEXT,sequence INTEGER,received_at TEXT); CREATE TABLE task_claims(task_id TEXT,path TEXT); CREATE TABLE expired_operations(actor TEXT,operation_id TEXT,outcome TEXT);" + migration6); err != nil {
+			if _, err = db.Exec("CREATE TABLE mail_messages(task_id TEXT,sequence INTEGER,received_at TEXT); CREATE TABLE task_claims(task_id TEXT,path TEXT); CREATE TABLE expired_operations(actor TEXT,operation_id TEXT,outcome TEXT);" + migration6 + taskActorStandIn); err != nil {
 				t.Fatal(err)
 			}
 			request := TaskCreateRequest{Context: ref, OperationID: "v3-retained-task", Title: "Retained v3 Task", Description: "Keep this report-independent body"}
@@ -58,7 +58,7 @@ func TestPopulatedV3MailUpgradeAndFailureRecovery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, err = db.Exec(undoMigration6 + dropExpires + "DROP TABLE mail_messages; DROP TABLE task_claims; DROP TABLE expired_operations"); err != nil {
+			if _, err = db.Exec(dropTaskActor + undoMigration6 + dropReceiptActor + dropExpires + "DROP TABLE mail_messages; DROP TABLE task_claims; DROP TABLE expired_operations"); err != nil {
 				t.Fatal(err)
 			}
 			if fail {

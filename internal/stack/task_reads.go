@@ -68,6 +68,8 @@ type Assignment struct {
 	AddedAt   string `json:"added_at"`
 }
 type TaskHistoryEntry struct {
+	ActorLogin string         `json:"actor_login,omitempty"`
+	ActorName  string         `json:"actor_name,omitempty"`
 	Sequence   int64          `json:"sequence"`
 	TaskID     string         `json:"task_id"`
 	ActorKind  string         `json:"actor_kind"`
@@ -388,7 +390,7 @@ func (s *Store) snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequ
 	case "history":
 		var h TaskHistoryEntry
 		var change string
-		err := tx.QueryRowContext(ctx, "SELECT sequence,task_id,actor_kind,COALESCE(actor_id,''),action,revision,received_at,changes FROM task_history WHERE sequence=? AND task_id=?", id, r.TaskID).Scan(&h.Sequence, &h.TaskID, &h.ActorKind, &h.ActorID, &h.Action, &h.Revision, &h.ReceivedAt, &change)
+		err := tx.QueryRowContext(ctx, "SELECT sequence,task_id,actor_kind,COALESCE(actor_id,''),action,revision,received_at,changes,COALESCE(actor_login,''),COALESCE(actor_name,'') FROM task_history WHERE sequence=? AND task_id=?", id, r.TaskID).Scan(&h.Sequence, &h.TaskID, &h.ActorKind, &h.ActorID, &h.Action, &h.Revision, &h.ReceivedAt, &change, &h.ActorLogin, &h.ActorName)
 		if err != nil {
 			return nil, err
 		}

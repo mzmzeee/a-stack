@@ -4,6 +4,8 @@ The browser view shows one Session: its Task graph, its Agents and the details o
 
 In the Agents panel, **Notices off** marks an Agent whose mention notices are unavailable. Hover the marker for the stored reason and fix. It is read-only and shows no private runtime identity. See [Mention notice diagnostics](notifications.md#diagnostics-and-maintenance).
 
+Shared Needs you answers show who answered and when in Task details and answer mail. The label is the Operator's display name, or `Operator (login)` without a display name. Local answers still say `Operator`. If another Operator answers first, Send reports who already answered and when. Labels and errors are plain text, never markup.
+
 ## Open the view
 
 The view needs a running service: a user service set up with [`a-stack service install`](install.md#start-a-stack-automatically), or `a-stack serve` in a terminal. The [shorter commands](#open-the-last-session) start one for you when none runs. To open one Workspace and Session by its IDs:
@@ -80,6 +82,8 @@ a-stack view revoke --all
 ```
 
 `view revoke` deletes the view tokens and unused links of one Session, or of every Session with `--all`. Only the Operator can run it. Open tabs lose access at their next refresh, within 30 seconds, and say so. The command prints `{"data":{"revoked":N}}`, where N is the number of view tokens it deleted. The endpoint is `POST /v1/browser/revoke` with `workspace_id` and `session_id`, or with `"all":true`.
+
+When the service is shared through [Tailscale Serve](remote.md), issuing or revoking view access records the Operator's login and display name in lifecycle history. Revoking all views records one global action.
 
 ## What the view shows
 

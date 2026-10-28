@@ -51,9 +51,17 @@ Every new remote client fetches the current instance ID. If the database ID chan
 
 - Remote URLs must be HTTPS origins without credentials, a path, a query or a fragment. Certificates are verified normally. Clients ignore proxy environment variables and never follow redirects.
 - The service accepts only its loopback Host or its exact configured MagicDNS Host. An Origin must match the URL for that Host. There is no wildcard Host allowance or CORS.
-- On the configured Serve Host from a loopback peer, `Tailscale-User-Login` and `Tailscale-User-Name` become request attribution. Serve strips client copies and supplies its own. Missing headers, such as on tagged devices, produce no actor. Non-ASCII names are decoded from Serve's RFC 2047 header encoding. Requests marked by Serve as Funnel traffic are rejected. These headers do not replace bearer authorization and are not yet recorded in Task history.
+- On the configured Serve Host from a loopback peer, `Tailscale-User-Login` and `Tailscale-User-Name` become request attribution. Serve strips client copies and supplies its own. Missing headers, such as on tagged devices, produce no actor. Non-ASCII names are decoded from Serve's RFC 2047 header encoding. Requests marked by Serve as Funnel traffic are rejected. These headers do not replace bearer authorization. Operator actions record the login and display name in history; answers also keep them on the question and its Task mail.
 - The configured Serve Host exposes only database ID, instance ID and version at unauthenticated `/v1/health`. Data endpoints retain their bearer and instance checks. Local health remains authenticated.
 - Processes on the server can forge proxy headers by calling loopback directly. Do not host untrusted local users there. Tailnet ACLs and HTTPS do not protect the backend from them.
+
+## Operator labels
+
+All Operators remain equal. Labels identify who made a change; they are not accounts or permissions. The service records the trusted login and display name for Needs you answers, standing-order changes, Session close/reopen, Orchestrator appointments, view issue/revoke and Agent credential changes. Agent actions keep their Agent identity, even when sent through Serve.
+
+The view shows the answerer's display name, or `Operator (login)` when no name is supplied, and the answer time. `task history`, `task show`, answer mail and mutation receipts include `actor_login` and `actor_name` when available. A retry returns the original receipt and actor. A second answer with a new operation ID names who already answered and when; it never replaces the answer or sends another mail.
+
+Local requests, SSH forwarding, missing identity headers and older history have no actor fields and read as `Operator`. Names are plain text. The login is retained separately from the display name.
 
 ## SSH fallback
 

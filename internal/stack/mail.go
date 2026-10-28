@@ -43,11 +43,14 @@ const (
 )
 
 type MailMessage struct {
-	ID       string `json:"id"`
-	TaskID   string `json:"task_id"`
-	Sequence int64  `json:"sequence"`
+	ActorLogin string `json:"actor_login,omitempty"`
+	ActorName  string `json:"actor_name,omitempty"`
+	ID         string `json:"id"`
+	TaskID     string `json:"task_id"`
+	Sequence   int64  `json:"sequence"`
 	// SenderKind is "operator" for the Operator's mail, which has no
-	// SenderID and the SenderName "Operator"; Agent mail leaves it out.
+	// SenderID. SenderName is its transport label, or "Operator" without one;
+	// Agent mail leaves SenderKind out.
 	SenderKind string   `json:"sender_kind,omitempty"`
 	SenderID   string   `json:"sender_id"`
 	SenderName string   `json:"sender_name"`
@@ -274,12 +277,12 @@ func suppressTaskMentions(ctx context.Context, tx *sql.Tx, task, recipient strin
 }
 func readMailMessage(ctx context.Context, tx *sql.Tx, task string, sequence int64) (MailMessage, error) {
 	message := MailMessage{MentionIDs: []string{}}
-	err := tx.QueryRowContext(ctx, "SELECT m.id,m.task_id,m.sequence,m.sender_kind,COALESCE(m.sender_id,''),COALESCE(a.name,''),m.received_at,m.body FROM mail_messages m LEFT JOIN agents a ON a.id=m.sender_id WHERE m.task_id=? AND m.sequence=?", task, sequence).Scan(&message.ID, &message.TaskID, &message.Sequence, &message.SenderKind, &message.SenderID, &message.SenderName, &message.ReceivedAt, &message.Body)
+	err := tx.QueryRowContext(ctx, "SELECT m.id,m.task_id,m.sequence,m.sender_kind,COALESCE(m.sender_id,''),COALESCE(a.name,''),m.received_at,m.body,COALESCE(m.actor_login,''),COALESCE(m.actor_name,'') FROM mail_messages m LEFT JOIN agents a ON a.id=m.sender_id WHERE m.task_id=? AND m.sequence=?", task, sequence).Scan(&message.ID, &message.TaskID, &message.Sequence, &message.SenderKind, &message.SenderID, &message.SenderName, &message.ReceivedAt, &message.Body, &message.ActorLogin, &message.ActorName)
 	if err != nil {
 		return message, err
 	}
 	if message.SenderKind == "operator" {
-		message.SenderName = "Operator"
+		message.SenderName = operatorLabel(message.ActorLogin, message.ActorName)
 	} else {
 		message.SenderKind = ""
 	}

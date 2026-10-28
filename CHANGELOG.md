@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Record trusted Tailscale Operator labels on actions and answers (schema 11). Shared Needs you answers show who answered and when; a second answer names the first answerer without sending duplicate mail.
+
 ### Added
 
 - Tailscale remote foundation: `serve --share` and `service install --share` configure an owned HTTPS Serve rule over the fixed loopback port. The server accepts only its configured MagicDNS Host and matching Origin, with request identity kept separate from bearer authorization. `connect NAME URL`, `connect list`, `connect remove NAME` and `--remote NAME` add private HTTPS profiles with database pinning. See [Remote service](docs/remote.md); Session linking and remote notices are not included.
