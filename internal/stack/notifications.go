@@ -145,7 +145,8 @@ func (n *notifier) nextTarget(ctx context.Context, session string) (noticeTarget
 	var t noticeTarget
 	err := n.store.db.QueryRowContext(ctx, `SELECT a.id,a.session_id,a.revision,COALESCE(a.binding,'') FROM agents a JOIN sessions s ON s.id=a.session_id
  LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id
- WHERE s.closed=0 AND (?='' OR s.id=?) AND COALESCE(d.next_attempt,0) BETWEEN 0 AND ?
+ WHERE s.closed=0 AND (?='' OR s.id=?) AND (COALESCE(d.next_attempt,0) BETWEEN 0 AND ?
+ OR (d.reason='notice_waiting_idle' AND a.runtime_state IN ('idle','done')))
  AND NOT EXISTS(SELECT 1 FROM notice_batches b WHERE b.session_id=s.id AND b.recipient_id=a.id AND b.state='submitting')
  AND (EXISTS(SELECT 1 FROM mail_mentions m JOIN task_assignees x ON x.task_id=m.task_id AND x.agent_id=m.recipient_id
  WHERE m.recipient_id=a.id AND x.session_id=s.id AND m.notice_state='pending')
@@ -170,6 +171,9 @@ func currentNoticeTarget(ctx context.Context, tx *sql.Tx, t noticeTarget) (bool,
 // set next_attempt back to 0.
 const noticeParked = -1
 
+// A submitted nudge is enough until an own mail read or this cooldown.
+const noticeCooldown = 10 * time.Minute
+
 func recordNoticeTarget(ctx context.Context, tx *sql.Tx, t noticeTarget, reason string, success bool, clock time.Time) error {
 	_, same, err := currentNoticeTarget(ctx, tx, t)
 	if err != nil || !same {
@@ -193,6 +197,8 @@ func recordNoticeTarget(ctx context.Context, tx *sql.Tx, t noticeTarget, reason 
 		// These depend only on the stored binding and this binary's table, so
 		// nextTarget skips the row until it changes: no idle retry writes.
 		next = noticeParked
+	} else if reason == "notice_waiting_mail" || reason == "notice_waiting_idle" {
+		next = clock.Add(noticeCooldown).UnixMilli()
 	} else if !success {
 		seconds := 5 << min(failures-1, 3)
 		next = clock.Add(time.Duration(min(seconds, 30)) * time.Second).UnixMilli()
@@ -230,6 +236,28 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
 	}
 	if !open || !same {
 		return empty, nil
+	}
+	var reason, state, observed string
+	var next int64
+	if err = tx.QueryRowContext(ctx, `SELECT COALESCE(d.reason,''),COALESCE(d.next_attempt,0),a.runtime_state,a.observed_at FROM agents a
+ LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id WHERE a.id=?`, t.agent).Scan(&reason, &next, &state, &observed); err != nil {
+		return empty, storageError()
+	}
+	if reason == "notice_waiting_mail" && next > n.clock().UnixMilli() {
+		return empty, nil
+	}
+	// Hook observations are sent only by an enrolled runtime. Unknown state
+	// keeps the ordinary first-notice behavior; Herdr still verifies identity.
+	if state == "working" && observed != "" && reason != "notice_waiting_mail" {
+		if reason != "notice_waiting_idle" {
+			if err = recordNoticeTarget(ctx, tx, t, "notice_waiting_idle", true, n.clock()); err != nil || tx.Commit() != nil {
+				return empty, storageError()
+			}
+			return empty, nil
+		}
+		if next > n.clock().UnixMilli() {
+			return empty, nil
+		}
 	}
 	ids, err := readIDs(ctx, tx, `SELECT m.message_id FROM mail_mentions m JOIN task_assignees x ON x.task_id=m.task_id AND x.agent_id=m.recipient_id
  WHERE x.session_id=? AND m.recipient_id=? AND m.notice_state='pending' ORDER BY m.message_id LIMIT 500`, t.session, t.agent)
@@ -347,6 +375,9 @@ func (n *notifier) finish(b noticeBatch, state NoticeState, reason string) error
 	}
 	if _, err = tx.ExecContext(ctx, "UPDATE notice_batches SET state=?,reason=?,updated_at=? WHERE id=? AND state='submitting'", batchState, reason, now(), b.id); err != nil {
 		return storageError()
+	}
+	if batchState == NoticeSubmitted {
+		reason = "notice_waiting_mail"
 	}
 	if err = recordNoticeTarget(ctx, tx, b.target, reason, state != NoticePending || count == 0, n.clock()); err != nil {
 		return storageError()

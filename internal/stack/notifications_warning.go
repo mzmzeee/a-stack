@@ -17,6 +17,10 @@ type NoticeWarning struct {
 func noticeWarning(reason string) *NoticeWarning {
 	fix := ""
 	switch reason {
+	case "notice_waiting_mail":
+		fix = "Notice waiting until the Agent reads its mail, or the 10-minute cooldown passes."
+	case "notice_waiting_idle":
+		fix = "Notice waiting until the Agent is idle, or the 10-minute cooldown passes; its hooks can nudge it between tool calls."
 	case "delivery_uncertain", "recovery_uncertain":
 		fix = "Some notices may have been sent; check retained Task mail. Uncertain notices are not resent automatically."
 	case "binding_incomplete":

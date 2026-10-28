@@ -77,7 +77,7 @@ Before a delivery, the adapter checks all of these:
 - The Herdr server at the recorded endpoint is running, reports protocol 22, and is compatible with the CLI.
 - Herdr's current metadata matches the alias, pane, terminal, harness, and the native session ID and its source.
 
-A target in the state Working, Idle or Done accepts normal queued input. A target that is Blocked, Unknown, stopped, missing or changed does not. a-stack does not wait for the target to be idle.
+A Herdr target in the state Working, Idle or Done accepts normal queued input. A target that is Blocked, Unknown, stopped, missing or changed does not. The dispatcher also uses a-stack's hook observations to hold notices for a working Agent, as described below.
 
 Herdr's `agent get` does not report the harness version. So `harness_version` is what `herdr bind` read from the harness, or what you declared in the file, and it is separate from the queue-test evidence. When you upgrade the harness to another minor line, bind the new native session again, or have the Operator rebind a still-live binding. Unsupported versions stay mail-only.
 
@@ -93,7 +93,11 @@ a-stack decodes only a bounded allowlist of metadata fields and error codes. It 
 
 ## Delivery and recovery
 
-The mail transaction stores the body once, with a pending reference for each mentioned recipient. After the commit, it signals the dispatcher. The dispatcher at once groups the references that are already pending for that recipient, across all of the recipient's Tasks. It adds no batching delay.
+The mail transaction stores the body once, with a pending reference for each mentioned recipient. After the commit, it signals the dispatcher. When a recipient is eligible, the dispatcher groups the references that are already pending for it, across all of its Tasks.
+
+After one successful submission, further notices wait until that Agent successfully runs an authenticated `mail check`, `mail read` or `task handoff`, or a 10-minute cooldown passes. Reads by a browser or another Agent do not release this hold. The read only re-arms notices: it stores no mail position and does not acknowledge any message. Later mentions stay pending and join the next batch. The hold survives a service restart.
+
+A runtime observed as working by a-stack also waits until its next idle or done observation, or 10 minutes after the hold began. Hook observations require exact runtime enrollment; its mail nudge can reach the Agent between tool calls. The server does not inspect machine-local enrollment files. An unknown or unobserved a-stack runtime state keeps the ordinary first-notice behavior; Herdr's independent identity and state checks still apply. Reading mail does not bypass a working-runtime hold. An explicit new binding clears the old target diagnostic and hold.
 
 - One batch holds at most 500 exact message and recipient references, plus the recipient's binding revision and hash.
 - A partial unique index allows only one submitting batch per Session and Agent.
@@ -132,6 +136,8 @@ a-stack notifications drain --state-dir "$state_dir" \
 
 `notifications status` lists 50 Agents by default and 100 at most. To get the next page, give the `data.next` value with `--after`. The Operator can select one Agent with `--agent`. An Agent sees only itself. Each row names the Agent and its ID. The status shows whether notices are enabled, a safe reason, the time of the next attempt (`-1` while it waits for a new binding), and the number of references in each state. It never shows private bindings, mail bodies or read positions.
 
+Held targets show `notice_waiting_mail` or `notice_waiting_idle` in `notifications status`, with the cooldown deadline in `next_attempt_unix_ms`. The Agents panel shows **Notice waiting** and explains whether it waits for an own mail read or for idle. Pending reference counts still include every held mention. Successful own reads clear the submitted-notice hold; they do not clear uncertain references.
+
 The Agent's own `mail check` adds one `notice_warning` with a reason and a fix when its binding is incomplete, its harness is unsupported, the service adapter is disabled, the last delivery check could not reach it, or retained notices are uncertain. The browser's Agents panel shows a small **Notices off** marker with the same reason in its tooltip. These read only the stored binding and last delivery diagnostic, run no Herdr command and change no mail position on the service. A new bind clears the old diagnostic; a changed delivery warning refreshes the view. They are not a live probe and do not prove that a notice was read. Mail checks work without notices.
 
 Uncertain references have priority over the last delivery diagnostic. `mail check` includes their `unresolved_uncertain` count with reason `delivery_uncertain` or `recovery_uncertain`. The Agents panel shows **Notices uncertain (N)**, and each `notifications status` row includes the same count. A later successful submission or new binding does not clear it. The count is retained uncertainty, not unread mail: a-stack has no acknowledgment or reconciliation command, and checking mail does not change it. Uncertain notices are never resent automatically.
@@ -140,7 +146,7 @@ The hook's separate mail-nudge cursor advances only after it has fetched the Tas
 
 When `a-stack new --orchestrator` runs inside Herdr (`HERDR_ENV=1`), its brief tells the Orchestrator to bind itself too. Missing integrations must be installed and the harness restarted in that pane before binding.
 
-`agent list` shows the separate `runtime_state` reported by the a-stack hooks. Without those hooks it can stay `unknown` even when notices work. Notice eligibility uses Herdr's current `agent_status` and native session, not this hook state. Use `notifications status` to check delivery.
+`agent list` shows the separate `runtime_state` reported by the a-stack hooks. Without those hooks it can stay `unknown` even when notices work. Notice eligibility checks Herdr's current `agent_status` and native session, and uses the hook's working observation for the additional hold above. Use `notifications status` to check delivery.
 
 `notifications drain` runs one bounded maintenance pass over the durable batches. It does not change mail, and it does not resend anything. If you run it again, it never resends `submitted` or `uncertain` references.
 
@@ -160,7 +166,7 @@ a-stack herdr focus --workspace "$workspace_id" --session "$session_id" --agent 
 
 ### Fake Herdr fixture
 
-A deterministic fixture with a fake Herdr executable retained exactly 1,120 messages, 54,300 body bytes, 3,320 mention and batch reference rows, and 29 submitted batches.
+Before the per-Agent hold was added, a deterministic fixture with a fake Herdr executable retained exactly 1,120 messages, 54,300 body bytes, 3,320 mention and batch reference rows, and 29 submitted batches. These historical timings below describe that earlier behavior. The current fixture performs own mail checks between rounds to re-arm each recipient.
 
 - Twenty separate sends to one recipient used twenty submissions.
 - A burst of 100 waiting messages with three recipients used three submissions.
@@ -226,4 +232,4 @@ The fixture ended with three submitted notices and three own mail checks. Its sc
 
 ### Tests
 
-The normal and race tests use real SQLite, HTTP and the CLI, with a fake executable. They cover the endpoint, arguments and environment, batching, concurrent arrivals, the serialization of recipients, target changes, closure and removal, bounded errors, migration rollback, and a process that is killed after simulated input. Tests of the production checks reject unverified versions and kinds. A successful live fixture does not add a combination to the supported list automatically.
+The normal and race tests use real SQLite, HTTP and the CLI, with a fake executable. They cover twenty successive mentions with at most one notice, own-read and cooldown re-arming, observed-busy versus unknown state, held status, the endpoint, arguments and environment, batching, concurrent arrivals, the serialization of recipients, target changes, closure and removal, bounded errors, migration rollback, and a process that is killed after simulated input. Tests of the production checks reject unverified versions and kinds. A successful live fixture does not add a combination to the supported list automatically.

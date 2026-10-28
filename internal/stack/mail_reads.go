@@ -128,8 +128,8 @@ func (s *Store) ReadMail(ctx context.Context, token string, r MailReadRequest) (
 	}
 	defer tx.Rollback()
 	// A browser view credential reads the mail of any Task in its own Session;
-	// everyone else must be a current assignee. The read
-	// writes nothing: no read position, receipt or notice.
+	// everyone else must be a current assignee. An own Agent read re-arms
+	// notices but stores no read position or acknowledgment.
 	if p.Kind == BrowserCapability {
 		_, err = taskInSession(ctx, tx, r.TaskID, r.SessionID)
 	} else {
@@ -158,8 +158,37 @@ func (s *Store) ReadMail(ctx context.Context, token string, r MailReadRequest) (
 		return empty, publicError(err)
 	}
 	page.PendingAcks, page.MoreAcks = pending, moreAcks
+	if err = rearmMailNotice(ctx, tx, p, r.SessionID); err != nil {
+		return empty, err
+	}
 	return page, nil
 }
+
+// Only a successful authenticated Agent read clears its submitted-notice hold.
+// Browser reads and failed reads cannot re-arm another recipient.
+func rearmMailNotice(ctx context.Context, tx *sql.Tx, p Principal, session string) error {
+	if p.Kind == AgentCapability {
+		result, err := tx.ExecContext(ctx, `UPDATE notice_targets SET reason='mail_checked',next_attempt=0,updated_at=?
+ WHERE session_id=? AND recipient_id=? AND reason='notice_waiting_mail'`, now(), session, p.SubjectID)
+		if err != nil {
+			return storageError()
+		}
+		count, err := result.RowsAffected()
+		if err != nil {
+			return storageError()
+		}
+		if count > 0 {
+			if err = bumpSessionRead(ctx, tx, session); err != nil {
+				return storageError()
+			}
+		}
+	}
+	if tx.Commit() != nil {
+		return storageError()
+	}
+	return nil
+}
+
 func encodeMailCheckCursor(session, agent, task string) string {
 	b, _ := json.Marshal(mailCheckCursor{session, agent, task})
 	return base64.RawURLEncoding.EncodeToString(b)
@@ -274,5 +303,11 @@ func (s *Store) CheckMail(ctx context.Context, token string, r MailCheckRequest)
 		last = task
 	}
 	result.More = result.More || result.NextTask != ""
+	if err = rearmMailNotice(ctx, tx, p, r.SessionID); err != nil {
+		return empty, err
+	}
+	if result.NoticeWarning != nil && result.NoticeWarning.Reason == "notice_waiting_mail" {
+		result.NoticeWarning = nil
+	}
 	return result, nil
 }

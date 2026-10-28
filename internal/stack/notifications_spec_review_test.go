@@ -106,6 +106,14 @@ func TestNoticeSpecMixedTaskSuppressionAndOutcomeRecovery(t *testing.T) {
 			}
 			f.config.Mode = ""
 			f.write(t)
+			if !failOutcome {
+				if f.drain(t, 1).Submitted != 0 {
+					t.Fatal("arrival bypassed unread notice hold")
+				}
+				if _, err := s.CheckMail(ctx, f.b.Token, MailCheckRequest{Context: f.ref(0)}); err != nil {
+					t.Fatal(err)
+				}
+			}
 			if f.drain(t, 1).Submitted != 1 || f.prompts(t) != 2 {
 				t.Fatal("new pending arrival did not form one fresh submission")
 			}
