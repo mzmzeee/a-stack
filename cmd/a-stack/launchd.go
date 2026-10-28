@@ -205,6 +205,9 @@ func launchdInstall(label, target, file, state, log string, data map[string]any)
 			return nil, &stack.Error{Code: "conflict", Message: "a-stack serve already runs for " + state + " outside launchd; press Ctrl-C in its terminal first, then run a-stack service install again"}
 		}
 	}
+	if err := configureServiceShare(state, data); err != nil {
+		return nil, err
+	}
 	status, err := installFile(file, content)
 	if err != nil {
 		return nil, err

@@ -303,6 +303,9 @@ func schtasksInstall(name, state, log string, data map[string]any) ([]string, er
 	if !installed && healthErr == nil {
 		return nil, &stack.Error{Code: "conflict", Message: "a-stack serve already runs for " + state + " outside Task Scheduler; press Ctrl-C in its terminal first, then run a-stack service install again"}
 	}
+	if err := configureServiceShare(state, data); err != nil {
+		return nil, err
+	}
 	status := "created"
 	if installed {
 		status = "updated"

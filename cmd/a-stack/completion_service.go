@@ -21,7 +21,10 @@ func completeServiceValue(name string, values map[string]string) []completionIte
 			return nil
 		}
 	}
-	client, err := stack.NewClient(state, values["credential-file"], stack.CapabilityKind(values["as"]))
+	if remote, seen := values["remote"]; seen && remote == "" {
+		return nil
+	}
+	client, err := commandClient(ctx, state, values["credential-file"], values["as"], values["remote"])
 	if err != nil {
 		return nil
 	}

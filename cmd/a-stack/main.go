@@ -81,10 +81,13 @@ func buildVersion() string {
 func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	var state, credential, kind, listen, destination, herdrExecutable, orchestrator, shell string
+	var state, credential, kind, listen, destination, herdrExecutable, orchestrator, shell, remote string
+	var share bool
 	var machine, help, noBrowser, resume, project, refresh, check, noRestart, noRefresh, all bool
 	var release versionFlag
 	fs.StringVar(&state, "state-dir", "", "State directory (default "+stateDirDefault+")")
+	fs.StringVar(&remote, "remote", "", "Named HTTPS remote profile")
+	fs.BoolVar(&share, "share", false, "Expose the loopback service through Tailscale Serve")
 	fs.StringVar(&credential, "credential-file", "", "Credential file (default: operator.json)")
 	fs.StringVar(&kind, "as", "", "Credential kind: operator, agent or browser")
 	fs.StringVar(&listen, "listen", "", "Loopback address (default: the last port, else a free one)")
@@ -135,6 +138,11 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if cmd == "version" {
 		delete(seen, "version") // a-stack --version
 	}
+	var connectArgs []string
+	if len(command) > 0 && command[0] == "connect" {
+		connectArgs = command[1:]
+		cmd = "connect"
+	}
 	var sessionName string
 	if len(command) > 0 && command[0] == "new" {
 		if len(command) > 2 {
@@ -148,7 +156,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if cmd != "" && cmd != "new" && !knownCommand(cmd) {
 		return unknownCommand(command, seen, stdout)
 	}
-	if cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && !isCompletionCommand(cmd) && cmd != "mcp" {
+	if cmd != "connect" && cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && !isCompletionCommand(cmd) && cmd != "mcp" {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -156,6 +164,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 	if err := validateCommandFlags(cmd, seen); err != nil {
 		return err
+	}
+	if seen["remote"] && remote == "" {
+		return invalid("--remote must name a profile")
 	}
 	if len(lifecycle.paths) > 1 && cmd != "task claim" && cmd != "task unclaim" {
 		return invalid("--path is given more than once")
@@ -200,6 +211,9 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		}
 		return updateCommand(release, check, noRestart, noRefresh, machine, stdout, stderr)
 	}
+	if cmd == "connect" {
+		return connectCommand(connectArgs, stdout)
+	}
 	stateFlag := state
 	if state == "" {
 		var err error
@@ -212,7 +226,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return invalid("--state-dir must be absolute")
 	}
 	if isServiceCommand(cmd) {
-		return serviceCommand(cmd, state, machine, stdout)
+		return serviceCommand(cmd, state, machine, stdout, share)
 	}
 	ctx := context.Background()
 	if cmd == "statusline" {
@@ -242,23 +256,27 @@ func execute(args []string, stdout, stderr io.Writer) error {
 			defer log.Close()
 			stdout = log
 		}
+		var sharing []bool
+		if seen["share"] {
+			sharing = []bool{share}
+		}
 		err := serveForeground(ctx, state, listen, herdrExecutable, func(_ context.Context, service *stack.Service) error {
 			return json.NewEncoder(stdout).Encode(readyLine(service))
-		})
+		}, sharing...)
 		if err != nil && log != nil {
 			writeError(log, err)
 		}
 		return err
 	}
 	if cmd == "mcp" {
-		return mcpCommand(ctx, state, credential, kind, lifecycle, os.Stdin, stdout)
+		return mcpCommand(ctx, state, credential, kind, lifecycle, os.Stdin, stdout, remote)
 	}
 	if isWatchCommand(cmd) {
-		connect := func() (*stack.Client, error) { return stack.NewClient(state, credential, stack.CapabilityKind(kind)) }
+		connect := func() (*stack.Client, error) { return commandClient(ctx, state, credential, kind, remote) }
 		watching.all = all
 		return watchCommand(ctx, connect, cmd, lifecycle.session, watching, machine, stdout, stderr)
 	}
-	client, err := stack.NewClient(state, credential, stack.CapabilityKind(kind))
+	client, err := commandClient(ctx, state, credential, kind, remote)
 	if err != nil {
 		return err
 	}
@@ -377,15 +395,32 @@ func execute(args []string, stdout, stderr io.Writer) error {
 // readyLine prints no credentials. Discovery is private on disk; this ready
 // outcome is one JSON document and all diagnostics go to stderr.
 func readyLine(service *stack.Service) map[string]any {
-	return map[string]any{"data": map[string]any{"status": "ready", "url": service.Discovery.URL, "database_id": service.Discovery.DatabaseID, "version": service.Version}}
+	data := map[string]any{"status": "ready", "url": service.Discovery.URL, "database_id": service.Discovery.DatabaseID, "version": service.Version}
+	if url := service.SharedURL(); url != "" {
+		data["shared_url"] = url
+	}
+	return map[string]any{"data": data}
 }
 
 // serveForeground runs the service until SIGINT, SIGTERM or SIGHUP. ready
 // runs once the service accepts requests; an error from it stops the service.
-func serveForeground(ctx context.Context, state, listen, herdrExecutable string, ready func(context.Context, *stack.Service) error) error {
+func serveForeground(ctx context.Context, state, listen, herdrExecutable string, ready func(context.Context, *stack.Service) error, sharing ...bool) error {
 	// SIGHUP too: a service in a closed terminal removes its discovery file.
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
+	enabled, err := stack.ShareEnabled(state)
+	if err != nil {
+		return err
+	}
+	if len(sharing) > 0 {
+		enabled = sharing[0]
+	}
+	if enabled {
+		if listen != "" && listen != stack.SharedListen {
+			return invalid("--share requires --listen " + stack.SharedListen)
+		}
+		listen = stack.SharedListen
+	}
 	stack.TuneServiceGC()
 	service, err := stack.Start(ctx, state, listen)
 	if err != nil {
@@ -405,7 +440,14 @@ func serveForeground(ctx context.Context, state, listen, herdrExecutable string,
 	}
 	result := make(chan error, 1)
 	go func() { result <- service.Serve() }()
-	err = ready(ctx, service)
+	sharedURL, shareErr := service.ConfigureShare(ctx, enabled)
+	err = shareErr
+	if err == nil {
+		if sharedURL != "" {
+			_, _ = io.WriteString(os.Stderr, "Shared at "+sharedURL+"\n")
+		}
+		err = ready(ctx, service)
+	}
 	if err == nil {
 		select {
 		case <-ctx.Done():

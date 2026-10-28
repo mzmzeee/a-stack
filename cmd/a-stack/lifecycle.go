@@ -68,6 +68,9 @@ func acceptedFlags(command string) string {
 		}
 		return " help "
 	}
+	if command == "connect" {
+		return " json help "
+	}
 	if command == "version" {
 		return " json help "
 	} else if command == "skill install" {
@@ -84,7 +87,9 @@ func acceptedFlags(command string) string {
 		return " claude codex pi opencode project state-dir credential-file workspace session agent name runtime-id no-stop-guard no-mail-nudge worktree json help "
 	} else if command == "hook uninstall" {
 		return " claude codex pi opencode project worktree json help "
-	} else if command == "service install" || command == "service status" {
+	} else if command == "service install" {
+		return " state-dir share json help "
+	} else if command == "service status" {
 		return " state-dir json help "
 	} else if command == "service uninstall" {
 		return " json help "
@@ -97,9 +102,9 @@ func acceptedFlags(command string) string {
 	} else if command == "new" {
 		allowed += "no-browser orchestrator "
 	} else if command == "serve" {
-		allowed += "listen herdr-executable "
+		allowed += "listen herdr-executable share "
 	} else {
-		allowed += "credential-file as "
+		allowed += "credential-file as remote "
 	}
 	switch command {
 	case "notifications status":

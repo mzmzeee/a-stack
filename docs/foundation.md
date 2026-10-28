@@ -1,6 +1,6 @@
 # Local service
 
-The `a-stack` binary is both the command line and the local service. `serve` starts the service in the foreground. All other commands are clients: they read the service's discovery file and a credential file, and then send HTTP requests to the service. A client never starts a service and never opens the SQLite database. The Operator commands `a-stack`, `a-stack -r` and `a-stack new` are the exception: when no service answers for the state directory, they run the service in the foreground exactly like `serve`, and then act as its client. They never start a service in the background.
+The `a-stack` binary is both the command line and the local service. `serve` starts the service in the foreground. API commands are clients: they read the service's discovery file and a credential file, and then send HTTP requests to the service. With `--remote NAME`, they instead use an HTTPS profile and fetch discovery from the remote service; see [Remote service](remote.md). A client never starts a service and never opens the SQLite database. The Operator commands `a-stack`, `a-stack -r` and `a-stack new` are the exception: when no service answers for the state directory, they run the service in the foreground exactly like `serve`, and then act as its client. They never start a service in the background.
 
 In the source, `cmd/a-stack` parses the arguments and handles signals for `serve`. The `internal/stack` package holds the state, SQLite, HTTP and client code.
 
@@ -16,6 +16,8 @@ The state directory holds these files:
 | `service.lock` | The lock that shows which process owns the state directory. |
 | `service.json` | The discovery file for clients. |
 | `operator.json` | The Operator credential. |
+| `share.json` | The installed service's Tailscale sharing setting, when configured. |
+| `tailscale-serve.json` | Ownership of the Serve rule, until sharing is disabled. |
 
 Before `serve` opens `state.db`, it takes a nonblocking `flock` on `service.lock`. The lock file stays in place. The service holds the lock until HTTP has stopped and SQLite has closed. A second `serve` on the same directory fails with `conflict`. If the process is killed, the kernel releases the lock, and the next start lets SQLite recover its write-ahead log (WAL). Do not delete the lock file or the SQLite sidecar files. On Windows, the service holds `service.lock` open with no sharing instead of a `flock`, with the same result.
 
@@ -51,7 +53,7 @@ When `serve` is ready, it prints one JSON line on stdout with `status`, `url`, `
 
 ## Command line
 
-Flags can come before or after the command. Each flag can appear once; only `--mention` repeats. All commands accept `--json`. All commands except `version`, `update`, `skill install`, `skill uninstall` and `service uninstall` accept `--state-dir DIR`. `a-stack` without a command, `a-stack -r` and `a-stack new [NAME]` also accept `--no-browser`, and take no credential or `serve` flags. They are described in [Open the last Session](browser.md#open-the-last-session). `serve` also accepts `--listen 127.0.0.1:PORT` (port 0 picks a free port; without the flag, see [Discovery](#discovery)) and `--herdr-executable FILE` (see [Mention notices](notifications.md)). Client commands also accept `--credential-file FILE` and `--as operator|agent|browser`.
+Flags can come before or after the command. Each flag can appear once; only `--mention` repeats. All commands accept `--json`. `connect`, `version`, `update`, `skill install`, `skill uninstall` and `service uninstall` do not take `--state-dir DIR`. `a-stack` without a command, `a-stack -r` and `a-stack new [NAME]` also accept `--no-browser`, and take no credential or `serve` flags. They are described in [Open the last Session](browser.md#open-the-last-session). `serve` also accepts `--listen 127.0.0.1:PORT` (port 0 picks a free port; without the flag, see [Discovery](#discovery)) and `--herdr-executable FILE` (see [Mention notices](notifications.md)). Client commands also accept `--credential-file FILE`, `--as operator|agent|browser` and `--remote NAME`. `serve --share` uses Tailscale Serve and the fixed loopback port 41677. `connect NAME URL`, `connect list` and `connect remove NAME` manage HTTPS profiles without a local service or credential. See [Remote service](remote.md).
 
 `serve` makes or checks its own Operator credential, and it does not accept credential flags. A client without `--credential-file` uses `operator.json` in the state directory. `--as agent` and `--as browser` require `--credential-file`. a-stack rejects a credential file of a different kind, and it never uses the Operator credential instead. An Agent credential file can also give `--workspace` and `--session` (see [Credential context](lifecycle.md#credential-context)).
 
@@ -74,7 +76,7 @@ The CLI never retries a request automatically. Client commands stop normally on 
 
 ## HTTP rules
 
-The service listens only on `127.0.0.1`. Every data request needs the instance ID and a bearer token, except `POST /v1/browser/redeem`, which trades the one-time code of a view link for a view token. The `Host` header must match the bound address. If a request has an `Origin` header, it must match the service URL. The service has no cross-origin access, and it rejects query parameters, so a token can never be in a query string. Clients do not follow redirects and do not use proxy settings from the environment.
+The service listens only on `127.0.0.1`. Every data request needs the instance ID and a bearer token, except `POST /v1/browser/redeem`, which trades the one-time code of a view link for a view token. The `Host` header must match the bound address, or the exact configured Tailscale Serve name from a loopback peer. If a request has an `Origin` header, it must match the service URL for that Host. On the configured Serve Host only, `GET /v1/health` allows unauthenticated discovery of the database ID, instance ID and version. It exposes no Task data. See [Remote security](remote.md#security-boundary). The service has no cross-origin access, and it rejects query parameters, so a token can never be in a query string. Clients do not follow redirects and do not use proxy settings from the environment.
 
 A browser credential can use only the Session read endpoints, `POST /v1/mail/read` and `POST /v1/task/answer` for the Tasks of its Session. The answer is its one write, and it needs an `Origin` header (see [The one write](browser.md#the-one-write)). It cannot use the `health` or `storage` endpoints. An Agent credential can use `health`, but it cannot read storage status or make backups.
 

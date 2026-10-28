@@ -276,6 +276,8 @@ a-stack service install
 
 It uses systemd on Linux, launchd on macOS and Task Scheduler on Windows. First, it checks that no `a-stack serve` runs for the state directory outside the service manager. If one runs, it stops and changes nothing. Press Ctrl-C in the terminal of that service, then run the command again. Only one service can use a state directory.
 
+For HTTPS access from your tailnet, use `a-stack service install --share`; see [Remote service](remote.md). This stores a startup setting in the state directory. A running service needs an explicit restart to enable it. Installing again without `--share` disables the setting and removes only the unchanged Serve rule that a-stack owns.
+
 The service runs the `a-stack` binary that you ran, with its real path, and the state directory that the CLI uses. Run `a-stack service install` again after you move the binary or change the state directory. It changes nothing when the service is up to date.
 
 `a-stack service status` shows the service, the binary and the state directory that it uses, and the result of `a-stack health`. `--json` prints the same as one JSON object. `a-stack service uninstall` stops the service and removes it. It never touches the state directory. The sections below give the details for each system.
