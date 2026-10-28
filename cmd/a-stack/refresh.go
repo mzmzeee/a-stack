@@ -21,12 +21,14 @@ import (
 // header or a matching filename alone is not evidence that a file is ours.
 var installedHashes = map[string][]string{
 	"a-stack/SKILL.md": {
+		"53b9655db7cdd9936c14f94e246e00d6f3c1ddeda09e00a531b09638e67afb6b",
 		"196de764c002295babe1481128d98118713516c779f0dae0e50d0c148608c77e",
 		"4cb13e86d41fc5bea17af4ae8875b2066ff2a40ea53946801d5d5a3ae7a338b3",
 		"f8c2f623096c7535da88b3a48c31eae8cfa97da01e944cee75b22d11ae8584b2",
 		"fb5c304cd5d9e1d39a5ea43eaa6806d67dfd63ea5e7c82146883cb986c3c2a8e",
 	},
 	"a-stack/references/commands.md": {
+		"8569bfadcc001cf294d1f73f9ed4fd76facd1c4d9a551bad3ade23c11107361d",
 		"7e39a943254c75f532851334d84ab0dced7d3b4669c63453acc82dbacd5944d1",
 		"27bd06fb857831056420dbd15540fd9871f4cb803b9cf92d347434ac0b9905ee",
 		"2d54b3a97b0c1af04659f07f8ef203df9c1ba6841b3487b93768ae3c5aff928f",
