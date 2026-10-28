@@ -500,7 +500,11 @@ func updateCommand(release versionFlag, check, noRestart, noRefresh, machine boo
 	folders, files := []string{}, []string{}
 	if !noRefresh {
 		var ok bool
-		folders, files, ok = refreshInstalls(exe)
+		var refreshWarnings []string
+		folders, files, refreshWarnings, ok = refreshInstalls(exe)
+		warnings = append(warnings, refreshWarnings...)
+		data["warnings"] = warnings
+		lines = append(lines, refreshWarnings...)
 		if !ok {
 			warning := "Warning: a-stack " + target + " could not safely refresh the installed skill and Pi/OpenCode files; run a-stack update --refresh with a version that supports it."
 			warnings = append(warnings, warning)
@@ -583,18 +587,19 @@ func syncDir(dir string) error {
 
 // refreshInstalls asks the replacement binary for its embedded files. The
 // distinct command fails safely on old versions without guarded refresh.
-func refreshInstalls(exe string) (folders, files []string, ok bool) {
+func refreshInstalls(exe string) (folders, files, warnings []string, ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	out, err := exec.CommandContext(ctx, exe, "update", "--refresh", "--json").Output()
 	var result struct {
 		Data struct {
-			Skills []string `json:"skills"`
-			Files  []string `json:"refreshed_files"`
+			Skills   []string `json:"skills"`
+			Files    []string `json:"refreshed_files"`
+			Warnings []string `json:"warnings"`
 		} `json:"data"`
 	}
 	if json.Unmarshal(out, &result) != nil || result.Data.Skills == nil || result.Data.Files == nil {
-		return []string{}, []string{}, false
+		return []string{}, []string{}, nil, false
 	}
-	return result.Data.Skills, result.Data.Files, err == nil
+	return result.Data.Skills, result.Data.Files, result.Data.Warnings, err == nil
 }

@@ -1,18 +1,18 @@
 ---
 name: a-stack
-description: 'REQUIRED before the first a-stack command or me helper that wraps it, and again after a context reset. Load this skill when briefed as an a-stack Agent (such as 02-worker), given an a-stack credential file, Task IDs or Workspace/Session IDs, or asked to coordinate agents through a-stack. Also load for a-stack notices or reminders such as "New a-stack Task mail mentions you" or "a-stack: New Task mail on ..."; instructions to use a-stack Task mail, Needs you, a report, task handoff or standing orders; or a request to be the a-stack Orchestrator or set a-stack up. Covers the CLI work loop, revisions, operation IDs and credentials for Claude Code, Codex, Pi and OpenCode.'
+description: 'Operate a-stack only when this runtime is a registered Agent, verified by its own hook context or an explicit Agent brief, or when the Operator explicitly asks to set a-stack up. Read before the first a-stack command and after context resets. Mentions of a-stack, Task IDs, notices, reports or repository code in other work do not activate this skill. Covers the Agent CLI work loop, credentials, revisions and Task mail.'
 ---
 
 # Work in an a-stack Session
 
 ## Load this skill when
 
-Read this file before the first `a-stack` command (including a `me` helper), and again after a context reset or compaction.
+Read this file before the first `a-stack` command (including a `me` helper), and again after a context reset or compaction, only when:
 
-- You receive an a-stack Agent role, credential file, Task IDs or Workspace/Session IDs.
-- You see an a-stack notice or reminder to check Task mail.
-- You are told to use a-stack Task mail, Needs you, reports, `task handoff` or standing orders, or to coordinate agents through a-stack.
-- You are asked to be the a-stack Orchestrator or set a-stack up.
+- This runtime has its own registered Agent context from an enrolled hook or an explicit Agent brief addressed to it.
+- The Operator explicitly asks you to set a-stack up or be its Orchestrator.
+
+A repository name, Task ID, quoted notice, report, research assignment or generic Herdr notice is not registration. Without your own Agent context, continue the requested work without a-stack. Do not discover credentials, check mail or enroll because of such a mention. A generic notice asks for a mail check only if you already have verified registration.
 
 a-stack is a local service and CLI that lets a human Operator watch a team of AI coding Agents. The Agents share a Task graph, one Task mail thread per Task and Needs you questions through the `a-stack` CLI, and the Operator follows them in a browser view, where the only thing the Operator can do is answer a Needs you question.
 
@@ -59,11 +59,17 @@ A script keeps working in shells that forget functions between commands. Write i
 
 ## Install the hooks
 
-Once, in the folder you work in, install the a-stack hooks for your harness: `a-stack hook install --credential-file /path/to/02-worker.json --claude` (`--codex`, `--pi` or `--opencode` for those; add `--state-dir` if you were given one). They remind you who you are after a compaction, keep you from stopping with a working Task that has no report, and tell you about new Task mail. They work from your next session start or resume; tell the Operator so. Skip this as a Claude Code subagent: the hooks would not reach you.
+Install AND enroll from your own native session, in the folder you work in:
+
+1. Install: `a-stack hook install --credential-file /path/to/02-worker.json --claude`. Use `--codex`, `--pi` or `--opencode` for that harness; add `--state-dir` if given.
+2. Enroll: `me hook enroll --claude` (use the same harness flag). This detects your native session ID from the harness environment. Without the flag it detects a single unambiguous harness. In Herdr, the successful bind below also enrolls, so it can replace this step.
+3. If detection reports missing metadata, use `me hook enroll --claude --native-session NATIVE_SESSION_ID`, or bind through Herdr. Use the native ID reported by the harness, never the a-stack Session ID. Do not invent an ID or look up another runtime's credentials. OpenCode may need this fallback because its session variable is not available in every version.
+
+Completion: enrollment prints success; otherwise keep using your brief and ordinary CLI mail, and report the enrollment blocker. Installation alone is not enrollment. Resume and compaction retain enrollment; every new native session must enroll again. Hooks load from the next start/resume (Pi can `/reload`); tell the Operator if a reload is needed. Skip hook setup as a Claude Code subagent unless its brief explicitly supplies the parent session and subagent IDs; the parent's enrollment never enrolls its subagents.
 
 ## If you run inside Herdr
 
-If `HERDR_PANE_ID` is set in your shell, bind yourself to your pane once, so that a mention can reach you as a short notice: `me herdr bind --agent YOUR_AGENT_ID --expected-revision 1 --operation-id 02-worker-bind-1`. `me session inspect` shows your Agent ID as `your_agent_id`. If it fails with `integration_missing`, tell the Operator the `herdr integration install` command from the message and restart your harness in that pane after installation; do not install it yourself. An existing live binding needs the Operator's `agent rebind --clear-runtime` and a new credential before you bind again; a stale Herdr target can be replaced by your own `herdr bind`. Use your current revision from `me agent list`. Mail works the same without a binding.
+If `HERDR_PANE_ID` is set in your shell, bind yourself from your hook working folder once. This explicitly enrolls the pane’s native session for hooks, and lets a mention reach you as a short notice: `me herdr bind --agent YOUR_AGENT_ID --expected-revision 1 --operation-id 02-worker-bind-1`. `me session inspect` shows your Agent ID as `your_agent_id`. If it fails with `integration_missing`, tell the Operator the `herdr integration install` command from the message and restart your harness in that pane after installation; do not install it yourself. An existing live binding needs the Operator's `agent rebind --clear-runtime` and a new credential before you bind again; a stale Herdr target can be replaced by your own `herdr bind`. Use your current revision from `me agent list`. Mail works the same without a binding.
 
 ## Standing orders
 
@@ -95,7 +101,7 @@ When only the Operator can decide, ask one clear question with `me task attentio
 - Each `@name` in a mail body must be a current assignee of that Task, or the whole send fails with `mention target must be a current Task assignee`. Check who can read and be mentioned with `me mail recipients --task T`, and write other names without `@`. Only assignees can read a Task's mail, so the Orchestrator reads it only when it is assigned.
 - Refer to a credential file only by its path. Never print, paste, log or commit its contents, or the part of a browser URL after `#`.
 - Run every command as yourself, through `me`: with `--as agent` and your own `--credential-file`, which names your Workspace and Session. No Agent command uses the current folder to choose a Workspace or a Session.
-- Keep every piece of work on a Task, so the Operator sees it. When you find work outside your Tasks, ask the Orchestrator in Task mail to create and link a Task for it; do not do it quietly. Keep `progress` true: Working while you work, Waiting with a reason while you wait, and Finished with a report when done.
+- Keep every piece of this registered assignment on a Task, so the Operator sees it. Do unrelated requests without a-stack. When you find work outside your Tasks, ask the Orchestrator in Task mail to create and link a Task for it; do not do it quietly. Keep `progress` true: Working while you work, Waiting with a reason while you wait, and Finished with a report when done.
 - Use only the commands of the work loop and the references. `a-stack` with no command, `a-stack new` and `a-stack -r` (`--resume`) are Operator commands: they use the Operator credential and the current folder, can create Workspaces and Sessions, and can start a second service in the foreground. The one exception is `a-stack new --orchestrator NAME --no-browser --json` when the Operator asked you directly and nobody briefed you (see above); it never starts a service. If you were briefed, your Session already exists; check it with `me session inspect`.
 - Success prints a `data` JSON object on stdout. Failure prints an `error` JSON object (`code`, `message`, `retryable`) on stderr and exits with 2 for `invalid_input` and 1 for all other errors. Check the exit code of each change.
 - The Operator runs the service; leave it running. Never stop it, and never run `a-stack serve` on its state directory. To test a-stack itself, start a disposable service with a `mktemp -d` state directory and give `--state-dir` to every command. Changing `HOME` is not enough, because the Operator's `XDG_STATE_HOME` can still lead to the real state.

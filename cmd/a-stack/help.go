@@ -34,6 +34,8 @@ var helpGroups = []helpGroup{
 		{"skill uninstall", "", "Remove the agent skill from ~/.claude and ~/.agents"},
 		{"hook install", "", "Add a-stack hooks for one Agent to Claude Code and Codex, or Pi or OpenCode"},
 		{"hook uninstall", "", "Remove this folder's a-stack hooks"},
+		{"hook enroll", "", "Enroll this native harness session as the Agent"},
+		{"hook status", "", "Show this Agent’s installed hooks and native-session enrollment"},
 		{"hook", "", "Handle one hook event (run by the harness)"},
 		{"mcp", "", "Serve Agent tools over MCP stdio (requires an Agent credential)"},
 	}},
@@ -197,7 +199,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus", "completion bash", "completion zsh", "completion fish", "completion powershell", "completion install", "completion uninstall", "mcp", "connect")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus", "completion bash", "completion zsh", "completion fish", "completion powershell", "completion install", "completion uninstall", "mcp", "connect", "hook enroll", "hook status")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string
@@ -314,6 +316,7 @@ func flagLabel(fs *flag.FlagSet, name string) string {
 // flagValues names the value of each flag that takes one. A test checks that
 // no help shows the fallback VALUE.
 var flagValues = map[string]string{
+	"harness": "NAME", "native-session": "ID", "native-agent": "ID",
 	"remote":    "NAME",
 	"state-dir": "DIR", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE", "output": "FILE",
 	"herdr-executable": "FILE", "workspace": "ID", "session": "ID", "operation-id": "ID", "path": "DIR",

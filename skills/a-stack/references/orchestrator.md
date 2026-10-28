@@ -71,7 +71,7 @@ Give each Agent only what it needs, in private:
 - The repository or worktree to work in, when the Task changes files.
 - The hook install command, which the Agent runs once in that folder with the flag of its harness: `a-stack hook install --credential-file /private/creds/02-worker.json --claude` (or `--codex`, `--pi`, `--opencode`), with `--state-dir` when it is not the default. The hooks remind the Agent who it is after a compaction, keep it from stopping with a working Task that has no report, and tell it about new Task mail.
 
-A harness reads its hooks when a session starts, so an Agent gets them from its next start or resume; when you start the Agent yourself, run its install first. A Claude Code subagent gets no hooks of its own: in the parent's folder the parent's hooks skip its events, and in a worktree that Claude Code makes for it, the folder is new. Brief it all the same; it works without hooks.
+Installation alone does not enroll the Agent. Every brief must ask the Agent to install AND enroll. After launch, have it run `me hook enroll --claude` (or its own harness flag), or `me herdr bind`, from its hook working folder. The enroll command detects native session metadata; if unavailable, it tells the Agent to pass `--native-session CURRENT_NATIVE_SESSION_ID` or bind through Herdr. Use the harness's own session ID, never the a-stack Session ID. Each new native session must enroll; resume and compaction preserve enrollment. A harness reads its hooks when a session starts, so an Agent gets them from its next start or resume; when you start the Agent yourself, run its install first. A Claude Code subagent gets no hooks of its own: in the parent's folder the parent's hooks skip its events, and in a worktree that Claude Code makes for it, the folder is new. Brief it all the same; it works without hooks.
 
 Keep the Operator credential, other Agents' credentials and the browser URL out of every brief.
 
@@ -88,7 +88,7 @@ Workspace: WORKSPACE_ID   Session: SESSION_ID
 State directory: /private/state   (only if not the default)
 Your name: 02-worker   Your private folder: /tmp/work/02-worker/
 Work in: /path/to/worktree
-Hooks: run once in that folder: a-stack hook install --credential-file /private/creds/02-worker.json --claude (or --codex, --pi, --opencode)
+Hooks: install in that folder with your harness flag, then run me hook enroll with the same flag (or herdr bind). Enrollment must succeed; see the skill for missing native metadata.
 Tasks: A_ID (do first), B_ID (depends on A)
 Other assignees you can @mention: 01-orchestrator
 ```

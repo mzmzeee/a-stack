@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +24,7 @@ import (
 // credential file, Workspace, Session and Agent ID, never the environment.
 
 func isHookCommand(command string) bool {
-	return command == "hook" || command == "hook install" || command == "hook uninstall"
+	return command == "hook" || command == "hook install" || command == "hook uninstall" || command == "hook enroll" || command == "hook status"
 }
 
 // isHookRun reports whether args run the hook handler, which always exits 0.
@@ -31,9 +32,15 @@ func isHookRun(args []string) bool {
 	return len(args) > 0 && args[0] == "hook" && (len(args) == 1 || strings.HasPrefix(args[1], "-"))
 }
 
-type hookFlags struct{ claude, codex, pi, opencode, noStopGuard, noMailNudge bool }
+type hookFlags struct {
+	claude, codex, pi, opencode, noStopGuard, noMailNudge bool
+	harness, nativeSession, nativeAgent                   string
+}
 
 func (f *hookFlags) register(fs *flag.FlagSet) {
+	fs.StringVar(&f.harness, "harness", "", "Harness that emitted the hook event")
+	fs.StringVar(&f.nativeSession, "native-session", "", "Enroll this native harness session ID")
+	fs.StringVar(&f.nativeAgent, "native-agent", "", "Claude Code subagent ID to enroll with its parent session")
 	fs.BoolVar(&f.claude, "claude", false, "Only Claude Code (default: Claude Code and Codex)")
 	fs.BoolVar(&f.codex, "codex", false, "Only Codex (default: Claude Code and Codex)")
 	fs.BoolVar(&f.pi, "pi", false, "Pi, with the a-stack extension; not in the default")
@@ -63,19 +70,20 @@ var hookEvents = []struct {
 }
 
 type hookInput struct {
-	Event            string `json:"hook_event_name"`
-	SessionID        string `json:"session_id"`
-	AgentID          string `json:"agent_id"` // set by Claude Code in a subagent
-	Cwd              string `json:"cwd"`
-	NotificationType string `json:"notification_type"`
-	StopHookActive   bool   `json:"stop_hook_active"`
-	Source           string `json:"source"` // of SessionStart, such as startup or compact
+	enrollmentRevision int64
+	Event              string `json:"hook_event_name"`
+	SessionID          string `json:"session_id"`
+	AgentID            string `json:"agent_id"` // set by Claude Code in a subagent
+	Cwd                string `json:"cwd"`
+	NotificationType   string `json:"notification_type"`
+	StopHookActive     bool   `json:"stop_hook_active"`
+	Source             string `json:"source"` // of SessionStart, such as startup or compact
 }
 
 type hookIdentity struct {
-	state, credential, agent, runtimeID, worktree string
-	ref                                           stack.Context
-	noStopGuard, noMailNudge                      bool
+	state, credential, agent, runtimeID, worktree, harness string
+	ref                                                    stack.Context
+	noStopGuard, noMailNudge                               bool
 }
 
 // runHook handles one hook event. Any failure ends it silently: a hook must
@@ -85,9 +93,13 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	if json.NewDecoder(io.LimitReader(stdin, 16<<20)).Decode(&in) != nil {
 		return
 	}
-	cwd := in.Cwd
-	if canonical, err := stack.ResolvePath(cwd); err == nil {
-		cwd = canonical
+	cwd, err := stack.ResolvePath(in.Cwd)
+	if err != nil || !filepath.IsAbs(in.Cwd) {
+		return
+	}
+	id.worktree, err = stack.ResolvePath(id.worktree)
+	if err != nil {
+		return
 	}
 	if !ownEvent(id, &in, cwd) {
 		return
@@ -96,6 +108,23 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	defer cancel()
 	client, err := stack.NewClient(id.state, id.credential, stack.AgentCapability)
 	if err != nil {
+		return
+	}
+	current, err := inspectSession(ctx, client, id.ref)
+	if err != nil || current.Closed || current.YourAgentID != id.agent {
+		return
+	}
+	agents, err := listPages[stack.Agent](ctx, client, "/v1/agent/list", id.ref)
+	if err != nil {
+		return
+	}
+	valid := false
+	for _, a := range agents {
+		if a.ID == id.agent && a.Revision == in.enrollmentRevision {
+			valid = true
+		}
+	}
+	if !valid {
 		return
 	}
 	if in.Event == "SessionStart" || in.Event == "SubagentStart" {
@@ -124,53 +153,24 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	}
 }
 
-// ownEvent reports whether a hook event belongs to the hook's Agent. The
-// hooks run for every session of the harness, and only events in the Agent's
-// folder can belong to it.
-//
-// A main session's event (no agent_id) belongs to the Agent unless the
-// session started in a folder that holds the Agent's, such as the
-// Orchestrator's: Claude Code reports a main session's folder after a cd, so
-// such a session can reach the folder later. Its SessionStart leaves a marker
-// for that, HASH.away. The SessionStart after a compaction is no new start.
-//
-// A Claude Code subagent's events name the parent's session and carry the
-// subagent's own folder and agent_id. They belong to the Agent only when the
-// subagent works in exactly the Agent's folder, such as a worktree made for
-// it, and the parent session is not the Agent's own: a subagent in its
-// parent's folder, or below it, is not the Agent. A main session's event that
-// belongs to the Agent in its folder leaves a marker for that check,
-// HASH.main. For a subagent, the event's session becomes session and agent
-// ID, so it gets its own cursor file and Stop guard marker.
+// ownEvent requires explicit native-session enrollment; folder containment
+// is only an additional boundary, never evidence of Agent identity.
 func ownEvent(id hookIdentity, in *hookInput, cwd string) bool {
-	if id.worktree == "" {
-		return in.AgentID == ""
-	}
-	marker := func(suffix string) (string, bool) { return hookCacheFile(id.agent, in.SessionID, suffix) }
-	exists := func(file string) bool { _, err := os.Stat(file); return err == nil }
-	if !within(cwd, id.worktree) {
-		if in.AgentID == "" && in.Event == "SessionStart" && in.Source != "compact" && within(id.worktree, cwd) {
-			if away, ok := marker(".away"); ok && !exists(away) {
-				_ = os.WriteFile(away, nil, 0o600)
-			}
-		}
+	home, err := os.UserHomeDir()
+	if err != nil || id.worktree == "" || holdsHome(id.worktree, home) || !within(cwd, id.worktree) {
 		return false
 	}
-	here := filepath.Clean(cwd) == filepath.Clean(id.worktree)
-	if in.AgentID == "" {
-		if away, ok := marker(".away"); ok && exists(away) {
+	in.enrollmentRevision = enrolledHook(id, *in)
+	if in.enrollmentRevision < 1 {
+		return false
+	}
+	if in.AgentID != "" {
+		if filepath.Clean(cwd) != filepath.Clean(id.worktree) {
 			return false
 		}
-		if main, ok := marker(".main"); ok && here && !exists(main) {
-			_ = os.WriteFile(main, nil, 0o600)
-		}
-		return true
+		in.SessionID += "/" + in.AgentID
 	}
-	main, ok := marker(".main")
-	if !here || !ok || exists(main) {
-		return false
-	}
-	in.SessionID += "/" + in.AgentID
+	in.SessionID = strconv.FormatInt(in.enrollmentRevision, 10) + "/" + id.harness + "/" + in.SessionID
 	return true
 }
 
@@ -422,11 +422,11 @@ func writeShim(harness, list string, remove bool) (string, bool, error) {
 }
 
 type hookInstall struct {
-	identity                 hookIdentity
-	name                     string
-	flags                    hookFlags
-	project, remove, machine bool
-	stdout                   io.Writer
+	identity                             hookIdentity
+	name                                 string
+	flags                                hookFlags
+	project, remove, machine, enrollOnly bool
+	stdout                               io.Writer
 }
 
 // run installs or removes the hook entries of one worktree in each settings
@@ -450,12 +450,17 @@ func (h *hookInstall) run(ctx context.Context) error {
 	if home, err := os.UserHomeDir(); err == nil && !h.remove && holdsHome(id.worktree, home) {
 		return invalid("hooks need the Agent's own folder, not your home folder or a folder above it: every agent started below it would act as this Agent; run hook install in the project folder or pass --worktree")
 	}
-	if !h.remove && !shimsSupported && (h.flags.pi || h.flags.opencode) {
+	if !h.remove && !h.enrollOnly && !shimsSupported && (h.flags.pi || h.flags.opencode) {
 		flag := "--pi"
 		if h.flags.opencode {
 			flag = "--opencode"
 		}
 		return invalid(flag + " needs /bin/sh, so it works only on Linux and macOS")
+	}
+	if h.enrollOnly {
+		if err := h.flags.detectNativeSession(); err != nil {
+			return err
+		}
 	}
 	command := ""
 	if !h.remove {
@@ -463,6 +468,18 @@ func (h *hookInstall) run(ctx context.Context) error {
 		if command, err = h.command(ctx); err != nil {
 			return err
 		}
+	}
+	if !h.remove {
+		if err := h.enroll(ctx); err != nil {
+			return err
+		}
+	}
+	if h.enrollOnly {
+		if h.machine {
+			return json.NewEncoder(h.stdout).Encode(map[string]any{"data": map[string]any{"enrolled": true, "agent_id": id.agent}})
+		}
+		_, err := io.WriteString(h.stdout, "Enrolled this native session for a-stack hooks.\n")
+		return err
 	}
 	files, err := hookSettings(h.flags, h.project)
 	if err != nil {
@@ -474,7 +491,11 @@ func (h *hookInstall) run(ctx context.Context) error {
 		if !ok {
 			continue
 		}
-		changed, err := mergeHooks(file, harness, id.worktree, command)
+		harnessCommand := command
+		if command != "" {
+			harnessCommand += " --harness " + harness
+		}
+		changed, err := mergeHooks(file, harness, id.worktree, harnessCommand)
 		if err != nil {
 			return err
 		}
@@ -494,8 +515,14 @@ func (h *hookInstall) run(ctx context.Context) error {
 	if h.remove {
 		key, text = "removed", "Removed the a-stack hooks for "+printable(id.worktree)+" from:\n"
 	}
+	enrollmentCommand := agentCommand(*id) + " hook enroll"
+	if len(files) == 1 {
+		for harness := range files {
+			enrollmentCommand += " --" + harness
+		}
+	}
 	if h.machine {
-		return json.NewEncoder(h.stdout).Encode(map[string]any{"data": map[string]any{"worktree": id.worktree, "agent_id": id.agent, key: done}})
+		return json.NewEncoder(h.stdout).Encode(map[string]any{"data": map[string]any{"enrollment_command": enrollmentCommand, "worktree": id.worktree, "agent_id": id.agent, key: done, "enrollment_required": !h.remove && h.flags.nativeSession == ""}})
 	}
 	if len(done) == 0 {
 		text = "No a-stack hooks for " + printable(id.worktree) + " were installed.\n"
@@ -504,8 +531,11 @@ func (h *hookInstall) run(ctx context.Context) error {
 		text += "  " + file + "\n"
 	}
 	if !h.remove {
+		if h.flags.nativeSession == "" {
+			text += "Hooks stay silent until enrollment. From your own native session, run " + enrollmentCommand + "\nOr run your own herdr bind.\n"
+		}
 		if id.runtimeID == "" {
-			text += "Without --runtime-id the hooks record no runtime state; the reminder, Stop guard and mail nudge still work.\n"
+			text += "Without --runtime-id the hooks record no runtime state.\n"
 		}
 		if _, ok := files["codex"]; ok {
 			text += "Codex runs new hooks only after you trust them: run /hooks in Codex.\n"
@@ -628,6 +658,9 @@ func (h *hookInstall) command(ctx context.Context) (string, error) {
 
 // isOurs reports whether a hook command is an a-stack hook for worktree.
 func isOurs(command, worktree string) bool {
+	for _, harness := range []string{"claude", "codex", "pi", "opencode"} {
+		command = strings.TrimSuffix(command, " --harness "+harness)
+	}
 	return strings.Contains(command, "' hook ") && strings.HasSuffix(command, " --worktree "+quotePath(worktree))
 }
 
