@@ -55,6 +55,7 @@ type Workspace struct {
 	CreatedAt string `json:"created_at"`
 }
 type Session struct {
+	TransferState  string      `json:"transfer_state,omitempty"`
 	Claims         []FileClaim `json:"claims,omitempty"`
 	ID             string      `json:"id"`
 	WorkspaceID    string      `json:"workspace_id"`
@@ -73,6 +74,7 @@ type Session struct {
 	StandingOrders *StandingOrders `json:"standing_orders,omitempty"`
 }
 type Agent struct {
+	Machine         string `json:"machine,omitempty"`
 	ID              string `json:"id"`
 	WorkspaceID     string `json:"workspace_id"`
 	SessionID       string `json:"session_id"`
@@ -90,6 +92,8 @@ type Agent struct {
 // InstanceID names the running instance, independently of reusable panes/names.
 // Herdr verification is a later adapter's job; this slice executes no harness.
 type RuntimeBinding struct {
+	Machine         string `json:"machine,omitempty"`
+	RemoteMachine   bool   `json:"remote_machine,omitempty"`
 	InstanceID      string `json:"instance_id"`
 	HerdrAlias      string `json:"herdr_alias,omitempty"`
 	Endpoint        string `json:"endpoint,omitempty"`
@@ -115,6 +119,7 @@ type SessionChangeRequest struct {
 	AgentID          string `json:"agent_id,omitempty"`
 }
 type AgentRegisterRequest struct {
+	Machine string `json:"machine,omitempty"`
 	Context
 	OperationID    string `json:"operation_id"`
 	Name           string `json:"name"`
@@ -148,7 +153,7 @@ type Page[T any] struct {
 
 func now() string { return clockNow().UTC().Format(time.RFC3339Nano) }
 func operator(p Principal) error {
-	if p.Kind != OperatorCapability {
+	if p.Kind != OperatorCapability || p.SessionID != "" {
 		return failure("forbidden", "Operator credential required")
 	}
 	return nil
@@ -202,6 +207,10 @@ func loadSession(ctx context.Context, tx *sql.Tx, id string) (Session, error) {
 	if holder.Valid {
 		s.OrchestratorID = &holder.String
 	}
+	err = tx.QueryRowContext(ctx, "SELECT state FROM session_locations WHERE session_id=?", id).Scan(&s.TransferState)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return s, storageError(err)
+	}
 	return s, nil
 }
 
@@ -211,7 +220,7 @@ func ReadSession(ctx context.Context, tx *sql.Tx, p Principal, ref Context) (Ses
 	if !validToken(ref.WorkspaceID) || !validToken(ref.SessionID) {
 		return Session{}, failure("invalid_input", "explicit Workspace and Session IDs required")
 	}
-	if p.Kind != OperatorCapability && p.SessionID != ref.SessionID {
+	if (p.Kind != OperatorCapability || p.SessionID != "") && p.SessionID != ref.SessionID {
 		return Session{}, failure("forbidden", "credential is scoped to another Session")
 	}
 	s, err := loadSession(ctx, tx, ref.SessionID)
@@ -231,6 +240,9 @@ func ReadSession(ctx context.Context, tx *sql.Tx, p Principal, ref Context) (Ses
 		}
 	} else if p.Kind != OperatorCapability && p.Kind != BrowserCapability {
 		return s, failure("forbidden", "Session read capability required")
+	}
+	if err = sessionTransferGuard(ctx, tx, s.ID); err != nil {
+		return s, err
 	}
 	return s, nil
 }
@@ -316,7 +328,7 @@ func (s *Store) ChangeSession(ctx context.Context, token, action string, r Sessi
 		return Receipt{}, failure("invalid_input", "agent_id applies only to appointment")
 	}
 	return s.Mutate(ctx, token, operation(r.OperationID, "session."+action, r.SessionID, r), replaySession, func(ctx context.Context, tx *sql.Tx, p Principal) (Receipt, error) {
-		if err := operator(p); err != nil {
+		if err := sessionOperator(p, r.SessionID); err != nil {
 			return Receipt{}, err
 		}
 		session, err := ReadSession(ctx, tx, p, r.Context)
@@ -392,7 +404,7 @@ func agentInSession(ctx context.Context, tx *sql.Tx, id, session string) (Agent,
 	if !validToken(id) {
 		return a, failure("invalid_input", "Agent ID required")
 	}
-	err := tx.QueryRowContext(ctx, "SELECT id,workspace_id,session_id,name,worktree_path,revision,runtime_id IS NOT NULL,runtime_state,observed_at,created_at,updated_at FROM agents WHERE id=? AND session_id=?", id, session).Scan(&a.ID, &a.WorkspaceID, &a.SessionID, &a.Name, &a.WorktreePath, &a.Revision, &a.RuntimeAttached, &a.RuntimeState, &a.ObservedAt, &a.CreatedAt, &a.UpdatedAt)
+	err := tx.QueryRowContext(ctx, "SELECT id,workspace_id,session_id,name,worktree_path,revision,runtime_id IS NOT NULL,runtime_state,observed_at,created_at,updated_at,coalesce(json_extract(binding,'$.machine'),'') FROM agents WHERE id=? AND session_id=?", id, session).Scan(&a.ID, &a.WorkspaceID, &a.SessionID, &a.Name, &a.WorktreePath, &a.Revision, &a.RuntimeAttached, &a.RuntimeState, &a.ObservedAt, &a.CreatedAt, &a.UpdatedAt, &a.Machine)
 	if errors.Is(err, sql.ErrNoRows) {
 		return a, failure("not_found", "Agent not found in Session")
 	}
@@ -429,7 +441,15 @@ func (s *Store) RegisterAgent(ctx context.Context, token string, r AgentRegister
 	var path string
 	var prepareErr error
 	if r.WorktreePath != "" {
-		path, prepareErr = canonicalDirectory(r.WorktreePath)
+		if _, remote := ActorFromContext(ctx); remote && r.Machine != "" {
+			path = r.WorktreePath
+			absolute := filepath.IsAbs(path) || len(path) > 2 && path[1] == ':' && (path[2] == '\\' || path[2] == '/')
+			if !absolute || len(path) > 1024 || validPlainText("worktree", path, 1024) != nil {
+				prepareErr = failure("invalid_input", "remote worktree must be an absolute path")
+			}
+		} else {
+			path, prepareErr = canonicalDirectory(r.WorktreePath)
+		}
 	}
 	return s.Mutate(ctx, token, operation(r.OperationID, "agent.register", r.SessionID, r), replayAgent, func(ctx context.Context, tx *sql.Tx, p Principal) (Receipt, error) {
 		session, err := OpenSession(ctx, tx, p, r.Context)
@@ -458,7 +478,16 @@ func (s *Store) RegisterAgent(ctx context.Context, token string, r AgentRegister
 		if err = installAgentHash(ctx, tx, r.CredentialHash, id, session.ID); err != nil {
 			return Receipt{}, err
 		}
-		_, err = tx.ExecContext(ctx, "INSERT INTO agents(id,workspace_id,session_id,name,worktree_path,created_at,updated_at) VALUES(?,?,?,?,?,?,?)", id, r.WorkspaceID, session.ID, r.Name, path, timestamp, timestamp)
+		var metadata any
+		if r.Machine != "" {
+			if err = validPlainText("machine", r.Machine, 256); err != nil {
+				return Receipt{}, err
+			}
+			_, remote := ActorFromContext(ctx)
+			encoded, _ := json.Marshal(RuntimeBinding{Machine: r.Machine, RemoteMachine: remote})
+			metadata = string(encoded)
+		}
+		_, err = tx.ExecContext(ctx, "INSERT INTO agents(id,workspace_id,session_id,name,worktree_path,binding,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)", id, r.WorkspaceID, session.ID, r.Name, path, metadata, timestamp, timestamp)
 		if err != nil {
 			return Receipt{}, err
 		}
@@ -508,7 +537,7 @@ func (s *Store) bindAgent(ctx context.Context, token, action string, r AgentBind
 			return Receipt{}, err
 		}
 		if action == "rebind" {
-			if err = operator(p); err != nil {
+			if err = sessionOperator(p, session.ID); err != nil {
 				return Receipt{}, err
 			}
 		} else if p.Kind != AgentCapability || p.SubjectID != r.AgentID {
@@ -537,7 +566,14 @@ func (s *Store) bindAgent(ctx context.Context, token, action string, r AgentBind
 				return Receipt{}, failure("conflict", "runtime instance already attached")
 			}
 			runtimeID = r.Runtime.InstanceID
-			b, _ := json.Marshal(r.Runtime)
+			value := *r.Runtime
+			if value.Machine == "" {
+				value.Machine = agent.Machine
+			}
+			if _, remote := ActorFromContext(ctx); remote {
+				value.RemoteMachine = true
+			}
+			b, _ := json.Marshal(value)
 			binding = string(b)
 		}
 		if action == "rebind" {

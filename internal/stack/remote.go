@@ -283,7 +283,7 @@ func newRemoteClient(ctx context.Context, name, credentialFile string, kind Capa
 	if h.DatabaseID != p.DatabaseID {
 		return nil, failure("conflict", "remote database changed; remove and reconnect the profile after checking the server")
 	}
-	return &Client{Discovery: Discovery{p.URL, h.DatabaseID, h.InstanceID}, Credential: c, HTTP: client}, nil
+	return &Client{RemoteName: name, Discovery: Discovery{p.URL, h.DatabaseID, h.InstanceID}, Credential: c, HTTP: client}, nil
 }
 
 // Keep health discovery separate from the authenticated local health response.

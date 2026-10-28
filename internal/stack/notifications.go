@@ -145,7 +145,7 @@ func (n *notifier) nextTarget(ctx context.Context, session string) (noticeTarget
 	var t noticeTarget
 	err := n.store.db.QueryRowContext(ctx, `SELECT a.id,a.session_id,a.revision,COALESCE(a.binding,'') FROM agents a JOIN sessions s ON s.id=a.session_id
  LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id
- WHERE s.closed=0 AND (?='' OR s.id=?) AND (COALESCE(d.next_attempt,0) BETWEEN 0 AND ?
+ WHERE s.closed=0 AND COALESCE(json_extract(a.binding,'$.remote_machine'),0)=0 AND (?='' OR s.id=?) AND (COALESCE(d.next_attempt,0) BETWEEN 0 AND ?
  OR (d.reason='notice_waiting_idle' AND a.runtime_state IN ('idle','done')))
  AND NOT EXISTS(SELECT 1 FROM notice_batches b WHERE b.session_id=s.id AND b.recipient_id=a.id AND b.state='submitting')
  AND (EXISTS(SELECT 1 FROM mail_mentions m JOIN task_assignees x ON x.task_id=m.task_id AND x.agent_id=m.recipient_id

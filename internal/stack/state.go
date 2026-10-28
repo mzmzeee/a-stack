@@ -262,6 +262,7 @@ func (l *stateLock) close() { unlockFile(l.file) }
 // Workspace, Session and Agent; these fields are not secret and give no access.
 // Files from before v0.1.5 have none of them.
 type Credential struct {
+	Remote      string         `json:"remote,omitempty"`
 	Kind        CapabilityKind `json:"kind"`
 	Token       string         `json:"token"`
 	WorkspaceID string         `json:"workspace_id,omitempty"`
@@ -278,7 +279,7 @@ func validToken(token string) bool {
 	return err == nil && len(b) == 32 && base64.RawURLEncoding.EncodeToString(b) == token
 }
 func validContext(c Credential) bool {
-	return (c.WorkspaceID == "" || validToken(c.WorkspaceID)) && (c.SessionID == "" || validToken(c.SessionID)) && (c.AgentName == "" || agentName.MatchString(c.AgentName))
+	return (c.Remote == "" || remoteName.MatchString(c.Remote)) && (c.WorkspaceID == "" || validToken(c.WorkspaceID)) && (c.SessionID == "" || validToken(c.SessionID)) && (c.AgentName == "" || agentName.MatchString(c.AgentName))
 }
 func ReadCredential(path string) (Credential, error) {
 	data, err := privateRead(path)

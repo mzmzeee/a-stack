@@ -80,6 +80,11 @@ func (s *Store) ReadOrders(ctx context.Context, token string, ref Context) (Stan
 	}
 	switch p.Kind {
 	case OperatorCapability:
+		if p.SessionID != "" {
+			if _, err = ReadSession(ctx, tx, p, Context{WorkspaceID: ref.WorkspaceID, SessionID: p.SessionID}); err != nil {
+				return StandingOrders{}, err
+			}
+		}
 		if err = workspaceExists(ctx, tx, ref.WorkspaceID); err != nil {
 			return StandingOrders{}, err
 		}

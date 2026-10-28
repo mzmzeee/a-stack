@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-const schemaVersion = 12
+const schemaVersion = 13
 const applicationID = 0x4153544b
 const migration1 = `
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -518,6 +518,11 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 			return storageError(err)
 		}
 	}
+	if version < 13 {
+		if _, err = tx.ExecContext(ctx, migration13+"PRAGMA user_version=13;"); err != nil {
+			return storageError(err)
+		}
+	}
 	var broken bool
 	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pragma_foreign_key_check)").Scan(&broken); err != nil {
 		return storageError(err)
@@ -573,7 +578,7 @@ func authenticate(ctx context.Context, q interface {
 		return p, failure("unauthorized", "valid bearer credential required")
 	}
 	var expires int64
-	err := q.QueryRowContext(ctx, "SELECT kind,subject_id,session_id,expires_at FROM capabilities WHERE token_hash=?", tokenHash(token)).Scan(&p.Kind, &p.SubjectID, &p.SessionID, &expires)
+	err := q.QueryRowContext(ctx, "SELECT c.kind,c.subject_id,coalesce(o.session_id,c.session_id),c.expires_at FROM capabilities c LEFT JOIN session_operators o ON o.token_hash=c.token_hash WHERE c.token_hash=?", tokenHash(token)).Scan(&p.Kind, &p.SubjectID, &p.SessionID, &expires)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && expires != 0 && expires <= clockNow().Unix() {
 		return p, failure("unauthorized", "valid bearer credential required")
 	}
@@ -832,8 +837,8 @@ func (s *Store) Backup(ctx context.Context, token, destination string) (StorageS
 	if err != nil {
 		return empty, err
 	}
-	if p.Kind != OperatorCapability {
-		return empty, failure("forbidden", "Operator credential required")
+	if p.Kind != OperatorCapability || p.SessionID != "" {
+		return empty, failure("forbidden", "service-wide Operator credential required")
 	}
 	f, err := os.CreateTemp(parent, ".a-stack-backup-*")
 	if err != nil {

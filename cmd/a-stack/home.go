@@ -451,6 +451,13 @@ func (h *home) open(ctx context.Context, client *stack.Client, r sessionRow, oth
 }
 
 func (h *home) openWith(ctx context.Context, client *stack.Client, r sessionRow, fields map[string]any, before, after []string) error {
+	if r.Remote != "" {
+		var err error
+		client, err = stack.NewRemoteClient(ctx, r.Remote, r.CredentialFile, stack.OperatorCapability)
+		if err != nil {
+			return err
+		}
+	}
 	fields["workspace_id"], fields["workspace_path"] = r.WorkspaceID, r.WorkspacePath
 	fields["session_id"], fields["session_name"] = r.SessionID, r.Name
 	fields["current_folder"] = r.CurrentFolder
@@ -493,6 +500,9 @@ func (h *home) sessions(ctx context.Context, client *stack.Client) ([]sessionRow
 			return nil, err
 		}
 		for _, s := range sessions {
+			if s.TransferState == "sealed" || s.TransferState == "staged" {
+				continue
+			}
 			r := sessionRow{WorkspaceID: w.ID, WorkspacePath: w.Path, SessionID: s.ID, Name: s.Name, Closed: s.Closed, CurrentFolder: current != "" && w.Path == current}
 			r.ChangedAt = later(r.ChangedAt, s.UpdatedAt)
 			tasks, err := listPages[stack.Task](ctx, client, "/v1/task/list", stack.Context{WorkspaceID: w.ID, SessionID: s.ID})
@@ -508,6 +518,13 @@ func (h *home) sessions(ctx context.Context, client *stack.Client) ([]sessionRow
 			}
 			rows = append(rows, r)
 		}
+	}
+	links, err := sessionLinks(ctx, client)
+	if err != nil {
+		return nil, err
+	}
+	for _, link := range links {
+		rows = append(rows, sessionRow{WorkspaceID: link.WorkspaceID, WorkspacePath: link.Path, SessionID: link.SessionID, Name: link.Name, Remote: link.Remote, CredentialFile: link.CredentialFile, CurrentFolder: within(h.cwd, link.Path)})
 	}
 	sortRows(rows)
 	return rows, nil
