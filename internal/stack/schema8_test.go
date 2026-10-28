@@ -125,8 +125,8 @@ func TestMigration8RowidTablesKeepReadsAndConstraints(t *testing.T) {
 			t.Fatalf("%s is still WITHOUT ROWID", table)
 		}
 	}
-	// The primary key and UNIQUE(task_id,sequence) are left; UNIQUE(id,task_id) is gone.
-	if n := countTest(t, s, "SELECT count(*) FROM pragma_index_list('mail_messages')"); n != 2 {
+	// The primary key, sequence and urgent indexes remain; UNIQUE(id,task_id) is gone.
+	if n := countTest(t, s, "SELECT count(*) FROM pragma_index_list('mail_messages')"); n != 3 {
 		t.Fatalf("mail_messages has %d indexes", n)
 	}
 	if after := schema8Reads(t, f, tasks); after != before {

@@ -5,7 +5,7 @@ Claude Code, Codex, Pi and OpenCode can run a command on events in an agent's se
 - When a session starts, resumes, is cleared or is compacted, the agent gets a short reminder in its context: its a-stack name and Session, how to run a-stack as itself, its open Tasks with their status, to load the `a-stack` skill before running commands and then run `mail check`, and the Workspace's [standing orders](lifecycle.md#standing-orders) (the first 8 lines, and the command for the rest). So the agent keeps the a-stack protocol after a compaction.
 - The Agent's runtime state in the Operator's view follows the agent: `working` when you send a prompt and after each tool call, `blocked` when it waits for a permission or an input dialog, and `idle` when it stops.
 - The [Stop guard](#stop-guard) keeps the agent from stopping once while a Task that it set `working` has no report.
-- The [Task mail nudge](#task-mail-nudge) tells the agent when another assignee wrote Task mail, at most every 30 seconds.
+- The [Task mail nudge](#task-mail-nudge) tells the agent when another assignee wrote Task mail, at most every 30 seconds for normal mail, or at the next eligible boundary for urgent mail.
 
 ## Enrollment
 
@@ -185,7 +185,7 @@ The guard costs two reads at each stop: the assignments and the Task list. A wor
 
 ## Task mail nudge
 
-After a tool call or a prompt, the hook checks the Agent's Task mail, at most once every 30 seconds per harness session. When another assignee wrote since the last check, the agent gets this in its context:
+After a tool call or a prompt, the hook checks the Agent's normal Task mail, at most once every 30 seconds per harness session. When another assignee wrote since the last check, the agent gets this in its context:
 
 ```text
 a-stack: New Task mail on "Build the parser"; load the a-stack skill, then run mail check.
@@ -195,10 +195,26 @@ The note names only the Task titles: no sender and no mail text. The agent then 
 
 The hook keeps its own mail cursor file, so it never moves the Agent's cursor file. There is one per Agent and harness session: `~/.cache/a-stack/hooks/AGENT_ID/HASH.json` (below `$XDG_CACHE_HOME` when set; on macOS below `~/Library/Caches`; on Windows `%LOCALAPPDATA%\a-stack-hooks\AGENT_ID\HASH.json`), where `HASH` comes from the Agent identity revision, harness and native session ID (plus subagent ID, when enrolled). The folder has mode 0700 and the files 0600. The hook removes files unused for 7 days. Deleting the folder is safe.
 
-- At `SessionStart`, or at the first check of a harness session, the hook reads up to the newest message and says nothing about earlier mail. The reminder already says to run `mail check`. When this first check runs out of time on a long backlog, it keeps its place in `HASH.first.json`, and the next hook run goes on from there, still without a note.
-- Each check moves the cursor past the messages it saw, so the hook names a message once. Mail the Agent sent itself is skipped.
+- For normal mail, at `SessionStart`, or at the first check of a harness session, the hook reads up to the newest message and says nothing about earlier mail. The reminder already says to run `mail check`. When this first check runs out of time on a long backlog, it keeps its place in `HASH.first.json`, and the next hook run goes on from there, still without a note.
+- Each normal check moves the cursor past the messages it saw, so the hook names a normal message once. It skips urgent messages, which have their own high-water marks. Mail the Agent sent itself is skipped.
 - Of two hook runs of the same Agent at once, one checks and the other skips the check.
-- When the check fails, the hook waits 30 seconds before it checks again. When the cursor file is broken or a cursor no longer fits, it starts again at the newest message.
+- When the normal check fails, the hook waits 30 seconds before it checks again. When the cursor file is broken or a cursor no longer fits, it starts again at the newest message.
+
+Hook peeks do not re-arm Herdr notices and do not create acknowledgements.
+
+### Urgent mail
+
+`mail send --urgent` and `mail reply --urgent` bypass only the normal scan's throttle. Each eligible `PostToolUse` or `UserPromptSubmit` boundary polls body-free urgent references, under the same lock. It keeps separate high-water marks in `HASH.urgent.json`, including overdue ACK reminders. A successful poll covers at most 100 assigned Tasks; larger assignment sets continue on subsequent boundaries. Normal scans cannot consume urgent references, and urgent scans never move the normal or Agent-owned cursor. First catch-up does not discard urgent mail. Rejoining restores history, not old urgent wake attempts.
+
+One fixed note covers each new batch, with no Task titles, senders or message bodies:
+
+```text
+a-stack: Urgent Task mail; load the a-stack skill, then run your own mail check before continuing.
+```
+
+The note is under 128 bytes. The existing 2-second deadline remains fail-open. A failed poll leaves the urgent marks unchanged. Urgency requires installed, enabled and enrolled mail hooks; `hook status` exposes `urgent_mail` for the checked native session. It cannot prove that the harness loaded or trusted those hooks. `--no-mail-nudge` disables both priorities.
+
+This is the next eligible boundary after a successful poll, not an interrupt or a wall-clock guarantee. A foreground tool or a whole batch of tools can delay it. Claude Code's `PostToolUse` covers successful tools; Codex covers local tools, not hosted tools. Pi and OpenCode use their existing tool-result adapters. No-tools responses and idle panes have no tool-result boundary. Herdr delivery, permission-dialog safety and its one-pending-notice rule are unchanged. The Agent must fetch its authorized mail; the nudge is not proof of understanding or compliance.
 
 Enrollment adds an open-Session read and an Agent-list read before acting. A mail note costs one more read for each Task with new mail. Unenrolled sessions make no service requests.
 

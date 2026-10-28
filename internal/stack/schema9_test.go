@@ -65,7 +65,7 @@ func TestMigration9KeepsAgentMailAndAllowsOperatorMail(t *testing.T) {
 	if _, err := os.Stat(path + ".pre-v8"); err != nil {
 		t.Fatal("no copy before the migration:", err)
 	}
-	if !strings.Contains(s.Migrated, "from schema 8 to 12") {
+	if !strings.Contains(s.Migrated, "from schema 8 to 14") {
 		t.Fatal("migration line:", s.Migrated)
 	}
 	if after := schema8Reads(t, f, tasks); after != before {

@@ -76,7 +76,7 @@ func (s *Store) AnswerQuestion(ctx context.Context, token string, r AnswerReques
 			return Receipt{}, err
 		}
 		id := opaqueID()
-		if _, err = tx.ExecContext(ctx, "INSERT INTO mail_messages(id,task_id,sequence,sender_kind,sender_id,received_at,body,actor_login,actor_name) VALUES(?,?,?,'operator',NULL,?,?,?,?)", id, task.ID, sequence, timestamp, r.Answer, login, name); err != nil {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO mail_messages(id,task_id,sequence,sender_kind,sender_id,received_at,body,actor_login,actor_name,priority) VALUES(?,?,?,'operator',NULL,?,?,?,?,'urgent')", id, task.ID, sequence, timestamp, r.Answer, login, name); err != nil {
 			return Receipt{}, err
 		}
 		if _, err = tx.ExecContext(ctx, "INSERT INTO mail_mentions SELECT ?,task_id,agent_id,?,? FROM task_assignees WHERE task_id=?", id, NoticePending, timestamp, task.ID); err != nil {

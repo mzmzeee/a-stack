@@ -95,16 +95,16 @@ func TestOldUpdaterRetainsEnrollmentDiagnostic(t *testing.T) {
 				t.Fatal("enrollment did not clear notice", errout)
 			}
 			out, errout, code := f.run(f.workerFile, "hook", "status", "--"+harness, "--native-session", "native", "--json")
-			if code != 0 || !strings.Contains(out, `"enrolled":true`) || !strings.Contains(out, `"migration_pending":false`) {
+			if code != 0 || !strings.Contains(out, `"enrolled":true`) || !strings.Contains(out, `"urgent_mail":true`) || !strings.Contains(out, `"migration_pending":false`) {
 				t.Fatal(out, errout)
 			}
 			out, errout, code = f.run(f.workerFile, "hook", "status", "--"+harness, "--native-session", "unrelated", "--json")
-			if code != 0 || strings.Contains(out, `"enrolled":true`) || !strings.Contains(out, `"agent_enrolled":true`) {
+			if code != 0 || strings.Contains(out, `"urgent_mail":true`) || strings.Contains(out, `"enrolled":true`) || !strings.Contains(out, `"agent_enrolled":true`) {
 				t.Fatal("status adopted another session", out, errout)
 			}
 			f.receipt(f.workerFile, f.scoped("agent", "attach", "--agent", f.worker, "--runtime-id", "new-binding", "--expected-revision", "1", "--operation-id", "status-binding-change")...)
 			out, errout, code = f.run(f.workerFile, "hook", "status", "--"+harness, "--native-session", "native", "--json")
-			if code != 0 || strings.Contains(out, `"agent_enrolled":true`) || strings.Contains(out, `"enrolled":true`) {
+			if code != 0 || strings.Contains(out, `"urgent_mail":true`) || strings.Contains(out, `"agent_enrolled":true`) || strings.Contains(out, `"enrolled":true`) {
 				t.Fatal("status accepted stale binding", out, errout)
 			}
 		})

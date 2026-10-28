@@ -43,6 +43,7 @@ const (
 )
 
 type MailMessage struct {
+	Priority   string    `json:"priority"`
 	Acks       []MailAck `json:"acks,omitempty"`
 	ActorLogin string    `json:"actor_login,omitempty"`
 	ActorName  string    `json:"actor_name,omitempty"`
@@ -61,6 +62,7 @@ type MailMessage struct {
 }
 type MailSendRequest struct {
 	Context
+	Priority    string   `json:"priority,omitempty"`
 	AckRequired bool     `json:"ack_required,omitempty"`
 	AckFrom     []string `json:"ack_from,omitempty"`
 	AckDue      string   `json:"ack_due,omitempty"`
@@ -86,6 +88,7 @@ type MailPage struct {
 }
 type MailCheckRequest struct {
 	Context
+	Peek      bool              `json:"peek,omitempty"`
 	Cursors   map[string]string `json:"cursors,omitempty"`
 	AfterTask string            `json:"after_task,omitempty"`
 	TaskLimit int               `json:"task_limit,omitempty"`
@@ -223,6 +226,9 @@ func mentionError(ctx context.Context, tx *sql.Tx, task string, bad []string) er
 	return failure("invalid_input", "mention target must be a current Task assignee: "+strings.Join(bad, ", ")+verb+" of this Task; assignees: "+strings.Join(names, ", ")+"; run mail recipients --task "+task+"; write other names without @")
 }
 func (s *Store) SendMail(ctx context.Context, token string, r MailSendRequest) (Receipt, error) {
+	if r.Priority == "normal" {
+		r.Priority = ""
+	} // preserve default-priority retry identity
 	names, prepareErr := mentionNames(r.Body, append(append([]string{}, r.Mentions...), r.AckFrom...))
 	return s.Mutate(ctx, token, operation(r.OperationID, "mail.send", r.SessionID, r), func(ctx context.Context, tx *sql.Tx, p Principal, receipt Receipt) error {
 		var taskID string
@@ -250,6 +256,12 @@ func (s *Store) SendMail(ctx context.Context, token string, r MailSendRequest) (
 }
 
 func appendMailTx(ctx context.Context, tx *sql.Tx, p Principal, r MailSendRequest, names []string) (Receipt, error) {
+	if r.Priority == "" {
+		r.Priority = "normal"
+	}
+	if r.Priority != "normal" && r.Priority != "urgent" {
+		return Receipt{}, failure("invalid_input", "mail priority must be normal or urgent")
+	}
 	recipients, err := resolveMentions(ctx, tx, r.TaskID, names)
 	if err != nil {
 		return Receipt{}, err
@@ -259,7 +271,7 @@ func appendMailTx(ctx context.Context, tx *sql.Tx, p Principal, r MailSendReques
 		return Receipt{}, err
 	}
 	id, timestamp := opaqueID(), now()
-	_, err = tx.ExecContext(ctx, "INSERT INTO mail_messages(id,task_id,sequence,sender_id,received_at,body) VALUES(?,?,?,?,?,?)", id, r.TaskID, sequence, p.SubjectID, timestamp, r.Body)
+	_, err = tx.ExecContext(ctx, "INSERT INTO mail_messages(id,task_id,sequence,sender_id,received_at,body,priority) VALUES(?,?,?,?,?,?,?)", id, r.TaskID, sequence, p.SubjectID, timestamp, r.Body, r.Priority)
 	if err != nil {
 		return Receipt{}, err
 	}
@@ -297,7 +309,7 @@ func suppressTaskMentions(ctx context.Context, tx *sql.Tx, task, recipient strin
 }
 func readMailMessage(ctx context.Context, tx *sql.Tx, task string, sequence int64) (MailMessage, error) {
 	message := MailMessage{MentionIDs: []string{}}
-	err := tx.QueryRowContext(ctx, "SELECT m.id,m.task_id,m.sequence,m.sender_kind,COALESCE(m.sender_id,''),COALESCE(a.name,''),m.received_at,m.body,COALESCE(m.actor_login,''),COALESCE(m.actor_name,'') FROM mail_messages m LEFT JOIN agents a ON a.id=m.sender_id WHERE m.task_id=? AND m.sequence=?", task, sequence).Scan(&message.ID, &message.TaskID, &message.Sequence, &message.SenderKind, &message.SenderID, &message.SenderName, &message.ReceivedAt, &message.Body, &message.ActorLogin, &message.ActorName)
+	err := tx.QueryRowContext(ctx, "SELECT m.id,m.task_id,m.sequence,m.sender_kind,COALESCE(m.sender_id,''),COALESCE(a.name,''),m.received_at,m.body,m.priority,COALESCE(m.actor_login,''),COALESCE(m.actor_name,'') FROM mail_messages m LEFT JOIN agents a ON a.id=m.sender_id WHERE m.task_id=? AND m.sequence=?", task, sequence).Scan(&message.ID, &message.TaskID, &message.Sequence, &message.SenderKind, &message.SenderID, &message.SenderName, &message.ReceivedAt, &message.Body, &message.Priority, &message.ActorLogin, &message.ActorName)
 	if err != nil {
 		return message, err
 	}

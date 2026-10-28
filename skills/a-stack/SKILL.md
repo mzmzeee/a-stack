@@ -94,6 +94,8 @@ If an a-stack hook blocks you from stopping, follow the report/finish ownership 
 
 When only the Operator can decide, ask one clear question with `me task attention set --task T --question 'Which release gets this?' --expected-revision R --operation-id 02-worker-ask-1`. Then stop, and say in your conversation that you wait for the Operator's answer. The Operator answers in your conversation, or with `a-stack answer` or the browser view. That answer arrives as Task mail from the Operator (`sender_name` is `Operator`), and it already resolves the question: read it with `mail check`, and run `task show` again for the new revision. When the Operator answers in your conversation instead, run `task attention resolve` with a `--note` (see [references/commands.md](references/commands.md)).
 
+Use `mail send|reply --urgent` rarely: a stop request, blocker or contract change that must be read before continuing. It needs enrolled mail hooks and grants no extra authority.
+
 ## Rules
 
 - Every change needs `--operation-id` with 8 to 128 letters, digits, `_` or `-`. Use a new, unique ID for each change, such as `02-worker-mail-03`. Reuse an ID only to retry the same unchanged command after a lost response.
