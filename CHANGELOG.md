@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Hooks now require explicit enrollment of the exact native harness session on this machine. Fresh sessions and legacy home-folder installs stay silent; rebinds invalidate enrollment. Generic notices and the Agent skill act only for a verified registered Agent.
+
 ### Fixed
 
 - `a-stack new` and `hook install` refuse your home folder and the folders above it. Pi and OpenCode hooks run in every session, so hooks for the home folder made every agent started anywhere below it act as that Session's Orchestrator: it loaded the skill and filed unrelated work as Tasks. To remove such hooks, run `a-stack hook uninstall --pi` (or `--opencode`, `--claude`, `--codex`) in that folder.

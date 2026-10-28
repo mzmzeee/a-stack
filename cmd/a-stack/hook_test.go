@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -91,7 +92,7 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 	}
 	ours := commands(s, "Stop")[1]
 	exe, _ := os.Executable()
-	want := quotePath(exe) + " hook --state-dir " + quotePath(f.state) + " --credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace + " --session " + f.session + " --agent " + f.worker + ` --runtime-id 'it'\''s-me' --worktree ` + quotePath(f.project)
+	want := quotePath(exe) + " hook --state-dir " + quotePath(f.state) + " --credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace + " --session " + f.session + " --agent " + f.worker + ` --runtime-id 'it'\''s-me' --worktree ` + quotePath(f.project) + " --harness claude"
 	if ours != want {
 		t.Fatalf("hook command\n got %s\nwant %s", ours, want)
 	}
@@ -104,7 +105,7 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 		t.Fatalf("Notification group %+v", g)
 	}
 	c := readSettings(t, codex)
-	if _, ok := c.Hooks["Notification"]; ok || len(c.Hooks) != 5 || commands(c, "SessionStart")[0] != want {
+	if _, ok := c.Hooks["Notification"]; ok || len(c.Hooks) != 5 || commands(c, "SessionStart")[0] != strings.TrimSuffix(want, "claude")+"codex" {
 		t.Fatalf("Codex hooks: %+v", c.Hooks)
 	}
 	// The credential file names the Workspace, Session and Agent, so they can
@@ -130,7 +131,7 @@ func TestHookInstallMergesAndUninstallRemovesOnlyItsOwn(t *testing.T) {
 	if out, _, _ = f.run("", install...); !strings.Contains(out, "Installed") {
 		t.Fatalf("reinstall: %q", out)
 	}
-	if c := commands(readSettings(t, claude), "Stop"); len(c) != 3 || c[0] != "say done" || !strings.HasSuffix(c[1], " --no-stop-guard --no-mail-nudge --worktree "+quotePath(other)) || c[2] != want {
+	if c := commands(readSettings(t, claude), "Stop"); len(c) != 3 || c[0] != "say done" || !strings.HasSuffix(c[1], " --no-stop-guard --no-mail-nudge --worktree "+quotePath(other)+" --harness claude") || c[2] != want {
 		t.Fatalf("after reinstall: %v", c)
 	}
 	if out = runSkill(t, "hook", "uninstall"); !strings.Contains(out, "Removed the a-stack hooks for "+f.project+" from:\n  "+claude+"\n  "+codex+"\n") {
@@ -203,7 +204,7 @@ func TestHookInstallPiWritesTheExtension(t *testing.T) {
 	}
 	s := readSettings(t, list)
 	exe, _ := os.Executable()
-	want := quotePath(exe) + " hook --state-dir " + quotePath(f.state) + " --credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace + " --session " + f.session + " --agent " + f.worker + " --worktree " + quotePath(f.project)
+	want := quotePath(exe) + " hook --state-dir " + quotePath(f.state) + " --credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace + " --session " + f.session + " --agent " + f.worker + " --worktree " + quotePath(f.project) + " --harness pi"
 	if _, ok := s.Hooks["Notification"]; ok || len(s.Hooks) != 5 || commands(s, "Stop")[0] != want || commands(s, "PermissionRequest")[0] != want {
 		t.Fatalf("Pi hook list: %+v", s.Hooks)
 	}
@@ -265,7 +266,7 @@ func TestHookInstallOpenCodeWritesThePlugin(t *testing.T) {
 		t.Fatalf("install --opencode: %d %q %s", code, out, errout)
 	}
 	s := readSettings(t, list)
-	if _, ok := s.Hooks["Notification"]; ok || len(s.Hooks) != 5 || !strings.HasSuffix(commands(s, "Stop")[0], " --runtime-id 'oc-1' --worktree "+quotePath(f.project)) {
+	if _, ok := s.Hooks["Notification"]; ok || len(s.Hooks) != 5 || !strings.HasSuffix(commands(s, "Stop")[0], " --runtime-id 'oc-1' --worktree "+quotePath(f.project)+" --harness opencode") {
 		t.Fatalf("OpenCode hook list: %+v", s.Hooks)
 	}
 	if data, err := os.ReadFile(plugin); err != nil || string(data) != opencode.Plugin || !strings.HasPrefix(string(data), opencode.Header) {
@@ -332,6 +333,27 @@ func TestHookInstallRefusesPiAndOpenCodeOnWindows(t *testing.T) {
 	}
 }
 
+func enrollTestHook(t *testing.T, id hookIdentity, session, subagent string) {
+	t.Helper()
+	client, err := stack.NewClient(id.state, id.credential, stack.AgentCapability)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agents, err := listPages[stack.Agent](context.Background(), client, "/v1/agent/list", id.ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, a := range agents {
+		if a.ID == id.agent {
+			if err = enrollHook(id, id.harness, session, subagent, a.Revision); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+	}
+	t.Fatal("Agent not found")
+}
+
 func hookEvent(t *testing.T, id hookIdentity, event string, extra string) string {
 	t.Helper()
 	var out bytes.Buffer
@@ -384,7 +406,8 @@ func TestHookRecordsRuntimeStateAndPrintsTheReminder(t *testing.T) {
 	f.receipt(f.orchFile, f.scoped("task", "assign", "--task", done.ResourceID, "--agent", f.worker, "--expected-revision", "1", "--operation-id", "hook-old-assign")...)
 	f.receipt(f.workerFile, f.scoped("task", "status", "--task", done.ResourceID, "--progress", "finished", "--summary", "Done", "--expected-revision", "2", "--operation-id", "hook-old-finish")...)
 	f.receipt(f.orchFile, f.scoped("task", "create", "--title", "Not mine", "--operation-id", "hook-not-mine")...)
-	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, runtimeID: "worker-runtime", worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}}
+	id := hookIdentity{harness: "claude", state: f.state, credential: f.workerFile, agent: f.worker, runtimeID: "worker-runtime", worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}}
+	enrollTestHook(t, id, "abc", "")
 
 	text := hookContextText(t, hookEvent(t, id, "SessionStart", `,"source":"compact"`), "SessionStart")
 	for _, want := range []string{"a-stack: you are the Agent 02-worker in the a-stack Session \"Build\"", "--credential-file " + quotePath(f.workerFile) + " --workspace " + f.workspace, "Your open Tasks:\n- Build the parser (Task " + f.task + "): working, waits for the Operator's answer\n", "Load the a-stack skill before running commands", "do it without a-stack", "Run mail check now"} {
@@ -444,8 +467,8 @@ func TestHookSubagentEventsReachOnlyTheirOwnAgent(t *testing.T) {
 	if os.MkdirAll(worktree, 0o700) != nil {
 		t.Fatal("fixture")
 	}
-	orch := hookIdentity{state: f.state, credential: f.orchFile, agent: f.orch, worktree: f.project, ref: ref, noMailNudge: true}
-	worker := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: worktree, ref: ref, noMailNudge: true}
+	orch := hookIdentity{harness: "claude", state: f.state, credential: f.orchFile, agent: f.orch, worktree: f.project, ref: ref, noMailNudge: true}
+	worker := hookIdentity{harness: "claude", state: f.state, credential: f.workerFile, agent: f.worker, worktree: worktree, ref: ref, noMailNudge: true}
 	event := func(id hookIdentity, session, agentID, cwd, event, extra string) string {
 		t.Helper()
 		var out bytes.Buffer
@@ -456,6 +479,8 @@ func TestHookSubagentEventsReachOnlyTheirOwnAgent(t *testing.T) {
 		runHook(id, strings.NewReader(input+extra+`}`), &out)
 		return out.String()
 	}
+	enrollTestHook(t, orch, "parent", "")
+	enrollTestHook(t, worker, "parent", "a1")
 	// The parent session runs in the project folder: the Orchestrator's hooks.
 	if text := hookContextText(t, event(orch, "parent", "", f.project, "SessionStart", ""), "SessionStart"); !strings.Contains(text, "you are the Agent 01-orchestrator") {
 		t.Fatalf("parent reminder: %s", text)
@@ -502,7 +527,7 @@ func TestHookParentSessionInAWorkersFolderIsNotTheWorker(t *testing.T) {
 	if os.MkdirAll(worktree, 0o700) != nil {
 		t.Fatal("fixture")
 	}
-	worker := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: worktree, ref: ref, noMailNudge: true}
+	worker := hookIdentity{harness: "claude", state: f.state, credential: f.workerFile, agent: f.worker, worktree: worktree, ref: ref, noMailNudge: true}
 	event := func(session, agentID, cwd, event, extra string) string {
 		t.Helper()
 		var out bytes.Buffer
@@ -530,14 +555,16 @@ func TestHookParentSessionInAWorkersFolderIsNotTheWorker(t *testing.T) {
 			t.Fatalf("the parent's %s in the worker's folder reached the worker: %q", step.event, out)
 		}
 	}
-	// The worker's subagent of that parent keeps the worker's hooks.
+	enrollTestHook(t, worker, "parent", "a1")
+	// The explicitly enrolled subagent keeps the worker's hooks.
 	if text := hookContextText(t, event("parent", "a1", worktree, "SubagentStart", ""), "SubagentStart"); !strings.Contains(text, "you are the Agent 02-worker") {
 		t.Fatalf("subagent reminder: %s", text)
 	}
 	if out := event("parent", "a1", worktree, "SubagentStop", `,"stop_hook_active":false`); !strings.Contains(out, `"decision":"block"`) {
 		t.Fatalf("the subagent's stop passed: %q", out)
 	}
-	// The worker's own session, started in its folder, keeps its hooks; a
+	enrollTestHook(t, worker, "own", "")
+	// The worker's own session, explicitly enrolled, keeps its hooks; a
 	// subagent of it in the same folder is not the worker.
 	if text := hookContextText(t, event("own", "", worktree, "SessionStart", `,"source":"startup"`), "SessionStart"); !strings.Contains(text, "you are the Agent 02-worker") {
 		t.Fatalf("own reminder: %s", text)
@@ -575,7 +602,8 @@ func TestHookStopGuardBlocksOnceUntilTheTaskHasAReport(t *testing.T) {
 	f := newTeam(t)
 	hookHome(t)
 	f.receipt(f.workerFile, f.scoped("agent", "attach", "--agent", f.worker, "--runtime-id", "worker-runtime", "--expected-revision", "1", "--operation-id", "guard-attach")...)
-	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, runtimeID: "worker-runtime", worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}, noMailNudge: true}
+	id := hookIdentity{harness: "claude", state: f.state, credential: f.workerFile, agent: f.worker, runtimeID: "worker-runtime", worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}, noMailNudge: true}
+	enrollTestHook(t, id, "abc", "")
 	stop := func(active bool) string {
 		return hookEvent(t, id, "Stop", `,"stop_hook_active":`+strconv.FormatBool(active))
 	}
@@ -656,10 +684,11 @@ func TestHookStopGuardBlocksOnlyTheAgentThatSetTheTaskWorking(t *testing.T) {
 	rev = f.taskChange(f.orchFile, "owner-assign-orch", rev, "assign", "--agent", f.orch)
 	rev = f.taskChange(f.workerFile, "owner-working", rev, "status", "--progress", "working")
 	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}
-	worker := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: ref, noMailNudge: true}
-	helper := hookIdentity{state: f.state, credential: peerFile, agent: peer, worktree: f.project, ref: ref, noMailNudge: true}
-	orch := hookIdentity{state: f.state, credential: f.orchFile, agent: f.orch, worktree: f.project, ref: ref, noMailNudge: true}
+	worker := hookIdentity{harness: "claude", state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: ref, noMailNudge: true}
+	helper := hookIdentity{harness: "claude", state: f.state, credential: peerFile, agent: peer, worktree: f.project, ref: ref, noMailNudge: true}
+	orch := hookIdentity{harness: "claude", state: f.state, credential: f.orchFile, agent: f.orch, worktree: f.project, ref: ref, noMailNudge: true}
 	stop := func(id hookIdentity, session string) string {
+		enrollTestHook(t, id, session, "")
 		return hookEvent(t, id, "Stop", `,"session_id":"`+session+`","stop_hook_active":false`)
 	}
 	if out := stop(helper, "s1"); out != "" {
@@ -725,8 +754,9 @@ func TestHookMailNudgeFirstCheckThatRunsOutReportsNoOldMail(t *testing.T) {
 	}
 	catchUpPages = 1 // as if the 2 seconds ran out after the first page
 	t.Cleanup(func() { catchUpPages = 20 })
-	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}, noStopGuard: true}
-	sum := sha256.Sum256([]byte("abc"))
+	id := hookIdentity{harness: "claude", state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}, noStopGuard: true}
+	enrollTestHook(t, id, "abc", "")
+	sum := sha256.Sum256([]byte("1/claude/abc"))
 	file := filepath.Join(hookCacheDir(testUserCacheDir(t), f.worker), hex.EncodeToString(sum[:16])+".json")
 	later := func() {
 		old := time.Now().Add(-mailNudgeEvery - time.Second)
@@ -765,9 +795,10 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	own := filepath.Join(home, "own-cursor.json")
 	f.run(f.workerFile, f.scoped("mail", "check", "--cursor-file", own)...)
 	ownBefore, _ := os.ReadFile(own)
-	id := hookIdentity{state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}, noStopGuard: true}
+	id := hookIdentity{harness: "claude", state: f.state, credential: f.workerFile, agent: f.worker, worktree: f.project, ref: stack.Context{WorkspaceID: f.workspace, SessionID: f.session}, noStopGuard: true}
+	enrollTestHook(t, id, "abc", "")
 	dir := hookCacheDir(testUserCacheDir(t), f.worker)
-	sum := sha256.Sum256([]byte("abc"))
+	sum := sha256.Sum256([]byte("1/claude/abc"))
 	file := filepath.Join(dir, hex.EncodeToString(sum[:16])+".json")
 	later := func(path string) {
 		old := time.Now().Add(-mailNudgeEvery - time.Second)
@@ -816,7 +847,7 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	if after, _ := os.ReadFile(own); string(after) != string(ownBefore) {
 		t.Fatal("the hook moved the Agent's own cursor file")
 	}
-	// Another harness session starts at the newest message; a broken cursor
+	// Another, unenrolled harness session stays silent; a broken cursor
 	// file starts again; --no-mail-nudge checks nothing.
 	if out := hookEvent(t, id, "PostToolUse", `,"session_id":"other"`); out != "" {
 		t.Fatalf("a new harness session nudged old mail: %q", out)
@@ -838,17 +869,14 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	otherSum := sha256.Sum256([]byte("other"))
-	wantFiles := []string{hex.EncodeToString(otherSum[:16]) + ".json"}
+	wantFiles := []string{"enrollment"}
 	if !posixModes {
 		// Windows locks a persistent file; Unix locks the directory itself.
 		wantFiles = append([]string{".lock"}, wantFiles...)
 	}
 	var files []string
 	for _, entry := range entries {
-		if !strings.HasSuffix(entry.Name(), ".main") { // see ownEvent
-			files = append(files, entry.Name())
-		}
+		files = append(files, entry.Name())
 	}
 	if !slices.Equal(files, wantFiles) {
 		t.Fatalf("cursor files: %v, want %v", files, wantFiles)

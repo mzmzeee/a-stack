@@ -310,6 +310,7 @@ func flagLabel(fs *flag.FlagSet, name string) string {
 // flagValues names the value of each flag that takes one. A test checks that
 // no help shows the fallback VALUE.
 var flagValues = map[string]string{
+	"harness": "NAME", "native-session": "ID", "native-agent": "ID",
 	"state-dir": "DIR", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE", "output": "FILE",
 	"herdr-executable": "FILE", "workspace": "ID", "session": "ID", "operation-id": "ID", "path": "DIR",
 	"name": "NAME", "orchestrator": "NAME", "agent": "ID", "worktree": "DIR", "new-credential-file": "FILE", "runtime-id": "ID",

@@ -87,7 +87,7 @@ The service sets `HERDR_SOCKET_PATH` to the recorded endpoint, and it passes the
 
 The notice is always this fixed text:
 
-> New a-stack Task mail mentions you. Load the a-stack skill, then run your own a-stack mail check with your registered Workspace, Session and Agent credential.
+> New a-stack Task mail may mention you. Only if this runtime has its own verified a-stack Agent registration, load the a-stack skill and check your own mail. Otherwise ignore this notice; do not register or discover credentials.
 
 a-stack decodes only a bounded allowlist of metadata fields and error codes. It never logs terminal text, titles, working directories, raw diagnostics, transcripts, mail bodies, credentials or private paths, and it never puts them in a notice. It does not inject text into panes, answer permission dialogs, rename, start or restart Agents, or control their lifecycle.
 

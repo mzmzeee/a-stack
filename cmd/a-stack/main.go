@@ -217,7 +217,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 	if isHookCommand(cmd) {
-		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, noStopGuard: hooks.noStopGuard, noMailNudge: hooks.noMailNudge}
+		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, noStopGuard: hooks.noStopGuard, noMailNudge: hooks.noMailNudge, harness: hooks.harness}
 		if cmd == "hook" {
 			runHook(id, os.Stdin, stdout)
 			return nil
@@ -289,7 +289,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return writeData(stdout, data)
 	}
 	if isHerdrCommand(cmd) {
-		data, err := herdrRequest(ctx, client, cmd, lifecycle, herdrExecutable)
+		data, err := herdrRequest(ctx, client, cmd, lifecycle, herdrExecutable, credential)
 		if err != nil {
 			return err
 		}
