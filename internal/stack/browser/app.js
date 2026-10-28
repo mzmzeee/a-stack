@@ -438,9 +438,9 @@ function patchNowCard(c,t,byID) {
   const ownKey=names.join('\n');if(c.own.dataset.key!==ownKey){c.own.dataset.key=ownKey;c.own.replaceChildren(iconNode('agent'),el('span','owner-name',names.join(', ') || 'Unassigned'));}
   setText(c.question,t.question_preview || '');c.question.hidden=!t.needs_you||!t.question_preview;
   setText(c.waits,blockers.length?'Waits for: '+blockers.slice(0,3).join(', ')+(blockers.length>3?` +${blockers.length-3} more`:''):'');c.waits.hidden=t.progress!=='waiting'||!blockers.length;
-  const report=firstLine(t.report_preview);setText(c.note,report || 'No report yet.');
+  const report=firstLine(t.report_preview),acks=t.overdue_acks?`${plural(t.overdue_acks,'overdue acknowledgement')}. `:'';setText(c.note,acks+(report || 'No report yet.'));
   c.button.classList.toggle('selected',state.selected===t.id);c.button.classList.toggle('archived',!!t.archived);
-  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${quietText(t)}${t.archived?' Archived.':''}${asked(t)} Assigned to ${listing(names) || 'Unassigned'}.${c.waits.hidden?'':' '+sentence(c.waits.textContent)}${mailText(t)} Changed ${age(t.updated_at)}.${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
+  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${quietText(t)}${t.archived?' Archived.':''}${asked(t)} Assigned to ${listing(names) || 'Unassigned'}.${c.waits.hidden?'':' '+sentence(c.waits.textContent)}${mailText(t)} ${acks}Changed ${age(t.updated_at)}.${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
 }
 // Moving a node keeps its focus where the browser supports moveBefore.
 function place(list,node,ref) { if(node.nextSibling===ref&&node.parentNode===list)return; try{if(list.moveBefore&&node.isConnected&&node.ownerDocument===list.ownerDocument){list.moveBefore(node,ref);return;}}catch{} list.insertBefore(node,ref); }

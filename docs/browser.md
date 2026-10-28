@@ -116,6 +116,8 @@ A Task with an open request is in Needs you, whatever its progress. Its card the
 
 The feed uses the Task's last action (`last_action`) at its `updated_at`, the report time `report_at`, and the differences that the page sees between two polls: progress changes and Needs you requests set or resolved. A change that is not the latest one of its Task shows only if the page was open when it happened. When two changes of one Task come between two polls, the feed shows the time of the later one for both. The page keeps up to 300 changes in memory and shows the latest 12.
 
+Now cards also show the number of overdue [acknowledgements](mail.md#explicit-acknowledgements), as plain text beside the report preview. This is informational: it changes neither the progress column nor Needs you. The view cannot acknowledge. The count updates on the next poll after a deadline, acknowledgement or withdrawal.
+
 A poll moves cards between columns in place. The selection, the focused card and the scroll positions stay.
 
 ### Graph
@@ -246,9 +248,11 @@ The Now tab uses two more optional fields of the Task data. `question_preview` i
 
 The Task data also has `mail_count`, the number of messages in the Task's mail. Mail is append-only, so this is the last mail sequence, which SQLite reads from the `(task_id, sequence)` index. A mail send raises the Session read revision, so the next poll sees the new count. On the 1,000-Task fixture, `mail_count` added about 15 KB to the whole Task collection.
 
+The Task data also has `overdue_acks`, the count of pending acknowledgement obligations whose deadline has passed. Acknowledgements and withdrawals raise the Session read revision; deadline passage changes the snapshot ETag without a write.
+
 The Task data also has `last_mail_at`, the time of the latest Task mail, and `quiet`, true for a Working Task with no change and no Task mail for 30 minutes (see [Quiet Tasks](watch.md#quiet-tasks)). Both come from the same index and store nothing.
 
-`POST /v1/session/snapshot` returns an ETag made of the Session ID, the read revision and the number of Tasks that the age rule archives plus the number of quiet Tasks. That number grows when a done Task becomes 24 hours old or a Working Task turns quiet, which does not change the read revision. When the ETag the page sends has another number, or none, the answer is a full one with `unchanged: false`, even for the same `known_revision`. The service checks `If-None-Match` after the normal authenticated read. CLI clients can still use the JSON `known_revision`. The collection limits and the page budget of 768 KiB still apply. During polling, the page does not load details for every Task. It refreshes only the selected Task's details, when that Task's revision changes.
+`POST /v1/session/snapshot` returns an ETag made of the Session ID, the read revision and the number of Tasks that the age rule archives plus the number of quiet Tasks and overdue acknowledgement obligations. That number grows when a done Task becomes 24 hours old, a Working Task turns quiet or an acknowledgement passes its deadline, which does not change the read revision. When the ETag the page sends has another number, or none, the answer is a full one with `unchanged: false`, even for the same `known_revision`. The service checks `If-None-Match` after the normal authenticated read. CLI clients can still use the JSON `known_revision`. The collection limits and the page budget of 768 KiB still apply. During polling, the page does not load details for every Task. It refreshes only the selected Task's details, when that Task's revision changes.
 
 ### The one write
 

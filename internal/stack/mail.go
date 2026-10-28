@@ -43,11 +43,12 @@ const (
 )
 
 type MailMessage struct {
-	ActorLogin string `json:"actor_login,omitempty"`
-	ActorName  string `json:"actor_name,omitempty"`
-	ID         string `json:"id"`
-	TaskID     string `json:"task_id"`
-	Sequence   int64  `json:"sequence"`
+	Acks       []MailAck `json:"acks,omitempty"`
+	ActorLogin string    `json:"actor_login,omitempty"`
+	ActorName  string    `json:"actor_name,omitempty"`
+	ID         string    `json:"id"`
+	TaskID     string    `json:"task_id"`
+	Sequence   int64     `json:"sequence"`
 	// SenderKind is "operator" for the Operator's mail, which has no
 	// SenderID. SenderName is its transport label, or "Operator" without one;
 	// Agent mail leaves SenderKind out.
@@ -60,6 +61,9 @@ type MailMessage struct {
 }
 type MailSendRequest struct {
 	Context
+	AckRequired bool     `json:"ack_required,omitempty"`
+	AckFrom     []string `json:"ack_from,omitempty"`
+	AckDue      string   `json:"ack_due,omitempty"`
 	OperationID string   `json:"operation_id"`
 	TaskID      string   `json:"task_id"`
 	Body        string   `json:"body"`
@@ -72,11 +76,13 @@ type MailReadRequest struct {
 	Limit  int    `json:"limit,omitempty"`
 }
 type MailPage struct {
-	Total    int64         `json:"total,omitempty"`
-	TaskID   string        `json:"task_id"`
-	Messages []MailMessage `json:"messages"`
-	Cursor   string        `json:"cursor"`
-	More     bool          `json:"more"`
+	PendingAcks []MailAck     `json:"pending_acks,omitempty"`
+	MoreAcks    bool          `json:"more_acks,omitempty"`
+	Total       int64         `json:"total,omitempty"`
+	TaskID      string        `json:"task_id"`
+	Messages    []MailMessage `json:"messages"`
+	Cursor      string        `json:"cursor"`
+	More        bool          `json:"more"`
 }
 type MailCheckRequest struct {
 	Context
@@ -89,6 +95,8 @@ type MailCheckRequest struct {
 // MailCheckPage.More is true when a Task page has more or next_task is set:
 // more mail is waiting than this response holds.
 type MailCheckPage struct {
+	PendingAcks   []MailAck      `json:"pending_acks,omitempty"`
+	MoreAcks      bool           `json:"more_acks,omitempty"`
 	Tasks         []MailPage     `json:"tasks"`
 	NextTask      string         `json:"next_task,omitempty"`
 	More          bool           `json:"more"`
@@ -215,7 +223,7 @@ func mentionError(ctx context.Context, tx *sql.Tx, task string, bad []string) er
 	return failure("invalid_input", "mention target must be a current Task assignee: "+strings.Join(bad, ", ")+verb+" of this Task; assignees: "+strings.Join(names, ", ")+"; run mail recipients --task "+task+"; write other names without @")
 }
 func (s *Store) SendMail(ctx context.Context, token string, r MailSendRequest) (Receipt, error) {
-	names, prepareErr := mentionNames(r.Body, r.Mentions)
+	names, prepareErr := mentionNames(r.Body, append(append([]string{}, r.Mentions...), r.AckFrom...))
 	return s.Mutate(ctx, token, operation(r.OperationID, "mail.send", r.SessionID, r), func(ctx context.Context, tx *sql.Tx, p Principal, receipt Receipt) error {
 		var taskID string
 		err := tx.QueryRowContext(ctx, "SELECT task_id FROM mail_messages WHERE id=?", receipt.ResourceID).Scan(&taskID)
@@ -264,6 +272,9 @@ func appendMailTx(ctx context.Context, tx *sql.Tx, p Principal, r MailSendReques
 			return Receipt{}, err
 		}
 	}
+	if err = appendMailAcks(ctx, tx, r, id, recipients); err != nil {
+		return Receipt{}, err
+	}
 	// The Task item's mail_count changes, so the Session read revision moves on
 	// and a polling view sees the new message.
 	if err = bumpSessionRead(ctx, tx, r.SessionID); err != nil {
@@ -278,6 +289,10 @@ func appendMailTx(ctx context.Context, tx *sql.Tx, p Principal, r MailSendReques
 // restores retained mail access but never resets an old notice to pending.
 func suppressTaskMentions(ctx context.Context, tx *sql.Tx, task, recipient string) error {
 	_, err := tx.ExecContext(ctx, "UPDATE mail_mentions SET notice_state=?,state_at=? WHERE task_id=? AND recipient_id=? AND notice_state IN (?,?)", NoticeSuppressed, now(), task, recipient, NoticePending, NoticeSubmitting)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, "UPDATE mail_acks SET withdrawn_at=?,reminder_state=CASE WHEN reminder_state IN ('pending','submitting') THEN 'suppressed' ELSE reminder_state END WHERE task_id=? AND recipient_id=? AND acked_at='' AND withdrawn_at=''", now(), task, recipient)
 	return err
 }
 func readMailMessage(ctx context.Context, tx *sql.Tx, task string, sequence int64) (MailMessage, error) {
@@ -303,7 +318,12 @@ func readMailMessage(ctx context.Context, tx *sql.Tx, task string, sequence int6
 		}
 		message.MentionIDs = append(message.MentionIDs, id)
 	}
-	return message, rows.Err()
+	if err = rows.Err(); err != nil {
+		return message, err
+	}
+	rows.Close()
+	message.Acks, err = readMailAcks(ctx, tx, task, message.ID)
+	return message, err
 }
 func mailLimit(limit int) (int, error) {
 	if limit == 0 {

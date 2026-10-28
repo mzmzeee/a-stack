@@ -49,7 +49,7 @@ func (s *Store) noticeWarningTx(ctx context.Context, tx *sql.Tx, session, agent 
 		return nil, storageError()
 	}
 	var uncertain int
-	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM mail_mentions WHERE recipient_id=? AND notice_state='uncertain'", agent).Scan(&uncertain); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT (SELECT count(*) FROM mail_mentions WHERE recipient_id=?1 AND notice_state='uncertain')+(SELECT count(*) FROM mail_acks WHERE recipient_id=?1 AND reminder_state='uncertain' AND acked_at='' AND withdrawn_at='')", agent).Scan(&uncertain); err != nil {
 		return nil, storageError()
 	}
 	if uncertain > 0 {

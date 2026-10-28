@@ -38,14 +38,35 @@ The original sender is mentioned automatically if they are still an assignee. An
 
 Run `mail recipients --task T` to see the current assignees who can read a message and be mentioned, without sending anything. You must be assigned to T. This is a preview, not a reservation: the send checks membership again in its transaction. The Orchestrator receives mail only when assigned too.
 
+## Explicit acknowledgements
+
+Use `--ack-required` on `mail send` or `mail reply` when a handoff needs an explicit response. By default every mentioned current assignee must acknowledge, including the automatic reply mention. Repeat `--ack-from NAME` to select particular current assignees instead; these names also receive a mention. An empty recipient list is rejected. `--ack-due 30m` sets an optional deadline measured from the send. It accepts a positive Go duration, such as `30m` or `2h`; both acknowledgement options require `--ack-required`.
+
+```sh
+# Add the normal credential, Workspace and Session flags.
+a-stack mail send --task "$task_id" --body 'Please confirm this handoff.' \
+  --ack-required --ack-from worker-b --ack-due 30m --operation-id handoff-ack-1
+# worker-b acknowledges explicitly:
+a-stack mail ack --message "$message_id" --operation-id handoff-ack-response-1
+```
+
+Only a selected current recipient can acknowledge. The service records that Agent's ID and the time. Repeating an acknowledgement does not change its recorded time, even with a new operation ID. Reading, advancing a cursor, submitting a notice, another assignee's acknowledgement, replying, and finishing the Task never acknowledge on your behalf. An acknowledgement means the recipient explicitly accepted the message, not that the work succeeded. It grants no permission and never gates Task completion or opens Needs you.
+
+Unassignment permanently withdraws outstanding obligations, even after the Agent rejoins. Closed Sessions allow retained reads and matching receipt recovery, but no new acknowledgements. Message reads include `acks`: recipient ID and current name, optional `due_at`, and either `acked_at` or `withdrawn_at` when resolved. The recipient ID is the acknowledgement actor; names are not authority.
+
+`mail check` always includes the caller's own `pending_acks`, independently of mail cursors, even when `tasks` is empty. `mail read` and `task handoff` list pending obligations for that Task. These summaries hold at most 500 obligations, with `more_acks: true` when more exist. To inspect every obligation, page through `mail read` and inspect each message's `acks`. Acknowledging the listed requests also lets later pending requests appear in the next check. `more` and `more_acks` are separate: do not loop on `more_acks` expecting a mail cursor to consume it.
+
+The Now board shows overdue counts as read-only text. With Herdr enabled, overdue obligations share the existing mention-notice path. Each obligation can submit at most one overdue reminder; known pre-submission failures may retry, while uncertain submissions are never retried automatically. Reminders contain no body and create neither new messages nor new acknowledgement requests. Acknowledging or withdrawing an obligation suppresses any reminder not yet submitted. Like other notices, a reminder already in the external input queue cannot be recalled.
+
 ## HTTP API
 
 All endpoints take authenticated `POST` JSON under `/v1/mail/`. They use the same instance, `Host`, `Origin` and strict JSON checks as the rest of the [HTTP API](foundation.md#http-rules). The context fields are `workspace_id` and `session_id`.
 
 | Endpoint | Other request fields | `data` in the response |
 | --- | --- | --- |
-| `send` | `task_id`, `operation_id`, `body`, optional `mentions` array of names | A compact receipt: the message `resource_id` and `body_ref`, the sequence number in `revision`, and `outcome: "sent"` |
-| `reply` | `message_id`, `operation_id`, `body`, optional `task_id`, `mentions` and `no_mention_sender` | The send receipt plus `task_id`, `task_title` and `audience` |
+| `send` | `task_id`, `operation_id`, `body`, optional `mentions` array of names, `ack_required`, `ack_from` array and `ack_due` duration | A compact receipt: the message `resource_id` and `body_ref`, the sequence number in `revision`, and `outcome: "sent"` |
+| `reply` | `message_id`, `operation_id`, `body`, optional `task_id`, `mentions`, `no_mention_sender`, `ack_required`, `ack_from` and `ack_due` | The send receipt plus `task_id`, `task_title` and `audience` |
+| `ack` | `message_id`, `operation_id` | A receipt with the message `resource_id` and `outcome: "acknowledged"` |
 | `recipients` | `task_id` | `task_id`, `task_title`, `audience` and `recipients` (Agent IDs and names) |
 | `read` | `task_id`, optional `cursor` and `limit` | `task_id`, `messages`, `cursor`, `more`, and `total` when nonzero |
 | `check` | optional `cursors` map, `after_task`, `task_limit` and `limit` | A `tasks` array of read pages, `next_task` when more Tasks follow, and `more` |
@@ -56,7 +77,7 @@ Mail does not change the Task's progress or the Task revision. A send raises the
 
 ### Browser reads
 
-The [browser view](browser.md#task-mail) credential can use `read` for any Task of its own Session, also a Task with no assignee. It gets the same messages, cursor and limits as an assignee. It cannot use `send`, `reply`, `recipients` or `check`, and it gets `forbidden` for another Session. A browser read stores no read position, writes no receipt and makes no notice. The Operator CLI credential still has no mail access.
+The [browser view](browser.md#task-mail) credential can use `read` for any Task of its own Session, also a Task with no assignee. It gets the same messages, cursor and limits as an assignee. It cannot use `send`, `reply`, `ack`, `recipients` or `check`, and it gets `forbidden` for another Session. A browser read stores no read position, writes no receipt and makes no notice. The Operator CLI credential still has no mail access.
 
 ### The Operator's answer
 
@@ -99,7 +120,7 @@ A successful stdout write is not proof that a harness delivered its tool result 
 
 Without `--cursor-file`, every check starts again at the first message of every Task. It stops at the message limit, so on a busy Task you never see the newest mail, and each check shows old mail again. When `more` is true, the output then has a `hint`. `--cursor-file -` reads a cursor map from stdin and never writes anything; then merge the returned `tasks[].cursor` values into your map yourself, and follow `next_task` with `--after-task`.
 
-A scan continuation belongs to one Session and one caller. Tasks that you were removed from in between do not appear. If you are assigned a new Task that comes earlier in the scan order, it appears in the next round. The server keeps no read records, acknowledgments or unread counts.
+A scan continuation belongs to one Session and one caller. Tasks that you were removed from in between do not appear. If you are assigned a new Task that comes earlier in the scan order, it appears in the next round. The server keeps no read positions or unread counts. Explicit acknowledgement obligations are separate from reading.
 
 ## Mentions
 
@@ -121,7 +142,7 @@ Finishing or cancelling a Task does not end its mail. A closed Session still all
 
 Choose an operation ID before you send, and keep it. If a response is lost, or the service restarts, send the same unchanged request with the same ID. For 30 days it returns the original receipt, if the sender still has read access. A changed payload causes a conflict. After that, the same ID returns `operation_expired`, without sending again. The message and its history stay. Read the Task mail to establish the result before choosing a new operation ID; blindly changing the ID could send twice. After the Session is closed, a retry can still recover a committed send, but a send that was never committed stays rejected.
 
-The body, the sequence number, the resolved mentions and the compact receipt commit together. If a write fails, or the process crashes before the commit, none of them becomes visible. Reads, membership changes and closure run in order with sends, inside the SQLite transaction.
+The body, the sequence number, the resolved mentions, any acknowledgement obligations and the compact receipt commit together. If a write fails, or the process crashes before the commit, none of them becomes visible. Reads, membership changes and closure run in order with sends, inside the SQLite transaction.
 
 ## Storage for notices
 
@@ -143,6 +164,8 @@ Mail makes `pending` and `self` rows. An unassignment suppresses `pending` and `
 - A closed Session pauses notices that were not sent. It does not delete the rows.
 - A notice is generic. It contains no mail body, credential or private path.
 - Even after a notice is submitted, the Agent's mail read is authorized separately.
+
+Schema version 12 adds `mail_acks`, one compact row per message and selected recipient, and `notice_ack_refs` for exact reminder batches. It stores no extra body. The first start makes a pre-migration copy and checks foreign keys before committing; upgrading a schema-11 database creates no obligations for old messages. See [Go back to an older version](install.md#go-back-to-an-older-version) before restoring the copy with an older binary.
 
 ## Measured storage
 
