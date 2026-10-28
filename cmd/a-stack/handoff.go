@@ -35,6 +35,11 @@ type handoffTask struct {
 type handoffMail struct {
 	Readable bool                `json:"readable"`
 	Total    int64               `json:"total"`
+	First    int64               `json:"first_sequence,omitempty"`
+	Last     int64               `json:"last_sequence,omitempty"`
+	Earlier  int64               `json:"earlier_messages,omitempty"`
+	Cursor   string              `json:"cursor,omitempty"`
+	More     bool                `json:"more"`
 	Messages []stack.MailMessage `json:"messages"`
 }
 
@@ -90,6 +95,16 @@ func taskHandoff(ctx context.Context, client *stack.Client, l lifecycleFlags, f 
 		err = nil
 	} else if err == nil {
 		h.Mail.Readable, h.Mail.Messages = true, page.Messages
+		h.Mail.Cursor, h.Mail.More = page.Cursor, page.More
+		if page.Total > 0 {
+			h.Mail.Total = page.Total
+		}
+		if len(page.Messages) > 0 {
+			h.Mail.First = page.Messages[0].Sequence
+			h.Mail.Last = page.Messages[len(page.Messages)-1].Sequence
+			h.Mail.Earlier = h.Mail.First - 1
+			h.Mail.Total = max(h.Mail.Total, h.Mail.Last)
+		}
 	}
 	if err != nil {
 		return err
@@ -192,10 +207,21 @@ func (h handoff) text() string {
 	case len(h.Mail.Messages) == 0:
 		b.WriteString("\n## Task mail\n\nNo Task mail yet.\n")
 	default:
-		fmt.Fprintf(&b, "\n## Task mail, the last %d of %d\n", len(h.Mail.Messages), h.Mail.Total)
+		if h.Mail.More {
+			fmt.Fprintf(&b, "\n## Task mail, excerpt of %d of %d\n", len(h.Mail.Messages), h.Mail.Total)
+		} else {
+			fmt.Fprintf(&b, "\n## Task mail, the last %d of %d\n", len(h.Mail.Messages), h.Mail.Total)
+		}
 		for _, m := range h.Mail.Messages {
 			fmt.Fprintf(&b, "\n[%d] %s %s:\n%s\n", m.Sequence, m.ReceivedAt, printable(m.SenderName), block(m.Body))
 		}
+	}
+	if h.Mail.Readable {
+		fmt.Fprintf(&b, "\nMail coverage: sequences %d–%d; %d earlier messages not shown.\n", h.Mail.First, h.Mail.Last, h.Mail.Earlier)
+		if h.Mail.More {
+			b.WriteString("More messages follow this excerpt.\n")
+		}
+		fmt.Fprintf(&b, "Continue after this excerpt: `mail read --task %s --cursor %s`. Read earlier messages with `mail read --task %s`.\n", t.ID, h.Mail.Cursor, t.ID)
 	}
 	fmt.Fprintf(&b, "\n## Next\n\nRead the Task again with `task show --task %s` for its current revision", t.ID)
 	if h.Mail.Readable {

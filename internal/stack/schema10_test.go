@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-const undoMigration10 = `DROP TABLE task_claims; DROP TABLE expired_operations; DROP INDEX operation_receipts_age; PRAGMA user_version=9;`
+const undoMigration10 = undoMigration11 + `DROP TABLE task_claims; DROP TABLE expired_operations; DROP INDEX operation_receipts_age; PRAGMA user_version=9;`
 
 // v017.db was written by the v0.1.7 tag, not by undoing the current schema.
 func TestMigration10FromV017(t *testing.T) {
@@ -27,10 +27,10 @@ func TestMigration10FromV017(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.db.Close()
-	if countTest(t, s, "PRAGMA user_version") != 10 || countTest(t, s, "PRAGMA foreign_keys") != 1 {
+	if countTest(t, s, "PRAGMA user_version") != schemaVersion || countTest(t, s, "PRAGMA foreign_keys") != 1 {
 		t.Fatal("schema or foreign keys")
 	}
-	if !strings.Contains(s.Migrated, "from schema 9 to 10") {
+	if !strings.Contains(s.Migrated, "from schema 9 to 11") {
 		t.Fatal(s.Migrated)
 	}
 	if after := upgradeRows(t, path); !reflect.DeepEqual(before, after) {
@@ -81,7 +81,10 @@ func upgradeRows(t *testing.T, path string) map[string][]string {
 				t.Fatal(err)
 			}
 			var row []string
-			for _, v := range values {
+			for i, v := range values {
+				if columns[i] == "actor_login" || columns[i] == "actor_name" {
+					continue
+				}
 				if v.Valid {
 					row = append(row, v.String)
 				} else {

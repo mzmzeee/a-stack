@@ -9,7 +9,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - Update/refresh migrates recognized legacy hook commands and reports enrollment instructions in human and JSON output. Agents can run `hook enroll` once from their own session to detect available native metadata, with explicit-ID and Herdr fallbacks.
 
 - Hooks now require explicit enrollment of the exact native harness session on this machine. Fresh sessions and legacy home-folder installs stay silent; rebinds invalidate enrollment. Generic notices and the Agent skill act only for a verified registered Agent.
+- Record trusted Tailscale Operator labels on actions and answers (schema 11). Shared Needs you answers show who answered and when; a second answer names the first answerer without sending duplicate mail.
 ### Added
+
+- `mail reply` routes a reply to the original Task and mentions its sender when still assigned. `mail recipients` previews the current assignees who can read mail and be mentioned. Handoff briefs show mail coverage, omitted earlier messages and a continuation cursor.
 
 - Tailscale remote foundation: `serve --share` and `service install --share` configure an owned HTTPS Serve rule over the fixed loopback port. The server accepts only its configured MagicDNS Host and matching Origin, with request identity kept separate from bearer authorization. `connect NAME URL`, `connect list`, `connect remove NAME` and `--remote NAME` add private HTTPS profiles with database pinning. See [Remote service](docs/remote.md); Session linking and remote notices are not included.
 

@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-const schemaVersion = 10
+const schemaVersion = 11
 const applicationID = 0x4153544b
 const migration1 = `
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -371,6 +371,19 @@ CREATE TABLE expired_operations(
 ) WITHOUT ROWID;
 `
 
+const migration11 = `
+ALTER TABLE lifecycle_history ADD COLUMN actor_login TEXT;
+ALTER TABLE lifecycle_history ADD COLUMN actor_name TEXT;
+ALTER TABLE task_history ADD COLUMN actor_login TEXT;
+ALTER TABLE task_history ADD COLUMN actor_name TEXT;
+ALTER TABLE task_questions ADD COLUMN actor_login TEXT;
+ALTER TABLE task_questions ADD COLUMN actor_name TEXT;
+ALTER TABLE mail_messages ADD COLUMN actor_login TEXT;
+ALTER TABLE mail_messages ADD COLUMN actor_name TEXT;
+ALTER TABLE operation_receipts ADD COLUMN actor_login TEXT;
+ALTER TABLE operation_receipts ADD COLUMN actor_name TEXT;
+`
+
 // migrate runs every migration the database lacks in one transaction.
 // Schema 8 rebuilds tables that other tables reference, which SQLite allows
 // only with foreign keys off, and it cannot change that inside a transaction.
@@ -495,6 +508,11 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 			return storageError(err)
 		}
 	}
+	if version < 11 {
+		if _, err = tx.ExecContext(ctx, migration11+"PRAGMA user_version=11;"); err != nil {
+			return storageError(err)
+		}
+	}
 	var broken bool
 	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pragma_foreign_key_check)").Scan(&broken); err != nil {
 		return storageError(err)
@@ -603,6 +621,8 @@ type Operation struct {
 // Receipt contains references and scalar outcomes only; never put a body or
 // snapshot in Outcome, ResourceID or BodyRef. Later slices persist bodies once.
 type Receipt struct {
+	ActorLogin  string `json:"actor_login,omitempty"`
+	ActorName   string `json:"actor_name,omitempty"`
 	OperationID string `json:"operation_id"`
 	ResourceID  string `json:"resource_id"`
 	Revision    int64  `json:"revision"`
@@ -650,7 +670,7 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	actor := string(p.Kind) + ":" + p.SubjectID
 	var r Receipt
 	var oldDigest string
-	err = tx.QueryRowContext(ctx, `SELECT digest,operation_id,resource_id,revision,outcome,body_ref,received_at FROM operation_receipts WHERE actor=? AND operation_id=?`, actor, op.ID).Scan(&oldDigest, &r.OperationID, &r.ResourceID, &r.Revision, &r.Outcome, &r.BodyRef, &r.ReceivedAt)
+	err = tx.QueryRowContext(ctx, `SELECT digest,operation_id,resource_id,revision,outcome,body_ref,received_at,COALESCE(actor_login,''),COALESCE(actor_name,'') FROM operation_receipts WHERE actor=? AND operation_id=?`, actor, op.ID).Scan(&oldDigest, &r.OperationID, &r.ResourceID, &r.Revision, &r.Outcome, &r.BodyRef, &r.ReceivedAt, &r.ActorLogin, &r.ActorName)
 	if err == nil {
 		received, parseErr := time.Parse(time.RFC3339Nano, r.ReceivedAt)
 		if parseErr != nil {
@@ -694,7 +714,11 @@ func (s *Store) Mutate(ctx context.Context, token string, op Operation,
 	}
 	r.OperationID = op.ID
 	r.ReceivedAt = now()
-	_, err = tx.ExecContext(ctx, `INSERT INTO operation_receipts(actor,operation_id,name,scope,digest,resource_id,revision,outcome,body_ref,received_at) VALUES(?,?,?,?,?,?,?,?,?,?)`, actor, op.ID, op.Name, op.Scope, digest, r.ResourceID, r.Revision, r.Outcome, r.BodyRef, r.ReceivedAt)
+	login, name := operatorActor(ctx, p)
+	if login != nil {
+		r.ActorLogin, r.ActorName = login.(string), name.(string)
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO operation_receipts(actor,operation_id,name,scope,digest,resource_id,revision,outcome,body_ref,received_at,actor_login,actor_name) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`, actor, op.ID, op.Name, op.Scope, digest, r.ResourceID, r.Revision, r.Outcome, r.BodyRef, r.ReceivedAt, login, name)
 	if err != nil {
 		return empty, operationError(op.Name, err)
 	}

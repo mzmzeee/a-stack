@@ -78,11 +78,15 @@ Only the current assignees of a Task can send or read its mail. Mail needs no re
 ```sh
 me mail send --task T --body 'Ready for review, @03-reviewer.' --operation-id 02-worker-mail-02
 me mail send --task T --body-file /your/private/folder/notes.md --operation-id 02-worker-mail-03
+me mail reply --message MESSAGE_ID --body 'Confirmed.' --operation-id 02-worker-reply-01
+me mail recipients --task T
 me mail read --task T --limit 100
 me mail check --cursor-file /your/private/folder/mail.json
 ```
 
-- `@name` in the body, and each `--mention NAME` (without `@`, repeatable), must be a current assignee of T. Otherwise the whole send fails. Check with `me task assignees --task T`.
+- `@name` in the body, and each `--mention NAME` (without `@`, repeatable), must be a current assignee of T. Otherwise the whole send fails. Check with `me mail recipients --task T`.
+- `mail reply` resolves the original Task in your Session and checks your current assignment. A conflicting `--task` fails. All assignees see the reply; the original sender is mentioned if still assigned. `--no-mention-sender` skips that automatic mention; `--mention NAME` adds others. Retry the unchanged command with the same operation ID after a lost response.
+- `task handoff` states the mail range and how many earlier messages are omitted. Its cursor continues after the excerpt; `mail read --task T` starts from the beginning. Neither changes your cursor file.
 - The receipt of a send has the message ID in `resource_id` and its sequence number in `revision`.
 - `mail read` returns `data.messages[]` (`id`, `sequence`, `sender_kind` for Operator mail, `sender_id`, `sender_name`, `received_at`, `body`, `mention_ids`), `data.cursor` and `data.more`. Give the cursor back with `--cursor "$cursor"` to read only newer messages.
 - `mail check` reads all your Tasks at once: `data.tasks[]`, each with `task_id`, `messages`, `cursor` and `more`, and `data.more`.

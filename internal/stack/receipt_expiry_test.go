@@ -89,7 +89,7 @@ func TestReceiptExpirySmallBatchesBoundaryAndAtomicity(t *testing.T) {
 	at := clockNow().UTC().Truncate(time.Second)
 	old := at.Add(-ReceiptAge - time.Second).Format(time.RFC3339Nano)
 	execTest(t, s, `WITH RECURSIVE n(i) AS (SELECT 1 UNION ALL SELECT i+1 FROM n WHERE i<450)
- INSERT INTO operation_receipts SELECT 'actor',printf('bulk-%08d',i),'test','scope','digest','resource',1,'created','',? FROM n`, old)
+ INSERT INTO operation_receipts(actor,operation_id,name,scope,digest,resource_id,revision,outcome,body_ref,received_at) SELECT 'actor',printf('bulk-%08d',i),'test','scope','digest','resource',1,'created','',? FROM n`, old)
 	execTest(t, s, "CREATE TRIGGER fail_expiry_delete BEFORE DELETE ON operation_receipts BEGIN SELECT RAISE(ABORT,'injected'); END")
 	if _, err := s.expireReceiptBatch(ctx, at); err == nil {
 		t.Fatal("expiry accepted failed delete")
@@ -106,7 +106,7 @@ func TestReceiptExpirySmallBatchesBoundaryAndAtomicity(t *testing.T) {
 	}
 	cutoff := at.Add(-ReceiptAge)
 	for i, timestamp := range []time.Time{cutoff, cutoff.Add(time.Nanosecond), at} {
-		execTest(t, s, "INSERT INTO operation_receipts VALUES('actor',?,'test','scope','digest','resource',1,'created','',?)", fmt.Sprintf("boundary-%d", i), timestamp.Format(time.RFC3339Nano))
+		execTest(t, s, "INSERT INTO operation_receipts(actor,operation_id,name,scope,digest,resource_id,revision,outcome,body_ref,received_at) VALUES('actor',?,'test','scope','digest','resource',1,'created','',?)", fmt.Sprintf("boundary-%d", i), timestamp.Format(time.RFC3339Nano))
 	}
 	if n, err := s.expireReceiptBatch(ctx, at); err != nil || n != 1 {
 		t.Fatalf("boundary batch %d: %v", n, err)
@@ -148,7 +148,7 @@ func TestReceiptExpiryOnStartAndDaily(t *testing.T) {
 	go func() { defer close(done); s.runReceiptExpiry(runCtx, 20*time.Millisecond, time.Millisecond) }()
 	defer func() { cancel(); <-done }()
 	waitReceiptExpiry(t, func() bool { return s.nextReceiptExpiry.Load() != 0 })
-	execTest(t, s, "INSERT INTO operation_receipts VALUES('actor','daily-expired','test','scope','digest','resource',1,'created','','2000-01-01T00:00:00Z')")
+	execTest(t, s, "INSERT INTO operation_receipts(actor,operation_id,name,scope,digest,resource_id,revision,outcome,body_ref,received_at) VALUES('actor','daily-expired','test','scope','digest','resource',1,'created','','2000-01-01T00:00:00Z')")
 	waitReceiptExpiry(t, func() bool {
 		return countTest(t, s, "SELECT count(*) FROM expired_operations WHERE operation_id='daily-expired'") == 1
 	})

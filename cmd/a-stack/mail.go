@@ -14,7 +14,7 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-var mailCommands = []string{"mail send", "mail read", "mail check"}
+var mailCommands = []string{"mail send", "mail reply", "mail recipients", "mail read", "mail check"}
 
 func isMailCommand(command string) bool {
 	for _, c := range mailCommands {
@@ -26,12 +26,15 @@ func isMailCommand(command string) bool {
 }
 
 type mailFlags struct {
-	cursor, cursorFile, afterTask string
-	mentions                      []string
-	taskLimit                     int
+	cursor, cursorFile, afterTask, message string
+	noMentionSender                        bool
+	mentions                               []string
+	taskLimit                              int
 }
 
 func (f *mailFlags) register(fs *flag.FlagSet) {
+	fs.StringVar(&f.message, "message", "", "Original message ID in your Session")
+	fs.BoolVar(&f.noMentionSender, "no-mention-sender", false, "Do not automatically mention the original sender")
 	fs.Func("mention", "Assignee name to mention; repeat for more", func(name string) error { f.mentions = append(f.mentions, name); return nil })
 	fs.StringVar(&f.cursor, "cursor", "", "Read after this mail cursor")
 	fs.StringVar(&f.cursorFile, "cursor-file", "", "Your saved mail position; each check updates it")
@@ -42,6 +45,10 @@ func mailAllowedFlags(command string) string {
 	switch command {
 	case "mail send":
 		return "task operation-id body body-file mention"
+	case "mail reply":
+		return "message task operation-id body body-file mention no-mention-sender"
+	case "mail recipients":
+		return "task"
 	case "mail read":
 		return "task cursor limit"
 	case "mail check":
@@ -82,7 +89,10 @@ func mailRequest(ctx context.Context, client *stack.Client, command string, l li
 	ref := stack.Context{WorkspaceID: l.workspace, SessionID: l.session}
 	var body any
 	switch command {
-	case "mail send":
+	case "mail send", "mail reply":
+		if command == "mail reply" && f.message == "" {
+			return nil, invalid("explicit --message required")
+		}
 		if seen["body-file"] {
 			if seen["body"] {
 				return nil, invalid("choose --body or --body-file")
@@ -96,7 +106,13 @@ func mailRequest(ctx context.Context, client *stack.Client, command string, l li
 		if len(t.body) > stack.MaxMailBodyBytes || !utf8.ValidString(t.body) {
 			return nil, invalid("mail body must be UTF-8 and at most 64 KiB")
 		}
-		body = stack.MailSendRequest{Context: ref, OperationID: l.operationID, TaskID: t.task, Body: t.body, Mentions: f.mentions}
+		send := stack.MailSendRequest{Context: ref, OperationID: l.operationID, TaskID: t.task, Body: t.body, Mentions: f.mentions}
+		body = send
+		if command == "mail reply" {
+			body = stack.MailReplyRequest{MailSendRequest: send, MessageID: f.message, NoMentionSender: f.noMentionSender}
+		}
+	case "mail recipients":
+		body = stack.MailRecipientsRequest{Context: ref, TaskID: t.task}
 	case "mail read":
 		body = stack.MailReadRequest{Context: ref, TaskID: t.task, Cursor: f.cursor, Limit: l.limit}
 	default:

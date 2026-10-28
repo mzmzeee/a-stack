@@ -40,9 +40,9 @@ func TestErrorsNameTheFieldAndOperationIDRule(t *testing.T) {
 	requireMessage(t, err, "title is required")
 
 	_, err = s.SendMail(ctx, f.a.Token, MailSendRequest{Context: f.ref(0), TaskID: f.taskID, OperationID: opaqueID(), Body: "hi @nobody, @03-worker and @ghost"})
-	requireMessage(t, err, "mention target must be a current Task assignee: @ghost, @nobody are not current assignees of this Task; assignees: 02-worker, 03-worker; write other names without @")
+	requireMessage(t, err, "mention target must be a current Task assignee: @ghost, @nobody are not current assignees of this Task; assignees: 02-worker, 03-worker; run mail recipients --task "+f.taskID+"; write other names without @")
 	_, err = s.SendMail(ctx, f.a.Token, MailSendRequest{Context: f.ref(0), TaskID: f.taskID, OperationID: opaqueID(), Body: "hi", Mentions: []string{"01-orchestrator"}})
-	requireMessage(t, err, "mention target must be a current Task assignee: @01-orchestrator is not a current assignee of this Task; assignees: 02-worker, 03-worker; write other names without @")
+	requireMessage(t, err, "mention target must be a current Task assignee: @01-orchestrator is not a current assignee of this Task; assignees: 02-worker, 03-worker; run mail recipients --task "+f.taskID+"; write other names without @")
 	_, err = s.SendMail(ctx, f.a.Token, MailSendRequest{Context: f.ref(0), TaskID: f.taskID, OperationID: opaqueID()})
 	requireMessage(t, err, "body is required")
 }

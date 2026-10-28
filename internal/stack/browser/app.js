@@ -785,6 +785,7 @@ const answerInput=el('textarea','answer-input'),answerCount=el('span','answer-co
 {const label=el('label','answer-label','Your answer'),row=el('div','answer-row');answerInput.id='answer-text';label.htmlFor=answerInput.id;answerCount.id='answer-count';answerInput.rows=3;
   answerInput.setAttribute('aria-describedby',answerCount.id);answerInput.setAttribute('aria-keyshortcuts','Control+Enter Meta+Enter');answerNote.setAttribute('role','status');answerNote.tabIndex=-1;
   row.append(answerCount,answerSend);answerBox.append(label,answerInput,row);answerBox.hidden=true;detailFields.question.parentElement.append(answerBox);detailFields.question.parentElement.after(answerNote);}
+const operatorLabel=a=>a.actor_name || (a.actor_login?`Operator (${a.actor_login})`:'Operator');
 const answer={task:null,question:'',op:'',sent:'',busy:false,refused:false};let answerFocus=false;
 function patchAnswer() {
   const n=new TextEncoder().encode(answerInput.value).length, over=n>4096;
@@ -823,7 +824,7 @@ async function sendAnswer() {
   }catch(error){
     if(answer.task!==task)return;
     const restarted=error.status===409&&/instance/.test(error.detail || ''), refused=error.code==='conflict'&&!restarted;answer.refused=refused;
-    setText(answerNote,restarted?'The service restarted. Send again.':refused?'This question was already answered or replaced. The details show the current state.':answerErrors[error.code] || 'The service did not answer. Send again: the answer is stored once.');
+    setText(answerNote,restarted?'The service restarted. Send again.':refused?(error.detail || 'This question was already answered or replaced. The details show the current state.'):answerErrors[error.code] || 'The service did not answer. Send again: the answer is stored once.');
     if(error.code==='conflict'){detailKey='';refresh();}
   }finally{answer.busy=false;patchAnswer();}
 }
@@ -992,7 +993,7 @@ async function loadDetail() {
     if(epoch!==detailEpoch||state.selected!==t.id)return;
     for(const name of ['description','report','reason','result'])detailText(name,detail.data[name]);
     const q=detail.data.question;detailText('question',q?`${q.question}\nAsked by ${model.agents.find(a=>a.id===q.asker_id)?.name || q.asker_id} at ${new Date(q.asked_at).toLocaleString()}${q.note?'\n'+q.note:''}`:'');showAnswer(q,detail.data.answered_question);
-    const a=detail.data.answered_question;detailText('answered',a?`${a.question}\nAnswer: ${a.answer}\nAnswered at ${new Date(a.resolved_at).toLocaleString()}`:'');
+    const a=detail.data.answered_question;detailText('answered',a?`${a.question}\nAnswer: ${a.answer}\nAnswered by ${operatorLabel(a)} at ${new Date(a.resolved_at).toLocaleString()}`:'');
     detailText('claims',(detail.data.claims || []).join('\n'));
     detailText('claimWarnings',(detail.data.claim_warnings || []).map(w=>`Warning: overlaps ${w.title} (${w.task_id}) · Agents: ${w.agents.join(', ') || 'Unassigned'} · ${w.paths.join(', ')}`).join('\n'));
     const referencesKey=JSON.stringify(refs);

@@ -7,6 +7,10 @@ func (s *Service) mailHTTP(w http.ResponseWriter, r *http.Request, token string)
 	switch r.URL.Path {
 	case "/v1/mail/send":
 		request = &MailSendRequest{}
+	case "/v1/mail/reply":
+		request = &MailReplyRequest{}
+	case "/v1/mail/recipients":
+		request = &MailRecipientsRequest{}
 	case "/v1/mail/read":
 		request = &MailReadRequest{}
 	case "/v1/mail/check":
@@ -27,6 +31,10 @@ func (s *Service) mailHTTP(w http.ResponseWriter, r *http.Request, token string)
 	switch q := request.(type) {
 	case *MailSendRequest:
 		data, err = s.Store.SendMail(r.Context(), token, *q)
+	case *MailReplyRequest:
+		data, err = s.Store.ReplyMail(r.Context(), token, *q)
+	case *MailRecipientsRequest:
+		data, err = s.Store.MailRecipients(r.Context(), token, *q)
 	case *MailReadRequest:
 		data, err = s.Store.ReadMail(r.Context(), token, *q)
 	case *MailCheckRequest:
