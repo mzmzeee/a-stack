@@ -2,7 +2,11 @@
 
 The [`skills/a-stack`](../skills/a-stack/SKILL.md) folder is an agent skill. A coding agent loads it to learn how to work in an a-stack Session with the CLI: what it gets from the Operator or the Orchestrator, how it sets itself up when nobody briefed it, its work loop on a Task, Task mail, Needs you, and the rules for operation IDs, revisions, mentions and credentials. The work loop starts with the Task's prerequisites, and every piece of work stays on a Task. The Orchestrator gets a separate reference in the same folder.
 
-With the skill installed, an Agent's brief can be short. It needs only the credential file path, the Agent's name, its Task IDs, a private folder, and the state directory if it is not the default. The credential file names the Workspace and the Session.
+With the skill installed, an Agent's brief can be short. Give the credential file path, Agent name, Task IDs, a private folder, and the state directory if it is not the default. The credential file names the Workspace and the Session. Also name each Task's responsibility and report/finish owner, the candidate branch and commit, required verification evidence, and where findings go.
+
+For nontrivial code work, the Orchestrator plans a builder and an independent verifier on linked Build → Verify Tasks. Both Agents and the Orchestrator are assigned to both Tasks so findings reach the builder directly. The builder owns Build's report and finish; the verifier owns Verify's. Helpers send evidence in Task mail without replacing the owner's report. Build Finished means a candidate is ready, not that it is safe to ship.
+
+Use one worker for small, low-risk work and record why. Add a separate tester when browser/device behavior, migrations, security or performance need distinct checks. The [Orchestrator reference](../skills/a-stack/references/orchestrator.md) gives commands and the repair loop: findings go in Build mail, the builder reopens and fixes, and the verifier re-checks the new commit. Never add a reverse dependency. After two failed rounds, the Orchestrator narrows scope or decides. These are working agreements; assignee permissions and dependency behavior are unchanged.
 
 ## Install
 

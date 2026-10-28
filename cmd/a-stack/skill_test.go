@@ -117,6 +117,35 @@ func TestSkillLoadTriggers(t *testing.T) {
 	}
 }
 
+func TestSkillTeamWorkflow(t *testing.T) {
+	for name, cues := range map[string][]string{
+		"SKILL.md": {
+			"Helpers send evidence in mail",
+			"report/finish owner finishes",
+			"do not finish the whole Task",
+		},
+		"references/orchestrator.md": {
+			"## 1. Choose the smallest team",
+			"**Solo:**", "**Pair:**", "**Pair + tester:**",
+			"--after DESIGN_TASK_ID --assign 02-builder --assign 03-verifier --assign 01-orchestrator",
+			"--after BUILD_TASK_ID --assign 02-builder --assign 03-verifier --assign 01-orchestrator",
+			"Report/finish owners:", "Candidate:", "Evidence:", "Findings:",
+			"two failed repair/review rounds", "never a reverse dependency",
+			"refreshes its checkout to that exact commit",
+		},
+	} {
+		data, err := skills.FS.ReadFile("a-stack/" + name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, cue := range cues {
+			if !strings.Contains(string(data), cue) {
+				t.Errorf("%s misses team workflow guidance %q", name, cue)
+			}
+		}
+	}
+}
+
 func TestSkillInstallReplacesOnlyTheSkill(t *testing.T) {
 	home := skillHome(t)
 	claude := filepath.Join(home, ".claude", "skills", "a-stack")
