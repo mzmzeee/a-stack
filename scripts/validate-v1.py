@@ -422,6 +422,8 @@ def scenario(run):
     run.wait(lambda: run.status(run.b)['targets'][0]['counts'].get('submitted', 0) == 1, 'eligible notice not submitted')
     run.stop()
     run.start(notices=True, missing=True)
+    check(run.status(run.b)['targets'][0]['reason'] == 'notice_waiting_mail', 'restart lost unread notice hold')
+    run.read(shared, run.b)  # Re-arm before testing the next delivery failure.
     run.mail(shared, 'Mail works without integration @03-worker')
     run.wait(lambda: run.status(run.b)['targets'][0]['reason'] == 'herdr_unavailable', 'missing integration lacks diagnostic')
     check(len(run.read(shared, run.b)['messages']) == 6, 'missing Herdr blocked mail')
