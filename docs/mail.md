@@ -177,7 +177,7 @@ Mail makes `pending` and `self` rows. An unassignment suppresses `pending` and `
 
 Schema version 12 adds `mail_acks`, one compact row per message and selected recipient, and `notice_ack_refs` for exact reminder batches. It stores no extra body. The first start makes a pre-migration copy and checks foreign keys before committing; upgrading a schema-11 database creates no obligations for old messages. See [Go back to an older version](install.md#go-back-to-an-older-version) before restoring the copy with an older binary.
 
-Schema version 14 adds the retained `priority` column and a partial index for urgent mail. Historical messages default to `normal`; existing overdue obligations can still produce an urgent hook reminder. Bodies remain single-copy.
+Schema version 13 adds the retained `priority` column and a partial index for urgent mail. Historical messages default to `normal`; existing overdue obligations can still produce an urgent hook reminder. Bodies remain single-copy.
 
 ## Measured storage
 

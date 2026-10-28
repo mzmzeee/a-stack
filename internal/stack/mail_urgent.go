@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-const migration14 = `
+const migration13 = `
 ALTER TABLE mail_messages ADD COLUMN priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('normal','urgent'));
 CREATE INDEX mail_messages_urgent ON mail_messages(task_id,sequence) WHERE priority='urgent';
 `

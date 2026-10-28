@@ -6,7 +6,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
-- Urgent Task mail (schema 14): `mail send|reply --urgent` retains priority and nudges enrolled hooks at the next eligible tool boundary without the normal 30-second delay. Operator answers and overdue ACK reminders are urgent. Nudges stay generic and do not advance Agent cursors, acknowledge mail or re-arm Herdr notices; `hook status` shows urgent-mail availability.
+- Urgent Task mail (schema 13): `mail send|reply --urgent` retains priority and nudges enrolled hooks at the next eligible tool boundary without the normal 30-second delay. Operator answers and overdue ACK reminders are urgent. Nudges stay generic and do not advance Agent cursors, acknowledge mail or re-arm Herdr notices; `hook status` shows urgent-mail availability.
 
 - The Agent skill now defaults to builder/verifier pairs for nontrivial code work, with linked Tasks, one report/finish owner per Task, candidate-specific evidence and a bounded repair loop. Small, low-risk work can stay solo.
 
