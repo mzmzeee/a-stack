@@ -1,0 +1,12 @@
+as WORKER mail send --task $TASK --body retained --operation-id scenario-original
+as ORCH task unassign --task $TASK --agent $WORKER_ID --expected-revision 2 --operation-id scenario-remove
+! as WORKER mail read --task $TASK
+stderr forbidden
+! as WORKER mail send --task $TASK --body retained --operation-id scenario-original
+stderr forbidden
+mcp-denied
+as ORCH task assign --task $TASK --agent $WORKER_ID --expected-revision 3 --operation-id scenario-rejoin
+as WORKER mail read --task $TASK
+stdout retained
+as WORKER mail send --task $TASK --body retained --operation-id scenario-original
+stdout '"revision":1'

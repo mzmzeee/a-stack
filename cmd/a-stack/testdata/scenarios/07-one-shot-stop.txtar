@@ -1,0 +1,33 @@
+as WORKER task status --task $TASK --progress working --expected-revision 2 --operation-id scenario-working
+as WORKER hook enroll --claude --native-session enrolled-claude
+event claude Stop $PROJECT enrolled-claude
+stdin $WORK/event.json
+hook
+stdout '"decision":"block"'
+stdin $WORK/event.json
+hook
+! stdout .
+as WORKER hook enroll --codex --native-session enrolled-codex
+event codex Stop $PROJECT enrolled-codex
+stdin $WORK/event.json
+hook
+stdout '"decision":"block"'
+stdin $WORK/event.json
+hook
+! stdout .
+as WORKER hook enroll --pi --native-session enrolled-pi
+event pi Stop $PROJECT enrolled-pi
+stdin $WORK/event.json
+hook
+stdout '"decision":"block"'
+stdin $WORK/event.json
+hook
+! stdout .
+as WORKER hook enroll --opencode --native-session enrolled-opencode
+event opencode Stop $PROJECT enrolled-opencode
+stdin $WORK/event.json
+hook
+stdout '"decision":"block"'
+stdin $WORK/event.json
+hook
+! stdout .

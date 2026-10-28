@@ -53,6 +53,8 @@ step "govulncheck $GOVULNCHECK"
 go install "golang.org/x/vuln/cmd/govulncheck@$GOVULNCHECK"
 .tmp/bin/govulncheck ./...
 
+# Includes deterministic CLI scenarios, the short rapid model run and the
+# production dependency guard. Long crash/mutation/fuzz runs stay in nightly.
 step "go test with coverage (.tmp/coverage.out)"
 go test -count=1 -coverprofile=.tmp/coverage.out ./...
 go tool cover -func=.tmp/coverage.out | tail -n 1
@@ -84,7 +86,7 @@ python3 -m py_compile scripts/validate-v1.py scripts/demo-terminal.py scripts/be
 uvx "ruff@$RUFF" check --no-cache scripts/validate-v1.py scripts/demo-terminal.py scripts/bench.py
 
 step "shellcheck $SHELLCHECK"
-uvx --from "shellcheck-py==$SHELLCHECK" shellcheck scripts/check.sh scripts/build-release.sh scripts/record-demo.sh install.sh
+uvx --from "shellcheck-py==$SHELLCHECK" shellcheck scripts/check.sh scripts/nightly-mutation.sh scripts/build-release.sh scripts/record-demo.sh install.sh
 
 step "actionlint $ACTIONLINT and zizmor $ZIZMOR"
 go install "github.com/rhysd/actionlint/cmd/actionlint@$ACTIONLINT"

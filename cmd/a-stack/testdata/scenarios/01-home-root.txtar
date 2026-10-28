@@ -1,0 +1,23 @@
+# Refused setup must not create a global identity hook.
+cd $HOME
+! exec $BIN new --state-dir $STATE --orchestrator refused --no-browser --json
+stderr 'home folder'
+! exec $BIN hook install --state-dir $STATE --credential-file $WORKER --worktree $HOME --pi
+stderr 'home folder'
+! exists $PI_CODING_AGENT_DIR/extensions/a-stack.ts
+as OPERATOR agent list
+cp stdout $WORK/agents-before.json
+mkdir $HOME/unrelated-one $HOME/unrelated-two
+event pi SessionStart $HOME/unrelated-one unrelated-one
+stdin $WORK/event.json
+hook
+! stdout .
+event pi SessionStart $HOME/unrelated-two unrelated-two
+stdin $WORK/event.json
+hook
+! stdout .
+as OPERATOR agent list
+cmp stdout $WORK/agents-before.json
+cd $WORK
+! exec $BIN new --state-dir $STATE --orchestrator refused --no-browser --json
+stderr 'home folder'

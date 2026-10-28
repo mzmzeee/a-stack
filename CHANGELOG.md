@@ -24,7 +24,11 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 - Tailscale remote foundation: `serve --share` and `service install --share` configure an owned HTTPS Serve rule over the fixed loopback port. The server accepts only its configured MagicDNS Host and matching Origin, with request identity kept separate from bearer authorization. `connect NAME URL`, `connect list`, `connect remove NAME` and `--remote NAME` add private HTTPS profiles with database pinning. See [Remote service](docs/remote.md). Cross-machine notice delivery requires a relay.
 
+- Hermetic CLI regression stories, a generated Task graph/mail model and a guard keeping test tooling out of production dependencies. Nightly CI adds five-minute fuzz runs, 100 seeded SIGKILL recovery checks and a targeted mutation-testing pilot. See [Regression gates](docs/quality.md#regression-gates).
+
 ### Fixed
+
+- Regression stories now prove each harness is eligible before checking closed-Session silence, and verify browser mail peeks leave persisted state unchanged. Their SQLite snapshot URIs handle Windows drive paths.
 
 - Mention notices no longer pile up while an Agent is busy. After one submission, later mentions wait for the Agent's own mail read or a 10-minute cooldown. Observed working runtimes also wait for idle or the cooldown while hooks can nudge them; notification status and the Agents panel show the hold.
 
