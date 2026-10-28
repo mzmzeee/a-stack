@@ -1,0 +1,23 @@
+as WORKER hook enroll --pi --native-session enrolled
+event pi SessionStart $PROJECT enrolled
+stdin $WORK/event.json
+hook
+stdout 'you are the Agent worker'
+mkdir $PROJECT/child $PROJECT-other
+event pi SessionStart $PROJECT/child enrolled
+stdin $WORK/event.json
+hook
+stdout 'you are the Agent worker'
+event pi SessionStart $PROJECT-other enrolled
+stdin $WORK/event.json
+hook
+! stdout .
+event pi SessionStart $PROJECT unrelated
+stdin $WORK/event.json
+hook
+! stdout .
+[symlink] symlink $HOME/alias -> $PROJECT
+[symlink] event pi SessionStart $HOME/alias enrolled
+[symlink] stdin $WORK/event.json
+[symlink] hook
+[symlink] stdout 'you are the Agent worker'

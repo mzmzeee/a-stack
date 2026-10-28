@@ -1,0 +1,97 @@
+name: nightly
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {package: './cmd/a-stack', target: FuzzSplitFlags}
+          - {package: './cmd/a-stack', target: FuzzExtractTarGz}
+          - {package: './cmd/a-stack', target: FuzzExtractZip}
+          - {package: './internal/stack', target: FuzzMentionNames}
+          - {package: './internal/stack', target: FuzzMailCursor}
+          - {package: './internal/stack', target: FuzzMailCheckCursor}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Fuzz for five minutes
+        env:
+          PACKAGE: ${{ matrix.package }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -o pipefail
+          mkdir -p .tmp/nightly
+          go test "$PACKAGE" -run '^$' -fuzz "^$TARGET$" -fuzztime=5m -parallel=2 2>&1 | tee .tmp/nightly/fuzz.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: |
+            .tmp/nightly/
+            cmd/a-stack/testdata/fuzz/
+            internal/stack/testdata/fuzz/
+          retention-days: 14
+
+  recovery-model:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - name: Seeded crashes and model histories
+        env:
+          A_STACK_CRASH_ITERATIONS: '100'
+        run: |
+          set -o pipefail
+          mkdir -p .tmp/nightly
+          go test ./internal/stack -count=1 -v -run '^TestMailSeededSIGKILLRecovery$' 2>&1 | tee .tmp/nightly/crashes.log
+          go test ./internal/stack -count=1 -v -run '^TestRegressionModel$' -rapid.checks=1000 2>&1 | tee .tmp/nightly/model.log
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: recovery-model
+          path: |
+            .tmp/nightly/
+            internal/stack/testdata/rapid/
+          retention-days: 14
+
+  mutation-pilot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - run: scripts/nightly-mutation.sh
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: mutation-pilot
+          path: .tmp/nightly/
+          retention-days: 14

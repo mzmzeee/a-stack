@@ -32,6 +32,25 @@ scripts/check.sh
 
 It runs formatting, linters, vulnerability and secret scans, the tests with coverage, the race tests, the build and the quick validation run. It runs on Linux only; CI also builds, vets and tests a-stack on macOS and Windows. To check that the Windows code compiles on Linux, run `GOOS=windows CGO_ENABLED=0 go vet ./...`. [Quality checks](docs/quality.md) lists the tool versions and rule choices. After a change that can affect speed or storage, also run the full [validation runner](docs/validation.md) and the [stress test](docs/performance.md#run-it).
 
+### Regression scenarios
+
+Every fix ships a scenario that fails without it. Put CLI stories in `cmd/a-stack/testdata/scenarios/*.txtar` and run them with:
+
+```sh
+go test ./cmd/a-stack -run TestRegressionScenarios -count=1 -v
+go test ./internal/stack -run TestRegressionModel -count=1 -rapid.checks=100
+```
+
+The testscript fixture builds the CLI once. Each story gets a fresh service, explicit state directory, private credentials, HOME and XDG/harness directories. It drops inherited service, credential and proxy selectors. It stops only its own service. Do not use real profiles or credentials in a scenario.
+
+Use `as WORKER`, `as ORCH` or `as OPERATOR` followed by CLI arguments. `$TASK`, `$PROJECT`, `$SESSION` and `$WS` identify the fixture. `event HARNESS EVENT CWD SESSION` writes normalized Claude/Codex/Pi/OpenCode hook input to `$WORK/event.json`; `stdin $WORK/event.json` and `hook` feed it to the real CLI. These are fake event callers, not a claim that a native harness emitted the event. Keep assertions in the story; helpers should only arrange fixtures or check a boundary requiring a non-CLI capability. Never print credential files or view codes.
+
+All 15 stories run after the `18-enroll` implementation. Identity stories explicitly enroll a native session and test unrelated sessions in the same folder, canonical paths, parent/subagent separation and rebinds. Existing hook unit tests still run. Story 09 checks foreign-settings preservation; it does not automatically repair legacy home-root installations.
+
+`github.com/rogpeppe/go-internal` (testscript) and `pgregory.net/rapid` are pinned test-only dependencies. `TestProductionHasNoTestTooling` checks every non-test package's dependency closure, so neither may enter the shipped binary. The rapid test compares generated Task revisions, membership, graph edges and mail positions with an independent model. Use `-rapid.seed=SEED` to replay a failure; keep minimized inputs under `testdata/rapid` or as an ordinary regression.
+
+Before submitting a fix, run the new story against a disposable copy with the fix reverted or a narrowly seeded fault. Record the failing assertion and the corrected run. Do not mutate a shared worktree for this check.
+
 ### Parser fuzzing
 
 `scripts/check.sh` runs each parser fuzz target for 3 seconds with two workers. Ordinary `go test ./...` runs their seed corpora without fuzzing. To investigate for longer, run each target separately, for example:

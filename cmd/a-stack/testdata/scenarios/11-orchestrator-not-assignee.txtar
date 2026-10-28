@@ -1,0 +1,12 @@
+as WORKER mail send --task $TASK --body private-message --operation-id scenario-send
+! as ORCH mail read --task $TASK
+stderr forbidden
+! stdout private-message
+! as ORCH mail send --task $TASK --body rejected --operation-id scenario-rejected
+stderr forbidden
+as ORCH mail check
+! stdout private-message
+! as OPERATOR mail read --task $TASK
+stderr forbidden
+as WORKER mail read --task $TASK
+stdout private-message

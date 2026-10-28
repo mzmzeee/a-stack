@@ -1,0 +1,11 @@
+seed-mail
+as WORKER mail check --cursor-file $WORK/agent-cursor.json
+stdout message-001
+stdout message-100
+! stdout message-101
+as WORKER mail check --cursor-file $WORK/agent-cursor.json
+stdout message-101
+stdout message-105
+! stdout message-100
+as WORKER mail check --cursor-file $WORK/agent-cursor.json
+! stdout message-

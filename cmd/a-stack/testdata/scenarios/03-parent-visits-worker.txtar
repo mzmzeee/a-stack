@@ -1,0 +1,18 @@
+as WORKER hook enroll --claude --native-session worker-native
+event claude SessionStart $HOME parent-native
+stdin $WORK/event.json
+hook
+! stdout .
+event claude PostToolUse $PROJECT parent-native
+stdin $WORK/event.json
+hook
+! stdout .
+event claude Stop $PROJECT parent-native
+stdin $WORK/event.json
+hook
+! stdout .
+as WORKER hook enroll --claude --native-session parent-native --native-agent worker-subagent
+event claude SubagentStart $PROJECT parent-native worker-subagent
+stdin $WORK/event.json
+hook
+stdout 'you are the Agent worker'
