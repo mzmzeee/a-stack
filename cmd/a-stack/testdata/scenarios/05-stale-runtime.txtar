@@ -1,0 +1,17 @@
+as WORKER hook enroll --codex --native-session enrolled
+event codex SessionStart $PROJECT enrolled
+stdin $WORK/event.json
+hook
+stdout 'you are the Agent worker'
+as OPERATOR agent rebind --agent $WORKER_ID --clear-runtime --new-credential-file $WORK/credentials/rebound.json --expected-revision 2 --operation-id scenario-rebind
+event codex SessionStart $PROJECT enrolled
+stdin $WORK/event.json
+hook
+! stdout .
+event codex PostToolUse $PROJECT enrolled
+stdin $WORK/event.json
+hook
+! stdout .
+! exec $BIN --state-dir $STATE --as agent --credential-file $WORK/credentials/rebound.json --workspace $WS --session $OTHER_SESSION mail read --task $TASK
+! stdout .
+stderr 'Session'

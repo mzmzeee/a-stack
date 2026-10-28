@@ -1,0 +1,24 @@
+as ORCH task assign --task $TASK --agent $ORCH_ID --expected-revision 2 --operation-id scenario-assign-orch
+seed-mail 2105
+as WORKER hook enroll --pi --native-session enrolled
+# First event catches up silently, without consuming the Agent's own cursor.
+event pi PostToolUse $PROJECT enrolled
+stdin $WORK/event.json
+hook
+! stdout .
+event pi PostToolUse $PROJECT enrolled
+stdin $WORK/event.json
+hook
+! stdout .
+as WORKER mail check --cursor-file $WORK/agent-cursor.json
+stdout message-001
+cp $WORK/agent-cursor.json $WORK/cursor-before.json
+as ORCH mail send --task $TASK --body new-canary --operation-id scenario-new-mail
+age-hook-cache
+event pi PostToolUse $PROJECT enrolled
+concurrent-hooks
+cmp $WORK/agent-cursor.json $WORK/cursor-before.json
+age-hook-cache
+stdin $WORK/event.json
+hook
+! stdout .

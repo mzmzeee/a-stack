@@ -1,0 +1,20 @@
+# Foreign settings and another project's hooks survive targeted cleanup.
+cp $WORK/foreign.json $CLAUDE_CONFIG_DIR/settings.json
+as OPERATOR hook install --claude --credential-file $WORKER
+as OPERATOR hook install --claude --credential-file $WORKER
+mkdir $HOME/other-hooks
+as OPERATOR hook install --claude --credential-file $WORKER --worktree $HOME/other-hooks
+legacy-hook
+exec $BIN hook uninstall --claude --worktree $HOME
+grep foreign-model $CLAUDE_CONFIG_DIR/settings.json
+grep foreign-command $CLAUDE_CONFIG_DIR/settings.json
+grep other-hooks $CLAUDE_CONFIG_DIR/settings.json
+exec $BIN hook uninstall --claude --worktree $PROJECT
+grep foreign-model $CLAUDE_CONFIG_DIR/settings.json
+grep foreign-command $CLAUDE_CONFIG_DIR/settings.json
+grep other-hooks $CLAUDE_CONFIG_DIR/settings.json
+exec $BIN hook uninstall --claude --worktree $HOME/other-hooks
+! grep 'credential-file' $CLAUDE_CONFIG_DIR/settings.json
+
+-- foreign.json --
+{"model":"foreign-model","hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"foreign-command"}]}]}}

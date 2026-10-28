@@ -41,6 +41,18 @@ To change a tool version, edit the variable at the top of `scripts/check.sh` and
 
 `.github/workflows/check.yml` runs `scripts/check.sh` on Ubuntu 24.04 for every pull request and every push to `main`. Its actions are pinned by commit SHA. `.github/dependabot.yml` proposes weekly updates for the Go module and the pinned actions. Dependabot does not change the tool versions in `scripts/check.sh` or the Go version in `go.mod` and `.go-version`; update those by hand.
 
+## Regression gates
+
+Every fix ships a scenario that fails without it. Run that scenario against the parent revision or a narrowly seeded fault in a disposable copy, then against the fix. Coverage alone does not establish this.
+
+- **PR:** existing checks, deterministic testscript CLI stories, a short rapid graph/mail model run (100 histories), and a guard against test-only modules entering production dependencies. All 15 stories run, including exact-runtime enrollment boundaries. Platform-dependent symlink assertions run only where symlinks are supported; the other path assertions always run.
+- **Nightly:** `.github/workflows/nightly.yml` runs only on its schedule or manual dispatch, never on a PR. Each of six fuzz targets runs for five minutes. The recovery job runs seeds 0–99 through SIGKILL at body, mention, receipt or post-commit milestones, then 1,000 rapid histories. Logs and failing corpora are retained as artifacts for 14 days.
+- **Release:** the release workflow calls the PR checks before building native artifacts. Required real-harness, service-manager and migration/restore checks remain separate release evidence; fake hook events and process kills do not prove native harness contracts or power-loss durability.
+
+Run the crash workload locally with `A_STACK_CRASH_ITERATIONS=100 go test ./internal/stack -run TestMailSeededSIGKILLRecovery -count=1 -v`. Without the variable, it explicitly skips; the existing deterministic crash regression still runs.
+
+`scripts/nightly-mutation.sh` pins Gremlins v0.6.0 and limits the pilot to permission, scope, revision and cursor predicates in `lifecycle.go`, `tasks.go` and `mail_reads.go`. It uses two workers and writes `.tmp/nightly/mutations.json` and a text log. `--dry-run` inventories mutants without executing them. A generous timeout multiplier accommodates compilation when the baseline is cached. The pilot is not a percentage gate: review lived and uncovered mutants, and report timeouts/nonviable mutants separately rather than count them as detected bugs. Tool errors still fail the job. No mutation tooling becomes a runtime module.
+
 ## Rule choices
 
 - **Staticcheck** runs its default checks. One finding is suppressed in place: the empty critical section in `Service.Close` (`internal/stack/http.go`) waits for an HTTP-started notice drain to finish before the database closes.

@@ -1,0 +1,12 @@
+as WORKER mail send --task $TASK --body scope-canary --operation-id scenario-send
+! exec $BIN --state-dir $STATE --as agent --credential-file $WORKER --workspace $WS --session $OTHER_SESSION mail read --task $TASK
+! stdout scope-canary
+stderr 'context|Session|session'
+scope-cursors
+as WORKER mail check --cursor-file $WORK/agent-cursor.json
+stdout scope-canary
+browser-peek
+as WORKER mail check --cursor-file $WORK/agent-cursor.json
+! stdout scope-canary
+as WORKER mail read --task $TASK
+stdout scope-canary

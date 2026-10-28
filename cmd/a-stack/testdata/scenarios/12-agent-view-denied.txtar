@@ -1,0 +1,3 @@
+! as WORKER open --no-browser
+stderr 'Operator'
+! stdout .
