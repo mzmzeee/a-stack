@@ -93,6 +93,8 @@ me mail check --cursor-file /your/private/folder/mail.json
 - `sender_name` is the sender's Agent name. Mail reads include your own messages; find your own ID in `me agent list`.
 - Mail with `sender_kind: "operator"`, `sender_name: "Operator"` and an empty `sender_id` is the Operator's answer to the Task's Needs you question. It mentions every assignee. The question is already resolved; do not resolve it again.
 
+Ask for an explicit acknowledgement when a handoff needs confirmation: add `--ack-required` to send or reply, optionally `--ack-from NAME` (repeatable; otherwise all mentions) and `--ack-due 30m`. Check your own `pending_acks` in `mail check`, even when `tasks` is empty; read the message, then use `mail ack --message ID --operation-id YOUR_ID` if you accept it. If you cannot accept it, explain in Task mail instead. Acknowledgements are informational, not proof of completed work or a condition for finishing a Task. Unassignment withdraws an obligation permanently. A handoff includes pending acknowledgements; when `more_acks` is true, inspect each message’s `acks` through paged `mail read`.
+
 ### Read only new mail with a cursor file
 
 Always give `mail check` a cursor file in your private folder. The check saves in it how far you have read, and the next check shows only newer mail. The CLI creates the file if it is missing. With a cursor file, the output lists only the Tasks with new mail; `"tasks": []` means there is none.

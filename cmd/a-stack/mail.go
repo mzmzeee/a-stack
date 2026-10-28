@@ -14,7 +14,7 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-var mailCommands = []string{"mail send", "mail reply", "mail recipients", "mail read", "mail check"}
+var mailCommands = []string{"mail ack", "mail send", "mail reply", "mail recipients", "mail read", "mail check"}
 
 func isMailCommand(command string) bool {
 	for _, c := range mailCommands {
@@ -27,12 +27,18 @@ func isMailCommand(command string) bool {
 
 type mailFlags struct {
 	cursor, cursorFile, afterTask, message string
+	ackRequired                            bool
+	ackFrom                                []string
+	ackDue                                 string
 	noMentionSender                        bool
 	mentions                               []string
 	taskLimit                              int
 }
 
 func (f *mailFlags) register(fs *flag.FlagSet) {
+	fs.BoolVar(&f.ackRequired, "ack-required", false, "Ask selected assignees for an explicit acknowledgement")
+	fs.Func("ack-from", "Assignee to acknowledge; repeat for more", func(name string) error { f.ackFrom = append(f.ackFrom, name); return nil })
+	fs.StringVar(&f.ackDue, "ack-due", "", "Acknowledgement deadline duration, such as 30m")
 	fs.StringVar(&f.message, "message", "", "Original message ID in your Session")
 	fs.BoolVar(&f.noMentionSender, "no-mention-sender", false, "Do not automatically mention the original sender")
 	fs.Func("mention", "Assignee name to mention; repeat for more", func(name string) error { f.mentions = append(f.mentions, name); return nil })
@@ -44,9 +50,11 @@ func (f *mailFlags) register(fs *flag.FlagSet) {
 func mailAllowedFlags(command string) string {
 	switch command {
 	case "mail send":
-		return "task operation-id body body-file mention"
+		return "task operation-id body body-file mention ack-required ack-from ack-due"
 	case "mail reply":
-		return "message task operation-id body body-file mention no-mention-sender"
+		return "message task operation-id body body-file mention no-mention-sender ack-required ack-from ack-due"
+	case "mail ack":
+		return "message operation-id"
 	case "mail recipients":
 		return "task"
 	case "mail read":
@@ -89,6 +97,11 @@ func mailRequest(ctx context.Context, client *stack.Client, command string, l li
 	ref := stack.Context{WorkspaceID: l.workspace, SessionID: l.session}
 	var body any
 	switch command {
+	case "mail ack":
+		if f.message == "" {
+			return nil, invalid("explicit --message required")
+		}
+		body = stack.MailAckRequest{Context: ref, OperationID: l.operationID, MessageID: f.message}
 	case "mail send", "mail reply":
 		if command == "mail reply" && f.message == "" {
 			return nil, invalid("explicit --message required")
@@ -106,7 +119,7 @@ func mailRequest(ctx context.Context, client *stack.Client, command string, l li
 		if len(t.body) > stack.MaxMailBodyBytes || !utf8.ValidString(t.body) {
 			return nil, invalid("mail body must be UTF-8 and at most 64 KiB")
 		}
-		send := stack.MailSendRequest{Context: ref, OperationID: l.operationID, TaskID: t.task, Body: t.body, Mentions: f.mentions}
+		send := stack.MailSendRequest{Context: ref, OperationID: l.operationID, TaskID: t.task, Body: t.body, Mentions: f.mentions, AckRequired: f.ackRequired, AckFrom: f.ackFrom, AckDue: f.ackDue}
 		body = send
 		if command == "mail reply" {
 			body = stack.MailReplyRequest{MailSendRequest: send, MessageID: f.message, NoMentionSender: f.noMentionSender}

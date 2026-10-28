@@ -55,6 +55,7 @@ type Task struct {
 	ReportPreview                                   string   `json:"report_preview,omitempty"`
 	QuestionPreview                                 string   `json:"question_preview,omitempty"`
 	LastAction                                      string   `json:"last_action,omitempty"`
+	OverdueAcks                                     int      `json:"overdue_acks"`
 	MailCount                                       int64    `json:"mail_count"`
 	LastMailAt                                      string   `json:"last_mail_at,omitempty"`
 	Quiet                                           bool     `json:"quiet"`
@@ -204,6 +205,7 @@ const taskColumns = `COALESCE((SELECT json_group_array(path) FROM (SELECT path F
  COALESCE((SELECT h.action FROM task_history h WHERE h.task_id=t.id ORDER BY h.sequence DESC LIMIT 1),''),
  COALESCE((SELECT max(m.sequence) FROM mail_messages m WHERE m.task_id=t.id),0),
  COALESCE((SELECT m.received_at FROM mail_messages m WHERE m.task_id=t.id ORDER BY m.sequence DESC LIMIT 1),''),
+ (SELECT count(*) FROM mail_acks k WHERE k.task_id=t.id AND k.acked_at='' AND k.withdrawn_at='' AND k.due_at<>'' AND julianday(k.due_at)<=julianday('now')),
  t.archived_at,t.ended_at,
  CASE WHEN t.progress IN ('finished','cancelled') THEN EXISTS(SELECT 1 FROM dependencies d WHERE d.session_id=t.session_id AND d.prerequisite_id=t.id)
   AND NOT EXISTS(SELECT 1 FROM dependencies d JOIN tasks n ON n.id=d.dependent_id WHERE d.session_id=t.session_id AND d.prerequisite_id=t.id AND n.progress NOT IN ('finished','cancelled')) ELSE 0 END`
@@ -217,7 +219,7 @@ const taskByID = "SELECT " + taskColumns + " FROM tasks t WHERE t.id=? AND t.ses
 func scanTask(row interface{ Scan(...any) error }) (Task, error) {
 	var t Task
 	var claims string
-	err := row.Scan(&claims, &t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction, &t.MailCount, &t.LastMailAt, &t.ArchivedAt, &t.EndedAt, &t.chainDone)
+	err := row.Scan(&claims, &t.ID, &t.SessionID, &t.Title, &t.TicketRef, &t.Progress, &t.Revision, &t.CreatedBy, &t.UpdatedBy, &t.CreatedAt, &t.UpdatedAt, &t.ReportAt, &t.descriptionRef, &t.reportRef, &t.reasonRef, &t.resultRef, &t.AssigneeCount, &t.NeedsYou, &t.ReferenceCount, &t.PrerequisiteCount, &t.CancelledPrerequisiteCount, &t.ReportPreview, &t.QuestionPreview, &t.LastAction, &t.MailCount, &t.LastMailAt, &t.OverdueAcks, &t.ArchivedAt, &t.EndedAt, &t.chainDone)
 	if err == nil {
 		err = json.Unmarshal([]byte(claims), &t.Claims)
 	}

@@ -36,7 +36,7 @@ func splitFlags(fs *flag.FlagSet, args []string) (command []string, repeated boo
 			}
 			value = args[i]
 		}
-		if given[name] && name != "mention" && name != "after" && name != "assign" && name != "path" {
+		if given[name] && name != "mention" && name != "ack-from" && name != "after" && name != "assign" && name != "path" {
 			return nil, false, invalid("--" + name + " is given more than once")
 		}
 		repeated = repeated || given[name] && name == "after"

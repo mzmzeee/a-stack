@@ -138,7 +138,16 @@ func (s *Store) ReadMail(ctx context.Context, token string, r MailReadRequest) (
 	if err != nil {
 		return empty, err
 	}
-	page, fit, err := readMailPageTx(ctx, tx, r.TaskID, r.Cursor, limit, mailResponseBudget)
+	pending, err := readMailAcks(ctx, tx, r.TaskID, "")
+	if err != nil {
+		return empty, publicError(err)
+	}
+	moreAcks := len(pending) > 500
+	if moreAcks {
+		pending = pending[:500]
+	}
+	// Reserve the bounded summary in addition to the message page.
+	page, fit, err := readMailPageTx(ctx, tx, r.TaskID, r.Cursor, limit, mailResponseBudget-jsonBytes(pending)-128)
 	if err != nil {
 		return empty, publicError(err)
 	}
@@ -148,6 +157,7 @@ func (s *Store) ReadMail(ctx context.Context, token string, r MailReadRequest) (
 	if err = tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(sequence),0) FROM mail_messages WHERE task_id=?", r.TaskID).Scan(&page.Total); err != nil {
 		return empty, publicError(err)
 	}
+	page.PendingAcks, page.MoreAcks = pending, moreAcks
 	return page, nil
 }
 func encodeMailCheckCursor(session, agent, task string) string {
@@ -214,6 +224,27 @@ func (s *Store) CheckMail(ctx context.Context, token string, r MailCheckRequest)
 	result.NoticeWarning, err = s.noticeWarningTx(ctx, tx, r.SessionID, p.SubjectID)
 	if err != nil {
 		return empty, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT k.message_id,k.task_id,k.recipient_id,a.name,k.due_at,k.acked_at,k.withdrawn_at FROM mail_acks k JOIN agents a ON a.id=k.recipient_id JOIN task_assignees x ON x.task_id=k.task_id AND x.agent_id=k.recipient_id WHERE x.session_id=? AND k.recipient_id=? AND k.acked_at='' AND k.withdrawn_at='' ORDER BY k.message_id LIMIT 501`, r.SessionID, p.SubjectID)
+	if err != nil {
+		return empty, publicError(err)
+	}
+	for rows.Next() {
+		var a MailAck
+		if err = rows.Scan(&a.MessageID, &a.TaskID, &a.RecipientID, &a.RecipientName, &a.DueAt, &a.AckedAt, &a.WithdrawnAt); err != nil {
+			rows.Close()
+			return empty, publicError(err)
+		}
+		result.PendingAcks = append(result.PendingAcks, a)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return empty, publicError(err)
+	}
+	result.MoreAcks = len(result.PendingAcks) > 500
+	if result.MoreAcks {
+		result.PendingAcks = result.PendingAcks[:500]
 	}
 	used := jsonBytes(result)
 	messages := 0

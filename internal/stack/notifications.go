@@ -48,6 +48,9 @@ func (s *Store) recoverNotices(ctx context.Context) error {
 	if err != nil {
 		return storageError()
 	}
+	if _, err = tx.ExecContext(ctx, `UPDATE mail_acks SET reminder_state='uncertain' WHERE reminder_state='submitting' AND EXISTS(SELECT 1 FROM notice_ack_refs r JOIN notice_batches b ON b.id=r.batch_id WHERE b.state='submitting' AND r.message_id=mail_acks.message_id AND r.recipient_id=mail_acks.recipient_id)`); err != nil {
+		return storageError()
+	}
 	if _, err = tx.ExecContext(ctx, "UPDATE sessions SET read_revision=read_revision+1 WHERE id IN (SELECT session_id FROM notice_batches WHERE state='submitting')"); err != nil {
 		return storageError()
 	}
@@ -144,9 +147,10 @@ func (n *notifier) nextTarget(ctx context.Context, session string) (noticeTarget
  LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id
  WHERE s.closed=0 AND (?='' OR s.id=?) AND COALESCE(d.next_attempt,0) BETWEEN 0 AND ?
  AND NOT EXISTS(SELECT 1 FROM notice_batches b WHERE b.session_id=s.id AND b.recipient_id=a.id AND b.state='submitting')
- AND EXISTS(SELECT 1 FROM mail_mentions m JOIN task_assignees x ON x.task_id=m.task_id AND x.agent_id=m.recipient_id
+ AND (EXISTS(SELECT 1 FROM mail_mentions m JOIN task_assignees x ON x.task_id=m.task_id AND x.agent_id=m.recipient_id
  WHERE m.recipient_id=a.id AND x.session_id=s.id AND m.notice_state='pending')
- ORDER BY COALESCE(d.updated_at,''),a.id LIMIT 1`, session, session, n.clock().UnixMilli()).Scan(&t.agent, &t.session, &t.revision, &t.bindingJSON)
+ OR EXISTS(SELECT 1 FROM mail_acks k JOIN task_assignees x ON x.task_id=k.task_id AND x.agent_id=k.recipient_id WHERE k.recipient_id=a.id AND x.session_id=s.id AND k.reminder_state='pending' AND k.acked_at='' AND k.withdrawn_at='' AND k.due_at<>'' AND julianday(k.due_at)<=julianday(?)))
+ ORDER BY COALESCE(d.updated_at,''),a.id LIMIT 1`, session, session, n.clock().UnixMilli(), n.clock().UTC().Format(time.RFC3339Nano)).Scan(&t.agent, &t.session, &t.revision, &t.bindingJSON)
 	if err != nil {
 		return t, err
 	}
@@ -232,7 +236,11 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
 	if err != nil {
 		return empty, err
 	}
-	if len(ids) == 0 {
+	acks, err := readIDs(ctx, tx, `SELECT k.message_id FROM mail_acks k JOIN task_assignees x ON x.task_id=k.task_id AND x.agent_id=k.recipient_id WHERE x.session_id=? AND k.recipient_id=? AND k.reminder_state='pending' AND k.acked_at='' AND k.withdrawn_at='' AND k.due_at<>'' AND julianday(k.due_at)<=julianday(?) ORDER BY k.message_id LIMIT ?`, t.session, t.agent, n.clock().UTC().Format(time.RFC3339Nano), 500-len(ids))
+	if err != nil {
+		return empty, err
+	}
+	if len(ids)+len(acks) == 0 {
 		return empty, nil
 	}
 	batch := noticeBatch{id: opaqueID(), target: t}
@@ -245,6 +253,14 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
 			return empty, storageError()
 		}
 		if _, err = tx.ExecContext(ctx, "UPDATE mail_mentions SET notice_state='submitting',state_at=? WHERE message_id=? AND recipient_id=? AND notice_state='pending'", stamp, id, t.agent); err != nil {
+			return empty, storageError()
+		}
+	}
+	for _, id := range acks {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO notice_ack_refs VALUES(?,?,?)", batch.id, id, t.agent); err != nil {
+			return empty, storageError()
+		}
+		if _, err = tx.ExecContext(ctx, "UPDATE mail_acks SET reminder_state='submitting' WHERE message_id=? AND recipient_id=? AND reminder_state='pending'", id, t.agent); err != nil {
 			return empty, storageError()
 		}
 	}
@@ -275,7 +291,12 @@ func (n *notifier) preflight(ctx context.Context, b noticeBatch) (NoticeState, s
 	if err != nil {
 		return "", "", storageError()
 	}
-	if count == 0 {
+	var ackCount int
+	err = tx.QueryRowContext(ctx, `SELECT count(*) FROM notice_ack_refs r JOIN mail_acks k ON k.message_id=r.message_id AND k.recipient_id=r.recipient_id JOIN task_assignees x ON x.task_id=k.task_id AND x.agent_id=k.recipient_id WHERE r.batch_id=? AND k.reminder_state='submitting' AND k.acked_at='' AND k.withdrawn_at='' AND x.session_id=?`, b.id, b.target.session).Scan(&ackCount)
+	if err != nil {
+		return "", "", storageError()
+	}
+	if count+ackCount == 0 {
 		return NoticeSuppressed, "membership_removed", nil
 	}
 	return "", "", nil
@@ -306,6 +327,15 @@ func (n *notifier) finish(b noticeBatch, state NoticeState, reason string) error
 	if err != nil {
 		return storageError()
 	}
+	ackResult, err := tx.ExecContext(ctx, `UPDATE mail_acks SET reminder_state=? WHERE reminder_state='submitting' AND EXISTS(SELECT 1 FROM notice_ack_refs r WHERE r.batch_id=? AND r.message_id=mail_acks.message_id AND r.recipient_id=mail_acks.recipient_id)`, state, b.id)
+	if err != nil {
+		return storageError()
+	}
+	ackCount, err := ackResult.RowsAffected()
+	if err != nil {
+		return storageError()
+	}
+	count += ackCount
 	if state == NoticeUncertain && count > 0 {
 		if err = bumpSessionRead(ctx, tx, b.target.session); err != nil {
 			return storageError()

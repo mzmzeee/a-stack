@@ -33,14 +33,16 @@ type handoffTask struct {
 // handoffMail holds the latest messages, oldest first. Readable is false when
 // the credential may not read the Task's mail (only assignees may).
 type handoffMail struct {
-	Readable bool                `json:"readable"`
-	Total    int64               `json:"total"`
-	First    int64               `json:"first_sequence,omitempty"`
-	Last     int64               `json:"last_sequence,omitempty"`
-	Earlier  int64               `json:"earlier_messages,omitempty"`
-	Cursor   string              `json:"cursor,omitempty"`
-	More     bool                `json:"more"`
-	Messages []stack.MailMessage `json:"messages"`
+	PendingAcks []stack.MailAck     `json:"pending_acks,omitempty"`
+	MoreAcks    bool                `json:"more_acks,omitempty"`
+	Readable    bool                `json:"readable"`
+	Total       int64               `json:"total"`
+	First       int64               `json:"first_sequence,omitempty"`
+	Last        int64               `json:"last_sequence,omitempty"`
+	Earlier     int64               `json:"earlier_messages,omitempty"`
+	Cursor      string              `json:"cursor,omitempty"`
+	More        bool                `json:"more"`
+	Messages    []stack.MailMessage `json:"messages"`
 }
 
 // defaultHandoffMail is how many of the latest messages the brief shows
@@ -95,6 +97,7 @@ func taskHandoff(ctx context.Context, client *stack.Client, l lifecycleFlags, f 
 		err = nil
 	} else if err == nil {
 		h.Mail.Readable, h.Mail.Messages = true, page.Messages
+		h.Mail.PendingAcks, h.Mail.MoreAcks = page.PendingAcks, page.MoreAcks
 		h.Mail.Cursor, h.Mail.More = page.Cursor, page.More
 		if page.Total > 0 {
 			h.Mail.Total = page.Total
@@ -217,6 +220,16 @@ func (h handoff) text() string {
 		}
 	}
 	if h.Mail.Readable {
+		b.WriteString("\n## Pending acknowledgements (informational)\n\n")
+		if len(h.Mail.PendingAcks) == 0 {
+			b.WriteString("None.\n")
+		}
+		for _, a := range h.Mail.PendingAcks {
+			fmt.Fprintf(&b, "- %s: @%s; due %s\n", a.MessageID, printable(a.RecipientName), a.DueAt)
+		}
+		if h.Mail.MoreAcks {
+			b.WriteString("More pending acknowledgements exist; page through mail read for all message obligations.\n")
+		}
 		fmt.Fprintf(&b, "\nMail coverage: sequences %d–%d; %d earlier messages not shown.\n", h.Mail.First, h.Mail.Last, h.Mail.Earlier)
 		if h.Mail.More {
 			b.WriteString("More messages follow this excerpt.\n")
