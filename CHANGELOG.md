@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- The Agent skill now defaults to builder/verifier pairs for nontrivial code work, with linked Tasks, one report/finish owner per Task, candidate-specific evidence and a bounded repair loop. Small, low-risk work can stay solo.
+
 - Hook migration now keeps a private pending-enrollment reminder for explicit Agent CLI commands, including upgrades through older updaters that discard new warnings. `hook status` reports installed hooks and exact native-session enrollment without changing stdout JSON or activating unrelated hook events.
 
 - Update/refresh migrates recognized legacy hook commands and reports enrollment instructions in human and JSON output. Agents can run `hook enroll` once from their own session to detect available native metadata, with explicit-ID and Herdr fallbacks.

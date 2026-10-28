@@ -8,13 +8,24 @@ Set up `me` as [SKILL.md](../SKILL.md) shows, with your own credential. If nobod
 
 Inside Herdr, bind yourself too: run `me agent list` for your current revision, then `me herdr bind --agent YOUR_AGENT_ID --expected-revision R --operation-id orch-bind-1`. `me session inspect` gives `your_agent_id`. For `integration_missing`, have the Operator install the named integration and restart your harness in that pane, then bind again.
 
-## 1. Register the Agents
+## 1. Choose the smallest team
+
+Record the choice and its reason in the Task description before registering Agents:
+
+- **Solo:** one worker for a small, low-risk change with strong existing checks, a bounded lookup or a mechanical edit. Say why an independent check is unnecessary. Your assignment supplies coordination, not independent verification.
+- **Pair:** the default for nontrivial code work. Create Build → Verify, with the builder, independent verifier and yourself assigned to both Tasks. The builder owns Build's report and finish; the verifier owns Verify's. Build Finished means a reviewable candidate, not approval to ship.
+- **Pair + tester:** add a distinct tester for browser/device behavior, migrations, security or performance checks that need separate work. Split Verify into Review and Test after Build; both feed Integrate. Cross-assign the team where it needs mail access and name one report/finish owner per Task.
+
+These are working agreements, not new permissions or an Orchestrator code-approval gate. Helpers send evidence in mail; they do not replace the owner's report or finish on its behalf. For a short shared investigation, one Task can suffice, with the same explicit ownership. Keep one implementation writer; a tester who edits uses a separate worktree and agreed file scope.
+
+## 2. Register the Agents
 
 Make one private credential folder for the Agents that you register. It must be outside every Git checkout, because a-stack rejects a credential file inside one:
 
 ```sh
 umask 077; CREDS="$(mktemp -d)"
-me agent register --name 02-worker --new-credential-file "$CREDS/02-worker.json" --operation-id orch-register-02-worker
+me agent register --name 02-builder --new-credential-file "$CREDS/02-builder.json" --operation-id orch-register-02-builder
+me agent register --name 03-verifier --new-credential-file "$CREDS/03-verifier.json" --operation-id orch-register-03-verifier
 ```
 
 - `data.resource_id` of the receipt is the new Agent's ID. `--agent` and `--assign` take this ID or the name.
@@ -25,12 +36,21 @@ me agent register --name 02-worker --new-credential-file "$CREDS/02-worker.json"
 - To link the Agent's own worktree, add `--worktree ABSOLUTE_DIR`.
 - Give each new Herdr tab a new Agent. Before reusing a name with a live binding, have the Operator run `agent rebind --clear-runtime` and deliver the new credential. An Agent can replace its own binding with `herdr bind` only when Herdr proves the old target is stale.
 
-## 2. Create, link and assign each Task in one command
+## 3. Create, link and assign each Task in one command
+
+For a pair, write the scope and acceptance checks in `api-build.md` and the verification checks in `api-verify.md`. Name `02-builder` as Build's report/finish owner and `03-verifier` as Verify's.
 
 ```sh
-me task create --title 'Build the API' --body-file /your/private/folder/api.md \
-  --after DESIGN_TASK_ID --assign 02-worker --assign 01-orchestrator --operation-id orch-task-api-1
+me task create --title 'API — Build' --body-file /your/private/folder/api-build.md \
+  --after DESIGN_TASK_ID --assign 02-builder --assign 03-verifier --assign 01-orchestrator \
+  --operation-id orch-task-api-build-1
+# Replace BUILD_TASK_ID below with data.resource_id from that receipt.
+me task create --title 'API — Verify' --body-file /your/private/folder/api-verify.md \
+  --after BUILD_TASK_ID --assign 02-builder --assign 03-verifier --assign 01-orchestrator \
+  --operation-id orch-task-api-verify-1
 ```
+
+Link Integrate after Verify (or after both Review and Test). Give the verifier its scope early so it can prepare checks; verification starts with a candidate or an explicit partial handoff. Put a Ticket on Build only, since its reference is unique in the Session.
 
 - `--after T` makes the new Task depend on Task `T` (the arrow goes from T to the new Task). Repeat it for each prerequisite. `--assign` takes an Agent name or ID; repeat it for each assignee. All of it happens in one operation: if one prerequisite or Agent is wrong, nothing is created, and a retry with the same operation ID is safe.
 - Create the Tasks in order, starting points first, so each Task's prerequisites exist when you create it. Then no Task needs a link later, and you never need a `graph_revision`.
@@ -43,7 +63,7 @@ me task create --title 'Build the API' --body-file /your/private/folder/api.md \
 - Only a starting point, such as the first audit, has no prerequisite. When you create a Task without `--after` while other Tasks are open, `task create` prints a hint on stderr: check that the Task really is a starting point.
 - A dependency does not block anything. The skill has each assignee run `task dependencies` before it starts and wait while a prerequisite is open.
 
-## 3. Link or assign later
+## 4. Link or assign later
 
 When you find a missing link or assignee after the create:
 
@@ -57,14 +77,15 @@ me task assign --task T --agent 03-worker --expected-revision R --operation-id o
 - `R` is the Task's revision from its last receipt.
 - Before you brief anyone, run `me task list` and look at `prerequisite_count`: a Task with 0 that is not a starting point is missing a link.
 
-## 4. Brief each Agent
+## 5. Brief each Agent
 
 Give each Agent only what it needs, in private:
 
 - Start the brief's first line with an instruction to load the `a-stack` skill before running commands, then name its a-stack Agent role.
 - The path of its own credential file. Never paste the file's contents.
 - The Workspace ID and the Session ID.
-- Its Agent name and its Task IDs.
+- Its Agent name, Task IDs and responsibility on each Task; being assigned for mail access does not mean doing every Task from scratch.
+- One report/finish owner per Task, the exact candidate (branch and commit, or artifact), required verification evidence and where findings go. Before a candidate exists, name who will send its commit in the handoff.
 - The state directory, only if it is not the default.
 - Its own private folder for helpers, for example `/tmp/work/02-worker/`. Give each Agent a different folder; the Agent creates it if it does not exist.
 - The names of the other assignees of its Tasks, for `@name` mentions.
@@ -89,11 +110,15 @@ State directory: /private/state   (only if not the default)
 Your name: 02-worker   Your private folder: /tmp/work/02-worker/
 Work in: /path/to/worktree
 Hooks: install in that folder with your harness flag, then run me hook enroll with the same flag (or herdr bind). Enrollment must succeed; see the skill for missing native metadata.
-Tasks: A_ID (do first), B_ID (depends on A)
-Other assignees you can @mention: 01-orchestrator
+Tasks: BUILD_ID (implement), VERIFY_ID (help with repairs; depends on Build)
+Report/finish owners: Build = 02-worker; Verify = 03-verifier
+Candidate: branch feature/api; send the exact commit in Build mail at handoff
+Evidence: verifier inspects spec, diff and relevant callers, runs required checks, reports commit, results and limits
+Findings: Build mail with finding IDs; Verify mail/report links them and records the verdict
+Other assignees you can @mention: 03-verifier, 01-orchestrator
 ```
 
-## 5. Watch the work
+## 6. Watch the work
 
 - `me task list` shows each Task's `progress`, `needs_you` and `unassigned`.
 - `me session snapshot --known-revision N` returns `unchanged: true` while nothing changed since read revision N. Then you need not read the pages again.
@@ -103,7 +128,16 @@ Other assignees you can @mention: 01-orchestrator
 
 When a Task shows `needs_you`, the Operator must answer. You cannot answer for the Operator. The Operator answers with `a-stack answer` or in the browser view, and the Task's assignees get the answer as Task mail from the Operator.
 
-## 6. Change the plan
+### Repair and re-check
+
+1. The verifier reads the spec and code before relying on the builder's report. Inspect the exact candidate's diff and relevant callers; record its commit, checks, results and limits in Verify.
+2. For a defect, mail Build once with a finding ID, severity, expected behavior, evidence or reproduction and next action. Reference it from Verify rather than duplicating it. Keep Verify open: Working while checking, Waiting with a reason while repairs are needed.
+3. The builder reopens Build with `task reopen --reason` if finished, sets it Working, fixes the findings and hands off a new commit with evidence in Build mail and its report. Use the current revision and a fresh operation ID for each change.
+4. The verifier refreshes its checkout to that exact commit and re-checks the findings and affected checks. After two failed repair/review rounds, the Orchestrator narrows scope or decides the technical dispute. Ask the Operator only for an Operator decision.
+
+Return findings by mail, never a reverse dependency from Verify to Build. Changes do not invalidate evidence automatically: if Verify or Integrate was already finished, its owner reopens it when the change invalidates its evidence. Finish only against the checked candidate. New scope needs a new linked Task.
+
+## 7. Change the plan
 
 - When new work turns up, create a Task for it with `--after` and `--assign` in the same command, also when you do the work yourself, so that the Operator sees it.
 - Change the title, description or Ticket with `task edit`.
@@ -113,6 +147,6 @@ When a Task shows `needs_you`, the Operator must answer. You cannot answer for t
 - Archive finished side work that nobody needs to see any more with `task archive`, so the Operator's graph stays on the live work. You do not need to be assigned. a-stack already hides a done Task when every Task that depends on it is done, or a day after it ended. `task unarchive` undoes your archive, and `task reopen` clears it.
 - Remove a wrong dependency with `dependency remove`.
 
-## 7. Keep the record in Task mail
+## 8. Keep the record in Task mail
 
 Write decisions, hand-offs and review results in the Task's mail, so that every assignee and a later Orchestrator can read them. A conversation with one Agent is not part of the record.
