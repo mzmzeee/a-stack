@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Record trusted Tailscale Operator labels on actions and answers (schema 11). Shared Needs you answers show who answered and when; a second answer names the first answerer without sending duplicate mail.
+
 ### Added
 
 - `mail reply` routes a reply to the original Task and mentions its sender when still assigned. `mail recipients` previews the current assignees who can read mail and be mentioned. Handoff briefs show mail coverage, omitted earlier messages and a continuation cursor.

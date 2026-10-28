@@ -83,12 +83,14 @@ type Task struct {
 	chainDone                                       bool
 }
 type Question struct {
-	ID       string `json:"id"`
-	TaskID   string `json:"task_id"`
-	Question string `json:"question"`
-	AskerID  string `json:"asker_id"`
-	AskedAt  string `json:"asked_at"`
-	Note     string `json:"note,omitempty"`
+	ActorLogin string `json:"actor_login,omitempty"`
+	ActorName  string `json:"actor_name,omitempty"`
+	ID         string `json:"id"`
+	TaskID     string `json:"task_id"`
+	Question   string `json:"question"`
+	AskerID    string `json:"asker_id"`
+	AskedAt    string `json:"asked_at"`
+	Note       string `json:"note,omitempty"`
 	// Answer is the Operator's answer. A question that the Operator answered
 	// has no resolver; its answer is stored as the note.
 	Answer     string `json:"answer,omitempty"`
@@ -336,7 +338,8 @@ func recordTask(ctx context.Context, tx *sql.Tx, p Principal, taskID, action str
 	if p.Kind != AgentCapability {
 		kind, actor = "operator", nil
 	}
-	_, err := tx.ExecContext(ctx, "INSERT INTO task_history(task_id,actor_kind,actor_id,action,revision,received_at,changes) VALUES(?,?,?,?,?,?,?)", taskID, kind, actor, action, revision, now(), string(b))
+	login, name := operatorActor(ctx, p)
+	_, err := tx.ExecContext(ctx, "INSERT INTO task_history(task_id,actor_kind,actor_id,action,revision,received_at,changes,actor_login,actor_name) VALUES(?,?,?,?,?,?,?,?,?)", taskID, kind, actor, action, revision, now(), string(b), login, name)
 	return err
 }
 func bumpGraph(ctx context.Context, tx *sql.Tx, session string) error {
@@ -863,13 +866,13 @@ func openQuestion(ctx context.Context, tx *sql.Tx, id string) (*Question, error)
 	return &q, nil
 }
 
-const questionColumns = "id,task_id,question,asker_id,asked_at,note,COALESCE(resolver_id,''),COALESCE(resolved_at,'')"
+const questionColumns = "id,task_id,question,asker_id,asked_at,note,COALESCE(resolver_id,''),COALESCE(resolved_at,''),COALESCE(actor_login,''),COALESCE(actor_name,'')"
 
 // scanQuestion reads questionColumns. It returns nil without an error when
 // there is no row.
 func scanQuestion(row *sql.Row) (*Question, error) {
 	var q Question
-	err := row.Scan(&q.ID, &q.TaskID, &q.Question, &q.AskerID, &q.AskedAt, &q.Note, &q.ResolverID, &q.ResolvedAt)
+	err := row.Scan(&q.ID, &q.TaskID, &q.Question, &q.AskerID, &q.AskedAt, &q.Note, &q.ResolverID, &q.ResolvedAt, &q.ActorLogin, &q.ActorName)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}

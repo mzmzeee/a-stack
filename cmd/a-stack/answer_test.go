@@ -105,7 +105,7 @@ func TestCLIAnswerIsTheOperatorsAndReachesTheAgentAsMail(t *testing.T) {
 	if answered.Outcome != "answered" || answered.Revision != 4 || receipt("", scoped("answer", "--task", task.ResourceID, "--question-id", question, "--body-file", text, "--operation-id", "answer-1")...) != answered {
 		t.Fatal("answer receipt or retry", answered)
 	}
-	if out := answer("", 1, "--body", "Again", "--operation-id", "answer-2"); !strings.Contains(string(out), "no open Needs you question") {
+	if out := answer("", 1, "--body", "Again", "--operation-id", "answer-2"); !strings.Contains(string(out), "already answered by Operator at ") {
 		t.Fatalf("second answer: %s", out)
 	}
 	// The Agent finds the answer in mail check and in task show.

@@ -181,7 +181,8 @@ func recordLifecycle(ctx context.Context, tx *sql.Tx, p Principal, action, id, s
 	if session != "" {
 		sessionID = session
 	}
-	_, err := tx.ExecContext(ctx, "INSERT INTO lifecycle_history(resource_id,session_id,actor_kind,actor_id,action,revision,received_at) VALUES(?,?,?,?,?,?,?)", id, sessionID, p.Kind, p.SubjectID, action, revision, now())
+	login, name := operatorActor(ctx, p)
+	_, err := tx.ExecContext(ctx, "INSERT INTO lifecycle_history(resource_id,session_id,actor_kind,actor_id,action,revision,received_at,actor_login,actor_name) VALUES(?,?,?,?,?,?,?,?,?)", id, sessionID, p.Kind, p.SubjectID, action, revision, now(), login, name)
 	return err
 }
 func operation(id, name, scope string, payload any) Operation {

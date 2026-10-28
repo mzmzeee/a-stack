@@ -207,7 +207,7 @@ func TestViewAnswersOnlyItsSessionWithItsOrigin(t *testing.T) {
 		t.Fatalf("history: %+v", last)
 	}
 	status, e := answerRaw(t, f, token, origin, request(), nil)
-	if status != 409 || e == nil || e.Code != "conflict" || !strings.Contains(e.Message, "no open Needs you question") {
+	if status != 409 || e == nil || e.Code != "conflict" || !strings.Contains(e.Message, "already answered by Operator at ") {
 		t.Fatal("second answer", status, e)
 	}
 	// The Operator CLI path needs no Origin.

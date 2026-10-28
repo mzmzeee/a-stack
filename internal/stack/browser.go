@@ -96,6 +96,9 @@ func (s *Store) OpenBrowser(ctx context.Context, token string, r BrowserOpenRequ
 		if err != nil {
 			return Receipt{}, storageError(err)
 		}
+		if err = recordLifecycle(ctx, tx, p, "browser.open", session.ID, session.ID, session.Revision); err != nil {
+			return Receipt{}, err
+		}
 		return Receipt{ResourceID: session.ID, Revision: session.Revision, Outcome: "view-link-issued"}, nil
 	})
 }
@@ -195,7 +198,17 @@ func (s *Store) RevokeViews(ctx context.Context, token string, r ViewRevokeReque
 		return 0, storageError(err)
 	}
 	n, err := result.RowsAffected()
-	if err != nil || tx.Commit() != nil {
+	if err != nil {
+		return 0, storageError(err)
+	}
+	resource := r.SessionID
+	if r.All {
+		resource = "all"
+	}
+	if err = recordLifecycle(ctx, tx, p, "browser.revoke", resource, r.SessionID, 0); err != nil {
+		return 0, storageError(err)
+	}
+	if tx.Commit() != nil {
 		return 0, storageError()
 	}
 	return n, nil
