@@ -382,7 +382,7 @@ function patchAgents() {
     let r=rows.get(id);if(!r){r=makeAgentCard(id);rows.set(id,r);}
     setText(r.name,g.a.name);setText(r.avatar,g.a.name.slice(0,2));setText(r.meta,id==='unassigned'?'No assignee':agentMeta(g.a));
     const warning=g.a.notice_warning;r.notice.hidden=!warning;r.notice.title=warning?`${warning.reason}: ${warning.fix}`:'';
-    r.notice.textContent=warning?.unresolved_uncertain?`Notices uncertain (${warning.unresolved_uncertain})`:'Notices off';
+    r.notice.textContent=warning?.unresolved_uncertain?`Notices uncertain (${warning.unresolved_uncertain})`:warning?.reason?.startsWith('notice_waiting_')?'Notice waiting':'Notices off';
     r.notice.setAttribute('aria-label',warning?`${r.notice.textContent}: ${r.notice.title}`:'');
     r.section.classList.toggle('urgent',n>0);r.section.classList.toggle('idle',!n&&!w&&!wait);
     const chipKey=g.counts.join();

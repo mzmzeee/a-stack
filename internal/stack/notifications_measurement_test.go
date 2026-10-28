@@ -45,6 +45,13 @@ func TestNotificationsLatencyBatchingAndGrowth(t *testing.T) {
 	}
 	latencies := make([]int64, 0, 20)
 	bodyBytes := 0
+	readAll := func() {
+		for _, token := range []string{f.b.Token, f.orch.Token, c.Token} {
+			if _, err := s.CheckMail(ctx, token, MailCheckRequest{Context: f.ref(0)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	for i := 0; i < 20; i++ {
 		body := fmt.Sprintf("Single %02d @03-worker", i)
 		bodyBytes += len(body)
@@ -54,6 +61,7 @@ func TestNotificationsLatencyBatchingAndGrowth(t *testing.T) {
 			t.Fatal("isolated send not submitted")
 		}
 		latencies = append(latencies, time.Since(start).Microseconds())
+		readAll()
 	}
 	sort.Slice(latencies, func(i, j int) bool { return latencies[i] < latencies[j] })
 	bursts := []map[string]any{}
@@ -66,11 +74,16 @@ func TestNotificationsLatencyBatchingAndGrowth(t *testing.T) {
 			f.send(t, f.a.Token, body)
 		}
 		drainStart := time.Now()
-		r := f.drain(t, 16)
+		for left := size; left > 0; left -= 500 {
+			if r := f.drain(t, 16); r.Submitted != 3 {
+				t.Fatal("burst did not cover one bounded batch per recipient", r)
+			}
+			readAll()
+		}
 		submissions := f.prompts(t) - prompts
 		want := 3 * ((size + 499) / 500)
-		if r.Submitted != want || submissions != want {
-			t.Fatal("burst did not cover exact bounded batches", r, submissions)
+		if submissions != want {
+			t.Fatal("burst did not cover exact bounded batches", submissions)
 		}
 		bursts = append(bursts, map[string]any{"messages": size, "recipients_per_message": 3, "submissions": submissions, "drain_us": time.Since(drainStart).Microseconds(), "commit_and_drain_us": time.Since(start).Microseconds()})
 	}

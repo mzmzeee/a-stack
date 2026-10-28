@@ -364,6 +364,10 @@ func TestNotificationsArrivalAndRecipientSerialization(t *testing.T) {
 	if countTest(t, f.service.Store, "SELECT count(*) FROM mail_mentions WHERE notice_state='submitted'") != 1 {
 		t.Fatal("broad completion consumed arrivals")
 	}
+	if f.drain(t, 4).Submitted != 0 {
+		t.Fatal("arrival bypassed unread notice hold")
+	}
+	f.read(t, f.b.Token, "", 50)
 	if r := f.drain(t, 4); r.Submitted != 1 || f.prompts(t) != 2 || countTest(t, f.service.Store, "SELECT count(*) FROM notice_batch_refs") != 3 {
 		t.Fatal("arrival batch lost or repeated")
 	}
@@ -817,8 +821,14 @@ func TestNotificationsClosureAndRebindDuringSubmission(t *testing.T) {
 			}
 			f.config.Mode = ""
 			f.write(t)
+			if change == "close" {
+				if f.drain(t, 4).Submitted != 0 {
+					t.Fatal("reopen bypassed unread notice hold")
+				}
+				f.read(t, f.b.Token, "", 50)
+			}
 			if f.drain(t, 4).Submitted != 1 || f.prompts(t) != 2 {
-				t.Fatal("explicit resumption/new binding did not drain remaining fresh work")
+				t.Fatal("own read/new binding did not drain remaining fresh work")
 			}
 		})
 	}
