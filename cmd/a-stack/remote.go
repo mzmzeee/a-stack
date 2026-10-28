@@ -45,5 +45,5 @@ func commandClient(ctx context.Context, state, credential, kind, remote string) 
 	if remote != "" {
 		return stack.NewRemoteClient(ctx, remote, credential, stack.CapabilityKind(kind))
 	}
-	return stack.NewClient(state, credential, stack.CapabilityKind(kind))
+	return stack.NewClientContext(ctx, state, credential, stack.CapabilityKind(kind))
 }

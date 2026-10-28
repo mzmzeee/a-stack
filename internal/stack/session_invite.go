@@ -56,6 +56,9 @@ func (s *Store) InviteSession(ctx context.Context, token string, r SessionInvite
 		if _, err = tx.ExecContext(ctx, "INSERT INTO session_invites(session_id,login) VALUES(?,?) ON CONFLICT DO NOTHING", session.ID, r.Login); err != nil {
 			return Receipt{}, err
 		}
+		if err = bumpSessionRead(ctx, tx, session.ID); err != nil {
+			return Receipt{}, err
+		}
 		if err = recordLifecycle(ctx, tx, p, "session.invite", session.ID, session.ID, session.Revision); err != nil {
 			return Receipt{}, err
 		}

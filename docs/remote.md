@@ -43,7 +43,7 @@ a-stack connect remove team
 
 Profiles are private JSON files under the operating system's config directory: `$XDG_CONFIG_HOME/a-stack/remotes` or `~/.config/a-stack/remotes` on Linux, `~/Library/Application Support/a-stack/remotes` on macOS, and `%AppData%\a-stack\remotes` on Windows.
 
-API commands, including `open`, `watch` and `mcp`, accept `--remote NAME`. Supply an explicit credential file issued by that server through a trusted channel. a-stack never substitutes your local Operator credential. `--remote` does not apply to local service management or `new`. The Session picker opens linked Sessions on their server. Transferred and remotely registered Agent credential files remember their remote profile, so their CLI commands and hooks reach that server without an extra flag. Local Agent credentials keep using the local service. Cross-machine Herdr delivery needs a relay; the server does not send notices to a laptop's local runtime endpoint.
+API commands, including `open`, `watch` and `mcp`, accept `--remote NAME`. Supply an explicit credential file issued by that server through a trusted channel. a-stack never substitutes your local Operator credential. `--remote` does not apply to local service management or `new`. The Session picker opens linked Sessions on their server. Transferred and remotely registered Agent credential files remember their remote profile, so their CLI commands and hooks reach that server without an extra flag. Local Agent credentials keep using the local service. Remote discovery shares the hook's deadline, so an unreachable server does not hold up the harness. Cross-machine Herdr delivery needs a relay; the server does not send notices to a laptop's local runtime endpoint.
 
 Every new remote client fetches the current instance ID. If the database ID changed, it stops before sending the bearer credential. Check the server before removing and recreating the profile. A network failure is an error, not a switch to the local service. Nothing is queued offline. If a write may have committed, retry it with the same operation ID.
 
@@ -88,7 +88,7 @@ When you register an Agent through `--remote`, its new credential remembers that
 
 ### Transfer recovery
 
-The destination imports the snapshot in one transaction, initially read-only. The source stays writable until the destination confirms that import. The source then checks that its read revision still matches the snapshot, seals itself, and the destination activates. During the short sealed/staged gap, requests fail clearly. A transfer never automatically unseals a source whose destination might already be active.
+The destination imports the snapshot in one transaction, initially read-only. The source stays writable until the destination confirms that import. The source then checks its read revision and retained rows against the snapshot, seals itself, and the destination activates. During the short sealed/staged gap, requests fail clearly. A transfer never automatically unseals a source whose destination might already be active.
 
 Rerun the same share or unshare command after a network failure or interruption. A private journal under the operating system's config directory, `a-stack/transfers`, retains the transfer ID and prepared credential paths. Do not delete it during a transfer. If the source changed during import, the command leaves it intact and asks you to rerun; the next import replaces the inactive staged copy. A failed import rolls back without changing source work.
 

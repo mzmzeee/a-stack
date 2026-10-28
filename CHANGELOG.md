@@ -16,7 +16,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - Record trusted Tailscale Operator labels on actions and answers (schema 11). Shared Needs you answers show who answered and when; a second answer names the first answerer without sending duplicate mail.
 ### Added
 
-- Share, link, invite and unshare Sessions over a connected Tailscale service (schema 13). Transfers stage atomically, seal the unchanged source, and resume after interruptions. Invited Operators are limited to their Session; links open its server view. Agent credentials and exact local hook enrollment migrate without copying source capabilities.
+- Share, link, invite and unshare Sessions over a connected Tailscale service (schema 13). Transfers stage atomically, seal the unchanged source, and resume after interruptions. Invited Operators are limited to their Session; links open its server view. Agent credentials and exact local hook enrollment migrate without copying source capabilities. Remote discovery respects the hook deadline.
 
 - Explicit mail acknowledgements (schema 12): send or reply with `--ack-required`, optional `--ack-from` and `--ack-due`; recipients use `mail ack`. Mail checks and handoffs list pending obligations, the Now board shows overdue counts, and Herdr can submit one overdue reminder per obligation. Reading and Task completion do not acknowledge; unassignment withdraws outstanding obligations permanently.
 

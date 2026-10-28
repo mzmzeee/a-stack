@@ -106,7 +106,7 @@ func runHook(id hookIdentity, stdin io.Reader, stdout io.Writer) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), hookTimeout)
 	defer cancel()
-	client, err := stack.NewClient(id.state, id.credential, stack.AgentCapability)
+	client, err := stack.NewClientContext(ctx, id.state, id.credential, stack.AgentCapability)
 	if err != nil {
 		return
 	}

@@ -358,6 +358,11 @@ type Client struct {
 }
 
 func NewClient(dir, credentialFile string, kind CapabilityKind) (*Client, error) {
+	return NewClientContext(context.Background(), dir, credentialFile, kind)
+}
+
+// NewClientContext includes remote discovery in the caller's deadline.
+func NewClientContext(ctx context.Context, dir, credentialFile string, kind CapabilityKind) (*Client, error) {
 	if kind != "" && !validKind(kind) {
 		return nil, failure("invalid_input", "credential kind must be operator, agent or browser")
 	}
@@ -375,7 +380,7 @@ func NewClient(dir, credentialFile string, kind CapabilityKind) (*Client, error)
 		return nil, failure("forbidden", "credential file has a different capability kind")
 	}
 	if c.Remote != "" {
-		return NewRemoteClient(context.Background(), c.Remote, credentialFile, kind)
+		return NewRemoteClient(ctx, c.Remote, credentialFile, kind)
 	}
 	d, err := ReadDiscovery(dir)
 	if err != nil {

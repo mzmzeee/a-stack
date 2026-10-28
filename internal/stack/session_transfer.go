@@ -456,7 +456,8 @@ func (s *Store) ChangeTransfer(ctx context.Context, token, action string, r Tran
 			return result, failure("conflict", "transfer is not prepared")
 		}
 		var revision int64
-		if err = tx.QueryRowContext(ctx, "SELECT read_revision FROM session_transfers WHERE id=?", r.TransferID).Scan(&revision); err != nil {
+		var payload string
+		if err = tx.QueryRowContext(ctx, "SELECT read_revision,payload FROM session_transfers WHERE id=?", r.TransferID).Scan(&revision, &payload); err != nil {
 			return result, storageError(err)
 		}
 		var session Session
@@ -465,6 +466,32 @@ func (s *Store) ChangeTransfer(ctx context.Context, token, action string, r Tran
 			return result, err
 		}
 		if session.ReadRevision != revision {
+			return result, failure("conflict", "Session changed after export; start a new transfer")
+		}
+		// View grants and receipt retention can change exported history without
+		// changing read_revision. Check the retained rows inside the same lock.
+		var current TransferBundle
+		if json.Unmarshal([]byte(payload), &current) != nil {
+			return result, storageError()
+		}
+		current.Session = session
+		current.Orders, err = loadOrders(ctx, tx, session.WorkspaceID)
+		if err != nil {
+			return result, err
+		}
+		current.Tables = nil
+		for _, spec := range transferTables {
+			_, rows, readErr := transferRows(ctx, tx, spec, session.ID)
+			if readErr != nil {
+				return result, storageError(readErr)
+			}
+			current.Tables = append(current.Tables, TransferTable{Name: spec.name, Rows: rows})
+		}
+		encoded, encodeErr := json.Marshal(current)
+		if encodeErr != nil {
+			return result, storageError(encodeErr)
+		}
+		if string(encoded) != payload {
 			return result, failure("conflict", "Session changed after export; start a new transfer")
 		}
 		_, err = tx.ExecContext(ctx, "INSERT INTO session_locations(session_id,transfer_id,state,peer_database,remote) VALUES(?,?,'sealed',?,?) ON CONFLICT(session_id) DO UPDATE SET transfer_id=excluded.transfer_id,state=excluded.state,peer_database=excluded.peer_database,remote=excluded.remote", session.ID, r.TransferID, r.DestinationDatabase, r.Remote)

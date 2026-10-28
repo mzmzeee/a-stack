@@ -34,6 +34,22 @@ func TestTransferRejectsDestinationReferences(t *testing.T) {
 	}
 }
 
+func TestTransferDetectsHistoryOnlyWrite(t *testing.T) {
+	source := tasksFixture(t)
+	bundle, err := source.service.Store.ExportTransfer(ctx, source.operator.Token, TransferExportRequest{Context: source.ref(0), TransferID: opaqueID(), Repository: "example.com/repo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = source.service.Store.OpenBrowser(ctx, source.operator.Token, BrowserOpenRequest{Context: source.ref(0), OperationID: opaqueID(), CredentialHash: tokenHash(opaqueID())}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = source.service.Store.ChangeTransfer(ctx, source.operator.Token, "seal", TransferChangeRequest{Context: source.ref(0), TransferID: bundle.TransferID, DestinationDatabase: opaqueID()})
+	requireCode(t, err, "conflict")
+	if _, err = source.service.Store.InspectSession(ctx, source.operator.Token, source.ref(0)); err != nil {
+		t.Fatal("history-only change sealed the source", err)
+	}
+}
+
 func TestTransferSealStorageFailureRollsBack(t *testing.T) {
 	source := tasksFixture(t)
 	bundle, err := source.service.Store.ExportTransfer(ctx, source.operator.Token, TransferExportRequest{Context: source.ref(0), TransferID: opaqueID(), Repository: "example.com/repo"})
