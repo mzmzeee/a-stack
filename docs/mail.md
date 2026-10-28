@@ -62,7 +62,7 @@ A returned cursor points to the last message that the response actually contains
 
 ### Check all your Tasks
 
-`mail check` includes one `notice_warning` (`reason` and `fix`) when the caller's mention notices are unavailable. It uses the stored binding and last delivery diagnostic, not a new Herdr request. Mail still works. See [Diagnostics](notifications.md#diagnostics-and-maintenance).
+`mail check` includes one `notice_warning` (`reason` and `fix`) when the caller's mention notices are unavailable or uncertain. An `unresolved_uncertain` count keeps earlier uncertain notices visible after a later successful submission. It uses retained notice states, the stored binding and last delivery diagnostic, not a new Herdr request. Mail still works. See [Diagnostics](notifications.md#diagnostics-and-maintenance).
 
 `mail check` reads the caller's current Tasks in Task ID order. It reads 50 Tasks by default. Use `--task-limit` with a value from 1 to 100. The message limit and the size limit apply to the whole response.
 
@@ -70,12 +70,15 @@ A returned cursor points to the last message that the response actually contains
 
 ### The cursor file
 
-`mail check --cursor-file FILE` keeps your read positions in a file that you own. The check reads the file, sends it, and then writes the returned positions back to it. So the same command, run again, shows only mail that you have not seen. Run it again while the output has `more: true`. Repeated checks reach the newest message, also on a Task with more mail than one response holds. The service stores no read position; the file is yours.
+`mail check --cursor-file FILE` keeps your positions in a file that you own. The check reads the file, fetches mail, writes the complete response to stdout, and only then saves the returned positions. A failed or short stdout write leaves the file unchanged. A crash before the save can replay the batch. Run the command again while the output has `more: true`. The service stores no read position; the file is yours.
+
+A successful stdout write is not proof that a harness delivered its tool result or that an Agent understood it. This is an output checkpoint, not an acknowledgment. To replay history after a lost tool result, use a new cursor file or `mail read` without a cursor.
 
 - The CLI creates the file if it is missing. It writes a temporary file with mode 0600, syncs it and renames it over the old one, so a crash never leaves half a file. The folder must exist.
 - If two checks write the same file at once, the last write wins. The other check's mail then shows again in the next check. Nothing is lost.
-- The file is a JSON object that maps each Task ID to its last cursor, for example `{"TASK_ID":"CURSOR"}`. Under the key `next_task` it also keeps the Task scan position: the next check goes on with the Tasks after it. When a Task has mail left, the next check starts again at the first Task instead, so no Task is skipped. The file can be 1 MiB at most.
-- With a cursor file, the output lists only the Tasks with new mail, and no `next_task`. `"tasks": []` means that there is no new mail.
+- The file is a JSON object with Task cursors and reserved keys `identity`, `next_task` and `partial`. `identity` binds it to the database, Workspace, Session and Agent credential without storing the credential. A mismatched or older unbound file is refused. Use a new file to replay retained mail after upgrading or replacing a credential. The file can be 1 MiB at most.
+- The next check continues after the last scanned Task, even when that Task still has mail. At the end of a round it returns to the first Task. `partial` keeps `more` true until an earlier partial Task can be revisited. For a fixed set of N assigned Tasks, a round takes at most N successful checks; continuous traffic on the first Task cannot starve the others. Changes to assignments start appearing by the next round. This bound assumes the same file, no manual `--after-task` override and no competing writers.
+- With a cursor file, the output lists only the Tasks with new mail, and no `next_task`. `"tasks": []` means that this page has no new mail; keep checking if `more` is true.
 - If the check rejects a saved cursor, for example after a database restore, delete the file. The next check starts again at the first message.
 
 `mail check` checks a cursor only when it reads that Task, and it ignores the cursors of Tasks that you are no longer assigned to.

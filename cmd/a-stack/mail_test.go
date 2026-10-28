@@ -144,12 +144,8 @@ func TestCLIMailInputIndependentCursorsRemovalAndRejoin(t *testing.T) {
 	if len(read(aFile, aPage.Cursor).Messages) != 1 || len(read(bFile, "").Messages) != 2 {
 		t.Fatal("independent CLI positions")
 	}
-	cursors := map[string]string{task.ResourceID: aPage.Cursor}
-	cursorData, _ := json.Marshal(cursors)
 	cursorFile := filepath.Join(root, "cursors.json")
-	if os.WriteFile(cursorFile, cursorData, 0600) != nil {
-		t.Fatal("cursor file")
-	}
+	invoke(args(aFile, "mail", "check", "--cursor-file", cursorFile, "--limit", "1"), 0)
 	checkData := invoke(args(aFile, "mail", "check", "--cursor-file", cursorFile), 0)
 	var check stack.MailCheckPage
 	if json.Unmarshal(checkData, &check) != nil || len(check.Tasks) != 1 || len(check.Tasks[0].Messages) != 1 {
@@ -172,7 +168,7 @@ func TestCLIMailInputIndependentCursorsRemovalAndRejoin(t *testing.T) {
 	}
 	var saved map[string]string
 	after, _ := os.ReadFile(cursorFile)
-	if json.Unmarshal(after, &saved) != nil || len(saved) != 1 || saved[task.ResourceID] != check.Tasks[0].Cursor {
+	if json.Unmarshal(after, &saved) != nil || len(saved) != 2 || saved[task.ResourceID] != check.Tasks[0].Cursor {
 		t.Fatal("CLI did not save the returned cursor")
 	}
 	if checkData = invoke(args(aFile, "mail", "check", "--cursor-file", cursorFile), 0); json.Unmarshal(checkData, &check) != nil || len(check.Tasks) != 0 || check.More {

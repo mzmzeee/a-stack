@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -97,8 +99,6 @@ func mailRequest(ctx context.Context, client *stack.Client, command string, l li
 		body = stack.MailSendRequest{Context: ref, OperationID: l.operationID, TaskID: t.task, Body: t.body, Mentions: f.mentions}
 	case "mail read":
 		body = stack.MailReadRequest{Context: ref, TaskID: t.task, Cursor: f.cursor, Limit: l.limit}
-	case "mail check":
-		return mailCheck(ctx, client, stack.MailCheckRequest{Context: ref, AfterTask: f.afterTask, TaskLimit: f.taskLimit, Limit: l.limit}, f.cursorFile, seen["cursor-file"])
 	default:
 		return nil, invalid("unknown mail command")
 	}
@@ -114,13 +114,10 @@ type mailCheckOutput struct {
 	Hint string `json:"hint,omitempty"`
 }
 
-// mailCheck sends one check. With a cursor file (not -), it saves the returned
-// cursors and the scan continuation back to the file and prints only the Tasks
-// with new mail, so the same command run again reads on from there while more
-// is true. The file
-// is replaced atomically; of two checks at once the last write wins, and the
-// lost one only shows its mail again.
-func mailCheck(ctx context.Context, client *stack.Client, r stack.MailCheckRequest, path string, given bool) ([]byte, error) {
+// mailCheck calls deliver before saving a cursor file, and returns nil data
+// after delivery. Without a writable file it returns the response to the caller.
+// Concurrent saves are atomic and last-writer-wins; a lost save replays mail.
+func mailCheck(ctx context.Context, client *stack.Client, r stack.MailCheckRequest, path string, given bool, deliver func([]byte) error) ([]byte, error) {
 	save := given && path != "-"
 	if given {
 		var err error
@@ -128,7 +125,15 @@ func mailCheck(ctx context.Context, client *stack.Client, r stack.MailCheckReque
 			return nil, err
 		}
 	}
+	identity := fmt.Sprintf("%x", sha256.Sum256([]byte(client.Discovery.DatabaseID+"\n"+r.WorkspaceID+"\n"+r.SessionID+"\n"+client.Credential.Token)))
+	partial := false
 	if save {
+		if len(r.Cursors) > 0 && r.Cursors["identity"] != identity {
+			return nil, invalid("cursor file belongs to another database, Workspace, Session or Agent credential, or is unbound; use a new cursor file to replay retained mail")
+		}
+		delete(r.Cursors, "identity")
+		partial = r.Cursors["partial"] == "true"
+		delete(r.Cursors, "partial")
 		if r.AfterTask == "" {
 			r.AfterTask = r.Cursors[scanKey]
 		}
@@ -151,7 +156,7 @@ func mailCheck(ctx context.Context, client *stack.Client, r stack.MailCheckReque
 		}
 		return json.Marshal(map[string]any{"data": out})
 	}
-	cursors, partial := r.Cursors, false
+	cursors := r.Cursors
 	out.Tasks = []stack.MailPage{}
 	for _, page := range envelope.Data.Tasks {
 		cursors[page.TaskID] = page.Cursor
@@ -160,14 +165,26 @@ func mailCheck(ctx context.Context, client *stack.Client, r stack.MailCheckReque
 			out.Tasks = append(out.Tasks, page)
 		}
 	}
-	// The next check goes on with the next Tasks, unless a Task has mail
-	// left: then it starts again at the first Task, so that none is skipped.
-	if out.NextTask != "" && !partial {
+	// Finish the scan before revisiting partial Tasks, even under continuous mail.
+	if out.NextTask != "" {
 		cursors[scanKey] = out.NextTask
+		if partial {
+			cursors["partial"] = "true"
+		}
+	} else {
+		out.More = out.More || partial
 	}
+	cursors["identity"] = identity
 	out.NextTask = ""
+	data, err = json.Marshal(map[string]any{"data": out})
+	if err != nil {
+		return nil, err
+	}
+	if err = deliver(data); err != nil {
+		return nil, err
+	}
 	if stack.ReplacePrivate(path, cursors) != nil {
 		return nil, invalid("cannot write the cursor file; its folder must exist and be yours")
 	}
-	return json.Marshal(map[string]any{"data": out})
+	return nil, nil
 }
