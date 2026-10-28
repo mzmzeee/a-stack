@@ -69,6 +69,7 @@ type MailReadRequest struct {
 	Limit  int    `json:"limit,omitempty"`
 }
 type MailPage struct {
+	Total    int64         `json:"total,omitempty"`
 	TaskID   string        `json:"task_id"`
 	Messages []MailMessage `json:"messages"`
 	Cursor   string        `json:"cursor"`
@@ -208,7 +209,7 @@ func mentionError(ctx context.Context, tx *sql.Tx, task string, bad []string) er
 	if len(bad) > 1 {
 		verb = " are not current assignees"
 	}
-	return failure("invalid_input", "mention target must be a current Task assignee: "+strings.Join(bad, ", ")+verb+" of this Task; assignees: "+strings.Join(names, ", ")+"; write other names without @")
+	return failure("invalid_input", "mention target must be a current Task assignee: "+strings.Join(bad, ", ")+verb+" of this Task; assignees: "+strings.Join(names, ", ")+"; run mail recipients --task "+task+"; write other names without @")
 }
 func (s *Store) SendMail(ctx context.Context, token string, r MailSendRequest) (Receipt, error) {
 	names, prepareErr := mentionNames(r.Body, r.Mentions)
@@ -233,37 +234,41 @@ func (s *Store) SendMail(ctx context.Context, token string, r MailSendRequest) (
 		if prepareErr != nil {
 			return Receipt{}, prepareErr
 		}
-		recipients, err := resolveMentions(ctx, tx, r.TaskID, names)
-		if err != nil {
-			return Receipt{}, err
-		}
-		var sequence int64
-		if err = tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(sequence),0)+1 FROM mail_messages WHERE task_id=?", r.TaskID).Scan(&sequence); err != nil {
-			return Receipt{}, err
-		}
-		id, timestamp := opaqueID(), now()
-		_, err = tx.ExecContext(ctx, "INSERT INTO mail_messages(id,task_id,sequence,sender_id,received_at,body) VALUES(?,?,?,?,?,?)", id, r.TaskID, sequence, p.SubjectID, timestamp, r.Body)
-		if err != nil {
-			return Receipt{}, err
-		}
-		for _, recipient := range recipients {
-			state := NoticePending
-			if recipient == p.SubjectID {
-				state = NoticeSelf
-			}
-			if _, err = tx.ExecContext(ctx, "INSERT INTO mail_mentions VALUES(?,?,?,?,?)", id, r.TaskID, recipient, state, timestamp); err != nil {
-				return Receipt{}, err
-			}
-		}
-		// The Task item's mail_count changes, so the Session read revision moves on
-		// and a polling view sees the new message.
-		if err = bumpSessionRead(ctx, tx, r.SessionID); err != nil {
-			return Receipt{}, err
-		}
-		// Revision is the append-only Task sequence; body_ref names the one stored
-		// message, never a second body or a response snapshot.
-		return Receipt{ResourceID: id, BodyRef: id, Revision: sequence, Outcome: "sent"}, nil
+		return appendMailTx(ctx, tx, p, r, names)
 	})
+}
+
+func appendMailTx(ctx context.Context, tx *sql.Tx, p Principal, r MailSendRequest, names []string) (Receipt, error) {
+	recipients, err := resolveMentions(ctx, tx, r.TaskID, names)
+	if err != nil {
+		return Receipt{}, err
+	}
+	var sequence int64
+	if err = tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(sequence),0)+1 FROM mail_messages WHERE task_id=?", r.TaskID).Scan(&sequence); err != nil {
+		return Receipt{}, err
+	}
+	id, timestamp := opaqueID(), now()
+	_, err = tx.ExecContext(ctx, "INSERT INTO mail_messages(id,task_id,sequence,sender_id,received_at,body) VALUES(?,?,?,?,?,?)", id, r.TaskID, sequence, p.SubjectID, timestamp, r.Body)
+	if err != nil {
+		return Receipt{}, err
+	}
+	for _, recipient := range recipients {
+		state := NoticePending
+		if recipient == p.SubjectID {
+			state = NoticeSelf
+		}
+		if _, err = tx.ExecContext(ctx, "INSERT INTO mail_mentions VALUES(?,?,?,?,?)", id, r.TaskID, recipient, state, timestamp); err != nil {
+			return Receipt{}, err
+		}
+	}
+	// The Task item's mail_count changes, so the Session read revision moves on
+	// and a polling view sees the new message.
+	if err = bumpSessionRead(ctx, tx, r.SessionID); err != nil {
+		return Receipt{}, err
+	}
+	// Revision is the append-only Task sequence; body_ref names the one stored
+	// message, never a second body or a response snapshot.
+	return Receipt{ResourceID: id, BodyRef: id, Revision: sequence, Outcome: "sent"}, nil
 }
 
 // Membership removal permanently suppresses undelivered references. Rejoining

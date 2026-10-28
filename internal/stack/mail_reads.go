@@ -145,6 +145,9 @@ func (s *Store) ReadMail(ctx context.Context, token string, r MailReadRequest) (
 	if !fit {
 		return empty, failure("storage_unavailable", "stored mail message exceeds the response budget")
 	}
+	if err = tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(sequence),0) FROM mail_messages WHERE task_id=?", r.TaskID).Scan(&page.Total); err != nil {
+		return empty, publicError(err)
+	}
 	return page, nil
 }
 func encodeMailCheckCursor(session, agent, task string) string {

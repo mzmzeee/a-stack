@@ -30,14 +30,24 @@ a-stack mail check --as agent --credential-file "$worker_a_credential" \
 
 `--body-file -` reads the body from stdin. You cannot use it together with `--body`. A body must not be blank, must be valid UTF-8 and can be 65,536 bytes at most. For larger documents or results, use Task file references. a-stack rejects a body that is too long. It never cuts it. Mail counts toward the sender's [write budget](foundation.md#write-budget): about 127 sends of maximum size at once, then about 16 a minute. `--mention NAME` takes a name without `@`. You can repeat it.
 
+## Reply and recipients
+
+`mail reply --message ID --body 'Your reply' --operation-id ID` sends to the original message's Task in your authenticated Session. It is shared Task mail, not a private reply. The response includes the Task title and ID and says `shared with all current assignees`. You must still be assigned to that Task. A conflicting `--task` is rejected; body text cannot change the destination. `--body-file` works as with `mail send`.
+
+The original sender is mentioned automatically if they are still an assignee. An Operator answer has no Agent sender to mention. Use `--no-mention-sender` to skip the automatic mention, or repeat `--mention NAME` to mention additional current assignees. Body mentions still apply. The same operation-ID and retry rules as `mail send` apply; retries keep the original receipt and resolved mentions even if the original sender leaves. Task titles in reply output reflect the current title.
+
+Run `mail recipients --task T` to see the current assignees who can read a message and be mentioned, without sending anything. You must be assigned to T. This is a preview, not a reservation: the send checks membership again in its transaction. The Orchestrator receives mail only when assigned too.
+
 ## HTTP API
 
-All three endpoints take authenticated `POST` JSON under `/v1/mail/`. They use the same instance, `Host`, `Origin` and strict JSON checks as the rest of the [HTTP API](foundation.md#http-rules). The context fields are `workspace_id` and `session_id`.
+All endpoints take authenticated `POST` JSON under `/v1/mail/`. They use the same instance, `Host`, `Origin` and strict JSON checks as the rest of the [HTTP API](foundation.md#http-rules). The context fields are `workspace_id` and `session_id`.
 
 | Endpoint | Other request fields | `data` in the response |
 | --- | --- | --- |
 | `send` | `task_id`, `operation_id`, `body`, optional `mentions` array of names | A compact receipt: the message `resource_id` and `body_ref`, the sequence number in `revision`, and `outcome: "sent"` |
-| `read` | `task_id`, optional `cursor` and `limit` | `task_id`, `messages`, `cursor`, `more` |
+| `reply` | `message_id`, `operation_id`, `body`, optional `task_id`, `mentions` and `no_mention_sender` | The send receipt plus `task_id`, `task_title` and `audience` |
+| `recipients` | `task_id` | `task_id`, `task_title`, `audience` and `recipients` (Agent IDs and names) |
+| `read` | `task_id`, optional `cursor` and `limit` | `task_id`, `messages`, `cursor`, `more`, and `total` when nonzero |
 | `check` | optional `cursors` map, `after_task`, `task_limit` and `limit` | A `tasks` array of read pages, `next_task` when more Tasks follow, and `more` |
 
 Each message has `id`, `task_id`, `sequence`, `sender_id`, `sender_name`, `received_at`, `body` and `mention_ids`. `sender_name` is the sender's current Agent name. `mention_ids` is the sorted list of the resolved Agent IDs. The sequence increases inside one Task. The service sets the sender and the UTC receipt time.
@@ -46,7 +56,7 @@ Mail does not change the Task's progress or the Task revision. A send raises the
 
 ### Browser reads
 
-The [browser view](browser.md#task-mail) credential can use `read` for any Task of its own Session, also a Task with no assignee. It gets the same messages, cursor and limits as an assignee. It cannot use `send` or `check`, and it gets `forbidden` for another Session. A browser read stores no read position, writes no receipt and makes no notice. The Operator CLI credential still has no mail access.
+The [browser view](browser.md#task-mail) credential can use `read` for any Task of its own Session, also a Task with no assignee. It gets the same messages, cursor and limits as an assignee. It cannot use `send`, `reply`, `recipients` or `check`, and it gets `forbidden` for another Session. A browser read stores no read position, writes no receipt and makes no notice. The Operator CLI credential still has no mail access.
 
 ### The Operator's answer
 
@@ -59,6 +69,10 @@ A read does not remove or mark anything. If a Task has no cursor or an empty one
 A returned cursor points to the last message that the response actually contains. An empty page keeps the same position. `more: true` means that more retained messages follow that position. Cursors are opaque keyset positions for one Task. a-stack rejects a malformed cursor, a cursor of a different Task and a position that does not exist. If you lose a cursor, the next read starts again from the first message.
 
 `mail read` and `mail check` return 100 messages by default. Use `--limit` with a value from 1 to 500. A response can hold 768 KiB of encoded data, which leaves space below the response limit of 1 MiB. So a page can contain fewer messages when they are large. A body of maximum size with JSON escapes and 500 resolved recipients fits in one response. A cursor never moves past a message that the response does not contain.
+
+### Handoff coverage
+
+`task handoff --task T` shows a bounded mail excerpt. For an assignee, its JSON includes `first_sequence`, `last_sequence`, `earlier_messages`, `total`, `cursor` and `more`. Zero-valued ranges and earlier counts are omitted. The text says how many earlier messages are not shown. Continue after the excerpt with its cursor; read from the beginning without a cursor to recover earlier messages. Large messages can fill the byte budget before the tail ends, in which case `more` is true. A handoff changes no saved mail position and makes no acknowledgment.
 
 ### Check all your Tasks
 
@@ -93,7 +107,7 @@ A mention name follows the Agent name rules: 1 to 64 ASCII letters, digits, unde
 
 In a body, a mention starts with `@`. The `@` must be at the start of the text, after white space, or after opening punctuation such as an opening quote or `<`. The mention takes the full name, so `@worker-b-extra` never mentions `worker-b`. Email addresses do not mention anyone, also with a quoted local part. For example, `person@worker-b.example` and `"person"@worker-b.example` do not mention `worker-b`, but `Ask "@worker-b"` does.
 
-The parser does not use Task membership. After parsing, each name from the body and from `--mention` must be a current assignee of the Task. Otherwise a-stack rejects the whole send. The error names each mention that is not an assignee and lists the current assignee names, for example `mention target must be a current Task assignee: @ghost is not a current assignee of this Task; assignees: 02-worker, 03-worker; write other names without @`. It lists 20 names at most.
+The parser does not use Task membership. After parsing, each name from the body and from `--mention` must be a current assignee of the Task. Otherwise a-stack rejects the whole send. The error names each mention that is not an assignee and lists the current assignee names, for example `mention target must be a current Task assignee: @ghost is not a current assignee of this Task; assignees: 02-worker, 03-worker; run mail recipients --task TASK_ID; write other names without @`. It lists 20 names at most.
 
 Names from the body and from `--mention` are counted once each. One message can mention 500 different recipients at most, so that the attribution in a response stays bounded. Repeated names do not use more places. a-stack stores the resolved Agent IDs. So if a name is used again later, old messages still point to the original Agent. A mention of yourself is stored with the state `self` and makes no notice.
 

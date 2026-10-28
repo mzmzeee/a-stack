@@ -110,7 +110,7 @@ When an Agent stops before its Task is done, for example at a usage limit or aft
 - the open Needs you question, who asked it and when, and the Operator's latest answer with its question;
 - the unfinished prerequisites: every prerequisite that is not Finished, with its progress and reason;
 - the assignees, as `@name` for mentions;
-- the latest Task mail, oldest first: 20 messages, or `--limit N` (1 to 500).
+- the latest Task mail, oldest first: up to 20 messages, or `--limit N` (1 to 500), with its sequence range, total, earlier messages omitted and continuation cursor. The byte budget can shorten the excerpt; `more` says whether messages follow it. See [Handoff coverage](mail.md#handoff-coverage).
 
 The brief is plain text in Markdown. `--json` prints the same as `{"data":{"task":...,"asker_name":...,"unfinished_prerequisites":[...],"assignees":[...],"mail":{"readable":true,"total":37,"messages":[...]},"standing_orders":{...}}}`, where `standing_orders` is left out when there are none. The command only reads, with the same reads as `task show`, `task dependencies`, `task assignees`, `mail read` and `session inspect`, so it changes nothing. Only assignees read Task mail: for anyone else, such as the Operator or an Orchestrator that is not assigned, the brief gives the number of messages and says that the credential cannot read them. Text from Agents keeps its line breaks; other control characters are replaced. The command needs no new service: it works with a v0.1.6 service too, which has no standing orders.
 
