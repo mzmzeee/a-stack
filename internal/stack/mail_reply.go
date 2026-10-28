@@ -41,7 +41,8 @@ func resolveReply(ctx context.Context, tx *sql.Tx, p Principal, r MailReplyReque
 
 func (s *Store) ReplyMail(ctx context.Context, token string, r MailReplyRequest) (MailReplyResult, error) {
 	result := MailReplyResult{Audience: "shared with all current assignees"}
-	names, prepareErr := mentionNames(r.Body, r.Mentions)
+	explicit := append(append([]string{}, r.Mentions...), r.AckFrom...)
+	names, prepareErr := mentionNames(r.Body, explicit)
 	resolve := func(ctx context.Context, tx *sql.Tx, p Principal) (string, error) {
 		task, sender, err := resolveReply(ctx, tx, p, r)
 		if err == nil {
@@ -71,7 +72,7 @@ func (s *Store) ReplyMail(ctx context.Context, token string, r MailReplyRequest)
 				return Receipt{}, err
 			}
 			if err == nil {
-				names, err = mentionNames(r.Body, append(append([]string{}, r.Mentions...), name))
+				names, err = mentionNames(r.Body, append(append([]string{}, explicit...), name))
 				if err != nil {
 					return Receipt{}, err
 				}

@@ -5,6 +5,8 @@ import "net/http"
 func (s *Service) mailHTTP(w http.ResponseWriter, r *http.Request, token string) bool {
 	var request any
 	switch r.URL.Path {
+	case "/v1/mail/ack":
+		request = &MailAckRequest{}
 	case "/v1/mail/send":
 		request = &MailSendRequest{}
 	case "/v1/mail/reply":
@@ -29,6 +31,8 @@ func (s *Service) mailHTTP(w http.ResponseWriter, r *http.Request, token string)
 	var data any
 	var err error
 	switch q := request.(type) {
+	case *MailAckRequest:
+		data, err = s.Store.AckMail(r.Context(), token, *q)
 	case *MailSendRequest:
 		data, err = s.Store.SendMail(r.Context(), token, *q)
 	case *MailReplyRequest:

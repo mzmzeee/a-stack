@@ -70,6 +70,16 @@ func (s *Store) archiveMark(ctx context.Context, tx *sql.Tx, session Session) (i
 	if err != nil {
 		return 0, err
 	}
+	var overdue int64
+	var ackNext string
+	err = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE julianday(k.due_at)<=julianday(?1)),COALESCE(min(k.due_at) FILTER (WHERE julianday(k.due_at)>julianday(?1)),'') FROM mail_acks k JOIN tasks t ON t.id=k.task_id WHERE t.session_id=?2 AND k.acked_at='' AND k.withdrawn_at='' AND k.due_at<>''`, at.UTC().Format(time.RFC3339Nano), session.ID).Scan(&overdue, &ackNext)
+	if err != nil {
+		return 0, storageError(err)
+	}
+	m.count += overdue
+	if due, err := time.Parse(time.RFC3339Nano, ackNext); err == nil && due.Before(m.next) {
+		m.next = due
+	}
 	m.count += quiet
 	if !quietNext.IsZero() && quietNext.Before(m.next) {
 		m.next = quietNext

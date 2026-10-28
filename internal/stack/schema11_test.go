@@ -13,7 +13,7 @@ const dropReceiptActor = `ALTER TABLE operation_receipts DROP COLUMN actor_login
 const taskActorStandIn = `ALTER TABLE task_history ADD COLUMN actor_login TEXT; ALTER TABLE task_history ADD COLUMN actor_name TEXT;`
 const dropTaskActor = `ALTER TABLE task_history DROP COLUMN actor_login; ALTER TABLE task_history DROP COLUMN actor_name;`
 
-const undoMigration11 = `
+const undoMigration11 = undoMigration12 + `
 ALTER TABLE lifecycle_history DROP COLUMN actor_login;
 ALTER TABLE lifecycle_history DROP COLUMN actor_name;
 ALTER TABLE task_history DROP COLUMN actor_login;
@@ -69,10 +69,10 @@ func TestMigration11FromSchema10(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.db.Close()
-	if countTest(t, s, "PRAGMA user_version") != 11 || countTest(t, s, "PRAGMA foreign_keys") != 1 || countTest(t, s, "SELECT count(*) FROM pragma_foreign_key_check") != 0 {
+	if countTest(t, s, "PRAGMA user_version") != schemaVersion || countTest(t, s, "PRAGMA foreign_keys") != 1 || countTest(t, s, "SELECT count(*) FROM pragma_foreign_key_check") != 0 {
 		t.Fatal("schema/FK check")
 	}
-	if !strings.Contains(s.Migrated, "from schema 10 to 11") {
+	if !strings.Contains(s.Migrated, "from schema 10 to 12") {
 		t.Fatal(s.Migrated)
 	}
 	if !reflect.DeepEqual(before, upgradeRows(t, path)) || !reflect.DeepEqual(before, upgradeRows(t, path+".pre-v10")) {

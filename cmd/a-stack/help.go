@@ -108,6 +108,7 @@ var helpGroups = []helpGroup{
 	}},
 	{"Task mail", []helpRow{
 		{"mail send", "", "Send Task mail to the other assignees"},
+		{"mail ack", "", "Explicitly acknowledge a message requested from you"},
 		{"mail reply", "", "Reply in the original Task, shared with all current assignees"},
 		{"mail recipients", "", "List current assignees who can read mail and be mentioned"},
 		{"mail read", "", "Read the mail of one Task"},
@@ -154,7 +155,7 @@ var requiredFlags = map[string]string{
 	"agent observe": "agent runtime-id runtime-state", "task assign": "agent", "task unassign": "agent",
 	"task claim": "path", "task unclaim": "path", "task create": "title", "task status": "progress", "task reference add": "location",
 	"task reference remove": "reference", "dependency add": "from to", "dependency remove": "from to",
-	"mail reply": "message", "mail recipients": "task",
+	"mail ack": "message operation-id", "mail reply": "message", "mail recipients": "task",
 	"session page": "page-kind", "answer": "question-id", "herdr bind": "agent", "herdr focus": "agent",
 }
 
@@ -322,7 +323,7 @@ var flagValues = map[string]string{
 	"task": "ID", "title": "TEXT", "description": "TEXT", "ticket": "REF", "report": "TEXT", "progress": "STATE",
 	"reason": "TEXT", "summary": "TEXT", "question": "TEXT", "question-id": "ID", "text": "TEXT", "note": "TEXT", "location": "PATH",
 	"reference-revision": "REV", "reference": "ID", "from": "ID", "to": "ID", "body-file": "FILE",
-	"page-kind": "KIND", "read-revision": "N", "known-revision": "N", "body": "TEXT", "mention": "NAME", "message": "ID",
+	"page-kind": "KIND", "read-revision": "N", "known-revision": "N", "body": "TEXT", "ack-from": "NAME", "ack-due": "DURATION", "mention": "NAME", "message": "ID",
 	"cursor": "CURSOR", "cursor-file": "FILE", "after-task": "TOKEN", "task-limit": "N", "assign": "AGENT", "shell": "SHELL",
 }
 
