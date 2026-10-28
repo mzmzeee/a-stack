@@ -12,12 +12,13 @@ type NoticeRequest struct {
 	After   string `json:"after,omitempty"`
 }
 type NoticeTargetStatus struct {
-	AgentID     string              `json:"agent_id"`
-	AgentName   string              `json:"agent_name"`
-	Reason      string              `json:"reason"`
-	NextAttempt int64               `json:"next_attempt_unix_ms"`
-	UpdatedAt   string              `json:"updated_at,omitempty"`
-	Counts      map[NoticeState]int `json:"counts"`
+	AgentID             string              `json:"agent_id"`
+	AgentName           string              `json:"agent_name"`
+	Reason              string              `json:"reason"`
+	NextAttempt         int64               `json:"next_attempt_unix_ms"`
+	UpdatedAt           string              `json:"updated_at,omitempty"`
+	Counts              map[NoticeState]int `json:"counts"`
+	UnresolvedUncertain int                 `json:"unresolved_uncertain"`
 }
 type NoticeStatus struct {
 	Enabled bool                 `json:"enabled"`
@@ -85,7 +86,12 @@ func (s *Service) notificationStatus(ctx context.Context, token string, r Notice
 		if err != nil {
 			return result, storageError()
 		}
-		if s.notifier == nil {
+		row.UnresolvedUncertain = row.Counts[NoticeUncertain]
+		if row.UnresolvedUncertain > 0 {
+			if row.Reason != "recovery_uncertain" {
+				row.Reason = "delivery_uncertain"
+			}
+		} else if s.notifier == nil {
 			row.Reason = "integration_disabled"
 		} else if session.Closed {
 			row.Reason = "session_closed"

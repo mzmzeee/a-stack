@@ -63,7 +63,10 @@ func writeData(stdout io.Writer, data []byte) error {
 	if len(data) == 0 || data[len(data)-1] != '\n' {
 		data = append(data, '\n')
 	}
-	_, err := stdout.Write(data)
+	n, err := stdout.Write(data)
+	if err == nil && n != len(data) {
+		return io.ErrShortWrite
+	}
 	return err
 }
 func buildVersion() string {
@@ -298,6 +301,16 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if isNotificationCommand(cmd) {
 		data, err := notificationRequest(ctx, client, cmd, lifecycle)
 		if err != nil {
+			return err
+		}
+		return writeData(stdout, data)
+	}
+	if cmd == "mail check" {
+		if lifecycle.workspace == "" || lifecycle.session == "" {
+			return missingContext
+		}
+		data, err := mailCheck(ctx, client, stack.MailCheckRequest{Context: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, AfterTask: mail.afterTask, TaskLimit: mail.taskLimit, Limit: lifecycle.limit}, mail.cursorFile, seen["cursor-file"], func(data []byte) error { return writeData(stdout, data) })
+		if err != nil || data == nil {
 			return err
 		}
 		return writeData(stdout, data)

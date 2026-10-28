@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -81,27 +82,54 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 		pruneHookFiles(dir)
 		cursor = strings.TrimSuffix(file, ".json") + ".first.json"
 	}
-	news := map[string]bool{}
+	text := ""
+	var out struct {
+		Data stack.MailCheckPage `json:"data"`
+	}
+	produce := func(data []byte) error {
+		if err := json.Unmarshal(data, &out); err != nil {
+			return err
+		}
+		if first {
+			return nil
+		}
+		titles := []string{}
+		for _, page := range out.Data.Tasks {
+			news := false
+			for _, m := range page.Messages {
+				news = news || m.SenderID != id.agent
+			}
+			if !news {
+				continue
+			}
+			data, err := client.Do(ctx, "POST", "/v1/task/show", stack.TaskReadRequest{Context: id.ref, TaskID: page.TaskID})
+			var show struct {
+				Data stack.TaskDetail `json:"data"`
+			}
+			if err != nil {
+				return fmt.Errorf("nudge title lookup: %w", err)
+			}
+			if err := json.Unmarshal(data, &show); err != nil {
+				return err
+			}
+			titles = append(titles, `"`+printable(truncate(show.Data.Title, 80))+`"`)
+		}
+		if len(titles) > 0 {
+			sort.Strings(titles)
+			text = "a-stack: New Task mail on " + strings.Join(titles, ", ") + "; load the a-stack skill, then run mail check."
+		}
+		return nil
+	}
 	for range catchUpPages {
-		data, err := mailCheck(ctx, client, stack.MailCheckRequest{Context: id.ref}, cursor, true)
+		_, err := mailCheck(ctx, client, stack.MailCheckRequest{Context: id.ref}, cursor, true, produce)
 		if e, ok := err.(*stack.Error); ok && e.Code == "invalid_input" {
 			_ = os.Remove(cursor) // a cursor that no longer fits: start again
 		} else if err != nil {
 			now := time.Now()
 			_ = os.Chtimes(file, now, now) // wait 30 seconds before trying again
 		}
-		var out struct {
-			Data stack.MailCheckPage `json:"data"`
-		}
-		if err != nil || json.Unmarshal(data, &out) != nil {
+		if err != nil {
 			return ""
-		}
-		for _, page := range out.Data.Tasks {
-			for _, m := range page.Messages {
-				if m.SenderID != id.agent {
-					news[page.TaskID] = true
-				}
-			}
 		}
 		if first && !out.Data.More {
 			_ = stack.Rename(cursor, file)
@@ -110,24 +138,7 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 			break
 		}
 	}
-	if first || len(news) == 0 {
-		return ""
-	}
-	titles := []string{}
-	for task := range news {
-		data, err := client.Do(ctx, "POST", "/v1/task/show", stack.TaskReadRequest{Context: id.ref, TaskID: task})
-		var show struct {
-			Data stack.TaskDetail `json:"data"`
-		}
-		if err == nil && json.Unmarshal(data, &show) == nil {
-			titles = append(titles, `"`+printable(truncate(show.Data.Title, 80))+`"`)
-		}
-	}
-	if len(titles) == 0 {
-		return ""
-	}
-	sort.Strings(titles)
-	return "a-stack: New Task mail on " + strings.Join(titles, ", ") + "; load the a-stack skill, then run mail check."
+	return text
 }
 
 // pruneHookFiles removes the cursor files, Stop guard and session markers of harness
