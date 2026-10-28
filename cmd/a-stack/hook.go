@@ -24,7 +24,7 @@ import (
 // credential file, Workspace, Session and Agent ID, never the environment.
 
 func isHookCommand(command string) bool {
-	return command == "hook" || command == "hook install" || command == "hook uninstall"
+	return command == "hook" || command == "hook install" || command == "hook uninstall" || command == "hook enroll"
 }
 
 // isHookRun reports whether args run the hook handler, which always exits 0.
@@ -422,11 +422,11 @@ func writeShim(harness, list string, remove bool) (string, bool, error) {
 }
 
 type hookInstall struct {
-	identity                 hookIdentity
-	name                     string
-	flags                    hookFlags
-	project, remove, machine bool
-	stdout                   io.Writer
+	identity                             hookIdentity
+	name                                 string
+	flags                                hookFlags
+	project, remove, machine, enrollOnly bool
+	stdout                               io.Writer
 }
 
 // run installs or removes the hook entries of one worktree in each settings
@@ -450,12 +450,17 @@ func (h *hookInstall) run(ctx context.Context) error {
 	if home, err := os.UserHomeDir(); err == nil && !h.remove && holdsHome(id.worktree, home) {
 		return invalid("hooks need the Agent's own folder, not your home folder or a folder above it: every agent started below it would act as this Agent; run hook install in the project folder or pass --worktree")
 	}
-	if !h.remove && !shimsSupported && (h.flags.pi || h.flags.opencode) {
+	if !h.remove && !h.enrollOnly && !shimsSupported && (h.flags.pi || h.flags.opencode) {
 		flag := "--pi"
 		if h.flags.opencode {
 			flag = "--opencode"
 		}
 		return invalid(flag + " needs /bin/sh, so it works only on Linux and macOS")
+	}
+	if h.enrollOnly {
+		if err := h.flags.detectNativeSession(); err != nil {
+			return err
+		}
 	}
 	command := ""
 	if !h.remove {
@@ -468,6 +473,13 @@ func (h *hookInstall) run(ctx context.Context) error {
 		if err := h.enroll(ctx); err != nil {
 			return err
 		}
+	}
+	if h.enrollOnly {
+		if h.machine {
+			return json.NewEncoder(h.stdout).Encode(map[string]any{"data": map[string]any{"enrolled": true, "agent_id": id.agent}})
+		}
+		_, err := io.WriteString(h.stdout, "Enrolled this native session for a-stack hooks.\n")
+		return err
 	}
 	files, err := hookSettings(h.flags, h.project)
 	if err != nil {
@@ -503,8 +515,14 @@ func (h *hookInstall) run(ctx context.Context) error {
 	if h.remove {
 		key, text = "removed", "Removed the a-stack hooks for "+printable(id.worktree)+" from:\n"
 	}
+	enrollmentCommand := agentCommand(*id) + " hook enroll"
+	if len(files) == 1 {
+		for harness := range files {
+			enrollmentCommand += " --" + harness
+		}
+	}
 	if h.machine {
-		return json.NewEncoder(h.stdout).Encode(map[string]any{"data": map[string]any{"worktree": id.worktree, "agent_id": id.agent, key: done}})
+		return json.NewEncoder(h.stdout).Encode(map[string]any{"data": map[string]any{"enrollment_command": enrollmentCommand, "worktree": id.worktree, "agent_id": id.agent, key: done, "enrollment_required": !h.remove && h.flags.nativeSession == ""}})
 	}
 	if len(done) == 0 {
 		text = "No a-stack hooks for " + printable(id.worktree) + " were installed.\n"
@@ -513,8 +531,11 @@ func (h *hookInstall) run(ctx context.Context) error {
 		text += "  " + file + "\n"
 	}
 	if !h.remove {
+		if h.flags.nativeSession == "" {
+			text += "Hooks stay silent until enrollment. From your own native session, run " + enrollmentCommand + "\nOr run your own herdr bind.\n"
+		}
 		if id.runtimeID == "" {
-			text += "Without --runtime-id the hooks record no runtime state; the reminder, Stop guard and mail nudge still work.\n"
+			text += "Without --runtime-id the hooks record no runtime state.\n"
 		}
 		if _, ok := files["codex"]; ok {
 			text += "Codex runs new hooks only after you trust them: run /hooks in Codex.\n"

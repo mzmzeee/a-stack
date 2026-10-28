@@ -18,20 +18,37 @@ folder. A successful bind enrolls the native session verified by Herdr. Pi's
 session file header supplies its native session ID; the filename is not identity. This works for all four
 supported harnesses.
 
-Without Herdr, the Agent explicitly enrolls while installing:
+Without Herdr, install the hooks, then enroll from the Agent's own session:
 
 ```sh
-a-stack hook install --credential-file /path/to/02-worker.json \
-  --claude --native-session NATIVE_SESSION_ID
+a-stack --as agent --credential-file /path/to/02-worker.json hook enroll --claude
+# With the Agent's me helper:
+me hook enroll --claude
 ```
 
-Choose exactly one of `--claude`, `--codex`, `--pi` or `--opencode`. Use the
-current native harness session ID, not the a-stack Session ID. Pi exposes
-`PI_SESSION_ID`; Codex exposes `CODEX_THREAD_ID`. For Claude Code or OpenCode,
-use the current session ID reported by the harness, or bind through Herdr.
-If it is unavailable, ordinary CLI mail still works from the Agent's brief;
-hooks stay silent. Installing without enrollment is safe, including before
-launching an Agent.
+Choose `--claude`, `--codex`, `--pi` or `--opencode`. The command reads native
+metadata only when you explicitly ask to enroll:
+
+| Harness | Native session metadata |
+| --- | --- |
+| Claude Code | `CLAUDE_CODE_SESSION_ID` in tool subprocesses |
+| Codex | `CODEX_THREAD_ID` |
+| Pi | `PI_SESSION_ID`, or the header of `PI_SESSION_FILE` |
+| OpenCode | `OPENCODE_SESSION_ID`, when supplied by the harness or its shell-env plugin |
+
+Without a harness flag, exactly one session variable must be present. When
+launching one harness from another, name the intended harness explicitly.
+Older harness versions and OpenCode installations may not expose these values.
+Missing or ambiguous metadata returns a clear error without enrollment. Use
+`me hook enroll --opencode --native-session NATIVE_SESSION_ID` with the ID
+reported by that harness, or bind through Herdr. Never use the a-stack Session
+ID. The command does not search transcripts, choose an identity by cwd or
+install config files.
+
+`hook install --claude --native-session NATIVE_SESSION_ID` still installs and
+enrolls in one command. Installing without enrollment is safe, including before
+launching an Agent, but its output tells the Agent to enroll. Ordinary CLI mail
+remains available from its brief while hooks are silent.
 
 Resume and compaction retain the same native ID and enrollment. A new session,
 fork or replacement needs explicit enrollment. Each Agent has one local
@@ -47,8 +64,14 @@ sync it between machines. Removing it safely disables hooks until enrollment.
 Before acting, hooks authenticate and check the current Agent revision and open
 Session. No database migration is needed.
 
-Existing installs need to run install again to add the harness identifier, then
-enroll. Legacy hooks without that identifier stay silent. Hooks for home or a
+Update/refresh adds the harness identifier to recognized released hook commands
+in user settings and the current project settings. It preserves foreign commands,
+extra settings and linked files. The refresh prints a one-time migration message
+when it changes commands; JSON output carries it in `warnings`, including the
+updater handoff. Each Agent then runs `me hook enroll` or binds through Herdr.
+For edited commands, renamed binaries or settings in other project folders,
+run `hook install` again with the harness flag, then enroll. Legacy hooks without
+that identifier stay silent. Hooks for home or a
 folder above it are also silent at runtime, even if installed by an older release.
 
 ## Install
@@ -94,7 +117,7 @@ Pi has no command hooks, so `hook install --pi` writes two files in Pi's agent f
 - `a-stack-hooks.json` holds the hook commands, in the same form as Claude Code's settings. Several folders can have hooks in it, one set each.
 - `extensions/a-stack.ts` is a small extension that comes with the a-stack binary. On Pi's events it runs those commands with the JSON that Claude Code would send, and passes their output back to Pi. It needs Pi 0.87 or later and `/bin/sh`, so it works on Linux and macOS; on Windows, `hook install --pi` refuses with `invalid_input`.
 
-Pi loads the extension when it starts; in a running Pi, run `/reload`. The reminder goes into the agent's context as a hidden message, and the mail nudge is added to the tool result or to the prompt. When the Stop guard blocks, Pi makes one more model request with the reason as a message. `a-stack update` refreshes the extension automatically if it still matches a known released version. It leaves edited, foreign and linked files alone, and never rewrites the hook list. Use `--no-refresh` to skip this, or `a-stack update --refresh` to refresh without updating the binary; then run `/reload` in Pi. `hook uninstall --pi` removes both files once no folder has hooks left. Another file named `a-stack.ts` in the extensions folder is never changed.
+Pi loads the extension when it starts; in a running Pi, run `/reload`. The reminder goes into the agent's context as a hidden message, and the mail nudge is added to the tool result or to the prompt. When the Stop guard blocks, Pi makes one more model request with the reason as a message. `a-stack update` refreshes the extension automatically if it still matches a known released version. It leaves edited, foreign and linked files alone, and upgrades only recognized released commands in the hook list; see [Enrollment](#enrollment). Use `--no-refresh` to skip this, or `a-stack update --refresh` to refresh without updating the binary; then run `/reload` in Pi. `hook uninstall --pi` removes both files once no folder has hooks left. Another file named `a-stack.ts` in the extensions folder is never changed.
 
 Pi hooks have no `--project`: Pi loads a project's extensions only after you trust the project, and the hook list would put a credential path in it. `a-stack skill install` already gives Pi the skill, in `~/.agents/skills`.
 
@@ -105,7 +128,7 @@ OpenCode has no command hooks either, so `hook install --opencode` writes two fi
 - `a-stack-hooks.json` holds the hook commands, in the same form as for Pi.
 - `plugins/a-stack.js` is a small plugin that comes with the a-stack binary. It runs those commands with the JSON that Claude Code would send, and passes their output back to OpenCode. It needs OpenCode 1.19 or later and `/bin/sh`, so it works on Linux and macOS; on Windows, `hook install --opencode` refuses with `invalid_input`.
 
-OpenCode loads the plugin when it starts, in its TUI and in `opencode serve` or `opencode run`; restart a running OpenCode after install. The reminder goes into the session's system prompt, and again after a compaction. The mail nudge is added to the tool output, or to the prompt as hidden text. OpenCode cannot block a stop, so when the session goes idle and the Stop guard blocks, the plugin starts one new turn with the reason as the prompt, with the same agent and model. It does not do that after an error or after you abort the turn. A subagent's session gets no reminder, nudge or Stop guard; its permission questions still record `blocked`. When the plugin cannot ask OpenCode whether a session is a subagent's, it skips the session the same way, until OpenCode reports a change to the session. `opencode run` ends at the first idle, so there the Stop guard's turn may not run. `a-stack update` refreshes the plugin automatically if it still matches a known released version. It leaves edited, foreign and linked files alone, and never rewrites the hook list. Use `--no-refresh` to skip this, or `a-stack update --refresh` to refresh without updating the binary; then restart OpenCode. `hook uninstall --opencode` removes both files once no folder has hooks left. Another file named `a-stack.js` in the plugins folder is never changed.
+OpenCode loads the plugin when it starts, in its TUI and in `opencode serve` or `opencode run`; restart a running OpenCode after install. The reminder goes into the session's system prompt, and again after a compaction. The mail nudge is added to the tool output, or to the prompt as hidden text. OpenCode cannot block a stop, so when the session goes idle and the Stop guard blocks, the plugin starts one new turn with the reason as the prompt, with the same agent and model. It does not do that after an error or after you abort the turn. A subagent's session gets no reminder, nudge or Stop guard; its permission questions still record `blocked`. When the plugin cannot ask OpenCode whether a session is a subagent's, it skips the session the same way, until OpenCode reports a change to the session. `opencode run` ends at the first idle, so there the Stop guard's turn may not run. `a-stack update` refreshes the plugin automatically if it still matches a known released version. It leaves edited, foreign and linked files alone, and upgrades only recognized released commands in the hook list; see [Enrollment](#enrollment). Use `--no-refresh` to skip this, or `a-stack update --refresh` to refresh without updating the binary; then restart OpenCode. `hook uninstall --opencode` removes both files once no folder has hooks left. Another file named `a-stack.js` in the plugins folder is never changed.
 
 OpenCode hooks have no `--project`: the hook list would put a credential path in the project's `.opencode` folder. `a-stack skill install` already gives OpenCode the skill, in `~/.agents/skills`.
 

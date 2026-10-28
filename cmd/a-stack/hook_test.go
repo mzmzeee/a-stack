@@ -22,7 +22,13 @@ import (
 // hookHome gives the test an empty home folder with no harness overrides.
 func hookHome(t *testing.T) string {
 	t.Helper()
-	home := t.TempDir()
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"PI_SESSION_ID", "PI_SESSION_FILE", "CODEX_THREAD_ID", "CLAUDE_CODE_SESSION_ID", "OPENCODE_SESSION_ID"} {
+		t.Setenv(name, "")
+	}
 	t.Setenv("HOME", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", "")
@@ -199,7 +205,7 @@ func TestHookInstallPiWritesTheExtension(t *testing.T) {
 	list, extension := filepath.Join(agentDir, "a-stack-hooks.json"), filepath.Join(agentDir, "extensions", "a-stack.ts")
 	install := []string{"hook", "install", "--pi", "--credential-file", f.workerFile}
 	out, errout, code := f.run("", install...)
-	if code != 0 || out != "Installed the a-stack hooks for "+f.project+" in:\n  "+list+"\n  "+extension+"\nWithout --runtime-id the hooks record no runtime state; the reminder, Stop guard and mail nudge still work.\nPi loads the extension when it starts; in a running Pi, run /reload.\n" {
+	if code != 0 || !strings.HasPrefix(out, "Installed the a-stack hooks for "+f.project+" in:\n  "+list+"\n  "+extension+"\n") || !strings.Contains(out, "hook enroll --pi\n") || !strings.Contains(out, "Hooks stay silent until enrollment") || !strings.HasSuffix(out, "Pi loads the extension when it starts; in a running Pi, run /reload.\n") {
 		t.Fatalf("install --pi: %d %q %s", code, out, errout)
 	}
 	s := readSettings(t, list)
@@ -262,7 +268,7 @@ func TestHookInstallOpenCodeWritesThePlugin(t *testing.T) {
 	list, plugin := filepath.Join(config, "a-stack-hooks.json"), filepath.Join(config, "plugins", "a-stack.js")
 	install := []string{"hook", "install", "--opencode", "--credential-file", f.workerFile, "--runtime-id", "oc-1"}
 	out, errout, code := f.run("", install...)
-	if code != 0 || out != "Installed the a-stack hooks for "+f.project+" in:\n  "+list+"\n  "+plugin+"\nOpenCode loads the plugin when it starts; restart a running OpenCode.\n" {
+	if code != 0 || !strings.HasPrefix(out, "Installed the a-stack hooks for "+f.project+" in:\n  "+list+"\n  "+plugin+"\n") || !strings.Contains(out, "hook enroll --opencode\n") || !strings.Contains(out, "Hooks stay silent until enrollment") || !strings.HasSuffix(out, "OpenCode loads the plugin when it starts; restart a running OpenCode.\n") {
 		t.Fatalf("install --opencode: %d %q %s", code, out, errout)
 	}
 	s := readSettings(t, list)

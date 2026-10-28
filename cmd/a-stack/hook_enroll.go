@@ -136,13 +136,65 @@ func enrolledHook(id hookIdentity, in hookInput) int64 {
 		return 0
 	}
 	machine, err := hookMachine(false)
+	// Enrollment need not repeat an installed runtime ID; the server revision
+	// guards binding changes, and observations still validate their runtime ID.
 	if err == nil && machine != "" && machine == e.Machine &&
 		e.Harness == id.harness && e.Session != "" && e.Session == in.SessionID &&
-		e.Subagent == in.AgentID && e.Worktree == id.worktree && (id.runtimeID == "" || e.Runtime == id.runtimeID) &&
+		e.Subagent == in.AgentID && e.Worktree == id.worktree && (id.runtimeID == "" || e.Runtime == "" || e.Runtime == id.runtimeID) &&
 		e.Credential != "" && e.Credential == credentialGeneration(id.credential) {
 		return e.Revision
 	}
 	return 0
+}
+
+// Session variables are read only for an explicit enroll command. A cwd or
+// a generic harness marker never enrolls a hook event.
+func (f *hookFlags) detectNativeSession() error {
+	candidates := []struct {
+		name, variable string
+		selected       *bool
+	}{
+		{"claude", "CLAUDE_CODE_SESSION_ID", &f.claude},
+		{"codex", "CODEX_THREAD_ID", &f.codex},
+		{"pi", "PI_SESSION_ID", &f.pi},
+		{"opencode", "OPENCODE_SESSION_ID", &f.opencode},
+	}
+	count, selected := 0, -1
+	for i, c := range candidates {
+		if *c.selected {
+			count++
+			selected = i
+		}
+	}
+	if count > 1 {
+		return invalid("choose exactly one harness to enroll")
+	}
+	if count == 0 {
+		for i, c := range candidates {
+			if os.Getenv(c.variable) != "" {
+				count++
+				selected = i
+			}
+		}
+		if count != 1 {
+			return invalid("cannot identify one native harness session; choose --claude, --codex, --pi or --opencode and --native-session ID, or run your own herdr bind")
+		}
+		*candidates[selected].selected = true
+	}
+	if f.nativeSession == "" {
+		f.nativeSession = os.Getenv(candidates[selected].variable)
+	}
+	if f.nativeSession == "" && candidates[selected].name == "pi" && os.Getenv("PI_SESSION_FILE") != "" {
+		var err error
+		f.nativeSession, err = hookNativeSession(&stack.RuntimeBinding{Harness: "pi", NativeSessionID: os.Getenv("PI_SESSION_FILE")})
+		if err != nil {
+			return err
+		}
+	}
+	if f.nativeSession == "" {
+		return invalid("this harness does not expose its native session ID here; pass --native-session ID from its session metadata, or run your own herdr bind (never use the a-stack Session ID)")
+	}
+	return nil
 }
 
 func (h *hookInstall) enroll(ctx context.Context) error {

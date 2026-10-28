@@ -234,13 +234,16 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return nil
 	}
 	if isHookCommand(cmd) {
+		if cmd == "hook enroll" && kind != "" && kind != "agent" {
+			return invalid("hook enroll requires Agent credentials")
+		}
 		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, noStopGuard: hooks.noStopGuard, noMailNudge: hooks.noMailNudge, harness: hooks.harness}
 		if cmd == "hook" {
 			runHook(id, os.Stdin, stdout)
 			return nil
 		}
 		id.state = stateFlag // the command names the state only when you did
-		h := hookInstall{identity: id, name: lifecycle.name, flags: hooks, project: project, remove: cmd == "hook uninstall", machine: machine, stdout: stdout}
+		h := hookInstall{identity: id, name: lifecycle.name, flags: hooks, project: project, remove: cmd == "hook uninstall", enrollOnly: cmd == "hook enroll", machine: machine, stdout: stdout}
 		return h.run(ctx)
 	}
 	if cmd == "" || cmd == "new" {

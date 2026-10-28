@@ -59,7 +59,13 @@ A script keeps working in shells that forget functions between commands. Write i
 
 ## Install the hooks
 
-Once, in the folder you work in, install the a-stack hooks for your harness: `a-stack hook install --credential-file /path/to/02-worker.json --claude` (`--codex`, `--pi` or `--opencode` for those; add `--state-dir` if you were given one). They remind you who you are after a compaction, keep you from stopping with a working Task that has no report, and tell you about new Task mail. Installation alone does not enroll a session. In Herdr, bind below from your own working folder. Outside Herdr, add `--native-session NATIVE_SESSION_ID` to install, with exactly one harness flag. Use your current native session ID, not the a-stack Session ID: Pi exposes `PI_SESSION_ID`, Codex exposes `CODEX_THREAD_ID`; for Claude Code or OpenCode use the current session ID reported by the harness. If you cannot identify it, keep using your brief and ordinary CLI mail without hooks. Resume or compaction preserves enrollment; a new session needs new enrollment. Hooks load from your next session start or resume; tell the Operator so. Skip this as a Claude Code subagent: the hooks would not reach you.
+Install AND enroll from your own native session, in the folder you work in:
+
+1. Install: `a-stack hook install --credential-file /path/to/02-worker.json --claude`. Use `--codex`, `--pi` or `--opencode` for that harness; add `--state-dir` if given.
+2. Enroll: `me hook enroll --claude` (use the same harness flag). This detects your native session ID from the harness environment. Without the flag it detects a single unambiguous harness. In Herdr, the successful bind below also enrolls, so it can replace this step.
+3. If detection reports missing metadata, use `me hook enroll --claude --native-session NATIVE_SESSION_ID`, or bind through Herdr. Use the native ID reported by the harness, never the a-stack Session ID. Do not invent an ID or look up another runtime's credentials. OpenCode may need this fallback because its session variable is not available in every version.
+
+Completion: enrollment prints success; otherwise keep using your brief and ordinary CLI mail, and report the enrollment blocker. Installation alone is not enrollment. Resume and compaction retain enrollment; every new native session must enroll again. Hooks load from the next start/resume (Pi can `/reload`); tell the Operator if a reload is needed. Skip hook setup as a Claude Code subagent unless its brief explicitly supplies the parent session and subagent IDs; the parent's enrollment never enrolls its subagents.
 
 ## If you run inside Herdr
 
