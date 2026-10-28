@@ -10,6 +10,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 - Tailscale remote foundation: `serve --share` and `service install --share` configure an owned HTTPS Serve rule over the fixed loopback port. The server accepts only its configured MagicDNS Host and matching Origin, with request identity kept separate from bearer authorization. `connect NAME URL`, `connect list`, `connect remove NAME` and `--remote NAME` add private HTTPS profiles with database pinning. See [Remote service](docs/remote.md); Session linking and remote notices are not included.
 
+### Changed
+
+- `scripts/fmt.sh` formats Go, browser assets, JavaScript, Python and shell scripts, and fixes Go whitespace and import grouping. `scripts/check.sh` enforces the same pinned rules without rewriting files. EditorConfig sets indentation, line endings and final newlines.
+
 ### Fixed
 
 - Mail cursor files advance only after complete stdout output, reject a different database or Agent context, and scan fairly past busy Tasks. Older unbound files need a new file to replay retained mail. Hook nudges keep their position when title lookup fails. Unresolved uncertain notices stay visible in mail checks, the Agents panel and notification status after later successful submissions.

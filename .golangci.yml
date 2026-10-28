@@ -1,0 +1,30 @@
+version: "2"
+linters:
+  default: none
+  enable:
+    - whitespace
+    - wsl_v5
+    - misspell
+    - godot
+  settings:
+    wsl_v5:
+      default: none
+      enable: [if, for, range, switch, type-switch, select, return, after-block]
+      allow-first-in-block: true
+      allow-whole-block: true
+      cuddle-max-statements: 2
+      branch-max-lines: 10
+    misspell:
+      mode: restricted
+    godot:
+      scope: declarations
+  exclusions:
+    presets: []
+formatters:
+  enable: [gci]
+  settings:
+    gci:
+      sections: [standard, default, localmodule]
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
