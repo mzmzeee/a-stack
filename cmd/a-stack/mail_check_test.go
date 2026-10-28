@@ -132,8 +132,14 @@ func TestCLIMailCheckCursorFileReachesNewestMail(t *testing.T) {
 			}
 			file := filepath.Join(t.TempDir(), "cursors.json")
 			first, second := check(0, "--cursor-file", file), check(0, "--cursor-file", file)
+			if position == 0 {
+				if newest(second, quiet) != 1 || !second.More {
+					t.Fatal("round must visit quiet Task before revisiting busy Task")
+				}
+				second = check(0, "--cursor-file", file)
+			}
 			if !first.More || second.More || newest(second, busy) != 105 || first.Hint != "" {
-				t.Fatal("two checks with a cursor file must reach message 105, and more must say so")
+				t.Fatal("bounded round must reach message 105, and more must say so")
 			}
 			if info, err := os.Stat(file); err != nil || posixModes && info.Mode().Perm() != 0600 {
 				t.Fatal("cursor file mode")
@@ -196,7 +202,7 @@ func TestCLIMailCheckCursorFileConcurrentWriters(t *testing.T) {
 		wg.Wait()
 		var saved map[string]string
 		data, err := os.ReadFile(file)
-		if err != nil || json.Unmarshal(data, &saved) != nil || len(saved) != 2 {
+		if err != nil || json.Unmarshal(data, &saved) != nil || len(saved) != 3 {
 			t.Fatal("concurrent writers broke the cursor file")
 		}
 	}

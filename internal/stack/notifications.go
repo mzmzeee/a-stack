@@ -48,6 +48,9 @@ func (s *Store) recoverNotices(ctx context.Context) error {
 	if err != nil {
 		return storageError()
 	}
+	if _, err = tx.ExecContext(ctx, "UPDATE sessions SET read_revision=read_revision+1 WHERE id IN (SELECT session_id FROM notice_batches WHERE state='submitting')"); err != nil {
+		return storageError()
+	}
 	if _, err = tx.ExecContext(ctx, "UPDATE notice_batches SET state='uncertain',reason='recovery_uncertain',updated_at=? WHERE state='submitting'", now()); err != nil {
 		return storageError()
 	}
@@ -302,6 +305,11 @@ func (n *notifier) finish(b noticeBatch, state NoticeState, reason string) error
 	count, err := result.RowsAffected()
 	if err != nil {
 		return storageError()
+	}
+	if state == NoticeUncertain && count > 0 {
+		if err = bumpSessionRead(ctx, tx, b.target.session); err != nil {
+			return storageError()
+		}
 	}
 	batchState := state
 	if count == 0 {

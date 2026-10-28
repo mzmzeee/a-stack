@@ -7,15 +7,18 @@ import (
 )
 
 // NoticeWarning is bounded public guidance, never runtime identity or raw
-// Herdr output. Reads use the binding and the last delivery diagnostic only.
+// Herdr output. Reads use retained outcomes, the binding and the last diagnostic.
 type NoticeWarning struct {
-	Reason string `json:"reason"`
-	Fix    string `json:"fix"`
+	Reason              string `json:"reason"`
+	Fix                 string `json:"fix"`
+	UnresolvedUncertain int    `json:"unresolved_uncertain,omitempty"`
 }
 
 func noticeWarning(reason string) *NoticeWarning {
 	fix := ""
 	switch reason {
+	case "delivery_uncertain", "recovery_uncertain":
+		fix = "Some notices may have been sent; check retained Task mail. Uncertain notices are not resent automatically."
 	case "binding_incomplete":
 		fix = "Run herdr bind in your harness pane; if integration_missing, install the named Herdr integration and restart the harness in that pane."
 	case "runtime_unavailable", "identity_changed":
@@ -40,6 +43,18 @@ func (s *Store) noticeWarningTx(ctx context.Context, tx *sql.Tx, session, agent 
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(a.binding,''),COALESCE(d.reason,'') FROM agents a
  LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id WHERE a.session_id=? AND a.id=?`, session, agent).Scan(&encoded, &reason); err != nil {
 		return nil, storageError()
+	}
+	var uncertain int
+	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM mail_mentions WHERE recipient_id=? AND notice_state='uncertain'", agent).Scan(&uncertain); err != nil {
+		return nil, storageError()
+	}
+	if uncertain > 0 {
+		if reason != "recovery_uncertain" {
+			reason = "delivery_uncertain"
+		}
+		warning := noticeWarning(reason)
+		warning.UnresolvedUncertain = uncertain
+		return warning, nil
 	}
 	var binding RuntimeBinding
 	_ = json.Unmarshal([]byte(encoded), &binding)

@@ -46,8 +46,8 @@ func TestHerdrBindReplacesGonePaneAndKeepsNoticeStates(t *testing.T) {
 		t.Fatal("bind in a new pane after the old pane is gone:", receipt, err)
 	}
 	check, err := f.service.Store.CheckMail(ctx, f.b.Token, MailCheckRequest{Context: f.ref(0)})
-	if err != nil || check.NoticeWarning != nil {
-		t.Fatal("new binding kept the old warning", check.NoticeWarning, err)
+	if err != nil || check.NoticeWarning == nil || check.NoticeWarning.UnresolvedUncertain != 1 {
+		t.Fatal("new binding hid unresolved uncertainty", check.NoticeWarning, err)
 	}
 	before := len(f.calls(t))
 	replay, err := f.service.Store.bindHerdrAgent(ctx, f.b.Token, r, f.n.adapter)

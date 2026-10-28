@@ -7,8 +7,13 @@ The release workflow uses the section of a version as the notes of its GitHub re
 ## [Unreleased]
 
 - Hooks now require explicit enrollment of the exact native harness session on this machine. Fresh sessions and legacy home-folder installs stay silent; rebinds invalidate enrollment. Generic notices and the Agent skill act only for a verified registered Agent.
+### Added
+
+- Tailscale remote foundation: `serve --share` and `service install --share` configure an owned HTTPS Serve rule over the fixed loopback port. The server accepts only its configured MagicDNS Host and matching Origin, with request identity kept separate from bearer authorization. `connect NAME URL`, `connect list`, `connect remove NAME` and `--remote NAME` add private HTTPS profiles with database pinning. See [Remote service](docs/remote.md); Session linking and remote notices are not included.
 
 ### Fixed
+
+- Mail cursor files advance only after complete stdout output, reject a different database or Agent context, and scan fairly past busy Tasks. Older unbound files need a new file to replay retained mail. Hook nudges keep their position when title lookup fails. Unresolved uncertain notices stay visible in mail checks, the Agents panel and notification status after later successful submissions.
 
 - `a-stack new` and `hook install` refuse your home folder and the folders above it. Pi and OpenCode hooks run in every session, so hooks for the home folder made every agent started anywhere below it act as that Session's Orchestrator: it loaded the skill and filed unrelated work as Tasks. To remove such hooks, run `a-stack hook uninstall --pi` (or `--opencode`, `--claude`, `--codex`) in that folder.
 - The session reminder tells the agent to do requests about other work without a-stack, and a closed Session's hooks no longer print a reminder.
