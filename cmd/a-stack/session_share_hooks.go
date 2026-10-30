@@ -80,6 +80,10 @@ func prepareShareAgents(ctx context.Context, state string, source, dest *stack.C
 
 	trees := []string{}
 	for _, agent := range agents {
+		if !stack.ValidID(agent.ID) || !orchestratorName.MatchString(agent.Name) {
+			return nil, invalid("source returned an invalid Agent ID or name")
+		}
+
 		trees = append(trees, agent.WorktreePath)
 	}
 
@@ -111,14 +115,22 @@ func prepareShareAgents(ctx context.Context, state string, source, dest *stack.C
 			}
 
 			credential, e := stack.ReadCredential(path)
-			if e != nil || credential.Kind != stack.AgentCapability {
+			if e != nil || credential.Kind != stack.AgentCapability || credential.Enrollment == nil || credential.Enrollment.DatabaseID != source.Discovery.DatabaseID || credential.Remote != source.RemoteName {
 				continue
 			}
 
-			own := *source
-			own.Credential = credential
+			var own *stack.Client
+			if credential.Remote != "" {
+				own, e = sharingRemoteClient(ctx, credential.Remote, path, stack.AgentCapability)
+			} else {
+				own, e = stack.NewClientContext(ctx, state, path, stack.AgentCapability)
+			}
 
-			session, e := inspectSession(ctx, &own, ref)
+			if e != nil || own.Discovery.DatabaseID != source.Discovery.DatabaseID || own.Discovery.URL != source.Discovery.URL {
+				continue
+			}
+
+			session, e := inspectSession(ctx, own, ref)
 			if e == nil && session.YourAgentID == agent.ID {
 				old = path
 				break

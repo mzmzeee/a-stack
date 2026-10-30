@@ -261,6 +261,11 @@ func (h *home) create(ctx context.Context, client *stack.Client) error {
 		// Sessions. Reject a known conflict before creating an empty Session.
 		if h.orchestrator != "" {
 			for _, s := range sessions {
+				// Recovery copies cannot be read; registration still reserves their names.
+				if s.TransferState == "sealed" || s.TransferState == "staged" {
+					continue
+				}
+
 				agents, err := listPages[stack.Agent](ctx, client, "/v1/agent/list", stack.Context{WorkspaceID: row.WorkspaceID, SessionID: s.ID})
 				if err != nil {
 					return err

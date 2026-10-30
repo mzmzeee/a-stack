@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
@@ -54,12 +55,22 @@ func TestCLIShareUnsharePreservesEnrollment(t *testing.T) {
 	}
 
 	original := sharingRemoteClient
-	sharingRemoteClient = func(_ context.Context, _ string, credential string, _ stack.CapabilityKind) (*stack.Client, error) {
+	sharingRemoteClient = func(_ context.Context, name string, credential string, kind stack.CapabilityKind) (*stack.Client, error) {
 		if credential == "" {
 			return nil, invalid("server credential required")
 		}
 
-		return stack.NewClient(destination.state, "", stack.OperatorCapability)
+		client, err := stack.NewClient(destination.state, "", stack.OperatorCapability)
+		if err != nil {
+			return nil, err
+		}
+
+		client.RemoteName = name
+		if kind == stack.AgentCapability {
+			client.Credential, err = stack.ReadCredential(credential)
+		}
+
+		return client, err
 	}
 	t.Cleanup(func() { sharingRemoteClient = original })
 
@@ -101,6 +112,24 @@ func TestCLIShareUnsharePreservesEnrollment(t *testing.T) {
 	rows, err := h.sessions(context.Background(), local)
 	if err != nil || len(rows) != 1 || rows[0].Remote != "team" {
 		t.Fatal(rows, err)
+	}
+
+	out.Reset()
+	errout.Reset()
+
+	if code := run([]string{"new", "OTHER", "--orchestrator", "03-new", "--no-browser", "--json", "--state-dir", source.state}, &out, &errout); code != 0 {
+		t.Fatalf("new Session after share: %s", errout.String())
+	}
+
+	if _, err = inspectSession(context.Background(), local, stack.Context{WorkspaceID: source.workspace, SessionID: source.session}); err == nil {
+		t.Fatal("sealed recovery copy became readable")
+	}
+
+	out.Reset()
+	errout.Reset()
+
+	if code := run([]string{"new", "RESERVED", "--orchestrator", "02-worker", "--no-browser", "--json", "--state-dir", source.state}, &out, &errout); code == 0 || !strings.Contains(errout.String(), "Agent name already registered") {
+		t.Fatalf("sealed Agent name was not reserved: %s", errout.String())
 	}
 
 	data, err = os.ReadFile(enrollmentPath)
