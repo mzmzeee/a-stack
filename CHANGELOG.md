@@ -7,6 +7,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 ## [Unreleased]
 
 - Urgent Task mail (schema 13): `mail send|reply --urgent` retains priority and nudges enrolled hooks at the next eligible tool boundary without the normal 30-second delay. Operator answers and overdue ACK reminders are urgent. Nudges stay generic and do not advance Agent cursors, acknowledge mail or re-arm Herdr notices; `hook status` shows urgent-mail availability.
+- Keep human panes quiet: Orchestrator bindings default to hook-only mail notices; choose `herdr bind --notices hook|pane`. Pane notices are short and at least 10 minutes apart, even after mail reads. Human prompts get a one-line mail count. Agent skills reserve mentions for action or final DONE.
 
 - The Agent skill now defaults to builder/verifier pairs for nontrivial code work, with linked Tasks, one report/finish owner per Task, candidate-specific evidence and a bounded repair loop. Small, low-risk work can stay solo.
 

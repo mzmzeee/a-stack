@@ -145,7 +145,8 @@ func (n *notifier) nextTarget(ctx context.Context, session string) (noticeTarget
 	var t noticeTarget
 	err := n.store.db.QueryRowContext(ctx, `SELECT a.id,a.session_id,a.revision,COALESCE(a.binding,'') FROM agents a JOIN sessions s ON s.id=a.session_id
  LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id
- WHERE s.closed=0 AND (?='' OR s.id=?) AND (COALESCE(d.next_attempt,0) BETWEEN 0 AND ?
+ WHERE s.closed=0 AND COALESCE(json_extract(a.binding,'$.notices'),CASE WHEN s.orchestrator_id=a.id THEN 'hook' ELSE 'pane' END)='pane'
+ AND (?='' OR s.id=?) AND (COALESCE(d.next_attempt,0) BETWEEN 0 AND ?
  OR (d.reason='notice_waiting_idle' AND a.runtime_state IN ('idle','done')))
  AND NOT EXISTS(SELECT 1 FROM notice_batches b WHERE b.session_id=s.id AND b.recipient_id=a.id AND b.state='submitting')
  AND (EXISTS(SELECT 1 FROM mail_mentions m JOIN task_assignees x ON x.task_id=m.task_id AND x.agent_id=m.recipient_id
@@ -171,7 +172,7 @@ func currentNoticeTarget(ctx context.Context, tx *sql.Tx, t noticeTarget) (bool,
 // set next_attempt back to 0.
 const noticeParked = -1
 
-// A submitted nudge is enough until an own mail read or this cooldown.
+// Pane input is rate limited even when the Agent reads its mail immediately.
 const noticeCooldown = 10 * time.Minute
 
 func recordNoticeTarget(ctx context.Context, tx *sql.Tx, t noticeTarget, reason string, success bool, clock time.Time) error {
@@ -243,7 +244,7 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
  LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id WHERE a.id=?`, t.agent).Scan(&reason, &next, &state, &observed); err != nil {
 		return empty, storageError()
 	}
-	if reason == "notice_waiting_mail" && next > n.clock().UnixMilli() {
+	if (reason == "notice_waiting_mail" || reason == "mail_checked") && next > n.clock().UnixMilli() {
 		return empty, nil
 	}
 	// Hook observations are sent only by an enrolled runtime. Unknown state

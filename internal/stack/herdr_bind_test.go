@@ -30,6 +30,7 @@ func TestHerdrBindReadsOwnPane(t *testing.T) {
 	}
 	want := f.config.Binding
 	want.InstanceID, want.HarnessVersion = "herdr:"+want.TerminalID, "0.164.2"
+	want.Notices = "" // the service supplies the role-dependent default
 	if *binding != want {
 		t.Fatalf("binding %+v, want %+v", *binding, want)
 	}

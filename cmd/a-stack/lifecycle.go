@@ -24,10 +24,10 @@ func isLifecycleCommand(command string) bool {
 }
 
 type lifecycleFlags struct {
-	workspace, session, operationID, path, name, agent, worktree, newCredential, runtimeID, runtimeFile, state, after string
-	revision                                                                                                          int64
-	limit                                                                                                             int
-	clearRuntime                                                                                                      bool
+	workspace, session, operationID, path, name, agent, worktree, newCredential, runtimeID, runtimeFile, state, after, notices string
+	revision                                                                                                                   int64
+	limit                                                                                                                      int
+	clearRuntime                                                                                                               bool
 	// afters has each --after: task create takes several prerequisites; the
 	// other commands take one cursor, after.
 	afters []string
@@ -48,6 +48,7 @@ func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.newCredential, "new-credential-file", "", "New private credential file for the Agent")
 	fs.StringVar(&f.runtimeID, "runtime-id", "", "ID of the running instance")
 	fs.StringVar(&f.runtimeFile, "runtime-file", "", "Private JSON file with the runtime binding")
+	fs.StringVar(&f.notices, "notices", "", "hook (no typed notices) or pane; default hook for the Orchestrator, pane for workers")
 	fs.BoolVar(&f.clearRuntime, "clear-runtime", false, "Clear the runtime binding (Operator)")
 	fs.StringVar(&f.state, "runtime-state", "", "unknown, working, idle, done, stopped or blocked")
 	fs.Int64Var(&f.revision, "expected-revision", 0, "Current revision of the resource")
@@ -116,7 +117,7 @@ func acceptedFlags(command string) string {
 	case "herdr focus":
 		allowed += "workspace session agent "
 	case "herdr bind":
-		allowed += "workspace session agent expected-revision operation-id herdr-executable "
+		allowed += "workspace session agent expected-revision operation-id herdr-executable notices "
 	case "notifications drain":
 		allowed += "workspace session limit "
 	case "view revoke":

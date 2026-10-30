@@ -90,6 +90,7 @@ type Agent struct {
 // InstanceID names the running instance, independently of reusable panes/names.
 // Herdr verification is a later adapter's job; this slice executes no harness.
 type RuntimeBinding struct {
+	Notices         string `json:"notices,omitempty"`
 	InstanceID      string `json:"instance_id"`
 	HerdrAlias      string `json:"herdr_alias,omitempty"`
 	Endpoint        string `json:"endpoint,omitempty"`
@@ -478,6 +479,9 @@ func validateBinding(binding *RuntimeBinding, required bool) error {
 		}
 		return nil
 	}
+	if binding.Notices != "" && binding.Notices != "hook" && binding.Notices != "pane" {
+		return failure("invalid_input", "runtime notices must be hook or pane")
+	}
 	if binding.InstanceID == "" || len(binding.InstanceID) > 128 || !utf8.ValidString(binding.InstanceID) {
 		return failure("invalid_input", "runtime instance_id must contain 1–128 UTF-8 bytes")
 	}
@@ -537,7 +541,14 @@ func (s *Store) bindAgent(ctx context.Context, token, action string, r AgentBind
 				return Receipt{}, failure("conflict", "runtime instance already attached")
 			}
 			runtimeID = r.Runtime.InstanceID
-			b, _ := json.Marshal(r.Runtime)
+			runtime := *r.Runtime
+			if runtime.Notices == "" {
+				runtime.Notices = "pane"
+				if session.OrchestratorID != nil && *session.OrchestratorID == agent.ID {
+					runtime.Notices = "hook"
+				}
+			}
+			b, _ := json.Marshal(runtime)
 			binding = string(b)
 		}
 		if action == "rebind" {

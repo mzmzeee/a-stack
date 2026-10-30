@@ -5,10 +5,12 @@ import (
 	"time"
 )
 
-func TestNotificationsHoldBurstUntilOwnRead(t *testing.T) {
+func TestNotificationsHoldBurstDespiteOwnRead(t *testing.T) {
 	for _, read := range []string{"check", "read"} {
 		t.Run(read, func(t *testing.T) {
 			f := noticeTestFixture(t)
+			clock := time.Now()
+			f.n.clock = func() time.Time { return clock }
 			for i := 0; i < 20; i++ {
 				f.send(t, f.a.Token, "Burst @03-worker")
 				f.drain(t, 4)
@@ -33,8 +35,12 @@ func TestNotificationsHoldBurstUntilOwnRead(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if f.drain(t, 4).Submitted != 0 || f.prompts(t) != 1 {
+				t.Fatal("own read bypassed pane rate limit")
+			}
+			clock = clock.Add(noticeCooldown)
 			if f.drain(t, 4).Submitted != 1 || f.prompts(t) != 2 || countTest(t, f.service.Store, "SELECT count(*) FROM mail_mentions WHERE notice_state='submitted'") != 20 {
-				t.Fatal("own read did not re-arm exact pending batch")
+				t.Fatal("cooldown did not release exact pending batch")
 			}
 		})
 	}
