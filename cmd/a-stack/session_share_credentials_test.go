@@ -81,7 +81,7 @@ func TestShareAgentsRejectsUntrustedDiscovery(t *testing.T) {
 }
 
 func TestShareAgentsCredentialScope(t *testing.T) {
-	for _, scenario := range []string{"explicit-first", "missing-enrollment", "other-database", "other-remote"} {
+	for _, scenario := range []string{"explicit-first", "missing-enrollment", "other-database", "other-remote", "remote-source"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newTeam(t)
 			hookHome(t)
@@ -103,6 +103,8 @@ func TestShareAgentsCredentialScope(t *testing.T) {
 				credential.Enrollment.DatabaseID = f.workspace
 			case "other-remote":
 				credential.Remote = "other"
+			case "remote-source":
+				client.RemoteName = "team"
 			}
 
 			data, _ := json.Marshal(credential)

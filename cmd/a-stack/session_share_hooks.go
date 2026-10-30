@@ -109,19 +109,25 @@ func prepareShareAgents(ctx context.Context, state string, source, dest *stack.C
 		}
 
 		old := ""
+		var profileError error
 		for _, path := range candidates {
 			if path == "" {
 				continue
 			}
 
 			credential, e := stack.ReadCredential(path)
-			if e != nil || credential.Kind != stack.AgentCapability || credential.Enrollment == nil || credential.Enrollment.DatabaseID != source.Discovery.DatabaseID || credential.Remote != source.RemoteName {
+			if e != nil || credential.Kind != stack.AgentCapability || credential.Enrollment == nil || credential.Enrollment.DatabaseID != source.Discovery.DatabaseID || (credential.Remote == "") != (source.RemoteName == "") {
 				continue
 			}
 
 			var own *stack.Client
 			if credential.Remote != "" {
 				own, e = sharingRemoteClient(ctx, credential.Remote, path, stack.AgentCapability)
+				if e != nil {
+					if _, profileErr := stack.ReadRemote(credential.Remote); profileErr != nil {
+						profileError = invalid("cannot read credential profile " + credential.Remote + " for Agent " + agent.Name + "; check its permissions and contents, or if missing verify the source server and run: a-stack connect " + credential.Remote + " " + source.Discovery.URL)
+					}
+				}
 			} else {
 				own, e = stack.NewClientContext(ctx, state, path, stack.AgentCapability)
 			}
@@ -138,6 +144,10 @@ func prepareShareAgents(ctx context.Context, state string, source, dest *stack.C
 		}
 
 		if old == "" {
+			if profileError != nil {
+				return nil, profileError
+			}
+
 			return nil, invalid("cannot locate the private credential for Agent " + agent.Name + "; give --agent-files with its explicit path before sharing")
 		}
 

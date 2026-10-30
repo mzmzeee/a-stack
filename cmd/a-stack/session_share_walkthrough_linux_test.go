@@ -108,6 +108,7 @@ func TestSharingDocumentedCLIWorkflow(t *testing.T) {
 		t.Fatal(e)
 	}
 
+	var lastFailure string
 	cli := func(home, cwd, localState string, wantOK bool, args ...string) map[string]json.RawMessage {
 		t.Helper()
 
@@ -129,6 +130,7 @@ func TestSharingDocumentedCLIWorkflow(t *testing.T) {
 		}
 
 		if !wantOK {
+			lastFailure = errout.String()
 			return nil
 		}
 
@@ -174,10 +176,29 @@ func TestSharingDocumentedCLIWorkflow(t *testing.T) {
 
 	cli(anotherHome, friend.project, friend.state, true, "connect", "team", proxy.URL)
 	cli(anotherHome, friend.project, friend.state, false, "session", "link", "--code", inviteCode, "--", "team", session)
+	// A second machine may use a different local profile name for this server.
+	cli(friendHome, friend.project, friend.state, true, "connect", "friendteam", proxy.URL)
+	friendAgentFile := filepath.Join(friendHome, "friend-agent.json")
+	registered := cli(friendHome, friend.project, friend.state, true, "agent", "register", "--remote", "friendteam", "--credential-file", friendCredential, "--workspace", value(shared, "workspace_id"), "--session", session, "--name", "friend-worker", "--new-credential-file", friendAgentFile, "--operation-id", "friend-register-agent")
+	friendAgentID := value(registered, "resource_id")
+
+	data, _ = json.Marshal(map[string]string{owner.orch: owner.orchFile, owner.worker: owner.workerFile, friendAgentID: friendAgentFile})
+	if e = os.WriteFile(manifest, data, 0o600); e != nil {
+		t.Fatal(e)
+	}
+
 	login.Store("owner@example.com")
+	cli(ownerHome, owner.project, owner.state, false, "session", "unshare", "--agent-files", manifest)
+
+	if !strings.Contains(lastFailure, "a-stack connect friendteam "+proxy.URL) {
+		t.Fatal("missing profile did not name its connect command", lastFailure)
+	}
+
+	// Both aliases exist locally and point to exactly the same URL/database.
+	cli(ownerHome, owner.project, owner.state, true, "connect", "friendteam", proxy.URL)
 	cli(ownerHome, owner.project, owner.state, true, "session", "unshare", "--agent-files", manifest)
 	cli(ownerHome, owner.project, owner.state, true, "session", "inspect", "--workspace", owner.workspace, "--session", owner.session)
 	login.Store("friend@example.com")
 	cli(friendHome, friend.project, friend.state, false, "session", "inspect", "--remote", "team", "--credential-file", friendCredential)
-	t.Log("PASS: real CLI owner bootstrap/default routing, share, invite, friend connect/link, wrong/missing code and wrong login, retry and single use, unshare")
+	t.Log("PASS: real CLI owner bootstrap/default routing, share, invite, friend connect/link, wrong/missing code and wrong login, retry and single use, mixed-profile friend Agent, missing-profile recovery, unshare")
 }
