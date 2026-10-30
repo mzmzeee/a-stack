@@ -578,6 +578,11 @@ func (s *Store) ChangeTransfer(ctx context.Context, token, action string, r Tran
 		return result, failure("forbidden", "transfer belongs to another Session")
 	}
 
+	var wasClosed bool
+	if err = tx.QueryRowContext(ctx, "SELECT closed FROM sessions WHERE id=?", r.SessionID).Scan(&wasClosed); err != nil {
+		return result, storageError(err)
+	}
+
 	switch action {
 	case "status":
 		return result, nil
@@ -688,6 +693,17 @@ func (s *Store) ChangeTransfer(ctx context.Context, token, action string, r Tran
 
 	if err != nil {
 		return result, storageError(err)
+	}
+
+	var claimsChanged bool
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM task_claims c JOIN tasks t ON t.id=c.task_id JOIN sessions s ON s.id=t.session_id WHERE s.id=? AND s.closed<>?)", r.SessionID, wasClosed).Scan(&claimsChanged); err != nil {
+		return result, storageError(err)
+	}
+
+	if claimsChanged {
+		if err = bumpWorkspaceClaims(ctx, tx, r.WorkspaceID); err != nil {
+			return result, storageError(err)
+		}
 	}
 
 	result, err = transferStatus(ctx, tx, r.TransferID)
