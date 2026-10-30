@@ -6,63 +6,39 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
-- Seed benchmark mail cursors through the CLI so identity binding stays valid. Fail steady-load runs on request errors or exhausted retries, while reporting retried revision conflicts separately.
+## [0.1.9] - 2026-10-31
 
-- Refuse an empty or missing state database beside an existing Operator credential, rather than silently creating an empty installation with a new identity. Interrupted first starts still recover.
-- Treat SQLite corruption detected during the first startup query as unusable (exit 4, with restore guidance), instead of asking supervisors to retry it forever. Transient storage failures remain retryable.
+Upgrading from v0.1.8: run `a-stack update`; it restarts a running installed service and refreshes unchanged skill and hook files itself. Homebrew and Scoop users must upgrade with their package manager, restart the service and run `a-stack update --refresh`. The first start copies the database to `state.db.pre-v10`, then moves it from schema 10 to 15. Allow free space of three times the size of `state.db`; with less, the service stops before the copy and migration. Older versions cannot open schema 15. To go back, install v0.1.8, stop the service and restore the pre-migration copy in a new state directory in the same place; later changes are lost. Use the exact copy name printed by the service, which may have a numbered suffix, and delete Agent mail cursor files and the hooks' cursor folder after restoring. See [Go back to an older version](docs/install.md#go-back-to-an-older-version).
 
-- Fix the benchmark's obsolete snapshot ETag and measure the full validation runner's bounded unread-notice hold instead of expecting a burst to bypass the pane cooldown.
+Hooks now need enrollment. Existing hook installs stay silent until each Agent enrolls its own native harness session on this machine. From that session, run `a-stack --as agent --credential-file /path/to/agent.json hook enroll --claude` (or `--codex`, `--pi`, `--opencode`); with the Agent's helper, use `me hook enroll --claude`. A successful `me herdr bind` also enrolls it. Update/refresh prints these instructions when it migrates recognized hook commands. If an older updater omits the warning, explicit Agent commands keep a reminder on stderr until enrollment. Missing native metadata needs `--native-session ID` or a Herdr bind; never use the a-stack Session ID. Reload Pi with `/reload`, or restart OpenCode, to load the refreshed shim. See [Enrollment](docs/hooks.md#enrollment).
 
-- Hide the Now board and Stalled while Session data is unknown, instead of showing misleading empty columns.
-- Apply search and status filters to Stalled items, just like the other Now columns.
+Orchestrator bindings now default to hook-only mail notices, so a-stack does not type notices into the pane you use. Enroll the hooks to receive nudges, or check mail yourself. `herdr bind --notices hook|pane` selects the mode.
 
-- Refresh active enrolled hooks on a five-minute heartbeat, so a continuously working Orchestrator does not falsely appear unreachable.
-
-- Browser snippet tests now ignore source layout while retaining exact plain-text checks, so formatting does not break acknowledgement, mail-wait or Operator-label coverage. Validation callbacks bind loop values instead of relying on layout-sensitive lint suppressions.
-
-- Unreachable-Orchestrator warnings now tell blocked workers to request an ACK, set Waiting naming the recipient, and use Needs you only for Operator-owned blockers.
-
-- Accept `--code` in the command allowlists for `connect` and `session link`, so owner and friend enrollment work through the public CLI. A subprocess TLS walkthrough now covers both documented flows.
-
-- Urgent Task mail (schema 13): `mail send|reply --urgent` retains priority and nudges enrolled hooks at the next eligible tool boundary without the normal 30-second delay. Operator answers and overdue ACK reminders are urgent. Nudges stay generic and do not advance Agent cursors, acknowledge mail or re-arm Herdr notices; `hook status` shows urgent-mail availability.
-- Keep human panes quiet: Orchestrator bindings default to hook-only mail notices; choose `herdr bind --notices hook|pane`. Pane notices are short and at least 10 minutes apart, even after mail reads. Human prompts get a one-line mail count. Agent skills reserve mentions for action or final DONE.
-
-- Show unread mention waits and 30-minute Stalled items, send one bounded extra notice after 10 minutes, and warn when the Orchestrator cannot be reached by mail. Schema 15 retains each Agent's last successful own-mail-read time.
-
-- The Agent skill now defaults to builder/verifier pairs for nontrivial code work, with linked Tasks, one report/finish owner per Task, candidate-specific evidence and a bounded repair loop. Small, low-risk work can stay solo.
-
-- Hook migration now keeps a private pending-enrollment reminder for explicit Agent CLI commands, including upgrades through older updaters that discard new warnings. `hook status` reports installed hooks and exact native-session enrollment without changing stdout JSON or activating unrelated hook events.
-
-- Update/refresh migrates recognized legacy hook commands and reports enrollment instructions in human and JSON output. Agents can run `hook enroll` once from their own session to detect available native metadata, with explicit-ID and Herdr fallbacks.
-
-- Hooks now require explicit enrollment of the exact native harness session on this machine. Fresh sessions and legacy home-folder installs stay silent; rebinds invalidate enrollment. Generic notices and the Agent skill act only for a verified registered Agent.
-- Record trusted Tailscale Operator labels on actions and answers (schema 11). Shared Needs you answers show who answered and when; a second answer names the first answerer without sending duplicate mail.
 ### Added
 
-- Sharing review fixes: fence competing transfers with source release proofs, lock recovery journals, and allow corrected preflight arguments. Owner enrollment (`connect-code`, `connect --code`) and Session invitations now require expiring single-use codes as well as Tailscale identity. Explain missing local services and multi-machine unshare credentials.
-- Share, link, invite and unshare Sessions over a connected Tailscale service (schema 14). Transfers stage atomically, seal the unchanged source, and resume after interruptions. Invited Operators are limited to their Session; links open its server view. Agent credentials and exact local hook enrollment migrate without copying source capabilities. Remote discovery respects the hook deadline.
-
-- Explicit mail acknowledgements (schema 12): send or reply with `--ack-required`, optional `--ack-from` and `--ack-due`; recipients use `mail ack`. Mail checks and handoffs list pending obligations, the Now board shows overdue counts, and Herdr can submit one overdue reminder per obligation. Reading and Task completion do not acknowledge; unassignment withdraws outstanding obligations permanently.
-
+- Share, link, invite and unshare Sessions over a connected Tailscale service (schema 14). Transfers stage atomically, seal the unchanged source, fence competing transfers and resume after interruptions. Owner enrollment (`connect-code`, `connect --code`) and Session invitations (`session link --code`) require expiring single-use codes as well as Tailscale identity. Invited Operators are limited to their Session; links open its server view. Agent credentials and exact local hook enrollment migrate without copying source capabilities. Recovery journals are locked, corrected preflight arguments can be retried, and remote discovery respects the hook deadline. See [Remote service](docs/remote.md), including local-service requirements and credentials for multi-machine unshare.
+- `serve --share` and `service install --share` configure an owned HTTPS Tailscale Serve rule over the fixed loopback port. The server accepts only its configured MagicDNS Host and matching Origin, with request identity separate from bearer authorization. `connect NAME URL`, `connect list`, `connect remove NAME` and `--remote NAME` add private HTTPS profiles with database pinning. Cross-machine notice delivery requires a relay.
+- Explicit mail acknowledgements (schema 12): send or reply with `--ack-required`, optional `--ack-from` and `--ack-due`; recipients use `mail ack`. Mail checks and handoffs list pending obligations, the Now board shows overdue counts, and Herdr can submit one overdue reminder per obligation. Reading and Task completion do not acknowledge; unassignment withdraws outstanding obligations permanently. See [Task mail](docs/mail.md).
+- Urgent Task mail (schema 13): `mail send|reply --urgent` retains priority and nudges enrolled hooks at the next eligible tool boundary without the normal 30-second delay. Operator answers and overdue ACK reminders are urgent. Nudges stay generic and do not advance Agent cursors, acknowledge mail or re-arm Herdr notices; `hook status` shows urgent-mail availability.
 - `mail reply` routes a reply to the original Task and mentions its sender when still assigned. `mail recipients` previews the current assignees who can read mail and be mentioned. Handoff briefs show mail coverage, omitted earlier messages and a continuation cursor.
-
-- Tailscale remote foundation: `serve --share` and `service install --share` configure an owned HTTPS Serve rule over the fixed loopback port. The server accepts only its configured MagicDNS Host and matching Origin, with request identity kept separate from bearer authorization. `connect NAME URL`, `connect list`, `connect remove NAME` and `--remote NAME` add private HTTPS profiles with database pinning. See [Remote service](docs/remote.md). Cross-machine notice delivery requires a relay.
-
-- Hermetic CLI regression stories, a generated Task graph/mail model and a guard keeping test tooling out of production dependencies. Nightly CI adds five-minute fuzz runs, 100 seeded SIGKILL recovery checks and a targeted mutation-testing pilot. See [Regression gates](docs/quality.md#regression-gates).
+- Unread mention waits appear as Stalled after 30 minutes in the Now board, `watch` and `notifications status`. One bounded extra notice may be sent after 10 minutes, without bypassing hook-only mode or the pane cooldown. Own mail reads clear the wait; acknowledgements alone do not. Schema 15 retains each Agent's last successful own-mail-read time. Stalled items follow search and status filters; the Now board stays hidden while Session data is unknown. See [Unread mentions and stalls](docs/notifications.md#unread-mentions-and-stalls).
+- `session inspect` and the Agents panel warn when the Orchestrator has no usable pane notice route, no recent runtime observation and no own mail read in 15 minutes. The warning tells blocked workers to request an ACK, set Waiting naming the recipient, and use Needs you only for Operator-owned blockers. Active enrolled hooks refresh their runtime observation every five minutes so a working Orchestrator does not falsely appear unreachable.
+- Trusted Tailscale Operator labels are recorded on actions and answers (schema 11). Shared Needs you answers show who answered and when; a second answer names the first answerer without sending duplicate mail.
 
 ### Changed
 
-- `scripts/fmt.sh` formats Go, browser assets, JavaScript, Python and shell scripts, and fixes Go whitespace and import grouping. `scripts/check.sh` enforces the same pinned rules without rewriting files. EditorConfig sets indentation, line endings and final newlines.
+- Hooks act only for an explicitly enrolled native harness session. Fresh sessions and legacy home-folder installs stay silent; rebinds invalidate enrollment. Generic notices and the Agent skill act only for a verified registered Agent. Update/refresh migrates recognized legacy hook commands without enrolling sessions; `hook status` reports installed hooks and exact native-session enrollment without changing stdout JSON or activating unrelated hook events.
+- Pane notices are short and at least 10 minutes apart, even after mail reads. Human prompts get a one-line mail count. Agent skills reserve mentions for action or final DONE.
+- The Agent skill defaults to builder/verifier pairs for nontrivial code work, with linked Tasks, one report/finish owner per Task, candidate-specific evidence and a bounded repair loop. Small, low-risk work can stay solo.
+- Expanded CLI regression, fuzz, recovery and mutation checks, and made benchmark and validation checks stricter. `scripts/fmt.sh` and `scripts/check.sh` now share pinned formatting rules for Go, browser assets, JavaScript, Python and shell scripts; EditorConfig sets indentation, line endings and final newlines. See [Regression gates](docs/quality.md#regression-gates).
 
 ### Fixed
 
-- Regression stories now prove each harness is eligible before checking closed-Session silence, and verify browser mail peeks leave persisted state unchanged. Their SQLite snapshot URIs handle Windows drive paths.
-
-- Mention notices no longer pile up while an Agent is busy. After one submission, later mentions wait for the Agent's own mail read or a 10-minute cooldown. Observed working runtimes also wait for idle or the cooldown while hooks can nudge them; notification status and the Agents panel show the hold.
-
+- Refuse an empty or missing state database beside an existing Operator credential, rather than silently creating an empty installation with a new identity. Interrupted first starts still recover.
+- SQLite corruption detected during the first startup query is unusable (exit 4, with restore guidance), instead of asking supervisors to retry it forever. Transient storage failures remain retryable.
+- Mention notices no longer pile up while an Agent is busy. Observed working runtimes wait for idle or a 10-minute cooldown while hooks can nudge them; notification status and the Agents panel show the hold.
 - Mail cursor files advance only after complete stdout output, reject a different database or Agent context, and scan fairly past busy Tasks. Older unbound files need a new file to replay retained mail. Hook nudges keep their position when title lookup fails. Unresolved uncertain notices stay visible in mail checks, the Agents panel and notification status after later successful submissions.
-
-- `a-stack new` and `hook install` refuse your home folder and the folders above it. Pi and OpenCode hooks run in every session, so hooks for the home folder made every agent started anywhere below it act as that Session's Orchestrator: it loaded the skill and filed unrelated work as Tasks. To remove such hooks, run `a-stack hook uninstall --pi` (or `--opencode`, `--claude`, `--codex`) in that folder.
+- `a-stack new` and `hook install` refuse your home folder and the folders above it. Pi and OpenCode hooks run in every session, so hooks for the home folder made unrelated agents act as that Session's Orchestrator. To remove such hooks, run `a-stack hook uninstall --pi` (or `--opencode`, `--claude`, `--codex`) in that folder.
 - The session reminder tells the agent to do requests about other work without a-stack, and a closed Session's hooks no longer print a reminder.
 
 ## [0.1.8] - 2026-10-26
@@ -390,7 +366,8 @@ The first release.
 - One static Linux binary for `amd64` and `arm64`, with SQLite built in. It accepts connections only on `127.0.0.1`.
 - An install script that checks the download against the release checksums.
 
-[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.8...HEAD
+[Unreleased]: https://github.com/mzmzeee/a-stack/compare/v0.1.9...HEAD
+[0.1.9]: https://github.com/mzmzeee/a-stack/compare/v0.1.8...v0.1.9
 [0.1.8]: https://github.com/mzmzeee/a-stack/compare/v0.1.7...v0.1.8
 [0.1.7]: https://github.com/mzmzeee/a-stack/compare/v0.1.6...v0.1.7
 [0.1.6]: https://github.com/mzmzeee/a-stack/compare/v0.1.5...v0.1.6
