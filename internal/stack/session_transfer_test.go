@@ -19,6 +19,8 @@ func TestSessionTransferRoundTrip(t *testing.T) {
 	source := tasksFixture(t)
 	destination := tasksFixture(t)
 	task := source.create(t, "keep this report and graph")
+	const readAt = "2026-10-01T12:00:00Z"
+	execTest(t, source.service.Store, "UPDATE agents SET last_mail_read_at=? WHERE session_id=?", readAt, source.sessions[0])
 	snapshot, err := source.service.Store.ExportTransfer(ctx, source.operator.Token, TransferExportRequest{Context: source.ref(0), TransferID: opaqueID(), Repository: "example.com/team/repo"})
 	if err != nil {
 		t.Fatal(err)
@@ -30,6 +32,10 @@ func TestSessionTransferRoundTrip(t *testing.T) {
 	}
 	if imported.State != "staged" {
 		t.Fatal(imported)
+	}
+	var retainedReads int
+	if err = destination.service.Store.db.QueryRow("SELECT count(*) FROM agents WHERE session_id=? AND last_mail_read_at=?", imported.SessionID, readAt).Scan(&retainedReads); err != nil || retainedReads != len(input.AgentHashes) {
+		t.Fatal("transfer lost own-read evidence", retainedReads, err)
 	}
 	_, err = destination.service.Store.InspectSession(ctx, destination.operator.Token, imported.Context)
 	requireCode(t, err, "conflict")

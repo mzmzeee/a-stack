@@ -69,6 +69,7 @@ type noticeTarget struct {
 	binding                     RuntimeBinding
 }
 type noticeBatch struct {
+	extra  bool
 	id     string
 	target noticeTarget
 }
@@ -151,8 +152,9 @@ func (n *notifier) nextTarget(ctx context.Context, session string) (noticeTarget
  AND NOT EXISTS(SELECT 1 FROM notice_batches b WHERE b.session_id=s.id AND b.recipient_id=a.id AND b.state='submitting')
  AND (EXISTS(SELECT 1 FROM mail_mentions m JOIN task_assignees x ON x.task_id=m.task_id AND x.agent_id=m.recipient_id
  WHERE m.recipient_id=a.id AND x.session_id=s.id AND m.notice_state='pending')
+ OR EXISTS(SELECT 1 FROM mail_mentions m JOIN mail_messages msg ON msg.id=m.message_id WHERE m.recipient_id=a.id AND `+escalatableMentionSQL+`)
  OR EXISTS(SELECT 1 FROM mail_acks k JOIN task_assignees x ON x.task_id=k.task_id AND x.agent_id=k.recipient_id WHERE k.recipient_id=a.id AND x.session_id=s.id AND k.reminder_state='pending' AND k.acked_at='' AND k.withdrawn_at='' AND k.due_at<>'' AND julianday(k.due_at)<=julianday(?)))
- ORDER BY COALESCE(d.updated_at,''),a.id LIMIT 1`, session, session, n.clock().UnixMilli(), n.clock().UTC().Format(time.RFC3339Nano)).Scan(&t.agent, &t.session, &t.revision, &t.bindingJSON)
+ ORDER BY COALESCE(d.updated_at,''),a.id LIMIT 1`, session, session, n.clock().UnixMilli(), n.clock().Add(-MentionEscalationAfter).UTC().Format(time.RFC3339Nano), n.clock().UTC().Format(time.RFC3339Nano)).Scan(&t.agent, &t.session, &t.revision, &t.bindingJSON)
 	if err != nil {
 		return t, err
 	}
@@ -244,12 +246,16 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
  LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id WHERE a.id=?`, t.agent).Scan(&reason, &next, &state, &observed); err != nil {
 		return empty, storageError()
 	}
+	extraIDs, err := readIDs(ctx, tx, `SELECT m.message_id FROM mail_mentions m JOIN mail_messages msg ON msg.id=m.message_id JOIN agents a ON a.id=m.recipient_id WHERE a.id=? AND `+escalatableMentionSQL+` ORDER BY msg.received_at,m.message_id LIMIT 500`, t.agent, n.clock().Add(-MentionEscalationAfter).UTC().Format(time.RFC3339Nano))
+	if err != nil {
+		return empty, err
+	}
 	if (reason == "notice_waiting_mail" || reason == "mail_checked") && next > n.clock().UnixMilli() {
 		return empty, nil
 	}
 	// Hook observations are sent only by an enrolled runtime. Unknown state
 	// keeps the ordinary first-notice behavior; Herdr still verifies identity.
-	if state == "working" && observed != "" && reason != "notice_waiting_mail" {
+	if state == "working" && observed != "" && reason != "notice_waiting_mail" && len(extraIDs) == 0 {
 		if reason != "notice_waiting_idle" {
 			if err = recordNoticeTarget(ctx, tx, t, "notice_waiting_idle", true, n.clock()); err != nil || tx.Commit() != nil {
 				return empty, storageError()
@@ -265,14 +271,21 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
 	if err != nil {
 		return empty, err
 	}
+	extra := len(extraIDs) > 0
+	if extra {
+		ids = extraIDs
+	}
 	acks, err := readIDs(ctx, tx, `SELECT k.message_id FROM mail_acks k JOIN task_assignees x ON x.task_id=k.task_id AND x.agent_id=k.recipient_id WHERE x.session_id=? AND k.recipient_id=? AND k.reminder_state='pending' AND k.acked_at='' AND k.withdrawn_at='' AND k.due_at<>'' AND julianday(k.due_at)<=julianday(?) ORDER BY k.message_id LIMIT ?`, t.session, t.agent, n.clock().UTC().Format(time.RFC3339Nano), 500-len(ids))
 	if err != nil {
 		return empty, err
 	}
+	if extra {
+		acks = nil
+	}
 	if len(ids)+len(acks) == 0 {
 		return empty, nil
 	}
-	batch := noticeBatch{id: opaqueID(), target: t}
+	batch := noticeBatch{id: opaqueID(), target: t, extra: extra}
 	stamp := now()
 	if _, err = tx.ExecContext(ctx, "INSERT INTO notice_batches VALUES(?,?,?,?,?,'submitting','captured',?,?)", batch.id, t.session, t.agent, t.revision, tokenHash(t.bindingJSON), stamp, stamp); err != nil {
 		return empty, storageError()
@@ -281,7 +294,7 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
 		if _, err = tx.ExecContext(ctx, "INSERT INTO notice_batch_refs VALUES(?,?,?)", batch.id, id, t.agent); err != nil {
 			return empty, storageError()
 		}
-		if _, err = tx.ExecContext(ctx, "UPDATE mail_mentions SET notice_state='submitting',state_at=? WHERE message_id=? AND recipient_id=? AND notice_state='pending'", stamp, id, t.agent); err != nil {
+		if _, err = tx.ExecContext(ctx, "UPDATE mail_mentions SET state_at=CASE WHEN notice_state='submitted' THEN state_at ELSE ? END,notice_state='submitting' WHERE message_id=? AND recipient_id=? AND notice_state IN ('pending','submitted')", stamp, id, t.agent); err != nil {
 			return empty, storageError()
 		}
 	}
@@ -313,6 +326,16 @@ func (n *notifier) preflight(ctx context.Context, b noticeBatch) (NoticeState, s
 	}
 	if !open {
 		return NoticePending, "session_closed", nil
+	}
+	if b.extra {
+		var unread bool
+		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM notice_batch_refs r JOIN mail_messages msg ON msg.id=r.message_id JOIN agents a ON a.id=r.recipient_id WHERE r.batch_id=? AND (a.last_mail_read_at IS NULL OR rtrim(msg.received_at,'Z')>rtrim(a.last_mail_read_at,'Z')))`, b.id).Scan(&unread)
+		if err != nil {
+			return "", "", storageError(err)
+		}
+		if !unread {
+			return NoticeSuppressed, "mail_checked", nil
+		}
 	}
 	var count int
 	err = tx.QueryRowContext(ctx, `SELECT count(*) FROM notice_batch_refs r JOIN mail_mentions m ON m.message_id=r.message_id AND m.recipient_id=r.recipient_id
@@ -347,8 +370,13 @@ func (n *notifier) finish(b noticeBatch, state NoticeState, reason string) error
 	if old != "submitting" {
 		return nil
 	}
-	result, err := tx.ExecContext(ctx, `UPDATE mail_mentions SET notice_state=?,state_at=? WHERE notice_state='submitting' AND EXISTS(
- SELECT 1 FROM notice_batch_refs r WHERE r.batch_id=? AND r.message_id=mail_mentions.message_id AND r.recipient_id=mail_mentions.recipient_id)`, state, now(), b.id)
+	mentionState := state
+	retryExtra := b.extra && state == NoticePending
+	if retryExtra {
+		mentionState = NoticeSubmitted
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE mail_mentions SET notice_state=?,state_at=CASE WHEN ? THEN state_at ELSE ? END WHERE notice_state='submitting' AND EXISTS(
+ SELECT 1 FROM notice_batch_refs r WHERE r.batch_id=? AND r.message_id=mail_mentions.message_id AND r.recipient_id=mail_mentions.recipient_id)`, mentionState, retryExtra, n.clock().UTC().Format(time.RFC3339Nano), b.id)
 	if err != nil {
 		return storageError()
 	}

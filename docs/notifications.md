@@ -106,6 +106,16 @@ The mail transaction stores the body once, with a pending reference for each men
 
 After one successful pane submission, further notices wait at least 10 minutes, even if that Agent immediately runs `mail check`, `mail read` or `task handoff`. Reading mail does not shorten the cooldown or acknowledge a message. Later mentions stay pending and join the next batch. The hold survives a service restart. Urgent mail can reach enrolled hooks immediately; it does not bypass the pane limit.
 
+### Unread mentions and stalls
+
+The service records the time of each successful own Agent mail read, independently of notice delivery. Browser reads and another Agent's reads never count. This records a read attempt, not understanding or an acknowledgement.
+
+After a submitted mention notice has waited 10 minutes without an own read since the message arrived, the dispatcher may send one extra notice. It never bypasses hook-only mode or the strict pane cooldown, and keeps the same runtime identity, membership and preflight checks. Hook-only recipients remain visible as Stalled without typed input. Exact batch references bound it to one extra submission per mention; uncertain submissions are never retried automatically. An own read cancels an extra notice that has not passed preflight. No repeated reminder timer is created.
+
+After 30 minutes without an own read, the Task shows **Stalled**, with text such as “29-urgent has waited 34 min for 01-orchestrator”. The Now board puts these items first. `watch` and `notifications status` expose them too. Reading clears the wait; acknowledging alone does not. No Needs you question is created automatically. These fixed thresholds are 10 minutes for an extra notice, 30 minutes for Stalled and 15 minutes for Orchestrator reachability.
+
+`session inspect` and the Agents panel warn “the Orchestrator cannot be reached by mail” when it has no usable pane-mode notice route, no recent runtime observation and no own mail read in 15 minutes. A hook-only binding alone is not evidence that its hooks have run. This uses stored binding and delivery diagnostics, not a live probe. The Orchestrator must enroll its hooks or bind in Herdr, and keep a mail check in its work loop.
+
 A runtime observed as working by a-stack also waits until its next idle or done observation, or 10 minutes after the hold began. Hook observations require exact runtime enrollment; its mail nudge can reach the Agent between tool calls. The server does not inspect machine-local enrollment files. An unknown or unobserved a-stack runtime state keeps the ordinary first-notice behavior; Herdr's independent identity and state checks still apply. Reading mail does not bypass a working-runtime hold. An explicit new binding clears the old target diagnostic and hold.
 
 - One batch holds at most 500 exact message and recipient references, plus the recipient's binding revision and hash.
@@ -121,7 +131,7 @@ Herdr commands run outside SQLite transactions. First the dispatcher checks the 
 | `submitting` | Captured in a batch before the input is sent |
 | `submitted` | The Herdr CLI accepted the input. There is no proof that the Agent read or acted. |
 | `uncertain` | The input was possibly sent. a-stack never resends it automatically. |
-| `suppressed` | The recipient was removed from the Task. This reference will never be delivered. |
+| `suppressed` | The recipient was removed, or an own read cancelled an extra notice before preflight. This reference will never be delivered. |
 | `self` | A mention of the sender itself, kept for attribution, with no notice |
 
 If the process cannot start, or Herdr answers `agent_blocked` before any input, the captured references go back to `pending`. An unknown failure, malformed success output, a timeout or a cancellation after the process started makes them `uncertain`. At startup, and after a failed commit of an outcome, recovery marks the remaining `submitting` references as `uncertain`. New pending references can form another batch.
@@ -157,7 +167,7 @@ When `a-stack new --orchestrator` runs inside Herdr (`HERDR_ENV=1`), its brief t
 
 `agent list` shows the separate `runtime_state` reported by the a-stack hooks. Without those hooks it can stay `unknown` even when notices work. Notice eligibility checks Herdr's current `agent_status` and native session, and uses the hook's working observation for the additional hold above. Use `notifications status` to check delivery.
 
-`notifications drain` runs one bounded maintenance pass over the durable batches. It does not change mail, and it does not resend anything. If you run it again, it never resends `submitted` or `uncertain` references.
+`notifications drain` runs one bounded maintenance pass over the durable batches. It does not change mail, and it does not resend anything. It may submit the one bounded extra notice for an unread `submitted` reference after 10 minutes. It never resends an `uncertain` reference.
 
 The HTTP endpoints are authenticated `POST /v1/notifications/status` and `POST /v1/notifications/drain`, with explicit Workspace and Session and the same fields. Browser credentials cannot use either endpoint.
 

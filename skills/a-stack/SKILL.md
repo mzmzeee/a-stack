@@ -88,7 +88,7 @@ Follow your brief's responsibility for each Task; assignment for mail access is 
 
 A finished Task stays in the Operator's graph until it is archived. The Orchestrator archives side work, and a-stack archives a done Task once every Task that depends on it is done, or a day after it ended.
 
-When you wait for another Task, set `--progress waiting --reason 'Waits for the API Task'`.
+When you wait for another Task, set `--progress waiting --reason 'Waits for the API Task'`. When a question blocks you, send it with `--ack-required` and mention the current assignee who must answer. Set Waiting with a reason naming that Agent, such as `--reason 'Waiting for 01-orchestrator to choose the API'`. Keep checking mail; a mention alone does not prove the recipient read it.
 
 If an a-stack hook blocks you from stopping, follow the report/finish ownership above: an owner reports and finishes only completed work; a helper mails evidence. Set Waiting with a reason only when the Task is blocked. If it says there is new Task mail, run your `mail check`.
 

@@ -84,8 +84,8 @@ func TestMailIndependentReadersReplayAndClosedHistory(t *testing.T) {
 	f.change(t, f.a.Token, "status", TaskChangeRequest{TaskID: f.taskID, ExpectedRevision: 4, Progress: "finished", Summary: "Task finished"})
 	f.send(t, f.a.Token, "Mail after whole-Task completion")
 	current, _ := s.Snapshot(ctx, f.a.Token, SnapshotRequest{Context: f.ref(0)})
-	if current.Session.ReadRevision != snapshot.Session.ReadRevision+2+6 { // assign, status and six sends; reads add nothing
-		t.Fatal("mail/read created browser revisions or read state")
+	if current.Session.ReadRevision != snapshot.Session.ReadRevision+2+6+6 { // assign, status, six sends and six successful own reads
+		t.Fatal("unexpected mail/read revision changes")
 	}
 	_, err = s.ChangeSession(ctx, f.operator.Token, "close", SessionChangeRequest{Context: f.ref(0), OperationID: opaqueID(), ExpectedRevision: 2})
 	if err != nil {

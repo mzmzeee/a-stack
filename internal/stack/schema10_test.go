@@ -30,7 +30,7 @@ func TestMigration10FromV017(t *testing.T) {
 	if countTest(t, s, "PRAGMA user_version") != schemaVersion || countTest(t, s, "PRAGMA foreign_keys") != 1 {
 		t.Fatal("schema or foreign keys")
 	}
-	if !strings.Contains(s.Migrated, "from schema 9 to 14") {
+	if !strings.Contains(s.Migrated, "from schema 9 to 15") {
 		t.Fatal(s.Migrated)
 	}
 	if after := upgradeRows(t, path); !reflect.DeepEqual(before, after) {
@@ -82,7 +82,7 @@ func upgradeRows(t *testing.T, path string) map[string][]string {
 			}
 			var row []string
 			for i, v := range values {
-				if columns[i] == "actor_login" || columns[i] == "actor_name" || columns[i] == "priority" {
+				if columns[i] == "actor_login" || columns[i] == "actor_name" || columns[i] == "priority" || columns[i] == "last_mail_read_at" {
 					continue
 				}
 				if v.Valid {

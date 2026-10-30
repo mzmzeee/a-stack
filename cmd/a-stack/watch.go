@@ -79,6 +79,7 @@ type watchedSession struct {
 // Working Tasks that are also quiet. Finished counts the finished Tasks that
 // are not archived.
 type sessionStatus struct {
+	Stalled       int    `json:"stalled"`
 	WorkspaceID   string `json:"workspace_id"`
 	WorkspacePath string `json:"workspace_path"`
 	SessionID     string `json:"session_id"`
@@ -171,6 +172,12 @@ func (w *watcher) tasks(ctx context.Context, s scopedSession) ([]stack.Task, err
 func countTasks(s scopedSession, tasks []stack.Task) sessionStatus {
 	r := sessionStatus{WorkspaceID: s.WorkspaceID, WorkspacePath: s.path, SessionID: s.ID, Name: s.Name, Closed: s.Closed}
 	for _, t := range tasks {
+		for _, wait := range t.MailWaits {
+			if wait.Stalled {
+				r.Stalled++
+				break
+			}
+		}
 		switch {
 		case t.NeedsYou:
 			r.NeedsYou++
@@ -230,7 +237,11 @@ func statusCounts(r sessionStatus) string {
 	if r.Quiet > 0 {
 		quiet = fmt.Sprintf(" (%d quiet)", r.Quiet)
 	}
-	return fmt.Sprintf("%d needs you · %d working%s · %d waiting · %d finished", r.NeedsYou, r.Working, quiet, r.Waiting, r.Finished)
+	text := fmt.Sprintf("%d needs you · %d working%s · %d waiting · %d finished", r.NeedsYou, r.Working, quiet, r.Waiting, r.Finished)
+	if r.Stalled > 0 {
+		text = fmt.Sprintf("%d Stalled · ", r.Stalled) + text
+	}
+	return text
 }
 
 // watch prints the status once, then one line per change until ctx ends.
@@ -336,6 +347,13 @@ func (w *watcher) poll(ctx context.Context, first bool) ([]sessionStatus, error)
 		known.quietAt = time.Time{}
 		for _, t := range tasks {
 			known.tasks[t.ID] = t
+			for _, wait := range t.MailWaits {
+				at, err := time.Parse(time.RFC3339Nano, wait.Since)
+				q := at.Add(stack.MailStalledAfter)
+				if err == nil && !wait.Stalled && (known.quietAt.IsZero() || q.Before(known.quietAt)) {
+					known.quietAt = q
+				}
+			}
 			if q := t.QuietAt(); !t.Quiet && !q.IsZero() && (known.quietAt.IsZero() || q.Before(known.quietAt)) {
 				known.quietAt = q
 			}
@@ -357,6 +375,22 @@ func (w *watcher) report(s scopedSession, before map[string]stack.Task, now []st
 	ring := false
 	for _, t := range now {
 		p, ok := before[t.ID]
+		for _, wait := range t.MailWaits {
+			if !wait.Stalled {
+				continue
+			}
+			already := false
+			for _, previous := range p.MailWaits {
+				if previous.Stalled && previous.RecipientID == wait.RecipientID && previous.SenderName == wait.SenderName && previous.Since == wait.Since {
+					already = true
+					break
+				}
+			}
+			if !already {
+				add(t, "stalled", "", "", wait.Text)
+				ring = true
+			}
+		}
 		switch {
 		case !ok:
 			add(t, "created", "", t.Progress, "")
@@ -419,6 +453,8 @@ func eventLine(e watchEvent) string {
 		what = "Needs you answered"
 	case "report":
 		what = "new report: " + e.Text
+	case "stalled":
+		what = "Stalled: " + e.Text
 	case "quiet":
 		what = "quiet: Working, but no change or Task mail for " + quietText()
 	}

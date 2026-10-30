@@ -352,10 +352,11 @@ function agentGroups() {
 }
 function makeAgentCard(id) {
   const section=el('section','agent-row'),heading=el('header','agent-heading'),identity=el('div','agent-identity'),avatar=el('span','agent-avatar'),names=el('div'),name=el('h2','agent-name'),meta=el('div','agent-meta'),notice=el('span','chip notice-off','Notices off'),chips=el('div','chips');
+  const mailWait=el('p','agent-meta');
   const open=el('ul','task-rows'),moreWaiting=el('button','fold'),moreDone=el('button','fold'),doneList=el('ul','task-rows done'),empty=el('p','agent-empty');
-  avatar.setAttribute('aria-hidden','true');identity.append(avatar,names);names.append(name,meta,notice);heading.append(identity,chips);section.append(heading,open,moreWaiting,moreDone,doneList,empty);
+  avatar.setAttribute('aria-hidden','true');identity.append(avatar,names);names.append(name,meta,notice,mailWait);heading.append(identity,chips);section.append(heading,open,moreWaiting,moreDone,doneList,empty);
   for(const [button,kind] of [[moreWaiting,'w'],[moreDone,'d']]){button.append(iconNode('chevron'),el('span'));button.onclick=()=>{const k=kind+id;if(!folds.delete(k))folds.add(k);patchAgents();};}
-  return {section,name,avatar,meta,notice,chips,open,moreWaiting,moreDone,doneList,empty,rows:new Map()};
+  return {section,name,avatar,meta,notice,mailWait,chips,open,moreWaiting,moreDone,doneList,empty,rows:new Map()};
 }
 function makeRow(t) {
   const li=el('li'),b=el('button','task-row'),st=el('span','row-status'),main=el('span','row-main'),title=el('span','row-title'),question=el('span','row-question'),others=el('span','row-meta'),side=el('span','row-side'),quiet=chip(),mail=el('span','mail-count'),when=el('time','now-age');
@@ -381,6 +382,7 @@ function patchAgents() {
     if(id!=='unassigned'){if(n)needs++;if(w)working++;if(!n&&!w&&!wait)idle++;}
     let r=rows.get(id);if(!r){r=makeAgentCard(id);rows.set(id,r);}
     setText(r.name,g.a.name);setText(r.avatar,g.a.name.slice(0,2));setText(r.meta,id==='unassigned'?'No assignee':agentMeta(g.a));
+    setText(r.mailWait,[g.a.orchestrator_warning,...(g.a.mail_waits || []).map(w=>w.text)].filter(Boolean).join('. '));r.mailWait.hidden=!r.mailWait.textContent;
     const warning=g.a.notice_warning;r.notice.hidden=!warning;r.notice.title=warning?`${warning.reason}: ${warning.fix}`:'';
     r.notice.textContent=warning?.unresolved_uncertain?`Notices uncertain (${warning.unresolved_uncertain})`:warning?.reason?.startsWith('notice_waiting_')?'Notice waiting':'Notices off';
     r.notice.setAttribute('aria-label',warning?`${r.notice.textContent}: ${r.notice.title}`:'');
@@ -422,6 +424,7 @@ const columns=[
 });
 const doneColumn=columns[3], more=el('button','plain-button now-more');more.hidden=true;doneColumn.section.append(more);
 more.onclick=()=>{state.allFinished=!state.allFinished;render();};
+const stalledSection=el('section','now-column'),stalledHead=el('header','now-head'),stalledTitle=el('h2','','Stalled'),stalledList=el('div','now-list'),stalledCards=new Map();stalledTitle.id='stalled-heading';stalledSection.setAttribute('aria-labelledby',stalledTitle.id);stalledHead.append(stalledTitle);stalledSection.append(stalledHead,stalledList);$('now-board').parentElement.before(stalledSection);
 const nowCards=new Map();
 const column=t=>t.needs_you?'attention':t.progress==='working'?'working':t.progress==='waiting'?'waiting':'done';
 const firstLine=text=>(text || '').split('\n').find(l=>l.trim())?.trim() || '';
@@ -438,9 +441,9 @@ function patchNowCard(c,t,byID) {
   const ownKey=names.join('\n');if(c.own.dataset.key!==ownKey){c.own.dataset.key=ownKey;c.own.replaceChildren(iconNode('agent'),el('span','owner-name',names.join(', ') || 'Unassigned'));}
   setText(c.question,t.question_preview || '');c.question.hidden=!t.needs_you||!t.question_preview;
   setText(c.waits,blockers.length?'Waits for: '+blockers.slice(0,3).join(', ')+(blockers.length>3?` +${blockers.length-3} more`:''):'');c.waits.hidden=t.progress!=='waiting'||!blockers.length;
-  const report=firstLine(t.report_preview),acks=t.overdue_acks?`${plural(t.overdue_acks,'overdue acknowledgement')}. `:'';setText(c.note,acks+(report || 'No report yet.'));
+  const report=firstLine(t.report_preview),acks=t.overdue_acks?`${plural(t.overdue_acks,'overdue acknowledgement')}. `:'';setText(c.note,acks+(t.mail_waits || []).map(w=>`Waiting on ${w.recipient_name} for ${w.minutes} min. `).join('')+(report || 'No report yet.'));
   c.button.classList.toggle('selected',state.selected===t.id);c.button.classList.toggle('archived',!!t.archived);
-  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${quietText(t)}${t.archived?' Archived.':''}${asked(t)} Assigned to ${listing(names) || 'Unassigned'}.${c.waits.hidden?'':' '+sentence(c.waits.textContent)}${mailText(t)} ${acks}Changed ${age(t.updated_at)}.${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
+  c.button.setAttribute('aria-label',`${sentence(t.title)} ${labels[t.progress]}.${quietText(t)}${t.archived?' Archived.':''}${asked(t)} Assigned to ${listing(names) || 'Unassigned'}.${c.waits.hidden?'':' '+sentence(c.waits.textContent)}${mailText(t)} ${acks}${(t.mail_waits || []).map(w=>`Waiting on ${w.recipient_name} for ${w.minutes} min. `).join('')}Changed ${age(t.updated_at)}.${newText(t)}`);c.button.classList.toggle('is-new',isNew(t));
 }
 // Moving a node keeps its focus where the browser supports moveBefore.
 function place(list,node,ref) { if(node.nextSibling===ref&&node.parentNode===list)return; try{if(list.moveBefore&&node.isConnected&&node.ownerDocument===list.ownerDocument){list.moveBefore(node,ref);return;}}catch{} list.insertBefore(node,ref); }
@@ -448,6 +451,10 @@ function placeAll(list,nodes) { nodes.forEach((n,i)=>place(list,n,list.children[
 function patchNow() {
   const focused=document.activeElement, byID=new Map(model.tasks.map(t=>[t.id,t]));
   for(const [id] of nowCards)if(!byID.has(id))nowCards.delete(id);
+  const stalled=model.tasks.flatMap(t=>(t.mail_waits || []).filter(w=>w.stalled).map(w=>({t,w})));
+  stalledSection.hidden=!stalled.length;const liveStalls=new Set();
+  placeAll(stalledList,stalled.map(({t,w})=>{const key=`${t.id}/${w.recipient_id}/${w.sender_name}`;liveStalls.add(key);let b=stalledCards.get(key);if(!b){b=el('button','task-card');b.onclick=()=>openTask(t.id,b);stalledCards.set(key,b);}setText(b,w.text);return b;}));
+  for(const key of stalledCards.keys())if(!liveStalls.has(key))stalledCards.delete(key);
   const archivedAll=model.tasks.filter(t=>t.archived).sort(newest), archivedShown=archivedAll.filter(matches);
   for(const col of columns) {
     const all=model.tasks.filter(t=>column(t)===col.key&&!t.archived).sort(newest), shown=all.filter(matches);
@@ -1020,7 +1027,8 @@ async function refresh() {
   try{
     for(let attempt=0;attempt<3;attempt++) {
       try{
-        const manifest=await request('/v1/session/snapshot',{known_revision:model?.snapshot.session.read_revision || 0},etag?{'If-None-Match':etag}:{},controller.signal);
+        const timedRefresh=model&&Date.now()-Date.parse(model.snapshot.captured_at)>=60000;
+        const manifest=await request('/v1/session/snapshot',{known_revision:timedRefresh?0:model?.snapshot.session.read_revision || 0},etag&&!timedRefresh?{'If-None-Match':etag}:{},controller.signal);
         if(!manifest.unchanged&&!manifest.data.unchanged){
           const revision=manifest.data.session.read_revision;
           // Dependencies change only with graph_revision (a new Task or dependency), so the page keeps them otherwise.

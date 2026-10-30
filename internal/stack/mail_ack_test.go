@@ -198,6 +198,7 @@ func TestMailAckReminderRecoveryAndSuppression(t *testing.T) {
 			s := f.service.Store
 			r := ackSend(t, f.mailTeam, []string{"03-worker"}, "1h")
 			f.drain(t, 10)
+			ackCheck(t, f.mailTeam, f.b.Token) // isolate ACK reminders from unread-mention escalation
 			f.n.clock = func() time.Time { return time.Now().Add(2 * time.Hour) }
 			target, err := f.n.nextTarget(ctx, "")
 			if err != nil {

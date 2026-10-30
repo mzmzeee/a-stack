@@ -87,6 +87,10 @@ When the service is shared through [Tailscale Serve](remote.md), issuing or revo
 
 ## What the view shows
 
+At the top of Now, **Stalled** lists mentions that have waited 30 minutes without a successful own mail read by the recipient: “29-urgent has waited 34 min for 01-orchestrator”. Task cards show “Waiting on NAME for N min”; the Agents panel lists the same waits per recipient. These are plain text, not Needs you questions. Reading mail clears the wait; browser reads and acknowledgements do not.
+
+The Agents panel also warns when the Orchestrator has no usable bound notice route, no recent hook observation and no own mail read in 15 minutes. This uses stored diagnostics, not a live reachability probe. Time-based labels refresh at least once a minute while connected.
+
 The view is HTML, CSS, JavaScript and SVG, embedded in the binary. It has three tabs, Now, Graph and Agents, and three theme buttons: Light, Dark and System. Now is the default tab, and System the default theme: the view follows the light or dark setting of your system, also from the first paint, without a light flash. The view remembers the tab that you last used and the theme that you pick in the browser's local storage, so they stay after a browser restart. The storage belongs to the view's address, so a service on a new port starts again from the defaults.
 
 - The header shows the name of the Workspace folder next to a-stack, for example `my-project`. It comes from the snapshot's `workspace_name`, which is only the last part of the Workspace path, so the home directory never appears in the view or in screenshots. The name is hidden in narrow windows.

@@ -46,6 +46,14 @@ Urgency needs installed, enabled and enrolled [mail hooks](hooks.md#urgent-mail)
 
 New Operator Needs you answers are urgent automatically. Overdue acknowledgement reminders are urgent to hooks too, without changing the original message's priority or creating a new message. Reading a notice never acknowledges a message.
 
+## Waiting for an answer
+
+When a question blocks an Agent, send it with `--ack-required`, mention the assignee who must answer, and set the Task to Waiting with a reason naming that Agent. A mention is not proof of receipt.
+
+Task reads include `mail_waits`: the oldest unread current mention per sender and recipient, with names, receipt time, elapsed minutes and `stalled`. Each response includes at most 100 groups, oldest first. “Unread” means the recipient has not made a successful own mail read since the message arrived; it does not mean every returned page was understood. The timestamp is per Agent, not a per-Task cursor. Browser reads, another Agent's reads and failed reads never update it. A successful own `mail check`, `mail read` or `task handoff` clears earlier waits without acknowledging them. Removal and rejoining do not revive old waits.
+
+After 30 minutes the Now board, watch and notification status show **Stalled**. [Mention notices](notifications.md#unread-mentions-and-stalls) describes the one extra notice after 10 minutes. Neither creates a Needs you question.
+
 ## Explicit acknowledgements
 
 Use `--ack-required` on `mail send` or `mail reply` when a handoff needs an explicit response. By default every mentioned current assignee must acknowledge, including the automatic reply mention. Repeat `--ack-from NAME` to select particular current assignees instead; these names also receive a mention. An empty recipient list is rejected. `--ack-due 30m` sets an optional deadline measured from the send. It accepts a positive Go duration, such as `30m` or `2h`; both acknowledgement options require `--ack-required`.
@@ -130,7 +138,7 @@ A successful stdout write is not proof that a harness delivered its tool result 
 
 Without `--cursor-file`, every check starts again at the first message of every Task. It stops at the message limit, so on a busy Task you never see the newest mail, and each check shows old mail again. When `more` is true, the output then has a `hint`. `--cursor-file -` reads a cursor map from stdin and never writes anything; then merge the returned `tasks[].cursor` values into your map yourself, and follow `next_task` with `--after-task`.
 
-A scan continuation belongs to one Session and one caller. Tasks that you were removed from in between do not appear. If you are assigned a new Task that comes earlier in the scan order, it appears in the next round. The server keeps no read positions or unread counts. Explicit acknowledgement obligations are separate from reading.
+A scan continuation belongs to one Session and one caller. Tasks that you were removed from in between do not appear. If you are assigned a new Task that comes earlier in the scan order, it appears in the next round. The server keeps no per-Task read positions. It retains only the Agent's latest successful own-read time for unread-mention warnings. Explicit acknowledgement obligations are separate from reading.
 
 ## Mentions
 

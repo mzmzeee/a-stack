@@ -65,8 +65,8 @@ func TestNoticeWarningsOnOwnMailAndBrowserAgents(t *testing.T) {
 					t.Fatal("private identity leaked")
 				}
 			}
-			if after := countTest(t, s, "SELECT read_revision FROM sessions WHERE id='"+f.sessions[0]+"'"); before != after {
-				t.Fatal("warning read wrote state")
+			if after := countTest(t, s, "SELECT read_revision FROM sessions WHERE id='"+f.sessions[0]+"'"); before+1 != after {
+				t.Fatal("own read should refresh reachability once; browser warning reads stay read-only")
 			}
 			if len(f.calls(t)) != 0 {
 				t.Fatal("reading warnings ran Herdr")

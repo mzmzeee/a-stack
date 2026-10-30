@@ -80,6 +80,14 @@ func (s *Store) archiveMark(ctx context.Context, tx *sql.Tx, session Session) (i
 	if due, err := time.Parse(time.RFC3339Nano, ackNext); err == nil && due.Before(m.next) {
 		m.next = due
 	}
+	stalled, stalledNext, err := s.stallMark(ctx, tx, session, at)
+	if err != nil {
+		return 0, err
+	}
+	m.count += stalled
+	if !stalledNext.IsZero() && stalledNext.Before(m.next) {
+		m.next = stalledNext
+	}
 	m.count += quiet
 	if !quietNext.IsZero() && quietNext.Before(m.next) {
 		m.next = quietNext

@@ -55,18 +55,19 @@ type Workspace struct {
 	CreatedAt string `json:"created_at"`
 }
 type Session struct {
-	TransferState  string      `json:"transfer_state,omitempty"`
-	Claims         []FileClaim `json:"claims,omitempty"`
-	ID             string      `json:"id"`
-	WorkspaceID    string      `json:"workspace_id"`
-	Name           string      `json:"name"`
-	Closed         bool        `json:"closed"`
-	OrchestratorID *string     `json:"orchestrator_id"`
-	Revision       int64       `json:"revision"`
-	GraphRevision  int64       `json:"graph_revision"`
-	ReadRevision   int64       `json:"read_revision"`
-	CreatedAt      string      `json:"created_at"`
-	UpdatedAt      string      `json:"updated_at"`
+	TransferState       string      `json:"transfer_state,omitempty"`
+	OrchestratorWarning string      `json:"orchestrator_warning,omitempty"`
+	Claims              []FileClaim `json:"claims,omitempty"`
+	ID                  string      `json:"id"`
+	WorkspaceID         string      `json:"workspace_id"`
+	Name                string      `json:"name"`
+	Closed              bool        `json:"closed"`
+	OrchestratorID      *string     `json:"orchestrator_id"`
+	Revision            int64       `json:"revision"`
+	GraphRevision       int64       `json:"graph_revision"`
+	ReadRevision        int64       `json:"read_revision"`
+	CreatedAt           string      `json:"created_at"`
+	UpdatedAt           string      `json:"updated_at"`
 	// YourAgentID is the calling Agent, set only by session inspect.
 	YourAgentID string `json:"your_agent_id,omitempty"`
 	// StandingOrders are the Workspace's standing orders, set only by
