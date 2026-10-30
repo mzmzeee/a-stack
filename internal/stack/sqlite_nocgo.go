@@ -17,3 +17,5 @@ const builtWithCgo = false
 func init() { sql.Register(driverName, &sqlite3.SQLiteDriver{}) }
 
 func sqliteClass(error) string { return "" }
+
+func sqliteCorrupt(error) bool { return false }

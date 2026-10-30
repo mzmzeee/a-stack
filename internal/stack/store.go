@@ -89,6 +89,21 @@ func sqliteURI(path string, windows bool) string {
 }
 
 func openStore(ctx context.Context, path string) (*Store, error) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, storageError(err)
+	}
+	if info.Size() == 0 {
+		// Operator credentials are written only after the schema commit.
+		_, err = os.Lstat(filepath.Join(filepath.Dir(path), "operator.json"))
+		if err == nil {
+			return nil, unusableDatabase("the state database %s is empty in an initialized state directory; keep the files and restore a backup: %s", path, restoreDocs)
+		}
+		if !os.IsNotExist(err) {
+			return nil, storageError(err)
+		}
+	}
+
 	// The driver keeps up to stmtCacheSize single-statement queries prepared on
 	// the one connection, so hot queries are not compiled again on every call.
 	db, err := sql.Open(driverName, fileURI(path)+"?_journal_mode=WAL&_synchronous=FULL&_foreign_keys=on&_busy_timeout=5000&_txlock=immediate&_stmt_cache_size="+strconv.Itoa(stmtCacheSize))
@@ -107,7 +122,7 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 	}()
 
 	if err = db.QueryRowContext(ctx, "SELECT sqlite_version()").Scan(&s.sqliteVersion); err != nil {
-		return nil, storageError(err)
+		return nil, databaseStartError(path, err)
 	}
 
 	if !sqliteSupported(s.sqliteVersion) {
@@ -116,7 +131,10 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 
 	// A damaged database must stop the start here, before it says ready.
 	var check string
-	if err = db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&check); err != nil || check != "ok" {
+	if err = db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&check); err != nil {
+		return nil, databaseStartError(path, err)
+	}
+	if check != "ok" {
 		return nil, unusableDatabase("the state database %s failed the integrity check (PRAGMA quick_check); stop here, keep the file, and restore a backup: %s", path, restoreDocs)
 	}
 

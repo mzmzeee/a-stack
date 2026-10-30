@@ -6,6 +6,9 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Refuse an empty or missing state database beside an existing Operator credential, rather than silently creating an empty installation with a new identity. Interrupted first starts still recover.
+- Treat SQLite corruption detected during the first startup query as unusable (exit 4, with restore guidance), instead of asking supervisors to retry it forever. Transient storage failures remain retryable.
+
 - Fix the benchmark's obsolete snapshot ETag and measure the full validation runner's bounded unread-notice hold instead of expecting a burst to bypass the pane cooldown.
 
 - Hide the Now board and Stalled while Session data is unknown, instead of showing misleading empty columns.

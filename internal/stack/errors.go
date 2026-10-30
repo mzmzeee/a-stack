@@ -40,6 +40,13 @@ func unusableDatabase(format string, args ...any) *Error {
 	return &Error{Code: "storage_unavailable", Message: fmt.Sprintf(format, args...), unusable: true}
 }
 
+func databaseStartError(path string, err error) *Error {
+	if sqliteCorrupt(err) {
+		return unusableDatabase("the state database %s is damaged (SQLite integrity check); keep the file and restore a backup: %s", path, restoreDocs)
+	}
+	return storageError(err)
+}
+
 // storageError is the public error of a failed storage operation. The service
 // logs the cause, when the caller passes it, and the function that failed (see
 // causeLog); the answer never contains either.

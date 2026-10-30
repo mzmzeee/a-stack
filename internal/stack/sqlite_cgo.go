@@ -24,6 +24,11 @@ func init() {
 	}})
 }
 
+func sqliteCorrupt(err error) bool {
+	var driver sqlite3.Error
+	return errors.As(err, &driver) && (driver.Code == sqlite3.ErrCorrupt || driver.Code == sqlite3.ErrNotADB)
+}
+
 // sqliteClass describes a driver error by its codes, or is "" for another error.
 func sqliteClass(err error) string {
 	var driver sqlite3.Error
