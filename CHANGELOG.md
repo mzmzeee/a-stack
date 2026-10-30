@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Fix the benchmark's obsolete snapshot ETag and measure the full validation runner's bounded unread-notice hold instead of expecting a burst to bypass the pane cooldown.
+
 - Hide the Now board and Stalled while Session data is unknown, instead of showing misleading empty columns.
 - Apply search and status filters to Stalled items, just like the other Now columns.
 

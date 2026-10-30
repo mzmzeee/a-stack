@@ -48,9 +48,13 @@ The main complete run passed with 320 CLI calls and 43 HTTP calls, nine message 
 
 The runner checks the API capabilities. It does not check browser rendering. Browser rendering, keyboard behavior in both themes, the difference between stored and runtime data, malicious text and a stable view were checked separately against the unchanged production assets. See [Browser view](browser.md). The accepted proof with native Codex and its timing limits are in [Mention notices](notifications.md). This validation does not repeat live prompts, and it gives no new delivery guarantee.
 
-## Measured results
+## Current notice measurement
 
-The main evidence is one complete run by the independent mission orchestrator at the frozen candidate commit `3580aceb04f24c5997481aa26d363cc75771f21a`. The orchestrator ran it, not the author of the runner. The [sanitized measured JSON](validation-results.json) keeps the results. Later changes to the readiness and page guards and to fixture cleanup passed focused checks and a workflow and engine run, but these tables were not measured again after those changes. No production Go or browser code changed during this validation work.
+The full runner now checks the one-pending-notice hold instead of expecting unread mail to drain. A 10,000-message burst creates 30,000 references. It submits one 500-reference batch to each of three recipients, then verifies after a service restart that the remaining 28,500 references stay held. Another 22 CLI sends measure receipt latency while the hold remains in effect; a completed backup verifies every message and reference was retained. No own reads occur during this measurement. It does not measure drain latency or wait out the ten-minute pane cooldown; the workflow checks that an own read does not bypass that cooldown.
+
+## Historical measured results
+
+The tables below describe the old drain contract, before the one-pending-notice hold and ten-minute pane cooldown. They are historical measurements, not expected results of the current runner. The main evidence is one complete run by the independent mission orchestrator at the frozen candidate commit `3580aceb04f24c5997481aa26d363cc75771f21a`. The orchestrator ran it, not the author of the runner. The [sanitized measured JSON](validation-results.json) keeps the results. Later changes to the readiness and page guards and to fixture cleanup passed focused checks and a workflow and engine run, but these tables were not measured again after those changes. No production Go or browser code changed during this validation work.
 
 The machine was an Intel Core i5-13420H with Linux x86_64 and kernel `7.2.8-9-omarchy`. The software was Go 1.27.3, Python 3.14.8, the bundled SQLite 3.53.4 in the service, and SQLite 3.54.0 for read-only analysis. The fixtures were on persistent btrfs storage, and `/tmp` was tmpfs. This run does not measure physical flush latency or durability after power loss. The strict Python fake declares Herdr 0.9.5 and Codex 0.164.0. It proves nothing about native queue behavior. The JSON has the hash of the measured binary.
 

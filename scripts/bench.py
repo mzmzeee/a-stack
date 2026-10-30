@@ -1714,7 +1714,11 @@ class Bench:
             if i >= 2:
                 changed.append((time.perf_counter() - t) * 1000)
             reqs = n
-        tag = f'"{self.session}:{rev}"'
+        status, data, response = self.api.raw("/v1/session/snapshot", ctx, tok)
+        check(status == 200, "expected snapshot")
+        rev = json.loads(data)["data"]["session"]["read_revision"]
+        tag = response.getheader("ETag")
+        check(tag, "snapshot lacks ETag")
         for i in range(self.args.samples + 2):
             t = time.perf_counter()
             status, data, _ = self.api.raw(
