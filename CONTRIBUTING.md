@@ -51,6 +51,10 @@ All 15 stories run after the `18-enroll` implementation. Identity stories explic
 
 Before submitting a fix, run the new story against a disposable copy with the fix reverted or a narrowly seeded fault. Record the failing assertion and the corrected run. Do not mutate a shared worktree for this check.
 
+### Formatting
+
+Run `scripts/fmt.sh` before committing. It applies pinned gofumpt, golangci-lint readability fixes and import grouping, Prettier for JS/CSS/HTML, Ruff for Python and shfmt for shell scripts. `scripts/check.sh` checks the same files without changing them; `scripts/check.sh --format check` runs only that gate. Versions live in `scripts/check.sh`; tools stay in `.tmp/bin` or the npx/uvx caches. `.editorconfig` sets indentation and preserves Markdown hard breaks. See [rule choices](docs/quality.md#rule-choices) for the whitespace settings.
+
 ### Parser fuzzing
 
 `scripts/check.sh` runs each parser fuzz target for 3 seconds with two workers. Ordinary `go test ./...` runs their seed corpora without fuzzing. To investigate for longer, run each target separately, for example:

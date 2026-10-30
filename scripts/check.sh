@@ -7,11 +7,26 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-STATICCHECK=v0.8.2   # Staticcheck 2026.2.2
+format_mode=check
+format_only=false
+if [ "$#" -ne 0 ]; then
+  if [ "$#" -ne 2 ] || [ "$1" != --format ] || [[ "$2" != check && "$2" != write ]]; then
+    echo "usage: scripts/check.sh [--format check|write]" >&2
+    exit 2
+  fi
+  format_mode="$2"
+  format_only=true
+fi
+
+GOFUMPT=v0.12.0
+GOLANGCI_LINT=v2.15.0
+PRETTIER=3.9.10
+SHFMT=v3.14.1
+STATICCHECK=v0.8.2 # Staticcheck 2026.2.2
 GOVULNCHECK=v1.9.0
 OXLINT=1.89.0
 RUFF=0.17.2
-SHELLCHECK=0.11.0.1  # ShellCheck 0.11.0, from the shellcheck-py wheel
+SHELLCHECK=0.11.0.1 # ShellCheck 0.11.0, from the shellcheck-py wheel
 GITLEAKS=v8.30.1
 ACTIONLINT=v1.7.12
 ZIZMOR=1.31.1
@@ -34,16 +49,48 @@ if git grep -nE '^(<<<<<<<|>>>>>>>)( |$)|^=======$'; then
   exit 1
 fi
 
-step gofmt
-unformatted="$(gofmt -l cmd internal)"
-if [ -n "$unformatted" ]; then
-  printf '%s\n' "$unformatted"
-  exit 1
+step "formatting ($format_mode): gofumpt, golangci-lint, Prettier, Ruff, shfmt"
+# Both entry points use the same versions, file lists and rules.
+trap 'echo "Formatting failed. Run scripts/fmt.sh, then scripts/check.sh." >&2' ERR
+go install "mvdan.cc/gofumpt@$GOFUMPT"
+go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$GOLANGCI_LINT"
+go install "mvdan.cc/sh/v3/cmd/shfmt@$SHFMT"
+web_files=(internal/stack/browser/*.{js,css,html} scripts/*.js)
+python_files=(scripts/*.py)
+shell_files=(install.sh scripts/*.sh)
+if [ "$format_mode" = write ]; then
+  .tmp/bin/gofumpt -w cmd internal
+  .tmp/bin/golangci-lint fmt
+  .tmp/bin/golangci-lint run --allow-serial-runners --build-tags bench --fix ./...
+  # Added blank lines can push a short block over wsl's return threshold.
+  .tmp/bin/golangci-lint run --allow-serial-runners --build-tags bench --fix ./...
+  .tmp/bin/gofumpt -w cmd internal
+  npx --yes "prettier@$PRETTIER" --write "${web_files[@]}"
+  uvx "ruff@$RUFF" format "${python_files[@]}"
+  .tmp/bin/shfmt -w -i 2 -ci "${shell_files[@]}"
+else
+  unformatted="$(.tmp/bin/gofumpt -l cmd internal)"
+  if [ -n "$unformatted" ]; then
+    printf '%s\nRun scripts/fmt.sh to format these files.\n' "$unformatted" >&2
+    exit 1
+  fi
+  .tmp/bin/golangci-lint fmt --diff
+  .tmp/bin/golangci-lint run --allow-serial-runners --build-tags bench ./...
+  npx --yes "prettier@$PRETTIER" --check "${web_files[@]}"
+  uvx "ruff@$RUFF" format --check "${python_files[@]}"
+  .tmp/bin/shfmt -d -i 2 -ci "${shell_files[@]}"
 fi
+trap - ERR
+if "$format_only"; then
+  exit 0
+fi
+
+step "formatter regression test"
+scripts/test-format.sh
 
 step go vet
 go vet ./...
-go vet -tags bench ./internal/stack  # the performance harness, see scripts/bench.py
+go vet -tags bench ./internal/stack # the performance harness, see scripts/bench.py
 
 step "staticcheck $STATICCHECK"
 go install "honnef.co/go/tools/cmd/staticcheck@$STATICCHECK"
@@ -58,7 +105,7 @@ go install "golang.org/x/vuln/cmd/govulncheck@$GOVULNCHECK"
 step "go test with coverage (.tmp/coverage.out)"
 go test -count=1 -coverprofile=.tmp/coverage.out ./...
 go tool cover -func=.tmp/coverage.out | tail -n 1
-CGO_ENABLED=0 go test -count=1 -run TestStartWithoutCgo ./internal/stack  # sqlite_nocgo.go
+CGO_ENABLED=0 go test -count=1 -run TestStartWithoutCgo ./internal/stack # sqlite_nocgo.go
 
 step go test -race
 go test -race -count=1 ./...
@@ -86,7 +133,7 @@ python3 -m py_compile scripts/validate-v1.py scripts/demo-terminal.py scripts/be
 uvx "ruff@$RUFF" check --no-cache scripts/validate-v1.py scripts/demo-terminal.py scripts/bench.py
 
 step "shellcheck $SHELLCHECK"
-uvx --from "shellcheck-py==$SHELLCHECK" shellcheck scripts/check.sh scripts/nightly-mutation.sh scripts/build-release.sh scripts/record-demo.sh install.sh
+uvx --from "shellcheck-py==$SHELLCHECK" shellcheck "${shell_files[@]}"
 
 step "actionlint $ACTIONLINT and zizmor $ZIZMOR"
 go install "github.com/rhysd/actionlint/cmd/actionlint@$ACTIONLINT"

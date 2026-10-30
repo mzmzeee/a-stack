@@ -36,6 +36,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 - Hermetic CLI regression stories, a generated Task graph/mail model and a guard keeping test tooling out of production dependencies. Nightly CI adds five-minute fuzz runs, 100 seeded SIGKILL recovery checks and a targeted mutation-testing pilot. See [Regression gates](docs/quality.md#regression-gates).
 
+### Changed
+
+- `scripts/fmt.sh` formats Go, browser assets, JavaScript, Python and shell scripts, and fixes Go whitespace and import grouping. `scripts/check.sh` enforces the same pinned rules without rewriting files. EditorConfig sets indentation, line endings and final newlines.
+
 ### Fixed
 
 - Regression stories now prove each harness is eligible before checking closed-Session silence, and verify browser mail peeks leave persisted state unchanged. Their SQLite snapshot URIs handle Windows drive paths.

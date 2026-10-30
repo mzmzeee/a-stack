@@ -6,7 +6,7 @@ Run every check with one command from the repository root:
 scripts/check.sh
 ```
 
-The script stops at the first failure and exits nonzero. A full run takes about 70 seconds on the development machine. It writes coverage, the built binary, installed tools and the quick validation result under `.tmp/`, which Git ignores.
+The script stops at the first failure and exits nonzero. Runtime depends on the machine, tool caches and test load. It writes coverage, the built binary, installed tools and the quick validation result under `.tmp/`, which Git ignores.
 
 ## Prerequisites
 
@@ -22,7 +22,8 @@ The script does not change `go.mod` and installs nothing globally. Go tools go t
 
 | Step | Tool and version | Checks |
 | --- | --- | --- |
-| Formatting | `gofmt` (Go 1.27.3) | Go files in `cmd/` and `internal/` are formatted. |
+| Go formatting | gofumpt `v0.12.0`, golangci-lint `v2.15.0` | Go formatting, import groups and readability rules, including tests and the `bench` build tag. |
+| Other formatting | Prettier `3.9.10`, Ruff `0.17.2`, shfmt `v3.14.1` | Embedded JS/CSS/HTML, `scripts/*.js`, `scripts/*.py`, `install.sh` and `scripts/*.sh`. |
 | Go analysis | `go vet`, Staticcheck 2026.2.2 (`v0.8.2`) | Default Staticcheck checks. |
 | Vulnerabilities | govulncheck `v1.9.0` | Known Go advisories reachable from this module. |
 | Tests | `go test -count=1 -coverprofile=.tmp/coverage.out ./...` | Full suite, fresh, with a coverage summary. |
@@ -57,15 +58,16 @@ Run the crash workload locally with `A_STACK_CRASH_ITERATIONS=100 go test ./inte
 
 - **Staticcheck** runs its default checks. One finding is suppressed in place: the empty critical section in `Service.Close` (`internal/stack/http.go`) waits for an HTTP-started notice drain to finish before the database closes.
 - **oxlint** uses the `correctness` category plus `no-undef` and `no-unused-vars`, with browser globals. The `suspicious` category was left out: on `app.js` it only reported style preferences, such as `toSorted()` instead of sorting a freshly built array.
-- **golangci-lint** was tried (v2.15.0) and left out. Beyond `go vet` and Staticcheck, it reported unchecked deferred `Close` and `Rollback` calls, error type assertions on errors the code never wraps, and style quick fixes. None was a defect.
+- **golangci-lint** enables only `whitespace`, `wsl_v5`, `misspell` and `godot`, plus the `gci` formatter (standard library, third-party and local imports). Staticcheck stays separate. `wsl_v5` separates control blocks and long-block returns; related setup can stay with a block that uses it (up to two statements), and short returns stay together (up to ten lines). Only `if`, `for`, `range`, `switch`, `type-switch`, `select`, `return` and `after-block` are enabled. The `assign` rule and other omitted rules would split related writes, setup, declarations and defers too often; `whitespace` already handles block edges. `nlreturn` is omitted because `wsl_v5` covers returns. `misspell` checks comments only, with neutral English; it must not rewrite strings or test inputs. `godot` checks declaration comments only, leaving inline labels alone.
+- **Prettier** is the established formatter for all three browser languages. It uses two spaces, single quotes and semicolons for the browser/scripts. Installed OpenCode shims are outside the formatting scope so their released-content hashes stay unchanged. HTML uses its default whitespace-sensitive formatting. **shfmt** uses two spaces and indented case arms. **Ruff format** uses its defaults. Run `scripts/fmt.sh` to apply all fixes; `scripts/check.sh --format check` checks them without running the rest of the suite.
 - **zizmor** has one inline suppression: `release.yml` calls `check.yml` with the `./` form instead of GitHub's newer `$/` self-repository form, because actionlint v1.7.12 rejects `$/`. Switch when actionlint supports it.
-- **Ruff** selects its default set (`E4`, `E7`, `E9`, `F`) plus flake8-bugbear (`B`) and Pylint errors (`PLE`). It adds no formatting or line-length rules. Six lines in `scripts/validate-v1.py` suppress `B023`, because those closures run at once inside the loop iteration that defines them; a comment above the first one says so.
+- **Ruff** selects its default set (`E4`, `E7`, `E9`, `F`) plus flake8-bugbear (`B`) and Pylint errors (`PLE`). It adds no formatting or line-length rules. Some lines in `scripts/validate-v1.py` suppress `B023`, because those closures run at once inside the loop iteration that defines them; a comment above the first one says so.
 
 ## Known limits
 
 - govulncheck checks Go code only. It does not check the SQLite C source bundled in `github.com/mattn/go-sqlite3`. For SQLite, compare the bundled version (see the [install requirements](install.md#requirements)) with the [SQLite CVE list](https://www.sqlite.org/cves.html) when you upgrade.
 - Coverage shows where tests run, not whether they check the right behavior. There is no coverage threshold.
-- No tool checks `app.css` or `index.html`. They are small, and the browser checks in [validation](validation.md) cover their rendering.
+- Prettier checks CSS and HTML formatting, not rendering or accessibility. The browser checks in [validation](validation.md) cover rendering.
 - `validate-v1.py --quick` skips the timing and storage measurements. Run the full runner, as described in [validation](validation.md), after a change that can affect performance or storage.
 - zizmor runs with `--offline`, so it does not check that each pinned action SHA matches its version comment. The SHAs in `.github/workflows/check.yml` were checked against the GitHub tags on 2026-10-24; Dependabot keeps them and their comments in step after that.
 - The runner and the tests use a fake Herdr. They do not prove delivery to a real agent; see [notifications](notifications.md).
