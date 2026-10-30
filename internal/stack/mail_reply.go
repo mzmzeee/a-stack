@@ -40,6 +40,9 @@ func resolveReply(ctx context.Context, tx *sql.Tx, p Principal, r MailReplyReque
 }
 
 func (s *Store) ReplyMail(ctx context.Context, token string, r MailReplyRequest) (MailReplyResult, error) {
+	if r.Priority == "normal" {
+		r.Priority = ""
+	}
 	result := MailReplyResult{Audience: "shared with all current assignees"}
 	explicit := append(append([]string{}, r.Mentions...), r.AckFrom...)
 	names, prepareErr := mentionNames(r.Body, explicit)

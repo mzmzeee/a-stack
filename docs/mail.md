@@ -38,6 +38,14 @@ The original sender is mentioned automatically if they are still an assignee. An
 
 Run `mail recipients --task T` to see the current assignees who can read a message and be mentioned, without sending anything. You must be assigned to T. This is a preview, not a reservation: the send checks membership again in its transaction. The Orchestrator receives mail only when assigned too.
 
+## Urgent mail
+
+Any current assignee can add `--urgent` to `mail send` or `mail reply`. Use it rarely: a stop request, a blocker or a contract change that the recipient must read before continuing. Mail retains `priority: "normal"` by default or `priority: "urgent"`; priority is part of retry identity and is never inferred from text. It changes scheduling, not authority or permissions.
+
+Urgency needs installed, enabled and enrolled [mail hooks](hooks.md#urgent-mail). At eligible tool-result or prompt boundaries, they check urgent references without the normal 30-second delay. Each successful poll emits at most one fixed, body-free nudge. This does not interrupt a running tool or guarantee when the next boundary occurs. Herdr's one-pending-notice rule is unchanged; hookless Agents keep ordinary mail checks and notices.
+
+New Operator Needs you answers are urgent automatically. Overdue acknowledgement reminders are urgent to hooks too, without changing the original message's priority or creating a new message. Reading a notice never acknowledges a message.
+
 ## Explicit acknowledgements
 
 Use `--ack-required` on `mail send` or `mail reply` when a handoff needs an explicit response. By default every mentioned current assignee must acknowledge, including the automatic reply mention. Repeat `--ack-from NAME` to select particular current assignees instead; these names also receive a mention. An empty recipient list is rejected. `--ack-due 30m` sets an optional deadline measured from the send. It accepts a positive Go duration, such as `30m` or `2h`; both acknowledgement options require `--ack-required`.
@@ -64,14 +72,16 @@ All endpoints take authenticated `POST` JSON under `/v1/mail/`. They use the sam
 
 | Endpoint | Other request fields | `data` in the response |
 | --- | --- | --- |
-| `send` | `task_id`, `operation_id`, `body`, optional `mentions` array of names, `ack_required`, `ack_from` array and `ack_due` duration | A compact receipt: the message `resource_id` and `body_ref`, the sequence number in `revision`, and `outcome: "sent"` |
-| `reply` | `message_id`, `operation_id`, `body`, optional `task_id`, `mentions`, `no_mention_sender`, `ack_required`, `ack_from` and `ack_due` | The send receipt plus `task_id`, `task_title` and `audience` |
+| `send` | `task_id`, `operation_id`, `body`, optional `priority` (`normal` or `urgent`), `mentions` array of names, `ack_required`, `ack_from` array and `ack_due` duration | A compact receipt: the message `resource_id` and `body_ref`, the sequence number in `revision`, and `outcome: "sent"` |
+| `reply` | `message_id`, `operation_id`, `body`, optional `priority`, `task_id`, `mentions`, `no_mention_sender`, `ack_required`, `ack_from` and `ack_due` | The send receipt plus `task_id`, `task_title` and `audience` |
 | `ack` | `message_id`, `operation_id` | A receipt with the message `resource_id` and `outcome: "acknowledged"` |
 | `recipients` | `task_id` | `task_id`, `task_title`, `audience` and `recipients` (Agent IDs and names) |
 | `read` | `task_id`, optional `cursor` and `limit` | `task_id`, `messages`, `cursor`, `more`, and `total` when nonzero |
-| `check` | optional `cursors` map, `after_task`, `task_limit` and `limit` | A `tasks` array of read pages, `next_task` when more Tasks follow, and `more` |
+| `check` | optional `cursors` map, `after_task`, `task_limit`, `limit` and `peek` (hooks only; does not re-arm notices) | A `tasks` array of read pages, `next_task` when more Tasks follow, and `more` |
 
-Each message has `id`, `task_id`, `sequence`, `sender_id`, `sender_name`, `received_at`, `body` and `mention_ids`. `sender_name` is the sender's current Agent name. `mention_ids` is the sorted list of the resolved Agent IDs. The sequence increases inside one Task. The service sets the sender and the UTC receipt time.
+The hook-only `urgent` endpoint takes optional `positions` and `after_task`. It returns at most 100 assigned Tasks' body-free high-water marks, `next_task`, and an `urgent` boolean covering new urgent mail or overdue ACK reminders. Follow the continuation to complete a round. Only Agent credentials can use it. It changes no server state; normal mail checks and browser reads do not consume these marks.
+
+Each message has `priority`, `id`, `task_id`, `sequence`, `sender_id`, `sender_name`, `received_at`, `body` and `mention_ids`. `sender_name` is the sender's current Agent name. `mention_ids` is the sorted list of the resolved Agent IDs. The sequence increases inside one Task. The service sets the sender and the UTC receipt time.
 
 Mail does not change the Task's progress or the Task revision. A send raises the Session read revision, because the Task data has `mail_count`, the number of messages. Mail bodies never appear in Task details, Task history or browser snapshots.
 
@@ -166,6 +176,8 @@ Mail makes `pending` and `self` rows. An unassignment suppresses `pending` and `
 - Even after a notice is submitted, the Agent's mail read is authorized separately.
 
 Schema version 12 adds `mail_acks`, one compact row per message and selected recipient, and `notice_ack_refs` for exact reminder batches. It stores no extra body. The first start makes a pre-migration copy and checks foreign keys before committing; upgrading a schema-11 database creates no obligations for old messages. See [Go back to an older version](install.md#go-back-to-an-older-version) before restoring the copy with an older binary.
+
+Schema version 13 adds the retained `priority` column and a partial index for urgent mail. Historical messages default to `normal`; existing overdue obligations can still produce an urgent hook reminder. Bodies remain single-copy.
 
 ## Measured storage
 

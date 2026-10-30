@@ -34,6 +34,17 @@ func TestTransferThroughTLSAndFriendLink(t *testing.T) {
 	server := tasksFixture(t)
 	server.service.Version = "test"
 	task, question := askTest(t, source, "Share one answer?")
+	urgent, err := source.service.Store.SendMail(ctx, source.a.Token, MailSendRequest{Context: source.ref(0), TaskID: task, OperationID: opaqueID(), Body: "Keep this urgent", Priority: "urgent"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertPriority := func(store *Store) {
+		t.Helper()
+		var priority string
+		if e := store.db.QueryRow("SELECT priority FROM mail_messages WHERE id=?", urgent.ResourceID).Scan(&priority); e != nil || priority != "urgent" {
+			t.Fatal("transfer lost urgent mail priority", e)
+		}
+	}
 	local, err := NewClient(source.dir, "", OperatorCapability)
 	if err != nil {
 		t.Fatal(err)
@@ -85,6 +96,7 @@ func TestTransferThroughTLSAndFriendLink(t *testing.T) {
 		hashes[id] = tokenHash(secret)
 	}
 	imported := transferCall[TransferStatus](t, destination, "/v1/session/transfer/import", TransferImportRequest{Bundle: bundle, AgentHashes: hashes, Machine: "laptop"})
+	assertPriority(server.service.Store)
 	if imported.State != "staged" {
 		t.Fatal(imported)
 	}
@@ -134,6 +146,7 @@ func TestTransferThroughTLSAndFriendLink(t *testing.T) {
 	restored := transferCall[TransferStatus](t, local, "/v1/session/transfer/import", TransferImportRequest{Bundle: reverse, AgentHashes: hashes, Machine: "laptop", LocalRuntime: true})
 	transferCall[TransferStatus](t, &friend, "/v1/session/transfer/seal", TransferChangeRequest{Context: ref, TransferID: reverse.TransferID, DestinationDatabase: source.service.Store.id})
 	transferCall[TransferStatus](t, local, "/v1/session/transfer/activate", TransferChangeRequest{Context: restored.Context, TransferID: reverse.TransferID})
+	assertPriority(source.service.Store)
 	got, err := source.service.Store.ShowTask(ctx, source.operator.Token, TaskReadRequest{Context: restored.Context, TaskID: task})
 	if err != nil || got.AnsweredQuestion == nil || got.AnsweredQuestion.ActorLogin != "friend@example.com" {
 		t.Fatal("answer/attribution did not return", err)

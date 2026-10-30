@@ -9,7 +9,7 @@ import (
 	"unicode/utf8"
 )
 
-const migration13 = `
+const migration14 = `
 CREATE TABLE session_operators(token_hash TEXT PRIMARY KEY REFERENCES capabilities(token_hash) ON DELETE CASCADE, session_id TEXT NOT NULL REFERENCES sessions(id), login TEXT NOT NULL) WITHOUT ROWID;
 CREATE TABLE session_invites(session_id TEXT NOT NULL REFERENCES sessions(id), login TEXT NOT NULL, code_hash TEXT NOT NULL, expires_at TEXT NOT NULL, consumed_hash TEXT NOT NULL DEFAULT '', PRIMARY KEY(session_id,login)) WITHOUT ROWID;
 CREATE TABLE owner_join_codes(code_hash TEXT PRIMARY KEY, expires_at TEXT NOT NULL, consumed_hash TEXT NOT NULL DEFAULT '', login TEXT NOT NULL DEFAULT '') WITHOUT ROWID;

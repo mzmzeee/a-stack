@@ -27,6 +27,7 @@ func isMailCommand(command string) bool {
 
 type mailFlags struct {
 	cursor, cursorFile, afterTask, message string
+	urgent                                 bool
 	ackRequired                            bool
 	ackFrom                                []string
 	ackDue                                 string
@@ -36,6 +37,7 @@ type mailFlags struct {
 }
 
 func (f *mailFlags) register(fs *flag.FlagSet) {
+	fs.BoolVar(&f.urgent, "urgent", false, "Nudge enrolled hooks at the next eligible tool boundary")
 	fs.BoolVar(&f.ackRequired, "ack-required", false, "Ask selected assignees for an explicit acknowledgement")
 	fs.Func("ack-from", "Assignee to acknowledge; repeat for more", func(name string) error { f.ackFrom = append(f.ackFrom, name); return nil })
 	fs.StringVar(&f.ackDue, "ack-due", "", "Acknowledgement deadline duration, such as 30m")
@@ -50,9 +52,9 @@ func (f *mailFlags) register(fs *flag.FlagSet) {
 func mailAllowedFlags(command string) string {
 	switch command {
 	case "mail send":
-		return "task operation-id body body-file mention ack-required ack-from ack-due"
+		return "task operation-id body body-file mention ack-required ack-from ack-due urgent"
 	case "mail reply":
-		return "message task operation-id body body-file mention no-mention-sender ack-required ack-from ack-due"
+		return "message task operation-id body body-file mention no-mention-sender ack-required ack-from ack-due urgent"
 	case "mail ack":
 		return "message operation-id"
 	case "mail recipients":
@@ -120,6 +122,9 @@ func mailRequest(ctx context.Context, client *stack.Client, command string, l li
 			return nil, invalid("mail body must be UTF-8 and at most 64 KiB")
 		}
 		send := stack.MailSendRequest{Context: ref, OperationID: l.operationID, TaskID: t.task, Body: t.body, Mentions: f.mentions, AckRequired: f.ackRequired, AckFrom: f.ackFrom, AckDue: f.ackDue}
+		if f.urgent {
+			send.Priority = "urgent"
+		}
 		body = send
 		if command == "mail reply" {
 			body = stack.MailReplyRequest{MailSendRequest: send, MessageID: f.message, NoMentionSender: f.noMentionSender}

@@ -72,7 +72,7 @@ func TestOperatorAnswerResolvesQuestionAndMailsTheAssignees(t *testing.T) {
 			t.Fatal(page, err)
 		}
 		m := page.Tasks[0].Messages[0]
-		if m.SenderKind != "operator" || m.SenderName != "Operator" || m.SenderID != "" || m.Body != request.Answer || len(m.MentionIDs) != 2 {
+		if m.Priority != "urgent" || m.SenderKind != "operator" || m.SenderName != "Operator" || m.SenderID != "" || m.Body != request.Answer || len(m.MentionIDs) != 2 {
 			t.Fatalf("mail: %+v", m)
 		}
 	}

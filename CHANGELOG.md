@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Urgent Task mail (schema 13): `mail send|reply --urgent` retains priority and nudges enrolled hooks at the next eligible tool boundary without the normal 30-second delay. Operator answers and overdue ACK reminders are urgent. Nudges stay generic and do not advance Agent cursors, acknowledge mail or re-arm Herdr notices; `hook status` shows urgent-mail availability.
+
 - The Agent skill now defaults to builder/verifier pairs for nontrivial code work, with linked Tasks, one report/finish owner per Task, candidate-specific evidence and a bounded repair loop. Small, low-risk work can stay solo.
 
 - Hook migration now keeps a private pending-enrollment reminder for explicit Agent CLI commands, including upgrades through older updaters that discard new warnings. `hook status` reports installed hooks and exact native-session enrollment without changing stdout JSON or activating unrelated hook events.
@@ -17,7 +19,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 ### Added
 
 - Sharing review fixes: fence competing transfers with source release proofs, lock recovery journals, and allow corrected preflight arguments. Owner enrollment (`connect-code`, `connect --code`) and Session invitations now require expiring single-use codes as well as Tailscale identity. Explain missing local services and multi-machine unshare credentials.
-- Share, link, invite and unshare Sessions over a connected Tailscale service (schema 13). Transfers stage atomically, seal the unchanged source, and resume after interruptions. Invited Operators are limited to their Session; links open its server view. Agent credentials and exact local hook enrollment migrate without copying source capabilities. Remote discovery respects the hook deadline.
+- Share, link, invite and unshare Sessions over a connected Tailscale service (schema 14). Transfers stage atomically, seal the unchanged source, and resume after interruptions. Invited Operators are limited to their Session; links open its server view. Agent credentials and exact local hook enrollment migrate without copying source capabilities. Remote discovery respects the hook deadline.
 
 - Explicit mail acknowledgements (schema 12): send or reply with `--ack-required`, optional `--ack-from` and `--ack-due`; recipients use `mail ack`. Mail checks and handoffs list pending obligations, the Now board shows overdue counts, and Herdr can submit one overdue reminder per obligation. Reading and Task completion do not acknowledge; unassignment withdraws outstanding obligations permanently.
 

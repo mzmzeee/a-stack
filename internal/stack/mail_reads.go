@@ -303,10 +303,12 @@ func (s *Store) CheckMail(ctx context.Context, token string, r MailCheckRequest)
 		last = task
 	}
 	result.More = result.More || result.NextTask != ""
-	if err = rearmMailNotice(ctx, tx, p, r.SessionID); err != nil {
-		return empty, err
+	if !r.Peek {
+		if err = rearmMailNotice(ctx, tx, p, r.SessionID); err != nil {
+			return empty, err
+		}
 	}
-	if result.NoticeWarning != nil && result.NoticeWarning.Reason == "notice_waiting_mail" {
+	if !r.Peek && result.NoticeWarning != nil && result.NoticeWarning.Reason == "notice_waiting_mail" {
 		result.NoticeWarning = nil
 	}
 	return result, nil

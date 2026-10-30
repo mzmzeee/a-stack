@@ -13,7 +13,7 @@ import (
 // Old stores in upgrade tests run today's authentication, which reads
 // capabilities.expires_at. They add the column with expiresStandIn and drop it
 // again before the upgrade.
-const expiresStandIn = "ALTER TABLE capabilities ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0;" + migration13
+const expiresStandIn = "ALTER TABLE capabilities ADD COLUMN expires_at INTEGER NOT NULL DEFAULT 0;" + migration14
 const dropExpires = "ALTER TABLE capabilities DROP COLUMN expires_at;" + dropScopeStandIn
 const dropScopeStandIn = `DROP TABLE IF EXISTS owner_join_codes; DROP TABLE IF EXISTS session_links; DROP TABLE IF EXISTS session_locations; DROP TABLE IF EXISTS session_transfers; DROP TABLE IF EXISTS workspace_repositories; DROP TABLE IF EXISTS session_invites; DROP TABLE IF EXISTS session_operators;`
 

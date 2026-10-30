@@ -19,7 +19,7 @@ import (
 	"time"
 )
 
-const schemaVersion = 13
+const schemaVersion = 14
 const applicationID = 0x4153544b
 const migration1 = `
 CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
@@ -520,6 +520,11 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 	}
 	if version < 13 {
 		if _, err = tx.ExecContext(ctx, migration13+"PRAGMA user_version=13;"); err != nil {
+			return storageError(err)
+		}
+	}
+	if version < 14 {
+		if _, err = tx.ExecContext(ctx, migration14+"PRAGMA user_version=14;"); err != nil {
 			return storageError(err)
 		}
 	}
