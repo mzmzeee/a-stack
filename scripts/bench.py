@@ -1175,7 +1175,7 @@ class Bench:
         """An Agent without a cursor file catches up via real CLI calls (bounded)."""
         agent = self.busiest_agent()
         path = self.cursors / "cold.json"
-        write_private(path, {})
+        path.unlink(missing_ok=True)
         calls, messages, total, t0 = 0, 0, 0.0, time.monotonic()
         rounds = 0
         while time.monotonic() - t0 < self.args.catchup_seconds:
@@ -1200,7 +1200,7 @@ class Bench:
         }
 
     def check_round(self, agent, path, record=None, level=None, worker=None):
-        """One documented mail-check round via the CLI: follow next_task, merge cursors."""
+        """One mail-check round; the CLI owns the identity-bound cursor file."""
         after, calls, got, total = "", 0, 0, 0.0
         while True:
             args = [
@@ -1221,24 +1221,13 @@ class Bench:
             if record is not None:
                 record(level, worker, "mail check", ms, rc, err, ru)
             if rc != 0:
+                check(
+                    record is not None,
+                    "mail check failed while preparing benchmark cursors",
+                )
                 return got, calls, total
             data = json.loads(out)["data"]
-            t = time.perf_counter()
-            cursors = json.loads(path.read_text())
-            for page in data["tasks"]:
-                cursors[page["task_id"]] = page["cursor"]
-                got += len(page["messages"])
-            write_private(path, cursors)
-            if record is not None:
-                record(
-                    level,
-                    worker,
-                    "cursor merge (agent side)",
-                    (time.perf_counter() - t) * 1000,
-                    0,
-                    b"",
-                    None,
-                )
+            got += sum(len(page["messages"]) for page in data["tasks"])
             after = data.get("next_task", "")
             if not after:
                 return got, calls, total
@@ -1247,25 +1236,12 @@ class Bench:
     def seed_cursors(self):
         """Agents in a long-running Session already hold cursors at the end."""
         for agent in self.agents:
-            cursors, after = {}, ""
+            path = self.cursors / f"{agent['name']}.json"
+            path.unlink(missing_ok=True)
             while True:
-                payload = {
-                    **self.ctx(self.session),
-                    "cursors": cursors,
-                    "task_limit": 100,
-                    "limit": 500,
-                }
-                if after:
-                    payload["after_task"] = after
-                data = self.api.call("/v1/mail/check", payload, agent["token"])
-                more = False
-                for page in data["tasks"]:
-                    cursors[page["task_id"]] = page["cursor"]
-                    more = more or page["more"]
-                after = data.get("next_task", "")
-                if not after and not more:
+                got, _, _ = self.check_round(agent, path)
+                if got == 0:
                     break
-            write_private(self.cursors / f"{agent['name']}.json", cursors)
 
     def browser(self, stop_event, tok, log):
         """Emulates app.js refresh(): conditional snapshot every 2 s, full parallel
@@ -1429,7 +1405,16 @@ class Bench:
                     ],
                     agent["file"],
                 )
-                record(level, idx, "task status", ms, rc, err, ru)
+                record(
+                    level,
+                    idx,
+                    "task status",
+                    ms,
+                    rc,
+                    err,
+                    ru,
+                    retried=bool(rc and b'"conflict"' in err and attempt == 0),
+                )
                 if rc == 0 or b'"conflict"' not in err:
                     break
             others = [a for a in task["assignees"] if a is not agent]
@@ -1492,7 +1477,9 @@ class Bench:
         assert status == 200, "view link not redeemed"
         browser_token = json.loads(data)["data"]["token"]
         calls_csv = (self.out / "cli-calls.csv").open("w")
-        calls_csv.write("level,worker,command,t,ms,rc,error,utime_ms,stime_ms\n")
+        calls_csv.write(
+            "level,worker,command,t,ms,rc,error,utime_ms,stime_ms,retried\n"
+        )
         lock = threading.Lock()
         per_level = {}
         samples = []
@@ -1508,7 +1495,9 @@ class Bench:
             )
             records = []
 
-            def record(level, worker, cmd, ms, rc, err, ru, records=records):
+            def record(
+                level, worker, cmd, ms, rc, err, ru, retried=False, records=records
+            ):
                 code = ""
                 if rc:
                     try:
@@ -1525,6 +1514,7 @@ class Bench:
                     code,
                     ru.ru_utime * 1000 if ru else "",
                     ru.ru_stime * 1000 if ru else "",
+                    retried,
                 )
                 with lock:
                     records.append(row)
@@ -1596,7 +1586,7 @@ class Bench:
             errors = collections.Counter()
             for row in records:
                 by_cmd[row[2]].append(row[4])
-                if row[5]:
+                if row[5] and not row[9]:
                     errors[(row[2], row[6])] += 1
             ok = sorted(
                 e["t"] + e["ms"] / 1000
@@ -1608,16 +1598,11 @@ class Bench:
                 "agents": level,
                 "browsers": browsers,
                 "seconds": round(t1 - t0, 1),
-                "cli_calls": sum(
-                    1 for r in records if r[2] != "cursor merge (agent side)"
-                ),
-                "calls_per_s": round(
-                    sum(1 for r in records if r[2] != "cursor merge (agent side)")
-                    / (t1 - t0),
-                    1,
-                ),
+                "cli_calls": len(records),
+                "calls_per_s": round(len(records) / (t1 - t0), 1),
                 "commands_ms": {k: stats(v) for k, v in by_cmd.items()},
                 "errors": {f"{k[0]}:{k[1]}": v for k, v in errors.items()},
+                "revision_conflicts": sum(r[6] == "conflict" for r in records),
                 "service_cpu_pct": round(
                     (cpu1["cpu_s"] - cpu0["cpu_s"]) / (t1 - t0) * 100, 1
                 ),
@@ -1654,17 +1639,13 @@ class Bench:
             if "backup_window" in extra:
                 lo, hi = extra.pop("backup_window")
                 overlap = [
-                    r[4]
-                    for r in records
-                    if r[2] != "cursor merge (agent side)"
-                    and r[3] >= lo
-                    and r[3] - r[4] / 1000 <= hi
+                    r[4] for r in records if r[3] >= lo and r[3] - r[4] / 1000 <= hi
                 ]
                 summary["calls_overlapping_backup_ms"] = stats(overlap)
                 summary.pop("backup_window", None)
             per_level[spec] = summary
             print(
-                f"level {spec}: {summary['calls_per_s']} calls/s, cpu {summary['service_cpu_pct']}%, errors {summary['errors']}",
+                f"level {spec}: {summary['calls_per_s']} calls/s, cpu {summary['service_cpu_pct']}%, conflicts {summary['revision_conflicts']}, errors {summary['errors']}",
                 file=sys.stderr,
             )
             (self.out / f"browser-L{spec.replace(':', 'b')}.json").write_text(
@@ -1683,6 +1664,10 @@ class Bench:
             self.fetch("/debug/pprof/block", self.out / "block-end.pprof")
             self.fetch("/debug/pprof/mutex", self.out / "mutex-end.pprof")
         self.results["load"] = per_level
+        errors = {
+            spec: row["errors"] for spec, row in per_level.items() if row["errors"]
+        }
+        check(not errors, f"steady-load request errors: {errors}; see cli-calls.csv")
 
     def idle_poll(self):
         """Browser poll costs with no writers, at final size."""

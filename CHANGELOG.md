@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Seed benchmark mail cursors through the CLI so identity binding stays valid. Fail steady-load runs on request errors or exhausted retries, while reporting retried revision conflicts separately.
+
 - Refuse an empty or missing state database beside an existing Operator credential, rather than silently creating an empty installation with a new identity. Interrupted first starts still recover.
 - Treat SQLite corruption detected during the first startup query as unusable (exit 4, with restore guidance), instead of asking supervisors to retry it forever. Transient storage failures remain retryable.
 
