@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Refresh active enrolled hooks on a five-minute heartbeat, so a continuously working Orchestrator does not falsely appear unreachable.
+
 - Browser snippet tests now ignore source layout while retaining exact plain-text checks, so formatting does not break acknowledgement, mail-wait or Operator-label coverage. Validation callbacks bind loop values instead of relying on layout-sensitive lint suppressions.
 
 - Unreachable-Orchestrator warnings now tell blocked workers to request an ACK, set Waiting naming the recipient, and use Needs you only for Operator-owned blockers.
