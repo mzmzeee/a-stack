@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"os/exec"
-	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -22,12 +21,9 @@ func TestBrowserOperatorLabels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	label := regexp.MustCompile(`(?m)^const operatorLabel=.*;$`).Find(js)
-	if len(label) == 0 {
-		t.Fatal("missing Operator label helper")
-	}
+	label := assetBetween(t, string(js), "const operatorLabel=", "const answer=")
 
-	script := string(label) + `
+	script := label + `
 const assert=require('node:assert/strict');
 assert.equal(operatorLabel({}),'Operator');
 assert.equal(operatorLabel({actor_login:'alice@example.com'}),'Operator (alice@example.com)');
@@ -37,8 +33,8 @@ assert.equal(operatorLabel({actor_login:'alice@example.com',actor_name:'Alice <s
 		t.Fatalf("%v: %s", err, out)
 	}
 
-	for _, want := range []string{"detailText('answered',", "Answered by ${operatorLabel(a)} at", "refused?(error.detail ||"} {
-		if !strings.Contains(string(js), want) {
+	for _, want := range []string{"detailText('answered',", "Answered by ${operatorLabel(a)} at", "refused?error.detail ||"} {
+		if !assetContains(string(js), want) {
 			t.Fatalf("missing plain-text answer display: %s", want)
 		}
 	}

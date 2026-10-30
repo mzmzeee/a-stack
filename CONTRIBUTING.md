@@ -55,6 +55,8 @@ Before submitting a fix, run the new story against a disposable copy with the fi
 
 Run `scripts/fmt.sh` before committing. It applies pinned gofumpt, golangci-lint readability fixes and import grouping, Prettier for JS/CSS/HTML, Ruff for Python and shfmt for shell scripts. `scripts/check.sh` checks the same files without changing them; `scripts/check.sh --format check` runs only that gate. Versions live in `scripts/check.sh`; tools stay in `.tmp/bin` or the npx/uvx caches. `.editorconfig` sets indentation and preserves Markdown hard breaks. See [rule choices](docs/quality.md#rule-choices) for the whitespace settings.
 
+Browser asset tests compare syntax tokens or extract snippets between token boundaries before running them in Node. Keep quoted values and exact visible-text assertions intact; do not rely on line breaks or indentation in JS, CSS or HTML.
+
 ### Parser fuzzing
 
 `scripts/check.sh` runs each parser fuzz target for 3 seconds with two workers. Ordinary `go test ./...` runs their seed corpora without fuzzing. To investigate for longer, run each target separately, for example:

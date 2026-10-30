@@ -2,7 +2,6 @@ package stack
 
 import (
 	"os/exec"
-	"regexp"
 	"testing"
 	"time"
 )
@@ -67,17 +66,14 @@ func TestBrowserAckPlainText(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	line := regexp.MustCompile(`(?m)^  const report=firstLine\(t.report_preview\).*;$`).Find(js)
-	if len(line) == 0 {
-		t.Fatal("missing Now acknowledgement text")
-	}
+	line := assetBetween(t, string(js), "const report=firstLine(t.report_preview)", "c.button.classList")
 
 	script := `const assert=require('node:assert/strict');
 const firstLine=text=>(text||'').split('\n')[0], plural=(n,s)=>n+' '+s+(n===1?'':'s');
 const setText=(node,text)=>{node.textContent=text};
 const c={note:{}};
 for (const t of [{overdue_acks:2,report_preview:'<img src=x onerror=alert(1)>'},{overdue_acks:0,report_preview:''},{overdue_acks:1,report_preview:'Done'}]) {
-` + string(line) + `
+` + line + `
 assert.equal(c.note.textContent,(t.overdue_acks?plural(t.overdue_acks,'overdue acknowledgement')+'. ':'')+(t.report_preview||'No report yet.'));
 assert.equal(c.note.innerHTML,undefined);
 }

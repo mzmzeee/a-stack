@@ -2,7 +2,6 @@ package stack
 
 import (
 	"os/exec"
-	"regexp"
 	"testing"
 )
 
@@ -17,16 +16,13 @@ func TestBrowserMailWaitPlainText(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	line := regexp.MustCompile(`(?m)^  const report=firstLine\(t.report_preview\).*;$`).Find(js)
-	if len(line) == 0 {
-		t.Fatal("missing Now wait text")
-	}
+	line := assetBetween(t, string(js), "const report=firstLine(t.report_preview)", "c.button.classList")
 
 	script := `const assert=require('node:assert/strict');
 const firstLine=text=>(text||'').split('\n')[0],plural=(n,s)=>n+' '+s;
 const setText=(node,text)=>{node.textContent=text};
 const c={note:{}}, t={mail_waits:[{recipient_name:'<img src=x onerror=alert(1)>',minutes:34}]};
-` + string(line) + `
+` + line + `
 assert.equal(c.note.textContent,'Waiting on <img src=x onerror=alert(1)> for 34 min. No report yet.');
 assert.equal(c.note.innerHTML,undefined);
 `

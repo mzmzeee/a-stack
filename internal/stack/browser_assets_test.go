@@ -21,6 +21,49 @@ func assetContains(source, fragment string) bool {
 	return strings.Contains(tokens(source), tokens(fragment))
 }
 
+// Extract original source between token sequences, not lines. Quoted whitespace stays intact.
+func assetBetween(t *testing.T, source, start, end string) string {
+	t.Helper()
+	indices := assetTokens.FindAllStringIndex(source, -1)
+	find := func(fragment string, from int) int {
+		want := assetTokens.FindAllString(fragment, -1)
+		for i := from; i+len(want) <= len(indices); i++ {
+			matched := true
+			for j, token := range want {
+				span := indices[i+j]
+				if source[span[0]:span[1]] != token {
+					matched = false
+					break
+				}
+			}
+
+			if matched {
+				return i
+			}
+		}
+
+		t.Fatalf("missing browser snippet boundary: %s", fragment)
+
+		return 0
+	}
+	first := find(start, 0)
+	last := find(end, first+1)
+
+	return source[indices[first][0]:indices[last][0]]
+}
+
+func TestAssetBetweenIgnoresLayout(t *testing.T) {
+	for _, source := range []string{
+		"const label=(a)=>'a ; b'; const next=0;",
+		"  const\nlabel = ( a ) =>\n  'a ; b';\n\tconst next = 0;",
+	} {
+		snippet := assetBetween(t, source, "const label=", "const next=")
+		if !assetContains(snippet, "const label=(a)=>'a ; b';") || strings.Contains(snippet, "next") {
+			t.Fatalf("wrong snippet: %q", snippet)
+		}
+	}
+}
+
 func TestAssetContainsPreservesValues(t *testing.T) {
 	for _, tt := range []struct {
 		name, source, fragment string
@@ -59,7 +102,7 @@ func TestBrowserAssetsStayReadOnly(t *testing.T) {
 	contains := assetContains
 
 	allowed := map[string]bool{"/v1/browser/redeem": true, "/v1/session/snapshot": true, "/v1/session/page": true, "/v1/task/show": true, "/v1/mail/read": true, "/v1/task/answer": true}
-	calls := regexp.MustCompile(`(?:fetch|request)\(\s*'([^']*)'`).FindAllStringSubmatch(js, -1)
+	calls := regexp.MustCompile(`(?:fetch|request)\s*\(\s*'([^']*)'`).FindAllStringSubmatch(js, -1)
 	if len(calls) != len(allowed) {
 		t.Errorf("app.js has %d endpoint calls, want %d", len(calls), len(allowed))
 	}

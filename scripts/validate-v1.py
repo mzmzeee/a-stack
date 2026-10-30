@@ -1421,13 +1421,14 @@ def measurements(binary):
                 first_calls = run.api_calls
                 complete_poll(run, count)
                 poll_requests = run.api_calls - first_calls
-                # B023: timed() and run.wait() call these closures at once, inside this iteration.
-                poll_timing = timed(lambda: complete_poll(run, count))  # noqa: B023
+                poll_timing = timed(
+                    lambda run=run, count=count: complete_poll(run, count)
+                )
                 cli_timing = timed(
-                    lambda: run.cli(
+                    lambda run=run: run.cli(
                         "task", "list", *run.context, "--limit", 100, actor=run.a
                     )
-                )  # noqa: B023
+                )
                 _, manifest, headers, _ = run.api(
                     "/v1/session/snapshot", {"known_revision": 0}, run.a
                 )
@@ -1437,18 +1438,18 @@ def measurements(binary):
                 )
                 idle_bytes = []
 
-                def idle():
+                def idle(run=run, revision=revision, tag=tag, idle_bytes=idle_bytes):
                     status, _, _, size = run.api(
                         "/v1/session/snapshot",
                         {"known_revision": revision},
                         run.a,
                         headers={"If-None-Match": tag},
-                    )  # noqa: B023
+                    )
                     check(
                         status == 304 and size == 0,
                         "idle poll not an authenticated empty 304",
                     )
-                    idle_bytes.append(size)  # noqa: B023
+                    idle_bytes.append(size)
 
                 idle_timing = timed(idle)
                 before = run.cli("storage", "status")
@@ -1495,11 +1496,11 @@ def measurements(binary):
                     run.stop()
                     run.start(notices=True)
 
-                    def submitted():
+                    def submitted(run=run):
                         return sum(
                             t["counts"].get("submitted", 0)
                             for t in run.status()["targets"]
-                        )  # noqa: B023
+                        )
 
                     run.wait(
                         lambda: submitted() == 30000,
@@ -1524,9 +1525,9 @@ def measurements(binary):
                         receipt = run.mail(tasks[0], f"Timed {index:02d} @03-worker")
                         received = time.monotonic_ns()
                         run.wait(
-                            lambda: submitted() == expected,
+                            lambda expected=expected: submitted() == expected,
                             "isolated notice not durably submitted",
-                        )  # noqa: B023
+                        )
                         end = time.monotonic_ns()
                         if index >= WARMUP:
                             send_samples.append(received - start)

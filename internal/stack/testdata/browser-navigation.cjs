@@ -47,7 +47,7 @@ const env = {
   toggleBars(names, hidden) { toggles++; for (const name of names) collapsedBars[name] = hidden; },
 };
 const context = vm.createContext(env);
-vm.runInContext(source.match(/function setFocus\(id\)\s*\{[^{}]*\}/)[0] + '\n' + source.slice(source.indexOf('function goTo(id)'), source.indexOf('async function loadDetail()')), context);
+vm.runInContext(source.match(/function\s+setFocus\s*\(\s*id\s*\)\s*\{[^{}]*\}/)[0] + '\n' + source.slice(source.search(/function\s+goTo\s*\(\s*id\s*\)/), source.search(/async\s+function\s+loadDetail\s*\(\s*\)/)), context);
 function focus(id) { $(id).focus(); }
 function key(key, extra = {}) {
   let prevented = false;
