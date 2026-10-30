@@ -96,7 +96,13 @@ func (s *Service) startReceiptExpiry() {
 func (s *Store) runReceiptExpiry(ctx context.Context, interval, pause time.Duration) {
 	for {
 		for {
-			count, err := s.expireReceiptBatch(ctx, clockNow())
+			if ctx.Err() != nil {
+				return
+			}
+
+			// Finish this bounded transaction before honoring shutdown, rather
+			// than leaving database/sql's automatic rollback running behind us.
+			count, err := s.expireReceiptBatch(context.WithoutCancel(ctx), clockNow())
 			if err != nil || count < receiptExpiryBatch {
 				break
 			}

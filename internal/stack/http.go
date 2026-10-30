@@ -100,6 +100,8 @@ type Service struct {
 	listener      net.Listener
 	lock          *stateLock
 	once          sync.Once
+	closeMu       sync.Mutex
+	closeDone     chan struct{}
 	closeErr      error
 	notifier      *notifier
 	receiptCancel context.CancelFunc
@@ -247,37 +249,80 @@ func (s *Service) Serve() error {
 
 func (s *Service) Close(ctx context.Context) error {
 	s.once.Do(func() {
-		if err := s.server.Shutdown(ctx); err != nil {
-			_ = s.server.Close()
-			s.closeErr = failure("storage_unavailable", "service shutdown exceeded deadline")
-		}
+		s.closeDone = make(chan struct{})
+		go func() {
+			err := s.shutdown(ctx)
+			s.closeMu.Lock()
+			if s.closeErr == nil {
+				s.closeErr = err
+			}
 
-		_ = s.listener.Close()
-		if s.notifier != nil {
-			s.notifier.stop()
-			s.notifier.mu.Lock()
-			//lint:ignore SA2001 barrier: wait for an HTTP-initiated drain to finish before the database closes.
-			s.notifier.mu.Unlock()
-		}
-
-		if s.receiptCancel != nil {
-			s.receiptCancel()
-			<-s.receiptDone
-		}
-
-		if err := s.Store.db.Close(); err != nil {
-			s.closeErr = storageError(err)
-		}
-
-		if d, err := ReadDiscovery(s.lock.dir); err == nil && d.InstanceID == s.Discovery.InstanceID {
-			_ = os.Remove(filepath.Join(s.lock.dir, "service.json"))
-			_ = syncDir(s.lock.dir)
-		}
-
-		s.lock.close()
+			close(s.closeDone)
+			s.closeMu.Unlock()
+		}()
 	})
 
+	select {
+	case <-s.closeDone:
+	case <-ctx.Done():
+	}
+
+	s.closeMu.Lock()
+	defer s.closeMu.Unlock()
+
+	select {
+	case <-s.closeDone:
+	default:
+		if s.closeErr == nil {
+			s.closeErr = failure("storage_unavailable", "service shutdown exceeded deadline; state lock retained until database closes")
+		}
+	}
+
 	return s.closeErr
+}
+
+// Cleanup outlives a caller's deadline: a driver may still checkpoint the WAL.
+func (s *Service) shutdown(ctx context.Context) error {
+	var closeErr error
+	if err := s.server.Shutdown(ctx); err != nil {
+		_ = s.server.Close()
+		closeErr = failure("storage_unavailable", "service shutdown exceeded deadline")
+	}
+
+	_ = s.listener.Close()
+	if s.notifier != nil {
+		s.notifier.stop()
+		s.notifier.mu.Lock()
+		//lint:ignore SA2001 barrier: wait for an HTTP-initiated drain to finish before the database closes.
+		s.notifier.mu.Unlock()
+	}
+
+	if s.receiptCancel != nil {
+		s.receiptCancel()
+		<-s.receiptDone
+	}
+
+	if err := s.Store.db.Close(); err != nil {
+		closeErr = storageError(err)
+	}
+
+	// DB.Close can return while an automatic rollback still owns a connection.
+	// OpenConnections falls only after the driver's Close has completed.
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+
+	for s.Store.db.Stats().OpenConnections != 0 {
+		<-ticker.C
+	}
+
+	if d, err := ReadDiscovery(s.lock.dir); err == nil && d.InstanceID == s.Discovery.InstanceID {
+		_ = os.Remove(filepath.Join(s.lock.dir, "service.json"))
+		_ = syncDir(s.lock.dir)
+	}
+
+	s.lock.close()
+
+	return closeErr
 }
 
 func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {

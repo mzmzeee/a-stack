@@ -149,8 +149,14 @@ func TestServiceShutdownDeadlineReleasesStateAndOldCloseCannotRemoveNewDiscovery
 		t.Fatal("normal HTTP server close reported a serve failure", err)
 	}
 
+	// The expired caller may return before safe cleanup finishes. A subsequent
+	// Close waits for it and retains the first caller's deadline error.
+	if err = s.Close(requestCtx); err != closeErr {
+		t.Fatal("shutdown cleanup changed its original result", err)
+	}
+
 	if _, err = os.Stat(filepath.Join(dir, "service.json")); !os.IsNotExist(err) {
-		t.Fatal("shutdown deadline left stale discovery", err)
+		t.Fatal("completed shutdown left stale discovery", err)
 	}
 
 	restarted, err := Start(ctx, dir, "")

@@ -34,6 +34,7 @@ Orchestrator bindings now default to hook-only mail notices, so a-stack does not
 
 ### Fixed
 
+- Keep the service's state lock and discovery until every SQLite connection finishes rollback and closes. A shutdown deadline reports an error while cleanup retains ownership, preventing a late WAL checkpoint from writing into a restarted service's database. Receipt expiry finishes its current transaction before stopping.
 - Accept hyphen-prefixed opaque IDs as positional CLI arguments, including `session link` Session IDs, and support `--` to end flag parsing. Hyphen-prefixed flag values remain intact.
 - Refuse an empty or missing state database beside an existing Operator credential, rather than silently creating an empty installation with a new identity. Interrupted first starts still recover.
 - SQLite corruption detected during the first startup query is unusable (exit 4, with restore guidance), instead of asking supervisors to retry it forever. Transient storage failures remain retryable.
