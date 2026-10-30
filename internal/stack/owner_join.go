@@ -27,7 +27,12 @@ func (s *Store) CreateOwnerCode(ctx context.Context, token, hash string) error {
 		return err
 	}
 
-	if _, err = tx.ExecContext(ctx, "INSERT INTO owner_join_codes(code_hash,expires_at) VALUES(?,?) ON CONFLICT DO NOTHING", hash, time.Now().UTC().Add(24*time.Hour).Format(time.RFC3339Nano)); err != nil {
+	// Preserve the requested hash so retrying issuance cannot revive a retired code.
+	if _, err = tx.ExecContext(ctx, "DELETE FROM owner_join_codes WHERE code_hash<>? AND (expires_at<=? OR consumed_hash<>'')", hash, now()); err != nil {
+		return storageError(err)
+	}
+
+	if _, err = tx.ExecContext(ctx, "INSERT INTO owner_join_codes(code_hash,expires_at) VALUES(?,?) ON CONFLICT DO NOTHING", hash, clockNow().UTC().Add(24*time.Hour).Format(time.RFC3339Nano)); err != nil {
 		return storageError(err)
 	}
 

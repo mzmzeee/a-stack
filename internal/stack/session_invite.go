@@ -62,7 +62,21 @@ func (s *Store) InviteSession(ctx context.Context, token string, r SessionInvite
 			return Receipt{}, failure("invalid_input", "exact Tailscale login required")
 		}
 
-		if _, err = tx.ExecContext(ctx, "INSERT INTO session_invites(session_id,login,code_hash,expires_at) VALUES(?,?,?,?) ON CONFLICT(session_id,login) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,consumed_hash=''", session.ID, r.Login, r.CodeHash, time.Now().UTC().Add(24*time.Hour).Format(time.RFC3339Nano)); err != nil {
+		// Retired codes no longer support enrollment retries; enrolled credentials remain valid.
+		if _, err = tx.ExecContext(ctx, "DELETE FROM session_invites WHERE session_id=? AND (expires_at<=? OR consumed_hash<>'')", session.ID, now()); err != nil {
+			return Receipt{}, err
+		}
+
+		var active int
+		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM session_invites WHERE session_id=? AND login<>?", session.ID, r.Login).Scan(&active); err != nil {
+			return Receipt{}, err
+		}
+
+		if active >= 16 {
+			return Receipt{}, &Error{Code: "rate_limited", Message: "Session has 16 active invitations; wait for one to be used or expire", Retryable: true, RetryAfter: 60}
+		}
+
+		if _, err = tx.ExecContext(ctx, "INSERT INTO session_invites(session_id,login,code_hash,expires_at) VALUES(?,?,?,?) ON CONFLICT(session_id,login) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,consumed_hash=''", session.ID, r.Login, r.CodeHash, clockNow().UTC().Add(24*time.Hour).Format(time.RFC3339Nano)); err != nil {
 			return Receipt{}, err
 		}
 

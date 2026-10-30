@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
@@ -532,7 +533,7 @@ func (h *home) open(ctx context.Context, client *stack.Client, r sessionRow, oth
 func (h *home) openWith(ctx context.Context, client *stack.Client, r sessionRow, fields map[string]any, before, after []string) error {
 	if r.Remote != "" {
 		var err error
-		client, err = stack.NewRemoteClient(ctx, r.Remote, r.CredentialFile, stack.OperatorCapability)
+		client, err = sharingRemoteClient(ctx, r.Remote, r.CredentialFile, stack.OperatorCapability)
 		if err != nil {
 			return err
 		}
@@ -622,18 +623,35 @@ func (h *home) sessions(ctx context.Context, client *stack.Client) ([]sessionRow
 	remoteCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	for _, link := range links {
-		r := sessionRow{WorkspaceID: link.WorkspaceID, WorkspacePath: link.Path, SessionID: link.SessionID, Name: link.Name, Remote: link.Remote, CredentialFile: link.CredentialFile, CurrentFolder: within(h.cwd, link.Path), Unreachable: true}
-		remote, err := sharingRemoteClient(remoteCtx, link.Remote, link.CredentialFile, stack.OperatorCapability)
-		if err == nil {
-			if session, err := inspectSession(remoteCtx, remote, link.Context); err == nil {
-				r.Closed, r.Unreachable = session.Closed, false
-				r.ChangedAt = later(r.ChangedAt, session.UpdatedAt)
-			}
-		}
+	linked := make([]sessionRow, len(links))
 
-		rows = append(rows, r)
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	for range min(8, len(links)) {
+		workers.Go(func() {
+			for i := range jobs {
+				link := links[i]
+
+				r := sessionRow{WorkspaceID: link.WorkspaceID, WorkspacePath: link.Path, SessionID: link.SessionID, Name: link.Name, Remote: link.Remote, CredentialFile: link.CredentialFile, CurrentFolder: within(h.cwd, link.Path), Unreachable: true}
+				remote, err := sharingRemoteClient(remoteCtx, link.Remote, link.CredentialFile, stack.OperatorCapability)
+				if err == nil {
+					if session, err := inspectSession(remoteCtx, remote, link.Context); err == nil {
+						r.Closed, r.Unreachable = session.Closed, false
+					}
+				}
+
+				linked[i] = r
+			}
+		})
 	}
+
+	for i := range links {
+		jobs <- i
+	}
+
+	close(jobs)
+	workers.Wait()
+	rows = append(rows, linked...)
 
 	sortRows(rows)
 

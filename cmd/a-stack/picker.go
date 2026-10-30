@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"runtime"
@@ -32,9 +33,37 @@ type sessionRow struct {
 	CurrentFolder  bool      `json:"current_folder"`
 }
 
-// sortRows puts the most recently changed Session first.
+// Remote summaries are unknown: inspecting a Session does not include Task activity.
+func (r sessionRow) MarshalJSON() ([]byte, error) {
+	type row sessionRow
+
+	if r.Remote == "" {
+		return json.Marshal(row(r))
+	}
+
+	return json.Marshal(struct {
+		row
+		Tasks     *int       `json:"tasks"`
+		NeedsYou  *int       `json:"needs_you"`
+		ChangedAt *time.Time `json:"changed_at"`
+	}{row: row(r)})
+}
+
+// sortRows puts known activity first, then linked Sessions by name and ID.
 func sortRows(rows []sessionRow) {
 	sort.SliceStable(rows, func(i, j int) bool {
+		if (rows[i].Remote == "") != (rows[j].Remote == "") {
+			return rows[i].Remote == ""
+		}
+
+		if rows[i].Remote != "" {
+			if rows[i].Name != rows[j].Name {
+				return rows[i].Name < rows[j].Name
+			}
+
+			return rows[i].SessionID < rows[j].SessionID
+		}
+
 		if !rows[i].ChangedAt.Equal(rows[j].ChangedAt) {
 			return rows[i].ChangedAt.After(rows[j].ChangedAt)
 		}
@@ -162,6 +191,10 @@ func rowState(r sessionRow) string {
 }
 
 func rowCounts(r sessionRow) string {
+	if r.Remote != "" {
+		return "tasks/needs you unknown"
+	}
+
 	text := fmt.Sprintf("%d tasks", r.Tasks)
 	if r.Tasks == 1 {
 		text = "1 task"
@@ -181,7 +214,11 @@ func formatRow(r sessionRow, selected bool, home string, now time.Time, width in
 		mark = "> "
 	}
 
-	age := relativeAge(now.Sub(r.ChangedAt))
+	age := "?"
+	if r.Remote == "" {
+		age = relativeAge(now.Sub(r.ChangedAt))
+	}
+
 	name := truncate(printable(r.Name), 40)
 	tail := "  " + rowState(r) + "  " + rowCounts(r)
 	// The folder gets the space that is left and loses its start first, so

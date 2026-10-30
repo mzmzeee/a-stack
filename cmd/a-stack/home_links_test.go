@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -58,9 +59,9 @@ func TestHomeLinkedSessionState(t *testing.T) {
 			}
 
 			original := sharingRemoteClient
-			calls := 0
+			var calls atomic.Int32
 			sharingRemoteClient = func(ctx context.Context, name, file string, kind stack.CapabilityKind) (*stack.Client, error) {
-				calls++
+				calls.Add(1)
 
 				if name != "linked" || file != credential || kind != stack.OperatorCapability {
 					t.Error("wrong link identity")
@@ -105,8 +106,8 @@ func TestHomeLinkedSessionState(t *testing.T) {
 				}
 			}
 
-			if !found || calls != wantCalls {
-				t.Fatalf("linked row missing or wrong discovery count: %v %d", found, calls)
+			if !found || int(calls.Load()) != wantCalls {
+				t.Fatalf("linked row missing or wrong discovery count: %v %d", found, calls.Load())
 			}
 
 			// Last must use a known-open local Session instead of a closed/unknown current-folder link.

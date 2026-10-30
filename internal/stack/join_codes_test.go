@@ -54,6 +54,51 @@ func TestJoinCodesSingleUseAndScope(t *testing.T) {
 	requireCode(t, err, "forbidden")
 }
 
+func TestOwnerCodeCleanup(t *testing.T) {
+	f := tasksFixture(t)
+	s := f.service.Store
+	for i := 0; i < 100; i++ {
+		execTest(t, s, "INSERT INTO owner_join_codes(code_hash,expires_at) VALUES(?,'2000-01-01T00:00:00Z')", tokenHash(opaqueID()))
+	}
+
+	code, secret := opaqueID(), opaqueID()
+	if err := s.CreateOwnerCode(ctx, f.operator.Token, tokenHash(code)); err != nil {
+		t.Fatal(err)
+	}
+
+	if countTest(t, s, "SELECT count(*) FROM owner_join_codes") != 1 {
+		t.Fatal("expired owner codes retained")
+	}
+
+	actor := context.WithValue(ctx, requestActorKey{}, RequestActor{Login: "owner@example.com"})
+	join := SessionJoinRequest{Code: code, CredentialHash: tokenHash(secret)}
+	if err := s.JoinOwner(actor, join); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.CreateOwnerCode(ctx, f.operator.Token, tokenHash(code)); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := s.JoinOwner(actor, join); err != nil {
+		t.Fatal("same-code issuance must not reset used code", err)
+	}
+
+	if err := s.CreateOwnerCode(ctx, f.operator.Token, tokenHash(opaqueID())); err != nil {
+		t.Fatal(err)
+	}
+
+	if countTest(t, s, "SELECT count(*) FROM owner_join_codes") != 1 {
+		t.Fatal("used owner code retained")
+	}
+
+	requireCode(t, s.JoinOwner(actor, join), "forbidden")
+
+	if _, err := s.InspectSession(ctx, secret, f.ref(0)); err != nil {
+		t.Fatal("cleanup revoked enrolled owner", err)
+	}
+}
+
 func TestOwnerCodesSingleUseAndIdentity(t *testing.T) {
 	f := tasksFixture(t)
 	s := f.service.Store

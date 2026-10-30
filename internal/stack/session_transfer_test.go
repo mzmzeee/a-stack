@@ -2,6 +2,7 @@ package stack
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 )
 
@@ -74,6 +75,16 @@ func TestTransferExportRateLimit(t *testing.T) {
 	defer reopened.db.Close()
 	_, err = reopened.ExportTransfer(ctx, source.operator.Token, request)
 	requireCode(t, err, "rate_limited")
+	// Rolling the wall clock back must not replenish this exhausted budget.
+	futureHour := clockNow().Unix()/3600 + 1
+	execTest(t, store, "UPDATE metadata SET value=? WHERE key=?", fmt.Sprintf(`{"hour":%d,"count":16}`, futureHour), "transfer_exports:"+source.sessions[0])
+	_, err = store.ExportTransfer(ctx, source.operator.Token, request)
+	requireCode(t, err, "rate_limited")
+
+	if e, ok := err.(*Error); !ok || e.RetryAfter <= 3600 {
+		t.Fatal("retry delay must use retained future window", err)
+	}
+
 	// A different Session has its own allowance.
 	other := request
 

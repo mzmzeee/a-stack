@@ -255,12 +255,12 @@ func limitTransferExports(ctx context.Context, tx *sql.Tx, session string) error
 	now := clockNow().Unix()
 
 	hour := now / 3600
-	if budget.Hour != hour {
+	if hour > budget.Hour {
 		budget.Hour, budget.Count = hour, 0
 	}
 
 	if budget.Count >= 16 {
-		return &Error{Code: "rate_limited", Message: "Session export limit reached (16 per hour); retry later", Retryable: true, RetryAfter: (hour+1)*3600 - now}
+		return &Error{Code: "rate_limited", Message: "Session export limit reached (16 per hour); retry later", Retryable: true, RetryAfter: (budget.Hour+1)*3600 - now}
 	}
 
 	budget.Count++
