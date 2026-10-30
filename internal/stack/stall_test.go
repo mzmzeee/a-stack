@@ -77,7 +77,25 @@ func TestOrchestratorUnreachableWithoutMailRead(t *testing.T) {
 	b, _ := json.Marshal(session)
 	var got map[string]any
 	_ = json.Unmarshal(b, &got)
-	if got["orchestrator_warning"] != "the Orchestrator cannot be reached by mail" {
-		t.Fatalf("missing warning: %s", b)
+	const want = "the Orchestrator cannot be reached by mail: send the blocking question as Task mail with --ack-required, set the Task Waiting naming the recipient, and use Needs you only when the Operator must unblock it."
+	if got["orchestrator_warning"] != want {
+		t.Fatalf("missing actionable warning: %s", b)
+	}
+	page, err := f.service.Store.SnapshotPage(ctx, f.a.Token, SnapshotPageRequest{Context: f.ref(0), Kind: "agents"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, item := range page.Items {
+		agent := item.(SnapshotAgent)
+		if agent.ID == *session.OrchestratorID {
+			found = true
+			if agent.OrchestratorWarning != want {
+				t.Fatal("Agents panel lost recovery guidance", agent.OrchestratorWarning)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("Orchestrator missing from Agents panel")
 	}
 }

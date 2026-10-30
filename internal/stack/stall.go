@@ -142,5 +142,5 @@ func (s *Store) orchestratorWarning(ctx context.Context, tx *sql.Tx, session Ses
 			return "", nil
 		}
 	}
-	return "the Orchestrator cannot be reached by mail", nil
+	return "the Orchestrator cannot be reached by mail: send the blocking question as Task mail with --ack-required, set the Task Waiting naming the recipient, and use Needs you only when the Operator must unblock it.", nil
 }

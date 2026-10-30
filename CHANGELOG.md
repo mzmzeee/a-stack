@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Unreachable-Orchestrator warnings now tell blocked workers to request an ACK, set Waiting naming the recipient, and use Needs you only for Operator-owned blockers.
+
 - Accept `--code` in the command allowlists for `connect` and `session link`, so owner and friend enrollment work through the public CLI. A subprocess TLS walkthrough now covers both documented flows.
 
 - Urgent Task mail (schema 13): `mail send|reply --urgent` retains priority and nudges enrolled hooks at the next eligible tool boundary without the normal 30-second delay. Operator answers and overdue ACK reminders are urgent. Nudges stay generic and do not advance Agent cursors, acknowledge mail or re-arm Herdr notices; `hook status` shows urgent-mail availability.
