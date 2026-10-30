@@ -123,13 +123,13 @@ To brief the coding agent yourself, run `a-stack new --orchestrator 01-orchestra
 - [Getting started](docs/getting-started.md): set up a team of three Agents and take one Task from start to finish.
 - [Workspaces, Sessions and Agents](docs/lifecycle.md): register Agents, recover credentials, close and reopen Sessions.
 - [Tasks and the Task graph](docs/tasks.md): create and assign Tasks, report progress, ask questions, add dependencies.
-- [Task mail](docs/mail.md): send and read messages, and mention Agents.
+- [Task mail](docs/mail.md): send and read messages, mention Agents, send urgent mail and request acknowledgements.
 - [Browser view](docs/browser.md): open the view and read what it shows.
 - [Watch from the terminal](docs/watch.md): `a-stack status`, `a-stack watch` and `a-stack statusline` show what needs you, with a bell, opt-in desktop notices and a Claude Code status line.
 - [Agent tools over MCP](docs/mcp.md): `a-stack mcp` exposes one Agent's Task and mail tools to Claude Code, Codex, Pi and other MCP clients.
 - [Agent hooks](docs/hooks.md): `a-stack hook install` reminds Claude Code, Codex, Pi and OpenCode agents of their Tasks after a compaction, reports their runtime state, keeps them from stopping without a report and tells them about new Task mail.
-- [Mention notices](docs/notifications.md): set up Herdr notices and fix delivery problems.
-- [Remote service](docs/remote.md): expose the service through Tailscale Serve and use named HTTPS client profiles.
+- [Mention notices](docs/notifications.md): set up hook-only or Herdr pane notices, understand Stalled waits and keep human panes quiet.
+- [Remote service](docs/remote.md): share a Session with a friend over Tailscale, or connect to your service through a named HTTPS profile.
 - [Local service](docs/foundation.md): the state directory, credentials, command output, the HTTP API, backup and restore.
 - [Agent skill](docs/agent-skill.md): run `a-stack skill install` to teach your coding agents to work in an a-stack Session.
 - [Performance](docs/performance.md): stress test results with many Agents, and how to run the test.
