@@ -199,9 +199,10 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 const urgentMailNudge = "a-stack: Urgent Task mail; load the a-stack skill, then run your own mail check before continuing."
 
 type urgentHookCursor struct {
-	Identity  string                              `json:"identity"`
-	Positions map[string]stack.UrgentMailPosition `json:"positions"`
-	AfterTask string                              `json:"after_task,omitempty"`
+	Identity   string                              `json:"identity"`
+	Positions  map[string]stack.UrgentMailPosition `json:"positions"`
+	AfterTask  string                              `json:"after_task,omitempty"`
+	CatchingUp bool                                `json:"catching_up,omitempty"`
 }
 
 // Called under the same lock as the normal scan, but never its throttle.
@@ -214,11 +215,15 @@ func hookUrgentNudge(ctx context.Context, client *stack.Client, id hookIdentity,
 		data, readErr := io.ReadAll(io.LimitReader(f, stack.MaxRequestBytes+1))
 		f.Close()
 
-		if readErr != nil || len(data) > stack.MaxRequestBytes || json.Unmarshal(data, &cursor) != nil || cursor.Identity != identity || cursor.Positions == nil {
+		if readErr != nil || len(data) > stack.MaxRequestBytes || json.Unmarshal(data, &cursor) != nil || cursor.Positions == nil {
 			return ""
 		}
 	} else if !os.IsNotExist(err) {
 		return ""
+	}
+
+	if cursor.Identity != identity {
+		cursor = urgentHookCursor{Identity: identity, Positions: map[string]stack.UrgentMailPosition{}, CatchingUp: true}
 	}
 
 	data, err := client.Do(ctx, "POST", "/v1/mail/urgent", stack.UrgentMailRequest{Context: id.ref, Positions: cursor.Positions, AfterTask: cursor.AfterTask})
@@ -237,12 +242,15 @@ func hookUrgentNudge(ctx context.Context, client *stack.Client, id hookIdentity,
 		cursor.Positions[task] = pos
 	}
 
+	catchingUp := cursor.CatchingUp
+
 	cursor.AfterTask = out.Data.NextTask
+	cursor.CatchingUp = catchingUp && cursor.AfterTask != ""
 	if stack.ReplacePrivate(file, cursor) != nil {
 		return ""
 	}
 
-	if out.Data.Urgent {
+	if out.Data.Urgent && !catchingUp {
 		return urgentMailNudge
 	}
 

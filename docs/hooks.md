@@ -216,7 +216,7 @@ One fixed note covers each new batch, with no Task titles, senders or message bo
 a-stack: Urgent Task mail; load the a-stack skill, then run your own mail check before continuing.
 ```
 
-The note is under 128 bytes. The existing 2-second deadline remains fail-open. A failed poll leaves the urgent marks unchanged. Urgency requires installed, enabled and enrolled mail hooks; `hook status` exposes `urgent_mail` for the checked native session. It cannot prove that the harness loaded or trusted those hooks. `--no-mail-nudge` disables both priorities.
+The note is under 128 bytes. The existing 2-second deadline remains fail-open. A failed poll leaves the urgent marks unchanged. After share or unshare changes the database, Workspace or credential, the hook resets its urgent cursor and silently catches up to the current position, then resumes urgent-mail and overdue-ACK nudges. This reset does not move the Agent's own mail cursor. Urgency requires installed, enabled and enrolled mail hooks; `hook status` exposes `urgent_mail` for the checked native session. It cannot prove that the harness loaded or trusted those hooks. `--no-mail-nudge` disables both priorities.
 
 This is the next eligible boundary after a successful poll, not an interrupt or a wall-clock guarantee. A foreground tool or a whole batch of tools can delay it. Claude Code's `PostToolUse` covers successful tools; Codex covers local tools, not hosted tools. Pi and OpenCode use their existing tool-result adapters. No-tools responses and idle panes have no tool-result boundary. Herdr delivery, permission-dialog safety and its one-pending-notice rule are unchanged. The Agent must fetch its authorized mail; the nudge is not proof of understanding or compliance.
 
