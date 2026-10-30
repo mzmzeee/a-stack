@@ -1,0 +1,45 @@
+# Five workers, one human-facing Orchestrator, one unattended pane.
+# The internal/stack runner supplies a fake notifier clock and real CLI hooks.
+binding-mode hook
+exec $BIN --state-dir $STATE --as agent --credential-file $CRED hook enroll --codex --native-session quiet-native --agent $AGENT
+hook-event SessionStart
+stdin $WORK/event.json
+exec $BIN hook --state-dir $STATE --credential-file $CRED --workspace $WS --session $SESSION --agent $AGENT --worktree $PROJECT --harness codex
+stdout 'Run mail check now'
+
+minutes 1
+pane-count orch 0
+pane-count worker 1
+# Human prompt immediately after SessionStart bypasses the normal 30s throttle.
+hook-event UserPromptSubmit
+stdin $WORK/event.json
+exec $BIN hook --state-dir $STATE --credential-file $CRED --workspace $WS --session $SESSION --agent $AGENT --worktree $PROJECT --harness codex
+stdout '5 new a-stack mails, run your mail check'
+! stdout 'Progress minute'
+# Repeated prompts do not repeat already surfaced mail.
+stdin $WORK/event.json
+exec $BIN hook --state-dir $STATE --credential-file $CRED --workspace $WS --session $SESSION --agent $AGENT --worktree $PROJECT --harness codex
+! stdout .
+
+minutes 9
+pane-count orch 0
+pane-count worker 1
+minutes 10
+pane-count orch 0
+pane-count worker 2
+minutes 10
+pane-count orch 0
+pane-count worker 3
+minutes 10
+pane-count orch 0
+pane-count worker 4
+minutes 10
+pane-count orch 0
+pane-count worker 5
+minutes 10
+pane-count orch 0
+pane-count worker 6
+stdin $WORK/event.json
+exec $BIN hook --state-dir $STATE --credential-file $CRED --workspace $WS --session $SESSION --agent $AGENT --worktree $PROJECT --harness codex
+stdout 'new a-stack mails, run your mail check'
+! stdout 'Progress minute'

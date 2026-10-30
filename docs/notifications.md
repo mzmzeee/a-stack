@@ -2,6 +2,14 @@
 
 Task mail always works through ordinary mail checks. A mention notice is an optional nudge: when an Agent is mentioned with `@name`, a-stack can tell it through Herdr to check its mail. A notice is separate from reading mail, from Task progress and from Needs you. When Herdr accepts a notice, this does not prove that the model read the mail or acted on it.
 
+## Keep human panes quiet
+
+Bindings have a `notices` mode: `hook` never types into the pane; `pane` sends the fixed notice below. The Session's Orchestrator defaults to `hook`; unattended workers default to `pane`. Old Orchestrator bindings with no mode also use `hook`. Choose explicitly with `herdr bind --notices hook` or `--notices pane`. Any Agent a human talks to in its pane should use `hook`.
+
+Hook-only Agents learn about mail through enrolled hooks, including when the human next submits a prompt. Without hooks, they must run their own mail checks. Hook mode does not change mail retention or Task progress. It also does not wake an idle Agent by typing.
+
+Use mentions only for a question, decision, blocking finding or final DONE. Progress mail needs no mention. Wait for an answer or 10 minutes before mentioning the same Agent again.
+
 ## Turn on notices
 
 To turn on notices, start the service with an installed Herdr executable:
@@ -64,7 +72,8 @@ Without Herdr's integration, or for another tool, you can attach a binding by ha
   "terminal_id": "recorded-terminal-id",
   "native_session_id": "recorded-native-session-id",
   "harness": "codex",
-  "harness_version": "0.164.0"
+  "harness_version": "0.164.0",
+  "notices": "pane"
 }
 ```
 
@@ -87,15 +96,15 @@ The service sets `HERDR_SOCKET_PATH` to the recorded endpoint, and it passes the
 
 The notice is always this fixed text:
 
-> New a-stack Task mail may mention you. Only if this runtime has its own verified a-stack Agent registration, load the a-stack skill and check your own mail. Otherwise ignore this notice; do not register or discover credentials.
+> a-stack: new Task mail for you. If you are a registered a-stack Agent, run your mail check.
 
-a-stack decodes only a bounded allowlist of metadata fields and error codes. It never logs terminal text, titles, working directories, raw diagnostics, transcripts, mail bodies, credentials or private paths, and it never puts them in a notice. It does not inject text into panes, answer permission dialogs, rename, start or restart Agents, or control their lifecycle.
+a-stack decodes only a bounded allowlist of metadata fields and error codes. It never logs terminal text, titles, working directories, raw diagnostics, transcripts, mail bodies, credentials or private paths, and it never puts them in a notice. It does not inject mail bodies into panes, answer permission dialogs, rename, start or restart Agents, or control their lifecycle.
 
 ## Delivery and recovery
 
 The mail transaction stores the body once, with a pending reference for each mentioned recipient. After the commit, it signals the dispatcher. When a recipient is eligible, the dispatcher groups the references that are already pending for it, across all of its Tasks.
 
-After one successful submission, further notices wait until that Agent successfully runs an authenticated `mail check`, `mail read` or `task handoff`, or a 10-minute cooldown passes. Reads by a browser or another Agent do not release this hold. The read only re-arms notices: it stores no mail position and does not acknowledge any message. Later mentions stay pending and join the next batch. The hold survives a service restart.
+After one successful pane submission, further notices wait at least 10 minutes, even if that Agent immediately runs `mail check`, `mail read` or `task handoff`. Reading mail does not shorten the cooldown or acknowledge a message. Later mentions stay pending and join the next batch. The hold survives a service restart. Urgent mail can reach enrolled hooks immediately; it does not bypass the pane limit.
 
 A runtime observed as working by a-stack also waits until its next idle or done observation, or 10 minutes after the hold began. Hook observations require exact runtime enrollment; its mail nudge can reach the Agent between tool calls. The server does not inspect machine-local enrollment files. An unknown or unobserved a-stack runtime state keeps the ordinary first-notice behavior; Herdr's independent identity and state checks still apply. Reading mail does not bypass a working-runtime hold. An explicit new binding clears the old target diagnostic and hold.
 
@@ -136,7 +145,7 @@ a-stack notifications drain --state-dir "$state_dir" \
 
 `notifications status` lists 50 Agents by default and 100 at most. To get the next page, give the `data.next` value with `--after`. The Operator can select one Agent with `--agent`. An Agent sees only itself. Each row names the Agent and its ID. The status shows whether notices are enabled, a safe reason, the time of the next attempt (`-1` while it waits for a new binding), and the number of references in each state. It never shows private bindings, mail bodies or read positions.
 
-Held targets show `notice_waiting_mail` or `notice_waiting_idle` in `notifications status`, with the cooldown deadline in `next_attempt_unix_ms`. The Agents panel shows **Notice waiting** and explains whether it waits for an own mail read or for idle. Pending reference counts still include every held mention. Successful own reads clear the submitted-notice hold; they do not clear uncertain references.
+Held targets show `notice_waiting_mail`, `mail_checked` or `notice_waiting_idle` in `notifications status`, with the cooldown deadline in `next_attempt_unix_ms`. The Agents panel shows **Notice waiting** until an own read, or while waiting for idle. An own read clears that marker, not the pane cooldown or uncertain references. Pending reference counts still include every held mention. Hook-only recipients do not get setup warnings for disabled pane delivery.
 
 The Agent's own `mail check` adds one `notice_warning` with a reason and a fix when its binding is incomplete, its harness is unsupported, the service adapter is disabled, the last delivery check could not reach it, or retained notices are uncertain. The browser's Agents panel shows a small **Notices off** marker with the same reason in its tooltip. These read only the stored binding and last delivery diagnostic, run no Herdr command and change no mail position on the service. A new bind clears the old diagnostic; a changed delivery warning refreshes the view. They are not a live probe and do not prove that a notice was read. Mail checks work without notices.
 
@@ -166,7 +175,7 @@ a-stack herdr focus --workspace "$workspace_id" --session "$session_id" --agent 
 
 ### Fake Herdr fixture
 
-Before the per-Agent hold was added, a deterministic fixture with a fake Herdr executable retained exactly 1,120 messages, 54,300 body bytes, 3,320 mention and batch reference rows, and 29 submitted batches. These historical timings below describe that earlier behavior. The current fixture performs own mail checks between rounds to re-arm each recipient.
+Before the per-Agent hold was added, a deterministic fixture with a fake Herdr executable retained exactly 1,120 messages, 54,300 body bytes, 3,320 mention and batch reference rows, and 29 submitted batches. These historical timings below describe that earlier behavior. The current fixture advances its fake clock by 10 minutes between rounds. It measures submission cost, not the time spent waiting for the pane cooldown.
 
 - Twenty separate sends to one recipient used twenty submissions.
 - A burst of 100 waiting messages with three recipients used three submissions.
@@ -232,4 +241,4 @@ The fixture ended with three submitted notices and three own mail checks. Its sc
 
 ### Tests
 
-The normal and race tests use real SQLite, HTTP and the CLI, with a fake executable. They cover twenty successive mentions with at most one notice, own-read and cooldown re-arming, observed-busy versus unknown state, held status, the endpoint, arguments and environment, batching, concurrent arrivals, the serialization of recipients, target changes, closure and removal, bounded errors, migration rollback, and a process that is killed after simulated input. Tests of the production checks reject unverified versions and kinds. A successful live fixture does not add a combination to the supported list automatically.
+The normal and race tests use real SQLite, HTTP and the CLI, with a fake executable. They cover twenty successive mentions with at most one notice, a strict cooldown even after own reads, hook-only Orchestrator defaults, a simulated hour with five senders and real CLI prompt hooks, observed-busy versus unknown state, held status, the endpoint, arguments and environment, batching, concurrent arrivals, the serialization of recipients, target changes, closure and removal, bounded errors, migration rollback, and a process that is killed after simulated input. Tests of the production checks reject unverified versions and kinds. A successful live fixture does not add a combination to the supported list automatically.

@@ -64,6 +64,8 @@ a-stack session share --remote team
 a-stack session invite friend@example.com
 ```
 
+Use the owner code with `connect --code` and a Session invitation code with `session link --code`; they are not interchangeable. Both commands accept `--code` after their positional arguments.
+
 `session invite` prints a separate single-use code for the friend. Send that code and the Session ID through a private channel. It expires after 24 hours; inviting the same login again replaces its unused code. Codes are stored hashed, never as plaintext in the service. A retry with the same already-enrolled credential is allowed, but a consumed code cannot enroll a second credential. With exactly one remote profile, `--remote` can be omitted. The repository must have a network `origin` remote. SSH and HTTPS forms of the same host and repository match; repository path case and non-default ports remain significant.
 
 Your friend signs into Tailscale with the invited login, then runs this in their clone:

@@ -362,7 +362,7 @@ func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row 
 		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register an Agent for each Task that you hand out and brief each Agent.",
 	}, "\n")
 	if os.Getenv("HERDR_ENV") == "1" {
-		brief += "\nHerdr: bind yourself in this pane. Run me agent list for your current revision, then me herdr bind --agent " + id + " --expected-revision REVISION --operation-id orch-bind-1. If integration_missing, have the Operator run the named herdr integration install command and restart your harness in this pane, then bind again."
+		brief += "\nHerdr: keep this human-facing pane quiet with hook-only notices. Run me agent list for your current revision, then me herdr bind --notices hook --agent " + id + " --expected-revision REVISION --operation-id orch-bind-1. If integration_missing, have the Operator run the named herdr integration install command and restart your harness in this pane, then bind again."
 	}
 	if session, err := inspectSession(ctx, client, stack.Context{WorkspaceID: row.WorkspaceID, SessionID: row.SessionID}); err == nil && session.StandingOrders != nil {
 		brief += "\n" + strings.TrimSuffix(ordersReminder(session.StandingOrders, "me"), "\n")

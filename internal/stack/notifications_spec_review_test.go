@@ -114,6 +114,7 @@ func TestNoticeSpecMixedTaskSuppressionAndOutcomeRecovery(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			f.n.clock = func() time.Time { return time.Now().Add(noticeCooldown) }
 			if f.drain(t, 1).Submitted != 1 || f.prompts(t) != 2 {
 				t.Fatal("new pending arrival did not form one fresh submission")
 			}

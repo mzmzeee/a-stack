@@ -323,8 +323,8 @@ func flagLabel(fs *flag.FlagSet, name string) string {
 // no help shows the fallback VALUE.
 var flagValues = map[string]string{
 	"harness": "NAME", "native-session": "ID", "native-agent": "ID",
-	"remote":    "NAME",
-	"state-dir": "DIR", "agent-files": "FILE", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE", "output": "FILE",
+	"remote": "NAME",
+	"code":   "CODE", "state-dir": "DIR", "agent-files": "FILE", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE", "output": "FILE",
 	"herdr-executable": "FILE", "workspace": "ID", "session": "ID", "operation-id": "ID", "path": "DIR",
 	"name": "NAME", "orchestrator": "NAME", "agent": "ID", "worktree": "DIR", "new-credential-file": "FILE", "runtime-id": "ID",
 	"runtime-file": "FILE", "runtime-state": "STATE", "expected-revision": "N", "limit": "N", "after": "CURSOR",

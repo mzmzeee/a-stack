@@ -51,6 +51,9 @@ func herdrRequest(ctx context.Context, client *stack.Client, command string, f l
 	if command == "herdr focus" {
 		return client.Do(ctx, "POST", "/v1/herdr/focus", stack.HerdrFocusRequest{Context: ref, AgentID: f.agent})
 	}
+	if f.notices != "" && f.notices != "hook" && f.notices != "pane" {
+		return nil, invalid("--notices must be hook or pane")
+	}
 	// The pane gets the Agent's own name.
 	name, err := agentName(ctx, client, ref, f.agent)
 	if err != nil {
@@ -66,6 +69,7 @@ func herdrRequest(ctx context.Context, client *stack.Client, command string, f l
 	if err != nil {
 		return nil, err
 	}
+	binding.Notices = f.notices
 	worktree, err := os.Getwd()
 	if err != nil {
 		return nil, err

@@ -25,7 +25,7 @@ import time
 from urllib.parse import urlsplit
 
 REPO = Path(__file__).resolve().parent.parent
-NOTICE = "New a-stack Task mail may mention you. Only if this runtime has its own verified a-stack Agent registration, load the a-stack skill and check your own mail. Otherwise ignore this notice; do not register or discover credentials."
+NOTICE = "a-stack: new Task mail for you. If you are a registered a-stack Agent, run your mail check."
 SAMPLES, WARMUP = 20, 2
 
 
@@ -255,7 +255,7 @@ class Run:
             after = next_cursor
 
     def binding(self, actor, suffix, rebind=False):
-        binding = {'instance_id': 'fake-instance-' + suffix, 'herdr_alias': 'fake-' + suffix, 'endpoint': str(self.root / 'fake.sock'), 'pane_id': 'w1:p' + suffix,
+        binding = {'notices': 'pane', 'instance_id': 'fake-instance-' + suffix, 'herdr_alias': 'fake-' + suffix, 'endpoint': str(self.root / 'fake.sock'), 'pane_id': 'w1:p' + suffix,
                    'terminal_id': 'fake-terminal-' + suffix, 'native_session_id': 'fake-native-' + suffix, 'harness': 'codex', 'harness_version': '0.164.0'}
         path = self.root / ('binding-' + suffix + '.json')
         private_json(path, binding)
@@ -276,7 +276,7 @@ class Run:
                 harness.write_text('#!/bin/sh\necho codex-cli 0.164.0\n')
                 harness.chmod(0o700)
             env = {'HERDR_ENV': '1', 'HERDR_PANE_ID': binding['pane_id'], 'HERDR_SOCKET_PATH': binding['endpoint'], 'PATH': str(harness.parent) + os.pathsep + os.environ['PATH']}
-            receipt = self.cli('herdr', 'bind', *self.context, '--agent', actor['id'], '--herdr-executable', self.fake, '--expected-revision', revision,
+            receipt = self.cli('herdr', 'bind', *self.context, '--notices', 'pane', '--agent', actor['id'], '--herdr-executable', self.fake, '--expected-revision', revision,
                                '--operation-id', self.op(), actor=actor, env=env)
             check(receipt['outcome'] == 'attached', 'herdr bind did not attach')
         return binding
@@ -423,7 +423,10 @@ def scenario(run):
     run.stop()
     run.start(notices=True, missing=True)
     check(run.status(run.b)['targets'][0]['reason'] == 'notice_waiting_mail', 'restart lost unread notice hold')
-    run.read(shared, run.b)  # Re-arm before testing the next delivery failure.
+    run.read(shared, run.b)
+    check(run.status(run.b)['targets'][0]['next_attempt_unix_ms'] > 0, 'own read shortened pane cooldown')
+    # Use a fresh disposable runtime for the delivery-failure checks.
+    run.binding(run.b, 'b-next', rebind=True)
     run.mail(shared, 'Mail works without integration @03-worker')
     run.wait(lambda: run.status(run.b)['targets'][0]['reason'] == 'herdr_unavailable', 'missing integration lacks diagnostic')
     check(len(run.read(shared, run.b)['messages']) == 6, 'missing Herdr blocked mail')

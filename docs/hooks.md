@@ -185,7 +185,11 @@ The guard costs two reads at each stop: the assignments and the Task list. A wor
 
 ## Task mail nudge
 
-After a tool call or a prompt, the hook checks the Agent's normal Task mail, at most once every 30 seconds per harness session. When another assignee wrote since the last check, the agent gets this in its context:
+After a tool call, the hook checks the Agent's normal Task mail at most once every 30 seconds per harness session. A human prompt checks immediately, even inside that interval, and adds one line such as `5 new a-stack mails, run your mail check`. The count covers the bounded page fetched, not necessarily the whole backlog. It includes no Task titles or message bodies. Repeated prompts do not repeat mail already surfaced by that hook.
+
+This is how a `herdr bind --notices hook` Agent learns about mail without typed pane notices. The Orchestrator uses this mode by default. Its hooks must be enrolled; without hooks it must check mail itself.
+
+When a tool-result check finds mail from another assignee, the agent gets this in its context:
 
 ```text
 a-stack: New Task mail on "Build the parser"; load the a-stack skill, then run mail check.
@@ -195,7 +199,7 @@ The note names only the Task titles: no sender and no mail text. The agent then 
 
 The hook keeps its own mail cursor file, so it never moves the Agent's cursor file. There is one per Agent and harness session: `~/.cache/a-stack/hooks/AGENT_ID/HASH.json` (below `$XDG_CACHE_HOME` when set; on macOS below `~/Library/Caches`; on Windows `%LOCALAPPDATA%\a-stack-hooks\AGENT_ID\HASH.json`), where `HASH` comes from the Agent identity revision, harness and native session ID (plus subagent ID, when enrolled). The folder has mode 0700 and the files 0600. The hook removes files unused for 7 days. Deleting the folder is safe.
 
-- For normal mail, at `SessionStart`, or at the first check of a harness session, the hook reads up to the newest message and says nothing about earlier mail. The reminder already says to run `mail check`. When this first check runs out of time on a long backlog, it keeps its place in `HASH.first.json`, and the next hook run goes on from there, still without a note.
+- For normal mail, at `SessionStart`, or at the first tool check of a harness session, the hook reads up to the newest message and says nothing about earlier mail. The reminder already says to run `mail check`. When this first check runs out of time on a long backlog, it keeps its place in `HASH.first.json`, and the next hook run goes on from there, still without a note.
 - Each normal check moves the cursor past the messages it saw, so the hook names a normal message once. It skips urgent messages, which have their own high-water marks. Mail the Agent sent itself is skipped.
 - Of two hook runs of the same Agent at once, one checks and the other skips the check.
 - When the normal check fails, the hook waits 30 seconds before it checks again. When the cursor file is broken or a cursor no longer fits, it starts again at the newest message.

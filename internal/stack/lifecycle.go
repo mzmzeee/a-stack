@@ -94,6 +94,7 @@ type Agent struct {
 type RuntimeBinding struct {
 	Machine         string `json:"machine,omitempty"`
 	RemoteMachine   bool   `json:"remote_machine,omitempty"`
+	Notices         string `json:"notices,omitempty"`
 	InstanceID      string `json:"instance_id"`
 	HerdrAlias      string `json:"herdr_alias,omitempty"`
 	Endpoint        string `json:"endpoint,omitempty"`
@@ -507,6 +508,9 @@ func validateBinding(binding *RuntimeBinding, required bool) error {
 		}
 		return nil
 	}
+	if binding.Notices != "" && binding.Notices != "hook" && binding.Notices != "pane" {
+		return failure("invalid_input", "runtime notices must be hook or pane")
+	}
 	if binding.InstanceID == "" || len(binding.InstanceID) > 128 || !utf8.ValidString(binding.InstanceID) {
 		return failure("invalid_input", "runtime instance_id must contain 1–128 UTF-8 bytes")
 	}
@@ -572,6 +576,12 @@ func (s *Store) bindAgent(ctx context.Context, token, action string, r AgentBind
 			}
 			if _, remote := ActorFromContext(ctx); remote {
 				value.RemoteMachine = true
+			}
+			if value.Notices == "" {
+				value.Notices = "pane"
+				if session.OrchestratorID != nil && *session.OrchestratorID == agent.ID {
+					value.Notices = "hook"
+				}
 			}
 			b, _ := json.Marshal(value)
 			binding = string(b)
