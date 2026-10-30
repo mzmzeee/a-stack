@@ -27,9 +27,11 @@ CREATE INDEX mail_mentions_pending ON mail_mentions(notice_state,recipient_id,me
 CREATE INDEX mail_mentions_membership ON mail_mentions(task_id,recipient_id,notice_state,message_id);
 `
 
-const MaxMailBodyBytes = 64 << 10
-const MaxMailMentions = 500
-const mailResponseBudget = 768 << 10
+const (
+	MaxMailBodyBytes   = 64 << 10
+	MaxMailMentions    = 500
+	mailResponseBudget = 768 << 10
+)
 
 type NoticeState string
 
@@ -113,20 +115,24 @@ func nameTail(c byte) bool { return nameStart(c) || c == '_' || c == '-' }
 func mentionBoundary(r rune) bool {
 	return unicode.IsSpace(r) || unicode.Is(unicode.Ps, r) || unicode.Is(unicode.Pi, r) || r == '<'
 }
+
 func mentionNames(body string, explicit []string) ([]string, error) {
 	if err := validText("body", body, MaxMailBodyBytes, true); err != nil {
 		return nil, err
 	}
+
 	names := map[string]bool{}
 	for _, name := range explicit {
 		if !agentName.MatchString(name) {
 			return nil, failure("invalid_input", "invalid explicit mention name")
 		}
+
 		names[name] = true
 		if len(names) > MaxMailMentions {
 			return nil, failure("invalid_input", "message mentions more than 500 distinct agents")
 		}
 	}
+
 	var previous rune
 	var previousQuoteOpens, doubleQuoted, singleQuoted, escaped bool
 	for i, r := range body {
@@ -136,20 +142,24 @@ func mentionNames(body string, explicit []string) ([]string, error) {
 			for end < len(body) && nameTail(body[end]) {
 				end++
 			}
+
 			name := body[i+1 : end]
 			if len(name) > 64 {
 				return nil, failure("invalid_input", "mention name exceeds 64 bytes")
 			}
+
 			names[name] = true
 			if len(names) > MaxMailMentions {
 				return nil, failure("invalid_input", "message mentions more than 500 distinct agents")
 			}
 		}
+
 		quoteOpens := false
 		if !escaped && r == '"' {
 			quoteOpens = !doubleQuoted
 			doubleQuoted = !doubleQuoted
 		}
+
 		if !escaped && r == '\'' {
 			next, _ := utf8.DecodeRuneInString(body[i+1:])
 			wordBefore := unicode.IsLetter(previous) || unicode.IsDigit(previous)
@@ -160,7 +170,9 @@ func mentionNames(body string, explicit []string) ([]string, error) {
 				singleQuoted = !singleQuoted
 			}
 		}
+
 		previousQuoteOpens = quoteOpens
+
 		previous = r
 		if r == '\\' {
 			escaped = !escaped
@@ -168,32 +180,42 @@ func mentionNames(body string, explicit []string) ([]string, error) {
 			escaped = false
 		}
 	}
+
 	result := make([]string, 0, len(names))
 	for name := range names {
 		result = append(result, name)
 	}
+
 	sort.Strings(result)
+
 	return result, nil
 }
+
 func resolveMentions(ctx context.Context, tx *sql.Tx, task string, names []string) ([]string, error) {
 	ids := make([]string, 0, len(names))
 	var bad []string
 	for _, name := range names {
 		var id string
+
 		err := tx.QueryRowContext(ctx, "SELECT a.id FROM task_assignees m JOIN agents a ON a.id=m.agent_id WHERE m.task_id=? AND a.name=?", task, name).Scan(&id)
 		if errors.Is(err, sql.ErrNoRows) {
 			bad = append(bad, "@"+name)
 			continue
 		}
+
 		if err != nil {
 			return nil, err
 		}
+
 		ids = append(ids, id)
 	}
+
 	if len(bad) > 0 {
 		return nil, mentionError(ctx, tx, task, bad)
 	}
+
 	sort.Strings(ids)
+
 	return ids, nil
 }
 
@@ -205,52 +227,68 @@ func mentionError(ctx context.Context, tx *sql.Tx, task string, bad []string) er
 		return err
 	}
 	defer rows.Close()
+
 	var names []string
 	for rows.Next() {
 		var name string
 		if err = rows.Scan(&name); err != nil {
 			return err
 		}
+
 		names = append(names, name)
 	}
+
 	if err = rows.Err(); err != nil {
 		return err
 	}
+
 	if len(names) > 20 {
 		names = append(names[:20], "…")
 	}
+
 	verb := " is not a current assignee"
 	if len(bad) > 1 {
 		verb = " are not current assignees"
 	}
+
 	return failure("invalid_input", "mention target must be a current Task assignee: "+strings.Join(bad, ", ")+verb+" of this Task; assignees: "+strings.Join(names, ", ")+"; run mail recipients --task "+task+"; write other names without @")
 }
+
 func (s *Store) SendMail(ctx context.Context, token string, r MailSendRequest) (Receipt, error) {
 	if r.Priority == "normal" {
 		r.Priority = ""
 	} // preserve default-priority retry identity
+
 	names, prepareErr := mentionNames(r.Body, append(append([]string{}, r.Mentions...), r.AckFrom...))
+
 	return s.Mutate(ctx, token, operation(r.OperationID, "mail.send", r.SessionID, r), func(ctx context.Context, tx *sql.Tx, p Principal, receipt Receipt) error {
 		var taskID string
+
 		err := tx.QueryRowContext(ctx, "SELECT task_id FROM mail_messages WHERE id=?", receipt.ResourceID).Scan(&taskID)
 		if errors.Is(err, sql.ErrNoRows) {
 			return failure("not_found", "message not found")
 		}
+
 		if err != nil {
 			return err
 		}
+
 		_, err = ReadAssignedTask(ctx, tx, p, r.Context, taskID)
+
 		return err
 	}, func(ctx context.Context, tx *sql.Tx, p Principal) (Receipt, error) {
 		if _, err := OpenSession(ctx, tx, p, r.Context); err != nil {
 			return Receipt{}, err
 		}
+
 		if _, err := ReadAssignedTask(ctx, tx, p, r.Context, r.TaskID); err != nil {
 			return Receipt{}, err
 		}
+
 		if prepareErr != nil {
 			return Receipt{}, prepareErr
 		}
+
 		return appendMailTx(ctx, tx, p, r, names)
 	})
 }
@@ -259,39 +297,49 @@ func appendMailTx(ctx context.Context, tx *sql.Tx, p Principal, r MailSendReques
 	if r.Priority == "" {
 		r.Priority = "normal"
 	}
+
 	if r.Priority != "normal" && r.Priority != "urgent" {
 		return Receipt{}, failure("invalid_input", "mail priority must be normal or urgent")
 	}
+
 	recipients, err := resolveMentions(ctx, tx, r.TaskID, names)
 	if err != nil {
 		return Receipt{}, err
 	}
+
 	var sequence int64
 	if err = tx.QueryRowContext(ctx, "SELECT COALESCE(MAX(sequence),0)+1 FROM mail_messages WHERE task_id=?", r.TaskID).Scan(&sequence); err != nil {
 		return Receipt{}, err
 	}
+
 	id, timestamp := opaqueID(), now()
+
 	_, err = tx.ExecContext(ctx, "INSERT INTO mail_messages(id,task_id,sequence,sender_id,received_at,body,priority) VALUES(?,?,?,?,?,?,?)", id, r.TaskID, sequence, p.SubjectID, timestamp, r.Body, r.Priority)
 	if err != nil {
 		return Receipt{}, err
 	}
+
 	for _, recipient := range recipients {
 		state := NoticePending
 		if recipient == p.SubjectID {
 			state = NoticeSelf
 		}
+
 		if _, err = tx.ExecContext(ctx, "INSERT INTO mail_mentions VALUES(?,?,?,?,?)", id, r.TaskID, recipient, state, timestamp); err != nil {
 			return Receipt{}, err
 		}
 	}
+
 	if err = appendMailAcks(ctx, tx, r, id, recipients); err != nil {
 		return Receipt{}, err
 	}
+
 	// The Task item's mail_count changes, so the Session read revision moves on
 	// and a polling view sees the new message.
 	if err = bumpSessionRead(ctx, tx, r.SessionID); err != nil {
 		return Receipt{}, err
 	}
+
 	// Revision is the append-only Task sequence; body_ref names the one stored
 	// message, never a second body or a response snapshot.
 	return Receipt{ResourceID: id, BodyRef: id, Revision: sequence, Outcome: "sent"}, nil
@@ -304,46 +352,58 @@ func suppressTaskMentions(ctx context.Context, tx *sql.Tx, task, recipient strin
 	if err != nil {
 		return err
 	}
+
 	_, err = tx.ExecContext(ctx, "UPDATE mail_acks SET withdrawn_at=?,reminder_state=CASE WHEN reminder_state IN ('pending','submitting') THEN 'suppressed' ELSE reminder_state END WHERE task_id=? AND recipient_id=? AND acked_at='' AND withdrawn_at=''", now(), task, recipient)
 	return err
 }
+
 func readMailMessage(ctx context.Context, tx *sql.Tx, task string, sequence int64) (MailMessage, error) {
 	message := MailMessage{MentionIDs: []string{}}
 	err := tx.QueryRowContext(ctx, "SELECT m.id,m.task_id,m.sequence,m.sender_kind,COALESCE(m.sender_id,''),COALESCE(a.name,''),m.received_at,m.body,m.priority,COALESCE(m.actor_login,''),COALESCE(m.actor_name,'') FROM mail_messages m LEFT JOIN agents a ON a.id=m.sender_id WHERE m.task_id=? AND m.sequence=?", task, sequence).Scan(&message.ID, &message.TaskID, &message.Sequence, &message.SenderKind, &message.SenderID, &message.SenderName, &message.ReceivedAt, &message.Body, &message.Priority, &message.ActorLogin, &message.ActorName)
 	if err != nil {
 		return message, err
 	}
+
 	if message.SenderKind == "operator" {
 		message.SenderName = operatorLabel(message.ActorLogin, message.ActorName)
 	} else {
 		message.SenderKind = ""
 	}
+
 	rows, err := tx.QueryContext(ctx, "SELECT recipient_id FROM mail_mentions WHERE message_id=? ORDER BY recipient_id", message.ID)
 	if err != nil {
 		return message, err
 	}
 	defer rows.Close()
+
 	for rows.Next() {
 		var id string
 		if err = rows.Scan(&id); err != nil {
 			return message, err
 		}
+
 		message.MentionIDs = append(message.MentionIDs, id)
 	}
+
 	if err = rows.Err(); err != nil {
 		return message, err
 	}
+
 	rows.Close()
 	message.Acks, err = readMailAcks(ctx, tx, task, message.ID)
+
 	return message, err
 }
+
 func mailLimit(limit int) (int, error) {
 	if limit == 0 {
 		return 100, nil
 	}
+
 	if limit < 1 || limit > 500 {
 		return 0, failure("invalid_input", "mail limit must be 1–500")
 	}
+
 	return limit, nil
 }
 func jsonBytes(v any) int { b, _ := json.Marshal(v); return len(b) }

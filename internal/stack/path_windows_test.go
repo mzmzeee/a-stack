@@ -11,11 +11,11 @@ import (
 func TestResolveJunction(t *testing.T) {
 	root := privateTestDir(t)
 	target := filepath.Join(root, "target")
-	if err := os.Mkdir(target, 0700); err != nil {
+	if err := os.Mkdir(target, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	file := filepath.Join(target, "file")
-	if err := os.WriteFile(file, nil, 0600); err != nil {
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	junction := filepath.Join(root, "junction")
@@ -28,7 +28,7 @@ func TestResolveJunction(t *testing.T) {
 	if err != nil || wantErr != nil || !strings.EqualFold(resolved, want) {
 		t.Fatal(resolved, want, err, wantErr)
 	}
-	if err := os.Mkdir(filepath.Join(target, ".git"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(target, ".git"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := statePath(filepath.Join(junction, "missing-state")); err == nil {

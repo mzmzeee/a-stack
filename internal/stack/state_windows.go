@@ -112,7 +112,7 @@ func privateSDDL(sid string) string {
 // private access list. An existing folder keeps its ACL and must pass the
 // same privacy check before it is used.
 func MkdirPrivate(dir string) error {
-	if err := os.MkdirAll(filepath.Dir(dir), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
 		return err
 	}
 	token, err := syscall.OpenCurrentProcessToken()

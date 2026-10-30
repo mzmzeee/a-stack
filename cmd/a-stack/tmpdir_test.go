@@ -17,15 +17,18 @@ func TestMain(m *testing.M) {
 	if resolved, err := filepath.EvalSymlinks(tmp); err == nil {
 		tmp = resolved
 	}
+
 	for dir := tmp; ; dir = filepath.Dir(dir) {
 		if _, err := os.Lstat(filepath.Join(dir, ".git")); err == nil {
 			fmt.Fprintf(os.Stderr, "TMPDIR is inside a Git checkout: %s\n", os.TempDir())
 			os.Exit(1)
 		}
+
 		if filepath.Dir(dir) == dir {
 			break
 		}
 	}
+
 	os.Exit(m.Run())
 }
 
@@ -36,6 +39,7 @@ const posixModes = runtime.GOOS != "windows"
 // unixOnly skips a test on Windows.
 func unixOnly(t *testing.T, why string) {
 	t.Helper()
+
 	if !posixModes {
 		t.Skip("not on Windows: " + why)
 	}
@@ -45,14 +49,17 @@ func unixOnly(t *testing.T, why string) {
 // Windows sends no signal to another process, so there it kills the child.
 func stopServe(t *testing.T, command *exec.Cmd, sig syscall.Signal) {
 	t.Helper()
+
 	if !posixModes {
 		_ = command.Process.Kill()
 		_ = command.Wait()
 		return
 	}
+
 	if command.Process.Signal(sig) != nil {
 		t.Fatal("signal")
 	}
+
 	if err := command.Wait(); err != nil {
 		t.Fatal("stop:", err)
 	}

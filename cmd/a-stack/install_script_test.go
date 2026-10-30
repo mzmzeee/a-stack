@@ -25,34 +25,42 @@ func TestInstallScriptChecksTheSignature(t *testing.T) {
 	if runtime.GOARCH != "amd64" && runtime.GOARCH != "arm64" {
 		t.Skip("install.sh supports amd64 and arm64")
 	}
+
 	for _, tool := range []string{"sh", "curl", "tar", "awk"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skip(tool + " is not installed")
 		}
 	}
+
 	// macOS has LibreSSL, so only the cases without OpenSSL 3 run there,
 	// unless Homebrew's OpenSSL 3 is on PATH.
 	out, _ := exec.Command("openssl", "version").Output()
 	openSSL3 := strings.HasPrefix(string(out), "OpenSSL 3")
+
 	original, err := os.ReadFile("../../install.sh")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	der, _ := x509.MarshalPKIXPublicKey(testKey.Public())
 	realKey, _ := x509.MarshalPKIXPublicKey(releaseKey)
+
 	script := filepath.Join(t.TempDir(), "install.sh")
 	replaced := strings.Replace(string(original), string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: realKey})), string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der})), 1)
 	if replaced == string(original) {
 		t.Fatal("install.sh does not have the release key in PEM form")
 	}
+
 	if err = os.WriteFile(script, []byte(replaced), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	// A fake openssl that is not OpenSSL 3.
 	oldSSL := t.TempDir()
 	if err = os.WriteFile(filepath.Join(oldSSL, "openssl"), []byte("#!/bin/sh\necho 'LibreSSL 3.8.2'\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+
 	// A fake macOS with LibreSSL, as there: on arm64, on Intel, and on Apple
 	// silicon under Rosetta, where uname says x86_64.
 	fakeMac := func(machine, translated string) string {
@@ -66,6 +74,7 @@ func TestInstallScriptChecksTheSignature(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+
 		return dir
 	}
 	mac, intel, rosetta := fakeMac("arm64", "0"), fakeMac("x86_64", "0"), fakeMac("x86_64", "1")
@@ -77,6 +86,7 @@ func TestInstallScriptChecksTheSignature(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
 	// A Mac with OpenSSL 3 from Homebrew in its default place checks the
 	// signature even when openssl on PATH is LibreSSL.
 	homebrewSSL := false
@@ -85,6 +95,7 @@ func TestInstallScriptChecksTheSignature(t *testing.T) {
 			homebrewSSL = true
 		}
 	}
+
 	const require = "A_STACK_REQUIRE_SIGNATURE=1"
 	const handCheck = "To check it, install OpenSSL 3 (on macOS: brew install openssl@3) and run the script again, or see https://github.com/mzmzeee/a-stack/blob/main/docs/install.md#how-releases-are-verified"
 
@@ -116,50 +127,62 @@ func TestInstallScriptChecksTheSignature(t *testing.T) {
 			if (c.path == "" || homebrew) && !openSSL3 {
 				t.Skip("OpenSSL 3 is not installed")
 			}
+
 			if c.path == oldSSL && homebrewSSL {
 				t.Skip("this machine has OpenSSL 3 from Homebrew")
 			}
+
 			mirror := t.TempDir()
+
 			tag := c.tag
 			if tag == "latest" {
 				tag = "v0.2.0"
 			}
+
 			archive := tarGz(t, map[string]string{"a-stack": fakeBinary(tag)})
 			name := releaseArchive(runtime.GOOS, runtime.GOARCH)
 			if c.archive != "" {
 				goos, goarch, _ := strings.Cut(c.archive, "_")
 				name = releaseArchive(goos, goarch)
 			}
+
 			sum := sha256.Sum256(archive)
 			sums := []byte(hex.EncodeToString(sum[:]) + "  " + name + "\n")
+
 			sig := ed25519.Sign(testKey, sums)
 			if c.sig == "bad" {
 				sig[0]++
 			}
+
 			for _, dir := range []string{filepath.Join(mirror, "download", tag), filepath.Join(mirror, "latest", "download")} {
 				files := map[string][]byte{name: archive, "SHA256SUMS": sums}
 				if c.sig != "missing" {
 					files["SHA256SUMS.sig"] = sig
 				}
+
 				if err := os.MkdirAll(dir, 0o700); err != nil {
 					t.Fatal(err)
 				}
+
 				for name, data := range files {
 					if err := os.WriteFile(filepath.Join(dir, name), data, 0o600); err != nil {
 						t.Fatal(err)
 					}
 				}
 			}
+
 			bin := t.TempDir()
 			cmd := exec.Command("sh", script)
 			cmd.Env = append(os.Environ(), "HOMEBREW_PREFIX=", "A_STACK_REQUIRE_SIGNATURE=", "A_STACK_BASE_URL=file://"+mirror, "A_STACK_VERSION="+c.tag, "A_STACK_INSTALL_DIR="+bin, "PATH="+c.path+":"+os.Getenv("PATH"))
 			cmd.Env = append(cmd.Env, c.env...)
 			var stdout, stderr strings.Builder
+
 			cmd.Stdout, cmd.Stderr = &stdout, &stderr
 			err := cmd.Run()
 			if (err == nil) != c.ok || !strings.Contains(stdout.String()+stderr.String(), c.want) || !strings.Contains(stderr.String(), c.stderr) {
 				t.Fatalf("exit %v, stdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 			}
+
 			if _, err := os.Stat(filepath.Join(bin, "a-stack")); (err == nil) != c.ok {
 				t.Fatalf("installed=%v, want %v", err == nil, c.ok)
 			}

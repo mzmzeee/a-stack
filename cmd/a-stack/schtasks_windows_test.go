@@ -13,7 +13,7 @@ import (
 func TestEncodedTaskAction(t *testing.T) {
 	if output := os.Getenv("ASTACK_TEST_ENCODED_TASK"); output != "" {
 		data, _ := json.Marshal(os.Args[1:])
-		if err := os.WriteFile(output, data, 0600); err != nil {
+		if err := os.WriteFile(output, data, 0o600); err != nil {
 			os.Exit(99)
 		}
 		os.Exit(23)
@@ -28,10 +28,10 @@ func TestEncodedTaskAction(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Dir(exe), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(exe), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(exe, data, 0700); err != nil {
+	if err := os.WriteFile(exe, data, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	state := filepath.Join(root, "état '%TEMP%' & space") + `\`

@@ -25,26 +25,34 @@ func TestSnapshotETagChangesWhenTheAgeRuleArchives(t *testing.T) {
 	f.progress(t, done, "finished")
 	_, token := viewTest(t, f, f.ref(0))
 	poll := viewPoller(t, f, token)
+
 	status, tag, first := poll(0, "")
 	revision := first.Session.ReadRevision
 	if status != 200 || first.Unchanged {
 		t.Fatal("first poll", status)
 	}
+
 	at(ArchiveAge - time.Second)
+
 	if status, _, _ = poll(revision, tag); status != 304 {
 		t.Fatal("a quiet Session changed before the age rule", status)
 	}
+
 	at(ArchiveAge + time.Second)
+
 	status, newTag, answer := poll(revision, tag)
 	if status != 200 || answer.Unchanged || answer.Counts == nil || newTag == tag || answer.Session.ReadRevision != revision {
 		t.Fatalf("age rule did not reach the view: %d %q %+v", status, newTag, answer)
 	}
+
 	if task := f.show(t, done); !task.Archived || task.ArchivedReason != "age" {
 		t.Fatal("not archived by age", task.ArchivedReason)
 	}
+
 	if status, _, _ = poll(revision, newTag); status != 304 {
 		t.Fatal("the new ETag is not stable", status)
 	}
+
 	// An ETag from an older service has no mark and gets the full answer once.
 	if status, _, answer = poll(revision, `"`+f.ref(0).SessionID+`:1"`); status != 200 || answer.Unchanged {
 		t.Fatal("an old ETag kept the view unchanged", status)
@@ -54,6 +62,7 @@ func TestSnapshotETagChangesWhenTheAgeRuleArchives(t *testing.T) {
 // viewPoller returns one refresh of app.js: known_revision and the last ETag.
 func viewPoller(t *testing.T, f taskTeam, token string) func(known int64, tag string) (int, string, SessionSnapshot) {
 	client := &http.Client{Transport: &http.Transport{DisableKeepAlives: true}}
+
 	return func(known int64, tag string) (int, string, SessionSnapshot) {
 		t.Helper()
 		body, _ := json.Marshal(SnapshotRequest{Context: f.ref(0), KnownRevision: known})
@@ -61,20 +70,24 @@ func viewPoller(t *testing.T, f taskTeam, token string) func(known int64, tag st
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-A-Stack-Instance", f.service.Discovery.InstanceID)
 		req.Header.Set("Authorization", "Bearer "+token)
+
 		if tag != "" {
 			req.Header.Set("If-None-Match", tag)
 		}
+
 		r, err := client.Do(req)
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer r.Body.Close()
+
 		var answer struct {
 			Data SessionSnapshot `json:"data"`
 		}
 		if r.StatusCode == 200 && json.NewDecoder(r.Body).Decode(&answer) != nil {
 			t.Fatal("snapshot answer")
 		}
+
 		return r.StatusCode, r.Header.Get("ETag"), answer.Data
 	}
 }

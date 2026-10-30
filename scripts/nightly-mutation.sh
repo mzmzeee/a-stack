@@ -13,7 +13,7 @@ go install github.com/go-gremlins/gremlins/cmd/gremlins@v0.6.0
 excludes=()
 while IFS= read -r file; do
   case "$file" in
-    internal/stack/lifecycle.go|internal/stack/tasks.go|internal/stack/mail_reads.go) ;;
+    internal/stack/lifecycle.go | internal/stack/tasks.go | internal/stack/mail_reads.go) ;;
     *) excludes+=(--exclude-files "(^|/)$(basename "$file" .go)\\.go$") ;;
   esac
 done < <(find internal/stack -maxdepth 1 -name '*.go' -type f | sort)

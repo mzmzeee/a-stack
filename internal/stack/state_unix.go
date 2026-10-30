@@ -15,9 +15,10 @@ import (
 
 func checkPrivate(info os.FileInfo, directory bool) error {
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || int(stat.Uid) != os.Geteuid() || info.Mode().Perm()&0077 != 0 || (directory && !info.IsDir()) || (!directory && !info.Mode().IsRegular()) {
+	if !ok || int(stat.Uid) != os.Geteuid() || info.Mode().Perm()&0o077 != 0 || (directory && !info.IsDir()) || (!directory && !info.Mode().IsRegular()) {
 		return failure("invalid_input", "state and credential paths must be owned by this user with owner-only permissions and no symlinks")
 	}
+
 	return nil
 }
 
@@ -28,10 +29,12 @@ func openPrivate(path string, write bool) (*os.File, error) {
 	if write {
 		flags = syscall.O_CREAT | syscall.O_RDWR
 	}
-	fd, err := syscall.Open(path, flags|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0600)
+
+	fd, err := syscall.Open(path, flags|syscall.O_NOFOLLOW|syscall.O_CLOEXEC, 0o600)
 	if err != nil {
 		return nil, err
 	}
+
 	return os.NewFile(uintptr(fd), path), nil
 }
 
@@ -42,28 +45,34 @@ func lockFile(path string) (*os.File, error) {
 	if err != nil {
 		return nil, storageError(err)
 	}
+
 	info, err := f.Stat()
 	if err == nil {
 		err = checkPrivate(info, false)
 	}
+
 	if err != nil {
 		f.Close()
 		return nil, err
 	}
+
 	if err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
 		f.Close()
+
 		if errors.Is(err, syscall.EWOULDBLOCK) {
 			return nil, ErrStateOwned
 		}
+
 		return nil, storageError(err)
 	}
+
 	return f, nil
 }
 
 func unlockFile(f *os.File) { _ = syscall.Flock(int(f.Fd()), syscall.LOCK_UN); _ = f.Close() }
 
 // MkdirPrivate creates dir and its missing parents; dir gets mode 0700.
-func MkdirPrivate(dir string) error { return os.MkdirAll(dir, 0700) }
+func MkdirPrivate(dir string) error { return os.MkdirAll(dir, 0o700) }
 
 // defaultStateRoot is the folder for the state directory when
 // XDG_STATE_HOME is not set.
@@ -72,6 +81,7 @@ func defaultStateRoot() (string, error) {
 	if err != nil {
 		return "", failure("invalid_input", "cannot find home directory")
 	}
+
 	return filepath.Join(home, ".local", "state"), nil
 }
 
@@ -84,9 +94,11 @@ func syncDir(path string) error {
 		return storageError(err)
 	}
 	defer f.Close()
+
 	if f.Sync() != nil {
 		return storageError()
 	}
+
 	return nil
 }
 
@@ -97,6 +109,7 @@ func diskFree(path string) (uint64, error) {
 	if err := syscall.Statfs(path, &st); err != nil {
 		return 0, err
 	}
+
 	return uint64(st.Bavail) * uint64(st.Bsize), nil
 }
 
@@ -105,6 +118,7 @@ func checkPrivateDirectory(path string) error {
 	if err != nil {
 		return err
 	}
+
 	return checkPrivate(info, true)
 }
 
@@ -113,5 +127,6 @@ func openPrivateAppend(path string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return os.NewFile(uintptr(fd), path), nil
 }

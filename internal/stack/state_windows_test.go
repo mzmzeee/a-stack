@@ -130,7 +130,7 @@ func TestDefaultStateDirIsInLocalAppData(t *testing.T) {
 func TestRenameWaitsForReader(t *testing.T) {
 	dir := t.TempDir()
 	target, tmp := filepath.Join(dir, "service.json"), filepath.Join(dir, "new")
-	if os.WriteFile(target, []byte("old"), 0600) != nil || os.WriteFile(tmp, []byte("new"), 0600) != nil {
+	if os.WriteFile(target, []byte("old"), 0o600) != nil || os.WriteFile(tmp, []byte("new"), 0o600) != nil {
 		t.Fatal("write")
 	}
 	reader, err := os.Open(target)
@@ -187,7 +187,7 @@ func TestPrivateReadSkipsLinks(t *testing.T) {
 func TestRejectSharedWindowsPaths(t *testing.T) {
 	dir := privateTestDir(t)
 	file := filepath.Join(dir, "credential.json")
-	if err := os.WriteFile(file, []byte("secret"), 0600); err != nil {
+	if err := os.WriteFile(file, []byte("secret"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	setACL := func(path, text string) {
@@ -235,6 +235,7 @@ type reparseFileInfo struct{ os.FileInfo }
 func (reparseFileInfo) Sys() any {
 	return &syscall.Win32FileAttributeData{FileAttributes: syscall.FILE_ATTRIBUTE_REPARSE_POINT}
 }
+
 func TestPrivateRejectsReparseAttributes(t *testing.T) {
 	dir := privateTestDir(t)
 	info, err := os.Stat(dir)
@@ -245,7 +246,7 @@ func TestPrivateRejectsReparseAttributes(t *testing.T) {
 		t.Fatal("accepted a reparse directory")
 	}
 	file := filepath.Join(dir, "file")
-	if err := os.WriteFile(file, nil, 0600); err != nil {
+	if err := os.WriteFile(file, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
 	info, err = os.Stat(file)

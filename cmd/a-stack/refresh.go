@@ -54,38 +54,48 @@ func refreshFile(file, name string, content []byte) (bool, error) {
 	if os.IsNotExist(err) {
 		return false, nil
 	}
+
 	if err != nil {
 		return false, err
 	}
+
 	if !info.Mode().IsRegular() || info.Size() > 1<<20 {
 		return false, nil
 	}
+
 	for dir := filepath.Dir(file); ; dir = filepath.Dir(dir) {
 		info, err := os.Lstat(dir)
 		if err != nil {
 			return false, err
 		}
+
 		if info.Mode()&os.ModeSymlink != 0 {
 			return false, nil
 		}
+
 		if filepath.Dir(dir) == dir {
 			break
 		}
 	}
+
 	old, err := os.ReadFile(file)
 	if err != nil {
 		return false, err
 	}
+
 	if bytes.Equal(old, content) {
 		return false, nil
 	}
+
 	sum := sha256.Sum256(old)
 	if !slices.Contains(installedHashes[name], hex.EncodeToString(sum[:])) {
 		return false, nil
 	}
+
 	if err := writeAtomic(file, content, info.Mode().Perm()); err != nil {
 		return false, err
 	}
+
 	return true, nil
 }
 
@@ -95,17 +105,21 @@ func refreshSkill(folder string) ([]string, error) {
 		if err != nil || d.IsDir() {
 			return err
 		}
+
 		content, err := skills.FS.ReadFile(name)
 		if err != nil {
 			return err
 		}
+
 		file := filepath.Join(folder, filepath.FromSlash(strings.TrimPrefix(name, skillName+"/")))
 		changed, err := refreshFile(file, name, content)
 		if changed {
 			files = append(files, file)
 		}
+
 		return err
 	})
+
 	return files, err
 }
 
@@ -119,8 +133,10 @@ func refreshInstalledFiles(machine bool, stdout io.Writer) error {
 		if err != nil {
 			return err
 		}
+
 		targets = append(targets, paths...)
 	}
+
 	var settings map[string]string
 	if shimsSupported {
 		var err error
@@ -129,63 +145,78 @@ func refreshInstalledFiles(machine bool, stdout io.Writer) error {
 			return err
 		}
 	}
+
 	var refreshErr error
 	for _, folder := range targets {
 		changed, err := refreshSkill(folder)
 		refreshErr = errors.Join(refreshErr, err)
+
 		if len(changed) > 0 {
 			folders = append(folders, folder)
 			files = append(files, changed...)
 		}
 	}
+
 	if shimsSupported {
 		for _, harness := range []string{"pi", "opencode"} {
 			shim := shims[harness]
 			file := filepath.Join(filepath.Dir(settings[harness]), shim.path)
 			changed, err := refreshFile(file, harness, []byte(shim.content))
 			refreshErr = errors.Join(refreshErr, err)
+
 			if changed {
 				files = append(files, file)
 			}
 		}
 	}
+
 	warnings := []string{}
+
 	migrated := false
 	for _, project := range []bool{false, true} {
 		flags := hookFlags{claude: true, codex: true, pi: !project && shimsSupported, opencode: !project && shimsSupported}
+
 		configs, err := hookSettings(flags, project)
 		if err != nil {
 			refreshErr = errors.Join(refreshErr, err)
 			continue
 		}
+
 		for _, harness := range []string{"claude", "codex", "pi", "opencode"} {
 			file, ok := configs[harness]
 			if !ok {
 				continue
 			}
+
 			changed, err := refreshHookCommands(file, harness)
 			refreshErr = errors.Join(refreshErr, err)
+
 			if changed {
 				files = append(files, file)
 				migrated = true
 			}
 		}
 	}
+
 	if migrated {
 		warnings = append(warnings, hookMigrationNotice)
 	}
+
 	if machine {
 		return errors.Join(refreshErr, json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"skills": folders, "refreshed_files": files, "warnings": warnings}}))
 	}
+
 	for _, warning := range warnings {
 		if _, err := io.WriteString(stdout, warning+"\n"); err != nil {
 			return err
 		}
 	}
+
 	for _, file := range files {
 		if _, err := io.WriteString(stdout, "Refreshed "+file+"\n"); err != nil {
 			return err
 		}
 	}
+
 	return refreshErr
 }

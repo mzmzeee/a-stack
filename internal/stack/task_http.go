@@ -7,8 +7,10 @@ func taskReadEndpoint(path string) bool {
 	case "/v1/task/claims", "/v1/session/snapshot", "/v1/session/page", "/v1/task/list", "/v1/task/show", "/v1/task/history", "/v1/task/assignees", "/v1/task/references", "/v1/task/dependencies":
 		return true
 	}
+
 	return false
 }
+
 func (s *Service) taskHTTP(w http.ResponseWriter, r *http.Request, token string) bool {
 	var request any
 	action := ""
@@ -52,17 +54,21 @@ func (s *Service) taskHTTP(w http.ResponseWriter, r *http.Request, token string)
 	default:
 		return false
 	}
+
 	if r.Method != http.MethodPost {
 		writeError(w, failure("invalid_input", "POST JSON required"))
 		return true
 	}
+
 	if action != "" {
 		request = &TaskChangeRequest{}
 	}
+
 	if err := requestJSON(w, r, request); err != nil {
 		writeError(w, err)
 		return true
 	}
+
 	var data any
 	var err error
 	switch q := request.(type) {
@@ -91,17 +97,21 @@ func (s *Service) taskHTTP(w http.ResponseWriter, r *http.Request, token string)
 		case "/v1/task/dependencies":
 			kind = "dependencies"
 		}
+
 		if kind != "" && r.URL.Path != "/v1/task/list" && q.TaskID == "" {
 			writeError(w, failure("invalid_input", "Task ID required"))
 			return true
 		}
+
 		if kind != "" {
 			if q.Kind != "" && q.Kind != kind {
 				writeError(w, failure("invalid_input", "page kind does not match endpoint"))
 				return true
 			}
+
 			q.Kind = kind
 		}
+
 		data, err = s.Store.SnapshotPage(r.Context(), token, *q)
 	case *TaskCreateRequest:
 		data, err = s.Store.CreateTask(r.Context(), token, *q)
@@ -112,15 +122,19 @@ func (s *Service) taskHTTP(w http.ResponseWriter, r *http.Request, token string)
 		if r.URL.Path == "/v1/dependency/remove" {
 			action = "remove"
 		}
+
 		data, err = s.Store.ChangeDependency(r.Context(), token, action, *q)
 	}
+
 	if r.URL.Path == "/v1/session/snapshot" && s.Store.lowDisk() {
 		w.Header().Set("X-A-Stack-Low-Disk", "1") // the browser view's footer warning
 	}
+
 	if err != nil {
 		writeError(w, err)
 	} else if !snapshotConditional(w, r, data) {
 		writeJSON(w, http.StatusOK, map[string]any{"data": data})
 	}
+
 	return true
 }

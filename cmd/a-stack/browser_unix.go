@@ -13,5 +13,6 @@ func openURL(url string) error {
 	if runtime.GOOS == "darwin" {
 		opener = "open"
 	}
+
 	return exec.Command(opener, url).Run()
 }

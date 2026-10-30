@@ -22,14 +22,17 @@ func (s *Service) mailHTTP(w http.ResponseWriter, r *http.Request, token string)
 	default:
 		return false
 	}
+
 	if r.Method != http.MethodPost {
 		writeError(w, failure("invalid_input", "POST JSON required"))
 		return true
 	}
+
 	if err := requestJSON(w, r, request); err != nil {
 		writeError(w, err)
 		return true
 	}
+
 	var data any
 	var err error
 	switch q := request.(type) {
@@ -48,10 +51,12 @@ func (s *Service) mailHTTP(w http.ResponseWriter, r *http.Request, token string)
 	case *MailCheckRequest:
 		data, err = s.Store.CheckMail(r.Context(), token, *q)
 	}
+
 	if err != nil {
 		writeError(w, err)
 	} else {
 		writeJSON(w, http.StatusOK, map[string]any{"data": data})
 	}
+
 	return true
 }

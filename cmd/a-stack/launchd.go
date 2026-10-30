@@ -49,6 +49,7 @@ func launchdPrint(label string) (state, path string) {
 	if err != nil {
 		return "", ""
 	}
+
 	for _, line := range strings.Split(out, "\n") {
 		line = strings.TrimSpace(line)
 		if v, ok := strings.CutPrefix(line, "state = "); ok && state == "" {
@@ -57,9 +58,11 @@ func launchdPrint(label string) (state, path string) {
 			path = v
 		}
 	}
+
 	if state == "" {
 		state = "loaded"
 	}
+
 	return state, path
 }
 
@@ -67,10 +70,12 @@ func launchdPrint(label string) (state, path string) {
 // runs.
 func launchdProgram(label string) (binary, state string, running bool) {
 	active, path := launchdPrint(label)
+
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return "", "", false
 	}
+
 	binary, state = plistCommand(string(content))
 	return binary, state, active == "running"
 }
@@ -94,10 +99,12 @@ func renderPlist(label, exe, state, log string) (string, error) {
 		if !utf8.ValidString(v) || strings.ContainsFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f || r == 0xfffe || r == 0xffff }) {
 			return "", invalid("cannot write a path with control characters or invalid UTF-8 into the plist: " + printable(v))
 		}
+
 		var b strings.Builder
 		_ = xml.EscapeText(&b, []byte(v))
 		values[i] = b.String()
 	}
+
 	return plistHead + fmt.Sprintf(`	<key>Label</key>
 	<string>%s</string>
 	<key>ProgramArguments</key>
@@ -140,6 +147,7 @@ func plistCommand(content string) (binary, state string) {
 	if xml.Unmarshal([]byte(content), &plist) != nil {
 		return "", ""
 	}
+
 	items := plist.Dict.Items
 	for i, item := range items {
 		if item.XMLName.Local == "key" && item.Text == "ProgramArguments" && i+1 < len(items) {
@@ -153,6 +161,7 @@ func plistCommand(content string) (binary, state string) {
 			}
 		}
 	}
+
 	return binary, state
 }
 
@@ -165,27 +174,33 @@ func launchdCommand(command, label, file, state, home string, data map[string]an
 		return launchdInstall(label, target, file, state, log, data)
 	case "service uninstall":
 		data["removed"] = false
+
 		_, err := os.Lstat(file)
 		loaded := launchdState(label) != ""
 		if err != nil && !loaded {
 			return []string{label + " is not installed in " + file + "."}, nil
 		}
+
 		// An agent stays loaded after its plist is gone, until bootout.
 		if loaded {
 			if out, err := launchctl("bootout", target); err != nil {
 				return nil, launchdFailed("bootout "+target, out)
 			}
 		}
+
 		done := "Stopped " + label + " and unloaded it from launchd; " + file + " was already gone."
 		if err == nil {
 			if err := os.Remove(file); err != nil {
 				return nil, &stack.Error{Code: "storage_unavailable", Message: "cannot remove " + file + ": " + err.Error()}
 			}
+
 			data["removed"] = true
 			done = "Stopped " + label + ", unloaded it from launchd and removed " + file + "."
 		}
+
 		return []string{done, "The state directory, your data and the log " + log + " stay as they are."}, nil
 	}
+
 	return launchdStatus(label, file, state, log, data), nil
 }
 
@@ -194,10 +209,12 @@ func launchdInstall(label, target, file, state, log string, data map[string]any)
 	if err != nil {
 		return nil, err
 	}
+
 	content, err := renderPlist(label, exe, state, log)
 	if err != nil {
 		return nil, err
 	}
+
 	// Only one service can own a state directory, as with systemd.
 	loaded := launchdState(label) != ""
 	if !loaded {
@@ -205,19 +222,23 @@ func launchdInstall(label, target, file, state, log string, data map[string]any)
 			return nil, &stack.Error{Code: "conflict", Message: "a-stack serve already runs for " + state + " outside launchd; press Ctrl-C in its terminal first, then run a-stack service install again"}
 		}
 	}
+
 	if err := configureServiceShare(state, data); err != nil {
 		return nil, err
 	}
+
 	status, err := installFile(file, content)
 	if err != nil {
 		return nil, err
 	}
+
 	// When launchd does not take a new plist, remove it again, so that the
 	// failed install leaves nothing behind.
 	undo := func(err error) error {
 		if status == "created" {
 			os.Remove(file)
 		}
+
 		return err
 	}
 	if loaded {
@@ -230,16 +251,20 @@ func launchdInstall(label, target, file, state, log string, data map[string]any)
 		if out, err := launchctl("enable", target); err != nil {
 			return nil, undo(launchdFailed("enable "+target, out))
 		}
+
 		if out, err := launchctl("bootstrap", launchdDomain(), file); err != nil {
 			return nil, undo(launchdFailed("bootstrap "+launchdDomain()+" "+file, out))
 		}
 	}
+
 	data["unit_file_status"], data["binary"], data["state_dir"] = status, exe, state
 	lines := installedLines(status, "plist", file, exe, state)
+
 	url, err := waitForService(state)
 	if err != nil {
 		return nil, &stack.Error{Code: "integration_unavailable", Message: "launchd started " + label + ", but the service does not answer; see launchctl print " + target + " and " + log, Retryable: true}
 	}
+
 	data["url"] = url
 	lines = append(lines, "launchd runs a-stack at "+url+". It starts again after a failure and when you log in.")
 	if status == "updated" && loaded {
@@ -247,17 +272,20 @@ func launchdInstall(label, target, file, state, log string, data map[string]any)
 		data["restart_hint"] = hint
 		lines = append(lines, hint)
 	}
+
 	return lines, nil
 }
 
 func launchdStatus(label, file, state, log string, data map[string]any) []string {
 	content, err := os.ReadFile(file)
 	installed := err == nil
+
 	active, path := launchdPrint(label)
 	data["installed"], data["loaded"] = installed, active != ""
 	if active == "" {
 		active = "not loaded"
 	}
+
 	data["active"] = active
 	// The loaded agent can come from another plist, such as one in another
 	// home folder; then Active is about that one.
@@ -267,6 +295,7 @@ func launchdStatus(label, file, state, log string, data map[string]any) []string
 			loaded = path
 		}
 	}
+
 	column := func(label, text string) string { return fmt.Sprintf("%-11s%s", label, text) }
 	lines := []string{column("Plist:", file)}
 	if loaded != "" {
@@ -275,6 +304,7 @@ func launchdStatus(label, file, state, log string, data map[string]any) []string
 	} else if !installed {
 		lines[0] = column("Plist:", "not installed; run a-stack service install")
 	}
+
 	lines = append(lines, column("Active:", active))
 	if installed || loaded != "" {
 		binary, dir := plistCommand(string(content))
@@ -282,11 +312,14 @@ func launchdStatus(label, file, state, log string, data map[string]any) []string
 		if _, err := os.Stat(binary); err != nil {
 			binary += " (missing)"
 		}
+
 		lines = append(lines, column("Binary:", binary), column("State dir:", dir))
 		if dir != state {
 			lines = append(lines, column("", "The CLI uses "+state+"; run a-stack service install to use it in the plist too."))
 		}
 	}
+
 	lines = append(lines, column("Log:", log))
+
 	return append(lines, healthLine(state, data))
 }

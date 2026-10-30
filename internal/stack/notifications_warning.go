@@ -36,9 +36,11 @@ func noticeWarning(reason string) *NoticeWarning {
 	case "runtime_blocked":
 		fix = "Resolve the harness dialog in its pane; notices retry without answering it for you."
 	}
+
 	if fix == "" {
 		return nil
 	}
+
 	return &NoticeWarning{Reason: reason, Fix: fix}
 }
 
@@ -51,21 +53,26 @@ func (s *Store) noticeWarningTx(ctx context.Context, tx *sql.Tx, session, agent 
  LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id WHERE a.session_id=? AND a.id=?`, session, agent).Scan(&encoded, &reason, &hookOnly); err != nil {
 		return nil, storageError()
 	}
+
 	var uncertain int
 	if err := tx.QueryRowContext(ctx, "SELECT (SELECT count(*) FROM mail_mentions WHERE recipient_id=?1 AND notice_state='uncertain')+(SELECT count(*) FROM mail_acks WHERE recipient_id=?1 AND reminder_state='uncertain' AND acked_at='' AND withdrawn_at='')", agent).Scan(&uncertain); err != nil {
 		return nil, storageError()
 	}
+
 	if uncertain > 0 {
 		if reason != "recovery_uncertain" {
 			reason = "delivery_uncertain"
 		}
+
 		warning := noticeWarning(reason)
 		warning.UnresolvedUncertain = uncertain
 		return warning, nil
 	}
+
 	if hookOnly {
 		return nil, nil
 	}
+
 	var binding RuntimeBinding
 	_ = json.Unmarshal([]byte(encoded), &binding)
 	if !completeHerdrBinding(binding) {
@@ -73,11 +80,14 @@ func (s *Store) noticeWarningTx(ctx context.Context, tx *sql.Tx, session, agent 
 	} else if !verifiedHarness(binding) {
 		reason = "unsupported_harness"
 	}
+
 	if warning := noticeWarning(reason); warning != nil {
 		return warning, nil
 	}
+
 	if s.noticeWake == nil {
 		return noticeWarning("integration_disabled"), nil
 	}
+
 	return nil, nil
 }

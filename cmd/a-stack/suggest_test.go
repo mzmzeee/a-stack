@@ -19,6 +19,7 @@ func TestNearestSuggestsCloseWordsOnly(t *testing.T) {
 			t.Fatalf("nearest(%q) = %q, want %q", word, got, want)
 		}
 	}
+
 	if distance("ab", "ba") != 1 || distance("", "abc") != 3 || distance("kitten", "sitting") != 3 {
 		t.Fatal("edit distance")
 	}
@@ -27,16 +28,19 @@ func TestNearestSuggestsCloseWordsOnly(t *testing.T) {
 // cliError runs args without a service and returns the error message.
 func cliError(t *testing.T, args ...string) string {
 	t.Helper()
+
 	var out, errout bytes.Buffer
 	if code := run(args, &out, &errout); code != 2 || out.Len() != 0 {
 		t.Fatalf("%v: exit %d stdout %q stderr %s", args, code, out.String(), errout.String())
 	}
+
 	var e struct {
 		Error stack.Error `json:"error"`
 	}
 	if json.Unmarshal(errout.Bytes(), &e) != nil || e.Error.Code != "invalid_input" {
 		t.Fatalf("%v: stderr %s", args, errout.String())
 	}
+
 	return e.Error.Message
 }
 
@@ -78,16 +82,20 @@ func TestCLIErrorsNameWhatIsWrong(t *testing.T) {
 			t.Fatalf("%v:\n got %q\nwant %q", c.args, got, c.want)
 		}
 	}
+
 	// The mention flag may repeat.
 	if got := cliError(t, "mail", "send", "--mention", "a", "--mention", "b", "--task", "x", "--state-dir", state); !strings.HasPrefix(got, "--task takes a Task ID") {
 		t.Fatalf("repeated --mention: %q", got)
 	}
+
 	// A group word alone prints its commands, like a-stack help task.
 	var out, help, errout bytes.Buffer
 	if run([]string{"task"}, &out, &errout) != 0 || errout.Len() != 0 || run([]string{"help", "task"}, &help, &errout) != 0 || out.String() != help.String() || !strings.Contains(out.String(), "task attention set") {
 		t.Fatalf("bare group word: %q %q", out.String(), errout.String())
 	}
+
 	out.Reset()
+
 	if run([]string{"--version"}, &out, &errout) != 0 || out.String() != "{\"data\":{\"version\":\"dev\"}}\n" {
 		t.Fatalf("--version: %q", out.String())
 	}
@@ -97,40 +105,49 @@ func TestCLIBodyAliasAndOneTrailingNewline(t *testing.T) {
 	ctx := context.Background()
 	root := t.TempDir()
 	dir := filepath.Join(root, "state")
+
 	service, err := stack.Start(ctx, dir, "")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	done := make(chan error, 1)
 	go func() { done <- service.Serve() }()
 	t.Cleanup(func() {
 		_ = service.Close(ctx)
 		<-done
 	})
+
 	project, private := filepath.Join(root, "project"), filepath.Join(root, "credentials")
-	if os.Mkdir(project, 0700) != nil || stack.MkdirPrivate(private) != nil {
+	if os.Mkdir(project, 0o700) != nil || stack.MkdirPrivate(private) != nil {
 		t.Fatal("fixture directories")
 	}
+
 	var ws, se string
 	call := func(credential string, args ...string) map[string]any {
 		t.Helper()
+
 		args = append(args, "--state-dir", dir)
 		if credential != "" {
 			args = append(args, "--as", "agent", "--credential-file", credential, "--workspace", ws, "--session", se)
 		}
+
 		var out, errout bytes.Buffer
 		if code := run(args, &out, &errout); code != 0 {
 			t.Fatalf("%v: exit %d %s", args, code, errout.String())
 		}
+
 		if !bytes.HasSuffix(out.Bytes(), []byte("}\n")) || bytes.HasSuffix(out.Bytes(), []byte("\n\n")) {
 			t.Fatalf("%v: output must end in exactly one newline: %q", args[:2], out.String())
 		}
+
 		var envelope struct {
 			Data map[string]any `json:"data"`
 		}
 		if json.Unmarshal(out.Bytes(), &envelope) != nil {
 			t.Fatal(out.String())
 		}
+
 		return envelope.Data
 	}
 	ws = call("", "workspace", "create", "--path", project, "--operation-id", "alias-ws-1")["resource_id"].(string)
@@ -147,6 +164,7 @@ func TestCLIBodyAliasAndOneTrailingNewline(t *testing.T) {
 	call(orch, "task", "status", "--task", task, "--progress", "finished", "--body", "Done", "--expected-revision", "6", "--operation-id", "alias-finish-1")
 	call(orch, "task", "reopen", "--task", task, "--body", "Again", "--expected-revision", "7", "--operation-id", "alias-reopen-1")
 	call(orch, "task", "edit", "--task", task, "--body", "Edited", "--expected-revision", "8", "--operation-id", "alias-edit-1")
+
 	got := call(orch, "task", "show", "--task", task)
 	if got["description"] != "Edited" || got["report"] != "Reported" || got["reason"] != "Again" || got["progress"] != "waiting" {
 		t.Fatalf("--body did not reach the text fields: %v", got)

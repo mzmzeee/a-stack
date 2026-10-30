@@ -17,9 +17,11 @@ func tryLock(dir string) (release func(), ok bool) {
 	if err != nil {
 		return nil, false
 	}
+
 	if syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB) != nil {
 		f.Close()
 		return nil, false
 	}
+
 	return func() { f.Close() }, true
 }

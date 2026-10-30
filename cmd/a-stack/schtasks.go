@@ -28,6 +28,7 @@ var taskUser = func() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return u.Username, nil
 }
 
@@ -46,8 +47,10 @@ func windowsArg(s string) string {
 	if s != "" && !strings.ContainsAny(s, " \t\"") {
 		return s
 	}
+
 	var b strings.Builder
 	b.WriteByte('"')
+
 	slashes := 0
 	for _, c := range []byte(s) {
 		switch c {
@@ -59,10 +62,13 @@ func windowsArg(s string) string {
 		default:
 			slashes = 0
 		}
+
 		b.WriteByte(c)
 	}
+
 	b.WriteString(strings.Repeat(`\`, slashes))
 	b.WriteByte('"')
+
 	return b.String()
 }
 
@@ -72,7 +78,9 @@ func unquoteWindowsArg(s string) string {
 	if !ok {
 		return s
 	}
+
 	inner, _ = strings.CutSuffix(inner, `"`)
+
 	var b strings.Builder
 	slashes := 0
 	for _, c := range []byte(inner) {
@@ -85,10 +93,13 @@ func unquoteWindowsArg(s string) string {
 		default:
 			b.WriteString(strings.Repeat(`\`, slashes))
 		}
+
 		slashes = 0
 		b.WriteByte(c)
 	}
+
 	b.WriteString(strings.Repeat(`\`, slashes/2))
+
 	return b.String()
 }
 
@@ -145,8 +156,10 @@ const taskTemplate = `<?xml version="1.0" encoding="UTF-16"?>
 </Task>
 `
 
-const taskPowerShell = `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`
-const taskEncodedPrefix = "-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand "
+const (
+	taskPowerShell    = `%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe`
+	taskEncodedPrefix = "-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand "
+)
 
 func powershellLiteral(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 
@@ -166,18 +179,22 @@ func decodeTaskArguments(args string) (exe, command string) {
 	if !ok {
 		return "", ""
 	}
+
 	data, err := base64.StdEncoding.DecodeString(encoded)
 	if err != nil || len(data)%2 != 0 {
 		return "", ""
 	}
+
 	units := make([]uint16, len(data)/2)
 	for i := range units {
 		units[i] = uint16(data[2*i]) | uint16(data[2*i+1])<<8
 	}
+
 	parts := encodedTaskScript.FindStringSubmatch(string(utf16.Decode(units)))
 	if parts == nil {
 		return "", ""
 	}
+
 	return strings.ReplaceAll(parts[1], "''", "'"), strings.ReplaceAll(parts[2], "''", "'")
 }
 
@@ -188,16 +205,19 @@ func renderTask(account, exe, state string) (string, error) {
 			return "", invalid("cannot write a value with control characters into the task: " + printable(v))
 		}
 	}
+
 	command, args := windowsArg(exe), "serve --state-dir "+windowsArg(state)
 	if strings.ContainsAny(exe+state, "%") {
 		command, args = taskPowerShell, encodedTaskArguments(exe, args)
 	}
+
 	values := []string{account, command, args}
 	for i, v := range values {
 		var b strings.Builder
 		_ = xml.EscapeText(&b, []byte(v))
 		values[i] = b.String()
 	}
+
 	return fmt.Sprintf(taskTemplate, values[0], values[1], values[2]), nil
 }
 
@@ -209,6 +229,7 @@ func utf16File(text string) []byte {
 	for _, u := range units {
 		b = append(b, byte(u), byte(u>>8))
 	}
+
 	return b
 }
 
@@ -220,6 +241,7 @@ func taskCommand(content string) (binary, state string, enabled bool) {
 	if i := strings.Index(content, "<Task"); i >= 0 {
 		content = content[i:]
 	}
+
 	var task struct {
 		Enabled string `xml:"Settings>Enabled"`
 		Exec    struct {
@@ -230,13 +252,16 @@ func taskCommand(content string) (binary, state string, enabled bool) {
 	if xml.Unmarshal([]byte(content), &task) != nil {
 		return "", "", false
 	}
+
 	binary, args := unquoteWindowsArg(task.Exec.Command), task.Exec.Arguments
 	if strings.EqualFold(binary, taskPowerShell) {
 		binary, args = decodeTaskArguments(args)
 	}
+
 	if rest, ok := strings.CutPrefix(args, "serve --state-dir "); ok {
 		state = unquoteWindowsArg(rest)
 	}
+
 	return binary, state, task.Enabled != "false"
 }
 
@@ -248,8 +273,10 @@ func queryTask(name string) (content string, ok bool) {
 		for i := 0; i+1 < len(out); i += 2 {
 			units = append(units, uint16(out[i])|uint16(out[i+1])<<8)
 		}
+
 		out = strings.TrimPrefix(string(utf16.Decode(units)), "\ufeff")
 	}
+
 	return out, err == nil && strings.Contains(out, "<Task")
 }
 
@@ -271,16 +298,21 @@ func schtasksCommand(command, name, state string, data map[string]any) ([]string
 		return schtasksInstall(name, state, log, data)
 	case "service uninstall":
 		data["removed"] = false
+
 		if _, ok := queryTask(name); !ok {
 			return []string{"The task " + name + " is not installed."}, nil
 		}
+
 		_, _ = schtasks("/End", "/TN", name) // fails when it does not run
 		if out, err := schtasks("/Delete", "/TN", name, "/F"); err != nil {
 			return nil, schtasksFailed("/Delete /TN "+name, out)
 		}
+
 		data["removed"] = true
+
 		return []string{"Stopped and removed the task " + name + ".", "The state directory, your data and the log " + log + " stay as they are."}, nil
 	}
+
 	return schtasksStatus(name, state, log, data), nil
 }
 
@@ -289,23 +321,28 @@ func schtasksInstall(name, state, log string, data map[string]any) ([]string, er
 	if err != nil {
 		return nil, err
 	}
+
 	account, err := taskUser()
 	if err != nil {
 		return nil, &stack.Error{Code: "integration_unavailable", Message: "cannot find the current user"}
 	}
+
 	content, err := renderTask(account, exe, state)
 	if err != nil {
 		return nil, err
 	}
+
 	old, installed := queryTask(name)
 	_, _, healthErr := health(state)
 	// Only one service can own a state directory, as with systemd.
 	if !installed && healthErr == nil {
 		return nil, &stack.Error{Code: "conflict", Message: "a-stack serve already runs for " + state + " outside Task Scheduler; press Ctrl-C in its terminal first, then run a-stack service install again"}
 	}
+
 	if err := configureServiceShare(state, data); err != nil {
 		return nil, err
 	}
+
 	status := "created"
 	if installed {
 		status = "updated"
@@ -316,23 +353,28 @@ func schtasksInstall(name, state, log string, data map[string]any) ([]string, er
 			status = "unchanged"
 		}
 	}
+
 	if status != "unchanged" {
 		f, err := os.CreateTemp("", "a-stack-task-*.xml")
 		if err != nil {
 			return nil, &stack.Error{Code: "storage_unavailable", Message: "cannot write the task file: " + err.Error()}
 		}
 		defer os.Remove(f.Name())
+
 		_, err = f.Write(utf16File(content))
 		if closeErr := f.Close(); err == nil {
 			err = closeErr
 		}
+
 		if err != nil {
 			return nil, &stack.Error{Code: "storage_unavailable", Message: "cannot write the task file: " + err.Error()}
 		}
+
 		if out, err := schtasks("/Create", "/XML", f.Name(), "/TN", name, "/F"); err != nil {
 			return nil, schtasksFailed("/Create /TN "+name, out)
 		}
 	}
+
 	running := installed && healthErr == nil
 	if !running {
 		if out, err := schtasks("/Run", "/TN", name); err != nil {
@@ -341,10 +383,13 @@ func schtasksInstall(name, state, log string, data map[string]any) ([]string, er
 			if status == "created" {
 				_, _ = schtasks("/Delete", "/TN", name, "/F")
 			}
+
 			return nil, schtasksFailed("/Run /TN "+name, out)
 		}
 	}
+
 	data["unit_file_status"], data["binary"], data["state_dir"] = status, exe, state
+
 	lines := []string{
 		map[string]string{"created": "Created", "updated": "Updated", "unchanged": "Kept"}[status] + " the Task Scheduler task " + name + map[string]string{"created": ".", "updated": "; it differed from the task of this a-stack.", "unchanged": "; it is up to date."}[status],
 		"It runs " + exe + " serve --state-dir " + state + ".",
@@ -353,6 +398,7 @@ func schtasksInstall(name, state, log string, data map[string]any) ([]string, er
 	if err != nil {
 		return nil, &stack.Error{Code: "integration_unavailable", Message: "Task Scheduler started the task " + name + ", but the service does not answer; see schtasks /Query /TN " + name + " /V /FO LIST and " + log, Retryable: true}
 	}
+
 	data["url"] = url
 	lines = append(lines, "Task Scheduler runs a-stack at "+url+". It starts when you log in, and again within a minute after it stops.")
 	if status == "updated" && running {
@@ -360,12 +406,14 @@ func schtasksInstall(name, state, log string, data map[string]any) ([]string, er
 		data["restart_hint"] = hint
 		lines = append(lines, hint)
 	}
+
 	return lines, nil
 }
 
 func schtasksStatus(name, state, log string, data map[string]any) []string {
 	content, installed := queryTask(name)
 	data["installed"] = installed
+
 	column := func(label, text string) string { return fmt.Sprintf("%-11s%s", label, text) }
 	lines := []string{column("Task:", name)}
 	if !installed {
@@ -376,11 +424,14 @@ func schtasksStatus(name, state, log string, data map[string]any) []string {
 		if _, err := os.Stat(binary); err != nil {
 			binary += " (missing)"
 		}
+
 		lines = append(lines, column("Enabled:", fmt.Sprint(enabled)), column("Binary:", binary), column("State dir:", dir))
 		if dir != state {
 			lines = append(lines, column("", "The CLI uses "+state+"; run a-stack service install to use it in the task too."))
 		}
 	}
+
 	lines = append(lines, column("Log:", log))
+
 	return append(lines, healthLine(state, data))
 }

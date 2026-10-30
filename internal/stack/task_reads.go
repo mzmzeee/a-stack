@@ -106,82 +106,104 @@ func pinReadRevision(expected int64, session Session) error {
 	if expected < 0 {
 		return failure("invalid_input", "read_revision must not be negative")
 	}
+
 	if expected != 0 && expected != session.ReadRevision {
 		return &Error{Code: "conflict", Message: "Session read revision changed; restart the snapshot collection", CurrentRevision: &session.ReadRevision}
 	}
+
 	return nil
 }
+
 func (s *Store) readSessionTx(ctx context.Context, token string, ref Context) (*sql.Tx, Principal, Session, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, Principal{}, Session{}, storageError(err)
 	}
+
 	p, err := authenticate(ctx, tx, token)
 	if err != nil {
 		tx.Rollback()
 		return nil, p, Session{}, err
 	}
+
 	session, err := ReadSession(ctx, tx, p, ref)
 	if err != nil {
 		tx.Rollback()
 		return nil, p, session, err
 	}
+
 	return tx, p, session, nil
 }
+
 func (s *Store) Snapshot(ctx context.Context, token string, r SnapshotRequest) (SessionSnapshot, error) {
 	tx, _, session, err := s.readSessionTx(ctx, token, r.Context)
 	if err != nil {
 		return SessionSnapshot{}, err
 	}
 	defer tx.Rollback()
+
 	if r.KnownRevision < 0 {
 		return SessionSnapshot{}, failure("invalid_input", "known_revision must not be negative")
 	}
+
 	var workspacePath string
 	if err = tx.QueryRowContext(ctx, `SELECT path FROM workspaces WHERE id=?`, session.WorkspaceID).Scan(&workspacePath); err != nil {
 		return SessionSnapshot{}, storageError(err)
 	}
+
 	mark, err := s.archiveMark(ctx, tx, session)
 	if err != nil {
 		return SessionSnapshot{}, err
 	}
+
 	unchanged := r.KnownRevision == session.ReadRevision && (!r.hasKnownMark || r.knownMark == mark)
+
 	session.OrchestratorWarning, err = s.orchestratorWarning(ctx, tx, session)
 	if err != nil {
 		return SessionSnapshot{}, err
 	}
+
 	snapshot := SessionSnapshot{Source: "local-service", CapturedAt: now(), Session: session, WorkspaceName: filepath.Base(workspacePath), Unchanged: unchanged, archiveMark: mark}
 	if snapshot.Unchanged {
 		return snapshot, nil
 	}
+
 	counts := &SnapshotCounts{}
+
 	err = tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM tasks WHERE session_id=?),(SELECT count(*) FROM agents WHERE session_id=?),(SELECT count(*) FROM dependencies WHERE session_id=?),(SELECT count(*) FROM task_assignees WHERE session_id=?)`, session.ID, session.ID, session.ID, session.ID).Scan(&counts.Tasks, &counts.Agents, &counts.Dependencies, &counts.Assignments)
 	if err != nil {
 		return SessionSnapshot{}, storageError(err)
 	}
+
 	snapshot.Counts = counts
 	if snapshot.Session.StandingOrders, err = sessionOrders(ctx, tx, session.WorkspaceID); err != nil {
 		return SessionSnapshot{}, err
 	}
+
 	return snapshot, nil
 }
+
 func (s *Store) ShowTask(ctx context.Context, token string, r TaskReadRequest) (TaskDetail, error) {
 	tx, _, session, err := s.readSessionTx(ctx, token, r.Context)
 	if err != nil {
 		return TaskDetail{}, err
 	}
 	defer tx.Rollback()
+
 	if err = pinReadRevision(r.ReadRevision, session); err != nil {
 		return TaskDetail{}, err
 	}
+
 	task, err := taskInSession(ctx, tx, r.TaskID, r.SessionID)
 	if err != nil {
 		return TaskDetail{}, err
 	}
+
 	task.MailWaits, err = mailWaits(ctx, tx, r.SessionID, r.TaskID, "")
 	if err != nil {
 		return TaskDetail{}, err
 	}
+
 	detail := TaskDetail{Task: task, ReadRevision: session.ReadRevision}
 	detail.ClaimWarnings = []ClaimWarning{}
 	if len(task.Claims) > 0 {
@@ -189,6 +211,7 @@ func (s *Store) ShowTask(ctx context.Context, token string, r TaskReadRequest) (
 			return TaskDetail{}, err
 		}
 	}
+
 	for _, field := range []struct {
 		ref    string
 		target *string
@@ -198,36 +221,46 @@ func (s *Store) ShowTask(ctx context.Context, token string, r TaskReadRequest) (
 			*field.target, _ = defaultText(field.kind, task.Progress)
 			continue
 		}
+
 		body, err := contentBody(ctx, tx, field.ref)
 		if err != nil {
 			return TaskDetail{}, storageError(err)
 		}
+
 		*field.target = body
 	}
+
 	detail.Question, err = openQuestion(ctx, tx, task.ID)
 	if err == nil {
 		detail.AnsweredQuestion, err = scanQuestion(tx.QueryRowContext(ctx, "SELECT "+questionColumns+" FROM task_questions WHERE task_id=? AND resolver_id IS NULL AND resolved_at IS NOT NULL ORDER BY resolved_at DESC LIMIT 1", task.ID))
 	}
+
 	if err != nil {
 		return TaskDetail{}, storageError(err)
 	}
+
 	return detail, nil
 }
+
 func decodeSnapshotCursor(r *SnapshotPageRequest) (string, error) {
 	if r.After == "" {
 		return "", nil
 	}
+
 	if len(r.After) > 1024 {
 		return "", failure("invalid_input", "invalid read cursor")
 	}
+
 	b, err := base64.RawURLEncoding.DecodeString(r.After)
 	if err != nil {
 		return "", failure("invalid_input", "invalid read cursor")
 	}
+
 	var c snapshotCursor
 	if decodeJSON(b, &c) != nil || c.SessionID != r.SessionID || c.TaskID != r.TaskID || c.Kind != r.Kind || c.ReadRevision < 1 || (r.ReadRevision != 0 && r.ReadRevision != c.ReadRevision) {
 		return "", failure("invalid_input", "cursor belongs to another read context")
 	}
+
 	r.ReadRevision = c.ReadRevision
 	if r.Kind == "history" || r.Kind == "graph_history" {
 		n, err := strconv.ParseInt(c.Position, 10, 64)
@@ -242,67 +275,85 @@ func decodeSnapshotCursor(r *SnapshotPageRequest) (string, error) {
 	} else if !validToken(c.Position) {
 		return "", failure("invalid_input", "invalid entity cursor")
 	}
+
 	return c.Position, nil
 }
+
 func encodeSnapshotCursor(r SnapshotPageRequest, revision int64, position string) string {
 	b, _ := json.Marshal(snapshotCursor{r.SessionID, r.TaskID, r.Kind, revision, position})
 	return base64.RawURLEncoding.EncodeToString(b)
 }
+
 func readIDs(ctx context.Context, tx *sql.Tx, query string, args ...any) ([]string, error) {
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, storageError(err)
 	}
 	defer rows.Close()
+
 	ids := []string{}
 	for rows.Next() {
 		var id string
 		if err = rows.Scan(&id); err != nil {
 			return nil, storageError(err)
 		}
+
 		ids = append(ids, id)
 	}
+
 	if err = rows.Err(); err != nil {
 		return nil, storageError(err)
 	}
+
 	return ids, nil
 }
+
 func (s *Store) SnapshotPage(ctx context.Context, token string, r SnapshotPageRequest) (SnapshotPage, error) {
 	empty := SnapshotPage{}
+
 	if r.Limit == 0 {
 		r.Limit = 50
 	}
+
 	if r.Limit < 1 || r.Limit > 100 {
 		return empty, failure("invalid_input", "page limit must be 1–100")
 	}
+
 	switch r.Kind {
 	case "tasks", "agents", "dependencies", "assignments", "references", "history", "graph_history":
 	default:
 		return empty, failure("invalid_input", "unknown snapshot page kind")
 	}
+
 	if (r.Kind == "references" || r.Kind == "history") && r.TaskID == "" {
 		return empty, failure("invalid_input", "Task ID required for detail history/references")
 	}
+
 	if r.TaskID != "" && r.Kind != "assignments" && r.Kind != "dependencies" && r.Kind != "references" && r.Kind != "history" {
 		return empty, failure("invalid_input", "Task filter does not apply to this page")
 	}
+
 	position, err := decodeSnapshotCursor(&r)
 	if err != nil {
 		return empty, err
 	}
+
 	tx, _, session, err := s.readSessionTx(ctx, token, r.Context)
 	if err != nil {
 		return empty, err
 	}
 	defer tx.Rollback()
+
 	if err = pinReadRevision(r.ReadRevision, session); err != nil {
 		return empty, err
 	}
+
 	if r.TaskID != "" {
 		if _, err = taskInSession(ctx, tx, r.TaskID, r.SessionID); err != nil {
 			return empty, err
 		}
 	}
+
 	var ids []string
 	switch r.Kind {
 	case "tasks":
@@ -321,6 +372,7 @@ func (s *Store) SnapshotPage(ctx context.Context, token string, r SnapshotPageRe
 			parts := strings.Split(position, "/")
 			first, second = parts[0], parts[1]
 		}
+
 		if r.TaskID == "" {
 			ids, err = readIDs(ctx, tx, "SELECT task_id||'/'||agent_id FROM task_assignees WHERE session_id=? AND (task_id,agent_id)>(?,?) ORDER BY task_id,agent_id LIMIT ?", r.SessionID, first, second, r.Limit+1)
 		} else {
@@ -332,17 +384,22 @@ func (s *Store) SnapshotPage(ctx context.Context, token string, r SnapshotPageRe
 		if position == "" {
 			position = "0"
 		}
+
 		ids, err = readIDs(ctx, tx, "SELECT sequence FROM task_history WHERE task_id=? AND sequence>? ORDER BY sequence LIMIT ?", r.TaskID, position, r.Limit+1)
 	case "graph_history":
 		if position == "" {
 			position = "0"
 		}
+
 		ids, err = readIDs(ctx, tx, "SELECT sequence FROM graph_history WHERE session_id=? AND sequence>? ORDER BY sequence LIMIT ?", r.SessionID, position, r.Limit+1)
 	}
+
 	if err != nil {
 		return empty, err
 	}
+
 	result := SnapshotPage{ReadRevision: session.ReadRevision, Items: []any{}}
+
 	used := 2
 	last := ""
 	for _, id := range ids {
@@ -350,27 +407,34 @@ func (s *Store) SnapshotPage(ctx context.Context, token string, r SnapshotPageRe
 			result.Next = encodeSnapshotCursor(r, session.ReadRevision, last)
 			break
 		}
+
 		item, err := s.snapshotItem(ctx, tx, r, id)
 		if err != nil {
 			return empty, publicError(err)
 		}
+
 		encoded, err := json.Marshal(item)
 		if err != nil {
 			return empty, storageError(err)
 		}
+
 		if used+len(encoded)+1 > readPageBudget {
 			if len(result.Items) == 0 {
 				return empty, failure("storage_unavailable", "stored item exceeds the bounded read budget")
 			}
+
 			result.Next = encodeSnapshotCursor(r, session.ReadRevision, last)
 			break
 		}
+
 		used += len(encoded) + 1
 		result.Items = append(result.Items, item)
 		last = id
 	}
+
 	return result, nil
 }
+
 func (s *Store) snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequest, id string) (any, error) {
 	switch r.Kind {
 	case "tasks":
@@ -378,6 +442,7 @@ func (s *Store) snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequ
 		if err == nil {
 			task.MailWaits, err = mailWaits(ctx, tx, r.SessionID, id, "")
 		}
+
 		return task, err
 	case "agents":
 		agent, err := agentInSession(ctx, tx, id, r.SessionID)
@@ -385,25 +450,31 @@ func (s *Store) snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequ
 		if agent.ObservedAt != "" {
 			source = "caller-observation"
 		}
+
 		if err != nil {
 			return nil, err
 		}
+
 		warning, err := s.noticeWarningTx(ctx, tx, r.SessionID, id)
 		if err != nil {
 			return nil, err
 		}
+
 		waits, err := mailWaits(ctx, tx, r.SessionID, "", id)
 		if err != nil {
 			return nil, err
 		}
+
 		session, err := loadSession(ctx, tx, r.SessionID)
 		if err != nil {
 			return nil, err
 		}
+
 		unreachable := ""
 		if session.OrchestratorID != nil && *session.OrchestratorID == id {
 			unreachable, err = s.orchestratorWarning(ctx, tx, session)
 		}
+
 		return SnapshotAgent{Agent: agent, RuntimeSource: source, RuntimeVerified: false, NoticeWarning: warning, MailWaits: waits, OrchestratorWarning: unreachable}, err
 	case "dependencies":
 		var edge Dependency
@@ -419,45 +490,56 @@ func (s *Store) snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequ
 	case "history":
 		var h TaskHistoryEntry
 		var change string
+
 		err := tx.QueryRowContext(ctx, "SELECT sequence,task_id,actor_kind,COALESCE(actor_id,''),action,revision,received_at,changes,COALESCE(actor_login,''),COALESCE(actor_name,'') FROM task_history WHERE sequence=? AND task_id=?", id, r.TaskID).Scan(&h.Sequence, &h.TaskID, &h.ActorKind, &h.ActorID, &h.Action, &h.Revision, &h.ReceivedAt, &change, &h.ActorLogin, &h.ActorName)
 		if err != nil {
 			return nil, err
 		}
+
 		if json.Unmarshal([]byte(change), &h.Changes) != nil {
 			return nil, storageError()
 		}
+
 		for _, textID := range h.Changes.TextIDs {
 			var text TaskContent
 			if err = tx.QueryRowContext(ctx, "SELECT id,kind,body,actor_id,received_at FROM task_content WHERE id=? AND task_id=?", textID, r.TaskID).Scan(&text.ID, &text.Kind, &text.Body, &text.ActorID, &text.ReceivedAt); err != nil {
 				return nil, err
 			}
+
 			h.Texts = append(h.Texts, text)
 		}
+
 		if h.Action == "task.create" {
 			h.Texts = createTexts(h)
 		}
+
 		if h.Changes.QuestionID != "" {
 			h.Question, err = scanQuestion(tx.QueryRowContext(ctx, "SELECT "+questionColumns+" FROM task_questions WHERE id=? AND task_id=?", h.Changes.QuestionID, r.TaskID))
 			if err == nil && h.Question == nil {
 				err = sql.ErrNoRows
 			}
+
 			if err != nil {
 				return nil, err
 			}
 		}
+
 		if h.Changes.ReferenceID != "" {
 			ref, err := readReference(ctx, tx, r.TaskID, h.Changes.ReferenceID)
 			if err != nil {
 				return nil, err
 			}
+
 			h.Reference = &ref
 		}
+
 		return h, nil
 	case "graph_history":
 		var h GraphHistoryEntry
 		err := tx.QueryRowContext(ctx, "SELECT sequence,actor_id,action,edge_id,prerequisite_id,dependent_id,revision,received_at FROM graph_history WHERE sequence=? AND session_id=?", id, r.SessionID).Scan(&h.Sequence, &h.ActorID, &h.Action, &h.EdgeID, &h.PrerequisiteID, &h.DependentID, &h.Revision, &h.ReceivedAt)
 		return h, err
 	}
+
 	return nil, failure("invalid_input", "unknown read item")
 }
 
@@ -467,12 +549,15 @@ func createTexts(h TaskHistoryEntry) []TaskContent {
 	if len(h.Texts) == 2 {
 		return h.Texts
 	}
+
 	texts := []TaskContent{{Kind: "description", ActorID: h.ActorID, ReceivedAt: h.ReceivedAt}}
 	if len(h.Texts) == 1 {
 		texts[0] = h.Texts[0]
 	}
+
 	return append(texts, TaskContent{Kind: "reason", Body: NotStarted, ActorID: h.ActorID, ReceivedAt: h.ReceivedAt})
 }
+
 func readReference(ctx context.Context, tx *sql.Tx, task, id string) (FileReference, error) {
 	var ref FileReference
 	err := tx.QueryRowContext(ctx, "SELECT id,task_id,location,revision,added_by,added_at,COALESCE(removed_by,''),COALESCE(removed_at,'') FROM task_references WHERE id=? AND task_id=?", id, task).Scan(&ref.ID, &ref.TaskID, &ref.Location, &ref.Revision, &ref.AddedBy, &ref.AddedAt, &ref.RemovedBy, &ref.RemovedAt)

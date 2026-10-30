@@ -29,32 +29,42 @@ func decodeJSON(data []byte, target any) error {
 	if len(data) > MaxRequestBytes || !utf8.Valid(data) {
 		return failure("invalid_input", "request must be bounded UTF-8 JSON")
 	}
+
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
+
 	if decoder.Decode(target) != nil {
 		return failure("invalid_input", "malformed JSON or unknown fields")
 	}
+
 	var extra any
 	if decoder.Decode(&extra) != io.EOF {
 		return failure("invalid_input", "exactly one JSON value required")
 	}
+
 	return nil
 }
+
 func requestJSON(w http.ResponseWriter, r *http.Request, target any) error {
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || media != "application/json" {
 		return failure("invalid_input", "Content-Type application/json required")
 	}
+
 	r.Body = http.MaxBytesReader(w, r.Body, MaxRequestBytes)
+
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		return failure("invalid_input", "request exceeds limit or could not be read")
 	}
+
 	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
 		return failure("invalid_input", "JSON object required")
 	}
+
 	return decodeJSON(data, target)
 }
+
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
@@ -62,11 +72,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
 }
+
 func writeError(w http.ResponseWriter, err error) {
 	e := publicError(err)
 	if e.RetryAfter > 0 {
 		w.Header().Set("Retry-After", strconv.FormatInt(e.RetryAfter, 10))
 	}
+
 	writeJSON(w, statusCode(e), map[string]any{"error": e})
 }
 
@@ -110,16 +122,19 @@ func listenDefault(dir string) (listener net.Listener, notice string, err error)
 	} else if listener, err = net.Listen("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(last.Port))); err == nil {
 		return listener, "", nil
 	}
+
 	listener, err = net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return nil, "", err
 	}
+
 	port := listener.Addr().(*net.TCPAddr).Port
 	// Best effort: a missing record only means a new port next time.
 	_ = writePrivate(filepath.Join(dir, lastPortFile), lastPort{port}, true)
 	if last.Port != 0 {
 		notice = fmt.Sprintf("port %d from the last run is in use; using port %d. Open browser tabs need a-stack again.", last.Port, port)
 	}
+
 	return listener, notice, nil
 }
 
@@ -143,39 +158,48 @@ func Start(ctx context.Context, dir, address string) (*Service, error) {
 	if !builtWithCgo {
 		return nil, failure("storage_unavailable", "this a-stack was built without cgo, so it cannot open its SQLite database; build it with CGO_ENABLED=1 and a C compiler, or install a release binary")
 	}
+
 	storageLog.setOutput(storageLogOutput)
+
 	if address != "" {
 		host, _, err := net.SplitHostPort(address)
 		if err != nil || host != "127.0.0.1" {
 			return nil, failure("invalid_input", "listen address must be 127.0.0.1:PORT")
 		}
 	}
+
 	lock, err := lockState(dir)
 	if err != nil {
 		return nil, err
 	}
+
 	success := false
 	defer func() {
 		if !success {
 			lock.close()
 		}
 	}()
+
 	path, err := ensureDatabaseFile(lock.dir)
 	if err != nil {
 		return nil, err
 	}
+
 	store, err := openStore(ctx, path)
 	if err != nil {
 		return nil, err
 	}
+
 	defer func() {
 		if !success {
 			store.db.Close()
 		}
 	}()
+
 	if err = store.ensureOperator(ctx, lock.dir); err != nil {
 		return nil, err
 	}
+
 	var listener net.Listener
 	var notice string
 	if address == "" {
@@ -183,9 +207,11 @@ func Start(ctx context.Context, dir, address string) (*Service, error) {
 	} else {
 		listener, err = net.Listen("tcp4", address)
 	}
+
 	if err != nil {
 		return nil, failure("conflict", "cannot bind requested local service address")
 	}
+
 	defer func() {
 		if !success {
 			listener.Close()
@@ -198,26 +224,33 @@ func Start(ctx context.Context, dir, address string) (*Service, error) {
 	if err = writePrivate(filepath.Join(lock.dir, "service.json"), s.Discovery, true); err != nil {
 		return nil, err
 	}
+
 	success = true
 	s.startReceiptExpiry()
+
 	return s, nil
 }
+
 func (s *Service) Serve() error {
 	err := s.server.Serve(s.listener)
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
+
 	if err != nil {
 		return failure("storage_unavailable", "local HTTP service stopped unexpectedly")
 	}
+
 	return nil
 }
+
 func (s *Service) Close(ctx context.Context) error {
 	s.once.Do(func() {
 		if err := s.server.Shutdown(ctx); err != nil {
 			_ = s.server.Close()
 			s.closeErr = failure("storage_unavailable", "service shutdown exceeded deadline")
 		}
+
 		_ = s.listener.Close()
 		if s.notifier != nil {
 			s.notifier.stop()
@@ -225,65 +258,82 @@ func (s *Service) Close(ctx context.Context) error {
 			//lint:ignore SA2001 barrier: wait for an HTTP-initiated drain to finish before the database closes.
 			s.notifier.mu.Unlock()
 		}
+
 		if s.receiptCancel != nil {
 			s.receiptCancel()
 			<-s.receiptDone
 		}
+
 		if err := s.Store.db.Close(); err != nil {
 			s.closeErr = storageError(err)
 		}
+
 		if d, err := ReadDiscovery(s.lock.dir); err == nil && d.InstanceID == s.Discovery.InstanceID {
 			_ = os.Remove(filepath.Join(s.lock.dir, "service.json"))
 			_ = syncDir(s.lock.dir)
 		}
+
 		s.lock.close()
 	})
+
 	return s.closeErr
 }
+
 func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 	r, shared, err := s.prepareRequest(r)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
+
 	if shared && r.URL.Path == "/v1/health" {
 		s.remoteHealth(w, r)
 		return
 	}
+
 	if s.browserAsset(w, r) {
 		return
 	}
+
 	if r.Header.Get("X-A-Stack-Instance") != s.Discovery.InstanceID {
 		writeError(w, failure("conflict", "service instance changed; reload discovery"))
 		return
 	}
+
 	if r.URL.Path == "/v1/browser/redeem" {
 		s.redeemHTTP(w, r)
 		return
 	}
+
 	if shared && (r.URL.Path == "/v1/session/join" || r.URL.Path == "/v1/connect/join") {
 		s.sessionJoinHTTP(w, r)
 		return
 	}
+
 	values := r.Header.Values("Authorization")
 	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
 		writeError(w, failure("unauthorized", "valid bearer credential required"))
 		return
 	}
+
 	token := strings.TrimPrefix(values[0], "Bearer ")
+
 	p, err := authenticate(r.Context(), s.Store.db, token)
 	if err != nil {
 		writeError(w, err)
 		return
 	}
+
 	if r.ContentLength > int64(apiSizeLimit(r.URL.Path)) {
 		writeError(w, failure("invalid_input", "request exceeds limit"))
 		return
 	}
+
 	if r.Method == http.MethodGet && (r.ContentLength != 0 || len(r.TransferEncoding) != 0) {
 		writeError(w, failure("invalid_input", "GET requests must not contain a body"))
 		return
 	}
+
 	// Session-scoped browser tokens have no foundation data endpoints. They may use
 	// the Session read endpoints, read Task mail and answer a Needs you question;
 	// default dispatch remains deny. The answer is their one write, so it also
@@ -293,10 +343,12 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, failure("forbidden", "browser credential requires a Session read endpoint"))
 		return
 	}
+
 	if p.Kind == BrowserCapability && answer && r.Header.Get("Origin") == "" {
 		writeError(w, failure("forbidden", "the view's answer requires the Origin header"))
 		return
 	}
+
 	switch r.URL.Path {
 	case "/v1/task/answer":
 		s.answerHTTP(w, r, token)
@@ -305,31 +357,37 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 			writeError(w, failure("invalid_input", "GET required"))
 			return
 		}
+
 		writeJSON(w, http.StatusOK, map[string]any{"data": Health{s.Store.id, s.Store.sqliteVersion, schemaVersion, s.Version, s.SharedURL()}})
 	case "/v1/storage":
 		if r.Method != http.MethodGet {
 			writeError(w, failure("invalid_input", "GET required"))
 			return
 		}
+
 		if err := operator(p); err != nil {
 			writeError(w, err)
 			return
 		}
+
 		status, err := s.Store.Status()
 		if err != nil {
 			writeError(w, err)
 			return
 		}
+
 		writeJSON(w, http.StatusOK, map[string]any{"data": status})
 	case "/v1/storage/backup":
 		if r.Method != http.MethodPost {
 			writeError(w, failure("invalid_input", "POST required"))
 			return
 		}
+
 		if err := operator(p); err != nil {
 			writeError(w, err)
 			return
 		}
+
 		var request struct {
 			Destination string `json:"destination"`
 		}
@@ -337,11 +395,13 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 			writeError(w, err)
 			return
 		}
+
 		status, err := s.Store.Backup(r.Context(), token, request.Destination)
 		if err != nil {
 			writeError(w, err)
 			return
 		}
+
 		writeJSON(w, http.StatusOK, map[string]any{"data": status})
 	default:
 		if !s.transferHTTP(w, r, token) && !s.notificationHTTP(w, r, token) && !s.herdrBindHTTP(w, r, token) && !s.herdrHTTP(w, r, token) && !s.browserHTTP(w, r, token) && !s.mailHTTP(w, r, token) && !s.taskHTTP(w, r, token) && !s.lifecycleHTTP(w, r, token) {
@@ -366,31 +426,40 @@ func NewClientContext(ctx context.Context, dir, credentialFile string, kind Capa
 	if kind != "" && !validKind(kind) {
 		return nil, failure("invalid_input", "credential kind must be operator, agent or browser")
 	}
+
 	if credentialFile == "" {
 		if kind == AgentCapability || kind == BrowserCapability {
 			return nil, failure("invalid_input", "agent/browser mode requires an explicit credential file")
 		}
+
 		credentialFile = filepath.Join(dir, "operator.json")
 	}
+
 	c, err := ReadCredential(credentialFile)
 	if err != nil {
 		return nil, err
 	}
+
 	if kind != "" && kind != c.Kind {
 		return nil, failure("forbidden", "credential file has a different capability kind")
 	}
+
 	if c.Remote != "" {
 		return NewRemoteClient(ctx, c.Remote, credentialFile, kind)
 	}
+
 	d, err := ReadDiscovery(dir)
 	if err != nil {
 		return nil, err
 	}
+
 	u, err := url.Parse(d.URL)
 	if err != nil || u.Hostname() != "127.0.0.1" || u.Port() == "" || u.Scheme != "http" || u.Path != "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
 		return nil, failure("invalid_input", "invalid loopback service URL")
 	}
+
 	transport := &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext, DisableKeepAlives: true}
+
 	return &Client{Discovery: d, Credential: c, HTTP: &http.Client{Timeout: 30 * time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
@@ -405,36 +474,46 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 			return nil, failure("invalid_input", "invalid request body")
 		}
 	}
+
 	if len(data) > apiSizeLimit(path) {
 		return nil, failure("invalid_input", "request exceeds limit")
 	}
+
 	if !strings.HasPrefix(path, "/v1/") || strings.ContainsAny(path, "?#\r\n") {
 		return nil, failure("invalid_input", "invalid API path")
 	}
+
 	req, err := http.NewRequestWithContext(ctx, method, c.Discovery.URL+path, bytes.NewReader(data))
 	if err != nil {
 		return nil, failure("invalid_input", "invalid request")
 	}
+
 	req.Header.Set("Authorization", "Bearer "+c.Credential.Token)
 	req.Header.Set("X-A-Stack-Instance", c.Discovery.InstanceID)
+
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+
 	response, err := c.HTTP.Do(req)
 	if err != nil {
 		if strings.HasPrefix(c.Discovery.URL, "https://") {
 			return nil, unreachable("cannot reach remote a-stack; check the server and Tailscale connection, then retry the same operation ID")
 		}
+
 		return nil, unreachable(serviceUnreachable)
 	}
 	defer response.Body.Close()
+
 	b, err := io.ReadAll(io.LimitReader(response.Body, int64(apiSizeLimit(path))+1))
 	if err != nil {
 		return nil, unreachable("the response from the a-stack service was cut off; run the same command again")
 	}
+
 	if len(b) > apiSizeLimit(path) {
 		return nil, failure("storage_unavailable", "invalid or oversized service response")
 	}
+
 	var envelope struct {
 		Data  json.RawMessage `json:"data,omitempty"`
 		Error *Error          `json:"error,omitempty"`
@@ -442,11 +521,14 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 	if json.Unmarshal(b, &envelope) != nil || (envelope.Error == nil) == (len(envelope.Data) == 0) {
 		return nil, failure("storage_unavailable", "invalid service response")
 	}
+
 	if envelope.Error != nil {
 		return nil, envelope.Error
 	}
+
 	if response.StatusCode != http.StatusOK {
 		return nil, failure("storage_unavailable", "unexpected service response")
 	}
+
 	return b, nil
 }

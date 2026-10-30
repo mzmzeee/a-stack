@@ -19,6 +19,7 @@ func completionOutput(t *testing.T, words ...string) string {
 
 func completionValues(t *testing.T, words ...string) []string {
 	t.Helper()
+
 	var values []string
 	for _, line := range strings.Split(strings.TrimSpace(completionOutput(t, words...)), "\n") {
 		if line != "" {
@@ -26,6 +27,7 @@ func completionValues(t *testing.T, words ...string) []string {
 			values = append(values, value)
 		}
 	}
+
 	return values
 }
 
@@ -38,6 +40,7 @@ func TestCompletionTracksHelp(t *testing.T) {
 	if json.Unmarshal([]byte(helpOutput(t, "--help", "--json")), &help) != nil {
 		t.Fatal("help JSON")
 	}
+
 	for _, command := range help.Data.Commands {
 		words := strings.Fields(command)
 		for i, word := range words {
@@ -45,6 +48,7 @@ func TestCompletionTracksHelp(t *testing.T) {
 				t.Errorf("cannot complete %s at %s", command, word)
 			}
 		}
+
 		flags := completionValues(t, append(slices.Clone(words), "--")...)
 		for _, line := range strings.Split(helpOutput(t, append([]string{"help"}, words...)...), "\n") {
 			if strings.HasPrefix(line, "  --") {
@@ -79,19 +83,23 @@ func TestCompletionWordsValuesAndPaths(t *testing.T) {
 			}
 		}
 	}
+
 	if got := completionValues(t, "update", "--"); slices.Contains(got, "--task") || slices.Contains(got, "--credential-file") {
 		t.Fatalf("unaccepted flags: %q", got)
 	}
+
 	dir := t.TempDir()
-	if os.Mkdir(filepath.Join(dir, "some dir"), 0700) != nil || os.WriteFile(filepath.Join(dir, "some file.json"), nil, 0600) != nil {
+	if os.Mkdir(filepath.Join(dir, "some dir"), 0o700) != nil || os.WriteFile(filepath.Join(dir, "some file.json"), nil, 0o600) != nil {
 		t.Fatal("path fixture")
 	}
+
 	for _, name := range []string{"credential-file", "body-file", "state-dir"} {
 		got := completionValues(t, "--"+name, filepath.Join(dir, "some"))
 		if !slices.Contains(got, filepath.Join(dir, "some dir")+string(os.PathSeparator)) || slices.Contains(got, filepath.Join(dir, "some file.json")) != (name != "state-dir") {
 			t.Fatalf("--%s paths: %q", name, got)
 		}
 	}
+
 	if got := completionOutput(t, "--nonexistent", ""); got != "" {
 		t.Fatalf("unknown flag: %q", got)
 	}
@@ -99,15 +107,19 @@ func TestCompletionWordsValuesAndPaths(t *testing.T) {
 
 func completionHome(t *testing.T) string {
 	t.Helper()
+
 	home := t.TempDir()
 	for _, key := range []string{"HOME", "USERPROFILE", "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"} {
 		value := home
 		if strings.HasPrefix(key, "XDG_") {
 			value = filepath.Join(home, key)
 		}
+
 		t.Setenv(key, value)
 	}
+
 	t.Setenv("FPATH", "")
+
 	return home
 }
 
@@ -121,42 +133,54 @@ func TestCompletionInstallUninstall(t *testing.T) {
 		t.Run(shell, func(t *testing.T) {
 			t.Setenv("SHELL", "/bin/"+shell)
 			out := helpOutput(t, "completion", "install")
+
 			path := filepath.Join(home, filepath.FromSlash(relative))
 			data, err := os.ReadFile(path)
 			if err != nil || string(data) != completionScripts[shell] || !strings.Contains(out, path) || !strings.Contains(out, "new terminal") {
 				t.Fatalf("install: %s %v", out, err)
 			}
+
 			before, _ := os.Stat(path)
+
 			out = helpOutput(t, "completion", "install", "--shell", shell)
 			after, _ := os.Stat(path)
 			if !strings.Contains(out, "Already installed") || before.ModTime() != after.ModTime() {
 				t.Fatalf("repeat install changed file: %s", out)
 			}
+
 			if shell == "zsh" && !strings.Contains(out, "fpath=(") {
 				t.Fatalf("missing fpath instruction: %s", out)
 			}
+
 			helpOutput(t, "completion", "uninstall", "--shell", shell)
+
 			if _, err := os.Stat(path); !os.IsNotExist(err) {
 				t.Fatalf("not removed: %v", err)
 			}
+
 			if out := helpOutput(t, "completion", "uninstall", "--shell", shell); !strings.Contains(out, "Already absent") {
 				t.Fatal(out)
 			}
 		})
 	}
+
 	for _, action := range []string{"install", "uninstall"} {
 		out := helpOutput(t, "completion", action, "--shell", "powershell")
 		if !strings.Contains(out, "$PROFILE") || !strings.Contains(out, "No profile was edited") || !strings.Contains(out, "Invoke-Expression") {
 			t.Fatal(out)
 		}
 	}
+
 	fpath := filepath.Join(home, "my-functions")
 	t.Setenv("FPATH", fpath)
+
 	out := helpOutput(t, "completion", "install", "--shell", "zsh")
 	if strings.Contains(out, "fpath=(") || !strings.Contains(out, filepath.Join(fpath, "_a-stack")) {
 		t.Fatal(out)
 	}
+
 	t.Setenv("SHELL", "/bin/unknown")
+
 	var stdout, stderr bytes.Buffer
 	if run([]string{"completion", "install"}, &stdout, &stderr) != 2 || stdout.Len() != 0 {
 		t.Fatalf("unknown shell: %s %s", stdout.String(), stderr.String())
@@ -166,14 +190,17 @@ func TestCompletionInstallUninstall(t *testing.T) {
 // Shells invoke the real CLI entry point through a test-only executable shim.
 func completionShim(t *testing.T) string {
 	t.Helper()
+
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	path := filepath.Join(t.TempDir(), "a-stack")
-	if err := os.WriteFile(path, []byte("#!/bin/sh\nASTACK_TEST_CHILD=1 exec "+shellQuote(exe)+" -test.run=^TestCLIProcess$ -- \"$@\"\n"), 0700); err != nil {
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nASTACK_TEST_CHILD=1 exec "+shellQuote(exe)+" -test.run=^TestCLIProcess$ -- \"$@\"\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+
 	return path
 }
 
@@ -184,16 +211,20 @@ func TestCompletionShells(t *testing.T) {
 			if err != nil {
 				t.Skip(shell + " not installed")
 			}
+
 			path := filepath.Join(t.TempDir(), "completion")
-			if err := os.WriteFile(path, []byte(helpOutput(t, "completion", shell)), 0600); err != nil {
+			if err := os.WriteFile(path, []byte(helpOutput(t, "completion", shell)), 0o600); err != nil {
 				t.Fatal(err)
 			}
+
 			if out, err := exec.Command(bin, "-n", path).CombinedOutput(); err != nil {
 				t.Fatalf("syntax: %v %s", err, out)
 			}
+
 			if runtime.GOOS == "windows" {
 				t.Skip("POSIX executable shim")
 			}
+
 			cli := completionShim(t)
 			if shell == "bash" {
 				script := `source "$1"
@@ -210,9 +241,10 @@ COMP_WORDS=("$2" task status --progress = wor); COMP_CWORD=5; _a_stack
 				}
 			} else if shell == "zsh" {
 				dir := filepath.Join(t.TempDir(), "some dir")
-				if err := os.Mkdir(dir, 0700); err != nil {
+				if err := os.Mkdir(dir, 0o700); err != nil {
 					t.Fatal(err)
 				}
+
 				script := `compdef() { :; }
 compadd() {
     local nospace=false
@@ -230,21 +262,26 @@ words=("$2" --state-dir "$3"); CURRENT=3; _a_stack
 				}
 			} else if shell == "fish" {
 				t.Setenv("PATH", filepath.Dir(cli)+string(os.PathListSeparator)+os.Getenv("PATH"))
+
 				for _, line := range []string{"a-stack upd", "a-stack task status --progress wor"} {
 					want := "update\t"
 					if strings.Contains(line, "progress") {
 						want = "working"
 					}
+
 					if out, err := exec.Command(bin, "--no-config", "-c", "source "+shellQuote(path)+"; complete -C "+shellQuote(line)).CombinedOutput(); err != nil || !strings.Contains(string(out), want) {
 						t.Fatalf("fish completion: %v %s", err, out)
 					}
 				}
+
 				root := t.TempDir()
 				dir := filepath.Join(root, "path fixture")
+
 				nested := filepath.Join(dir, "nested")
-				if err := os.MkdirAll(nested, 0700); err != nil {
+				if err := os.MkdirAll(nested, 0o700); err != nil {
 					t.Fatal(err)
 				}
+
 				for _, flag := range []string{"--body-file", "--credential-file", "--state-dir"} {
 					for _, token := range []string{
 						filepath.Join(root, "path"),
@@ -257,13 +294,16 @@ words=("$2" --state-dir "$3"); CURRENT=3; _a_stack
 						if token == filepath.Join(root, "path") {
 							want = dir + "/"
 						}
+
 						if out, err := exec.Command(bin, "--no-config", "-c", "source "+shellQuote(path)+"; complete -C \"$argv[1]\"", "--", line).CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != want {
 							t.Errorf("fish path %q: %v %q", line, err, out)
 						}
 					}
 				}
+
 				for _, token := range []string{"", `"`, "'"} {
 					line := "a-stack --body-file " + token
+
 					command := exec.Command(bin, "--no-config", "-c", "source "+shellQuote(path)+"; complete -C \"$argv[1]\"", "--", line)
 					command.Dir = root
 					if out, err := command.CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "path fixture/" {

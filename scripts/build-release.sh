@@ -39,7 +39,10 @@ if [ $# -gt 1 ]; then
   case "$3" in
     amd64) triple=x86_64-w64-mingw32 ;;
     arm64) triple=aarch64-w64-mingw32 ;;
-    *) echo "$usage" >&2; exit 2 ;;
+    *)
+      echo "$usage" >&2
+      exit 2
+      ;;
   esac
   if [ "$(uname -s)-$(uname -m)" != Linux-x86_64 ]; then
     echo "the Windows build runs on Linux x86_64" >&2
@@ -77,12 +80,18 @@ fi
 case "$(uname -s)" in
   Linux) os=linux ;;
   Darwin) os=darwin ;;
-  *) echo "unsupported system: $(uname -s)" >&2; exit 1 ;;
+  *)
+    echo "unsupported system: $(uname -s)" >&2
+    exit 1
+    ;;
 esac
 case "$(uname -m)" in
   x86_64) arch=amd64 ;;
   aarch64 | arm64) arch=arm64 ;;
-  *) echo "unsupported architecture: $(uname -m)" >&2; exit 1 ;;
+  *)
+    echo "unsupported architecture: $(uname -m)" >&2
+    exit 1
+    ;;
 esac
 
 out=".tmp/release-$os-$arch"

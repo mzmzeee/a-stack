@@ -26,44 +26,56 @@ func OpenServiceLog(dir string) (*os.File, error) {
 	if _, err := statePath(dir); err != nil {
 		return nil, err
 	}
+
 	if err := MkdirPrivate(dir); err != nil {
 		return nil, err
 	}
+
 	if err := checkPrivateDirectory(dir); err != nil {
 		return nil, err
 	}
+
 	f, err := openPrivate(filepath.Join(dir, "service.log"), true)
 	if err != nil {
 		return nil, err
 	}
+
 	info, err := f.Stat()
 	if err == nil {
 		err = checkPrivate(info, false)
 	}
+
 	if err == nil && info.Size() > 1<<20 {
 		err = f.Truncate(0)
 	}
+
 	closeErr := f.Close()
+
 	if err != nil {
 		return nil, err
 	}
+
 	if closeErr != nil {
 		return nil, closeErr
 	}
+
 	// Reopen with append-only writes so concurrent startup attempts cannot
 	// overwrite each other's output. Both opens reject links and unsafe ACLs.
 	f, err = openPrivateAppend(filepath.Join(dir, "service.log"))
 	if err != nil {
 		return nil, err
 	}
+
 	info, err = f.Stat()
 	if err == nil {
 		err = checkPrivate(info, false)
 	}
+
 	if err != nil {
 		f.Close()
 		return nil, err
 	}
+
 	return f, nil
 }
 
@@ -72,25 +84,32 @@ func opaqueID() string {
 	if _, err := rand.Read(b[:]); err != nil {
 		panic("operating system random source unavailable")
 	}
+
 	return base64.RawURLEncoding.EncodeToString(b[:])
 }
+
 func DefaultStateDir() (string, error) {
 	if root := os.Getenv("XDG_STATE_HOME"); root != "" {
 		if !filepath.IsAbs(root) {
 			return "", failure("invalid_input", "XDG_STATE_HOME must be absolute")
 		}
+
 		return filepath.Join(root, "a-stack"), nil
 	}
+
 	root, err := defaultStateRoot()
 	if err != nil {
 		return "", err
 	}
+
 	return filepath.Join(root, "a-stack"), nil
 }
+
 func statePath(path string) (string, error) {
 	if !filepath.IsAbs(path) || !localStatePath(path) {
 		return "", failure("invalid_input", "state directory must be an absolute local filesystem path")
 	}
+
 	path = filepath.Clean(path)
 	// Resolve existing ancestors too: a symlink must not bypass the checkout guard.
 	probe := path
@@ -100,78 +119,100 @@ func statePath(path string) (string, error) {
 			if !localStatePath(resolved) {
 				return "", failure("invalid_input", "state directory must be on a local filesystem")
 			}
+
 			for p := resolved; ; p = filepath.Dir(p) {
 				if _, err := os.Lstat(filepath.Join(p, ".git")); err == nil {
 					return "", failure("invalid_input", "application state and generated credentials must be outside project checkouts, and "+p+" is a Git checkout (it has .git); choose a folder outside it, for the state with --state-dir")
 				}
+
 				if filepath.Dir(p) == p {
 					break
 				}
 			}
+
 			break
 		}
+
 		if !os.IsNotExist(err) {
 			return "", storageError(err)
 		}
+
 		next := filepath.Dir(probe)
 		if next == probe {
 			return "", storageError()
 		}
+
 		probe = next
 	}
+
 	return path, nil
 }
+
 func privateRead(path string) ([]byte, error) {
 	f, err := openPrivate(path, false)
 	if err != nil {
 		return nil, failure("invalid_input", "private file is missing or inaccessible")
 	}
 	defer f.Close()
+
 	info, err := f.Stat()
 	if err != nil {
 		return nil, storageError(err)
 	}
+
 	if err = checkPrivate(info, false); err != nil {
 		return nil, err
 	}
+
 	data, err := io.ReadAll(io.LimitReader(f, maxPrivateFile+1))
 	if err != nil {
 		return nil, storageError(err)
 	}
+
 	if len(data) > maxPrivateFile {
 		return nil, failure("invalid_input", "private file is too large")
 	}
+
 	return data, nil
 }
+
 func writePrivate(path string, v any, replace bool) error {
 	b, err := json.Marshal(v)
 	if err != nil {
 		return storageError(err)
 	}
+
 	f, err := os.CreateTemp(filepath.Dir(path), ".a-stack-*")
 	if err != nil {
 		return storageError(err)
 	}
+
 	tmp := f.Name()
 	defer os.Remove(tmp)
+
 	if _, err = f.Write(append(b, '\n')); err == nil {
 		err = f.Sync()
 	}
+
 	closeErr := f.Close()
 	if err != nil || closeErr != nil {
 		return storageError()
 	}
+
 	if replace {
 		err = Rename(tmp, path)
 	} else {
 		err = os.Link(tmp, path)
 	}
+
 	if errors.Is(err, os.ErrExist) {
 		return failure("conflict", "private file already exists")
 	}
+
 	if err != nil {
 		return storageError(err)
 	}
+
 	return syncDir(filepath.Dir(path))
 }
 
@@ -184,6 +225,7 @@ func Rename(from, to string) error {
 		time.Sleep(50 * time.Millisecond)
 		err = os.Rename(from, to)
 	}
+
 	return err
 }
 
@@ -195,6 +237,7 @@ func Open(path string) (*os.File, error) {
 		time.Sleep(50 * time.Millisecond)
 		f, err = os.Open(path)
 	}
+
 	return f, err
 }
 
@@ -212,16 +255,20 @@ func lockState(path string) (*stateLock, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if err = MkdirPrivate(dir); err != nil {
 		return nil, storageError(err)
 	}
+
 	if err = checkPrivateDirectory(dir); err != nil {
 		return nil, err
 	}
+
 	f, err := lockFile(filepath.Join(dir, "service.lock"))
 	if err != nil {
 		return nil, err
 	}
+
 	return &stateLock{dir: dir, file: f}, nil
 }
 
@@ -247,12 +294,15 @@ func ServiceCommand(verb string) string {
 		if err != nil {
 			return "a-stack service status"
 		}
+
 		return windowsServiceCommand(verb, name)
 	}
+
 	if runtime.GOOS == "darwin" {
 		action := map[string]string{"start": "kickstart", "stop": "kill TERM", "restart": "kickstart -k"}[verb]
 		return "launchctl " + action + " gui/" + strconv.Itoa(os.Getuid()) + "/" + LaunchdLabel
 	}
+
 	return "systemctl --user " + verb + " a-stack"
 }
 
@@ -274,22 +324,27 @@ type Credential struct {
 // ValidID reports whether id has the form of a Workspace, Session, Agent,
 // Task or reference ID.
 func ValidID(id string) bool { return validToken(id) }
+
 func validToken(token string) bool {
 	b, err := base64.RawURLEncoding.DecodeString(token)
 	return err == nil && len(b) == 32 && base64.RawURLEncoding.EncodeToString(b) == token
 }
+
 func validContext(c Credential) bool {
 	return (c.Remote == "" || remoteName.MatchString(c.Remote)) && (c.WorkspaceID == "" || validToken(c.WorkspaceID)) && (c.SessionID == "" || validToken(c.SessionID)) && (c.AgentName == "" || agentName.MatchString(c.AgentName))
 }
+
 func ReadCredential(path string) (Credential, error) {
 	data, err := privateRead(path)
 	if err != nil {
 		return Credential{}, err
 	}
+
 	var c Credential
 	if err = decodeJSON(data, &c); err != nil || !validToken(c.Token) || !validKind(c.Kind) || !validContext(c) {
 		return Credential{}, failure("invalid_input", "invalid credential file")
 	}
+
 	return c, nil
 }
 
@@ -318,46 +373,59 @@ func ReadDiscovery(dir string) (Discovery, error) {
 	if err != nil {
 		return d, unreachable(serviceDown)
 	}
+
 	if decodeJSON(data, &d) != nil || !validToken(d.DatabaseID) || !validToken(d.InstanceID) || !strings.HasPrefix(d.URL, "http://127.0.0.1:") {
 		return d, failure("invalid_input", "invalid service discovery")
 	}
+
 	return d, nil
 }
+
 func ensureDatabaseFile(dir string) (string, error) {
 	path := filepath.Join(dir, "state.db")
+
 	f, err := openPrivate(path, true)
 	if err != nil {
 		return "", storageError(err)
 	}
 	defer f.Close()
+
 	info, err := f.Stat()
 	if err != nil {
 		return "", storageError(err)
 	}
+
 	if err = checkPrivate(info, false); err != nil {
 		return "", err
 	}
+
 	for _, suffix := range []string{"-wal", "-shm", "-journal"} {
 		_, err = os.Lstat(path + suffix)
 		if os.IsNotExist(err) {
 			continue
 		}
+
 		if err != nil {
 			return "", storageError(err)
 		}
+
 		sidecar, openErr := openPrivate(path+suffix, false)
 		if openErr != nil {
 			return "", storageError(openErr)
 		}
+
 		info, err = sidecar.Stat()
 		if err == nil {
 			err = checkPrivate(info, false)
 		}
+
 		sidecar.Close()
+
 		if err != nil {
 			return "", err
 		}
 	}
+
 	return path, nil
 }
 func localURL(address string) string { return fmt.Sprintf("http://%s", address) }

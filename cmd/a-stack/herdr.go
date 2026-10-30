@@ -24,19 +24,23 @@ func hookNativeSession(binding *stack.RuntimeBinding) (string, error) {
 	if binding.Harness != "pi" {
 		return binding.NativeSessionID, nil
 	}
+
 	info, err := os.Stat(binding.NativeSessionID)
 	if err != nil || !info.Mode().IsRegular() {
 		return "", invalid("cannot read Pi session header")
 	}
+
 	file, err := os.Open(binding.NativeSessionID)
 	if err != nil {
 		return "", invalid("cannot read Pi session header")
 	}
 	defer file.Close()
+
 	var header struct{ Type, ID string }
 	if json.NewDecoder(io.LimitReader(file, 16<<10)).Decode(&header) != nil || header.Type != "session" || header.ID == "" {
 		return "", invalid("invalid Pi session header")
 	}
+
 	return header.ID, nil
 }
 
@@ -48,47 +52,60 @@ func herdrRequest(ctx context.Context, client *stack.Client, command string, f l
 	if f.workspace == "" || f.session == "" || f.agent == "" {
 		return nil, invalid("explicit --workspace, --session and --agent required")
 	}
+
 	if command == "herdr focus" {
 		return client.Do(ctx, "POST", "/v1/herdr/focus", stack.HerdrFocusRequest{Context: ref, AgentID: f.agent})
 	}
+
 	if f.notices != "" && f.notices != "hook" && f.notices != "pane" {
 		return nil, invalid("--notices must be hook or pane")
 	}
+
 	// The pane gets the Agent's own name.
 	name, err := agentName(ctx, client, ref, f.agent)
 	if err != nil {
 		return nil, err
 	}
+
 	if name == "" {
 		return nil, &stack.Error{Code: "not_found", Message: "Agent not found in this Session"}
 	}
+
 	if executable == "" {
 		executable = "herdr"
 	}
+
 	binding, err := stack.HerdrBind(ctx, executable, name, os.Getenv)
 	if err != nil {
 		return nil, err
 	}
+
 	binding.Notices = f.notices
+
 	worktree, err := os.Getwd()
 	if err != nil {
 		return nil, err
 	}
+
 	session, err := hookNativeSession(binding)
 	if err != nil {
 		return nil, err
 	}
+
 	data, err := client.Do(ctx, "POST", "/v1/herdr/bind", stack.AgentBindingRequest{Context: ref, OperationID: f.operationID, AgentID: f.agent, ExpectedRevision: f.revision, Runtime: binding})
 	if err != nil {
 		return nil, err
 	}
+
 	var result struct{ Data stack.Receipt }
 	if err = json.Unmarshal(data, &result); err != nil {
 		return nil, err
 	}
+
 	id := hookIdentity{credential: credential, agent: f.agent, ref: ref, worktree: worktree, runtimeID: binding.InstanceID}
 	if err = enrollHook(id, binding.Harness, session, "", result.Data.Revision); err != nil {
 		return nil, err
 	}
+
 	return data, nil
 }

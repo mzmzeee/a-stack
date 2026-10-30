@@ -16,6 +16,7 @@ func TestNotificationsDedicatedLiveFixtureService(t *testing.T) {
 	if configPath == "" {
 		t.Skip("root-owned dedicated fixture only")
 	}
+
 	var config struct {
 		StateDir   string         `json:"state_dir"`
 		Executable string         `json:"executable"`
@@ -23,32 +24,40 @@ func TestNotificationsDedicatedLiveFixtureService(t *testing.T) {
 		StopFile   string         `json:"stop_file"`
 		Binding    RuntimeBinding `json:"binding"`
 	}
+
 	data, err := privateRead(configPath)
 	if err != nil {
 		t.Fatal("private fixture configuration unavailable")
 	}
+
 	if decodeJSON(data, &config) != nil || !completeHerdrBinding(config.Binding) || config.Binding.Harness != "codex" || config.Binding.HarnessVersion != "0.164.0" || !filepath.IsAbs(config.Executable) || !filepath.IsAbs(config.StateDir) || !filepath.IsAbs(config.ReadyFile) || !filepath.IsAbs(config.StopFile) {
 		t.Fatal("invalid isolated fixture configuration")
 	}
+
 	service, err := Start(context.Background(), config.StateDir, "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer service.Close(context.Background())
+
 	h := newHerdr(config.Executable)
 	h.verified = func(b RuntimeBinding) bool { return b == config.Binding }
 	if err = service.enableNotifications(h); err != nil {
 		t.Fatal(err)
 	}
+
 	failures := make(chan error, 1)
 	go func() { failures <- service.Serve() }()
+
 	if err = writePrivate(config.ReadyFile, service.Discovery, false); err != nil {
 		t.Fatal("fixture readiness unavailable")
 	}
+
 	deadline := time.NewTimer(8 * time.Minute)
 	defer deadline.Stop()
 	check := time.NewTicker(100 * time.Millisecond)
 	defer check.Stop()
+
 	for {
 		select {
 		case err = <-failures:

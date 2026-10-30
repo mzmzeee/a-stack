@@ -15,6 +15,7 @@ func TestMain(m *testing.M) {
 		fmt.Fprintf(os.Stderr, "TMPDIR is inside a Git checkout: %s\n", os.TempDir())
 		os.Exit(1)
 	}
+
 	storageLogOutput = io.Discard // TestStorageError* capture it
 	os.Exit(m.Run())
 }
@@ -26,6 +27,7 @@ const posixModes = runtime.GOOS != "windows"
 // unixOnly skips a test on Windows.
 func unixOnly(t *testing.T, why string) {
 	t.Helper()
+
 	if !posixModes {
 		t.Skip("not on Windows: " + why)
 	}

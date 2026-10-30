@@ -20,6 +20,7 @@ func isLifecycleCommand(command string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -74,18 +75,23 @@ func acceptedFlags(command string) string {
 		case "session invite":
 			flags += " remote workspace session operation-id "
 		}
+
 		return flags
 	}
+
 	// No service and no credential.
 	if isCompletionCommand(command) {
 		if command == "completion install" || command == "completion uninstall" {
 			return " shell help "
 		}
+
 		return " help "
 	}
+
 	if command == "connect" {
 		return " code json help "
 	}
+
 	if command == "version" {
 		return " json help "
 	} else if command == "skill install" {
@@ -113,6 +119,7 @@ func acceptedFlags(command string) string {
 	} else if command == "service uninstall" {
 		return " json help "
 	}
+
 	allowed := " state-dir json help "
 	// The Operator shortcuts use operator.json and may start the service, so
 	// they take neither credential nor serve flags.
@@ -125,6 +132,7 @@ func acceptedFlags(command string) string {
 	} else {
 		allowed += "credential-file as remote "
 	}
+
 	switch command {
 	case "notifications status":
 		allowed += "workspace session agent limit after "
@@ -175,14 +183,18 @@ func acceptedFlags(command string) string {
 	case "status":
 		allowed += "session all "
 	}
+
 	if isTaskCommand(command) {
 		allowed += "workspace session " + taskAllowedFlags(command) + " "
 	}
+
 	if isMailCommand(command) {
 		allowed += "workspace session " + mailAllowedFlags(command) + " "
 	}
+
 	return allowed
 }
+
 func lifecycleRequest(ctx context.Context, client *stack.Client, command string, f lifecycleFlags) ([]byte, error) {
 	// A new credential file that this request writes. If the request fails for
 	// good, no Agent holds its token, so the file goes. A retryable failure
@@ -193,13 +205,16 @@ func lifecycleRequest(ctx context.Context, client *stack.Client, command string,
 			fresh = f.newCredential
 		}
 	}
+
 	data, err := lifecycleCall(ctx, client, command, f)
 	var e *stack.Error
 	if fresh != "" && errors.As(err, &e) && !e.Retryable {
 		_ = os.Remove(fresh)
 	}
+
 	return data, err
 }
+
 func lifecycleCall(ctx context.Context, client *stack.Client, command string, f lifecycleFlags) ([]byte, error) {
 	ref := stack.Context{WorkspaceID: f.workspace, SessionID: f.session}
 	var body any
@@ -222,6 +237,7 @@ func lifecycleCall(ctx context.Context, client *stack.Client, command string, f 
 			if err != nil {
 				return nil, err
 			}
+
 			if r.WorktreePath == "" {
 				r.WorktreePath, err = os.Getwd()
 				if err != nil {
@@ -229,28 +245,35 @@ func lifecycleCall(ctx context.Context, client *stack.Client, command string, f 
 				}
 			}
 		}
+
 		hash, err := stack.PrepareAgentCredential(f.newCredential, client.Discovery.DatabaseID, command, f.operationID, r)
 		if err != nil {
 			return nil, err
 		}
+
 		r.CredentialHash = hash
+
 		if client.RemoteName != "" {
 			if err = stack.FinishTransferredCredential(f.newCredential, client.RemoteName, ref); err != nil {
 				return nil, err
 			}
 		}
+
 		body = r
 	case "agent attach", "agent rebind":
 		if f.runtimeFile != "" && f.runtimeID != "" {
 			return nil, invalid("choose --runtime-id or --runtime-file")
 		}
+
 		if f.clearRuntime && (f.runtimeID != "" || f.runtimeFile != "") {
 			return nil, invalid("--clear-runtime excludes a replacement runtime")
 		}
+
 		var binding *stack.RuntimeBinding
 		if f.runtimeID != "" {
 			binding = &stack.RuntimeBinding{InstanceID: f.runtimeID}
 		}
+
 		if f.runtimeFile != "" {
 			var err error
 			binding, err = stack.ReadRuntimeBinding(f.runtimeFile)
@@ -258,32 +281,39 @@ func lifecycleCall(ctx context.Context, client *stack.Client, command string, f 
 				return nil, err
 			}
 		}
+
 		if binding == nil && !f.clearRuntime {
 			return nil, invalid("explicit runtime binding or Operator --clear-runtime required")
 		}
+
 		r := stack.AgentBindingRequest{Context: ref, OperationID: f.operationID, AgentID: f.agent, ExpectedRevision: f.revision, Runtime: binding}
 		if command == "agent rebind" {
 			name, err := agentName(ctx, client, ref, f.agent)
 			if err != nil {
 				return nil, err
 			}
+
 			hash, err := stack.PrepareRebindCredential(f.newCredential, client.Discovery.DatabaseID, r, name)
 			if err != nil {
 				return nil, err
 			}
+
 			r.CredentialHash = hash
+
 			if client.RemoteName != "" {
 				if err = stack.FinishTransferredCredential(f.newCredential, client.RemoteName, ref); err != nil {
 					return nil, err
 				}
 			}
 		}
+
 		body = r
 	case "agent observe":
 		body = stack.AgentObserveRequest{Context: ref, AgentID: f.agent, ExpectedRevision: f.revision, RuntimeID: f.runtimeID, State: f.state}
 	default:
 		return nil, invalid("unknown lifecycle command")
 	}
+
 	return client.Do(ctx, "POST", "/v1/"+strings.ReplaceAll(command, " ", "/"), body)
 }
 
@@ -296,6 +326,7 @@ func agentName(ctx context.Context, client *stack.Client, ref stack.Context, id 
 		if err != nil {
 			return "", err
 		}
+
 		var page struct {
 			Data struct {
 				Items []stack.Agent `json:"items"`
@@ -305,14 +336,17 @@ func agentName(ctx context.Context, client *stack.Client, ref stack.Context, id 
 		if json.Unmarshal(data, &page) != nil {
 			return "", invalid("unexpected agent list response")
 		}
+
 		for _, agent := range page.Data.Items {
 			if agent.ID == id {
 				return agent.Name, nil
 			}
 		}
+
 		if page.Data.Next == "" {
 			return "", nil
 		}
+
 		after = page.Data.Next
 	}
 }
@@ -328,12 +362,14 @@ func fillContext(c stack.Credential, f *lifecycleFlags, command string) error {
 		if field.saved == "" || !strings.Contains(allowed, " "+field.name+" ") {
 			continue
 		}
+
 		if *field.flag == "" {
 			*field.flag = field.saved
 		} else if *field.flag != field.saved {
 			return invalid("--" + field.name + " does not match the " + map[string]string{"workspace": "Workspace", "session": "Session"}[field.name] + " of the credential file")
 		}
 	}
+
 	return nil
 }
 
@@ -354,21 +390,26 @@ func loadContext(ctx context.Context, client *stack.Client, f lifecycleFlags, co
 	if c.Kind != stack.AgentCapability || c.WorkspaceID != "" && c.SessionID != "" || f.workspace != "" && f.session != "" || !strings.Contains(acceptedFlags(command), " session ") {
 		return nil
 	}
+
 	data, err := client.Do(ctx, "GET", "/v1/credential", nil)
 	var e *stack.Error
 	if errors.As(err, &e) && e.Code == "not_found" {
 		return legacyContext // a service before v0.1.7 has no such read
 	}
+
 	if err != nil {
 		return err
 	}
+
 	var envelope struct {
 		Data stack.CredentialContext `json:"data"`
 	}
 	if json.Unmarshal(data, &envelope) != nil || !stack.ValidID(envelope.Data.WorkspaceID) || !stack.ValidID(envelope.Data.SessionID) {
 		return legacyContext
 	}
+
 	c.WorkspaceID, c.SessionID = envelope.Data.WorkspaceID, envelope.Data.SessionID
+
 	return nil
 }
 
@@ -382,28 +423,35 @@ func agentIDs(ctx context.Context, client *stack.Client, ref stack.Context, flag
 		if stack.ValidID(*value) {
 			continue
 		}
+
 		if ref.WorkspaceID == "" || ref.SessionID == "" {
 			return missingContext
 		}
+
 		if agents == nil {
 			var err error
 			if agents, err = listPages[stack.Agent](ctx, client, "/v1/agent/list", ref); err != nil {
 				return err
 			}
 		}
+
 		id := ""
 		for _, agent := range agents {
 			if agent.Name == *value {
 				if id != "" {
 					return invalid("--" + flagName + " " + *value + " names more than one Agent; give the Agent ID from a-stack agent list")
 				}
+
 				id = agent.ID
 			}
 		}
+
 		if id == "" {
 			return invalid("--" + flagName + " " + *value + " is no Agent of this Session; see a-stack agent list")
 		}
+
 		*value = id
 	}
+
 	return nil
 }

@@ -52,6 +52,7 @@ func mustBase64(s string) []byte {
 	if err != nil {
 		panic(err)
 	}
+
 	return b
 }
 
@@ -71,6 +72,7 @@ func releaseArchive(goos, goarch string) string {
 	if goos == "windows" {
 		return "a-stack_" + goos + "_" + goarch + ".zip"
 	}
+
 	return "a-stack_" + goos + "_" + goarch + ".tar.gz"
 }
 
@@ -79,6 +81,7 @@ func installHint(goos string) string {
 	if goos == "windows" {
 		return "irm " + defaultReleases + "/latest/download/install.ps1 | iex"
 	}
+
 	return "curl -fsSL " + installScript + " | A_STACK_INSTALL_DIR=~/.local/bin sh"
 }
 
@@ -92,12 +95,14 @@ func packageUpdate(exe string) string {
 			return "scoop update a-stack"
 		}
 	}
+
 	switch {
 	case strings.Contains(p, `\scoop\apps\`):
 		return "scoop update a-stack"
 	case strings.Contains(p, `\winget\packages\`):
 		return "winget upgrade a-stack"
 	}
+
 	return ""
 }
 
@@ -119,16 +124,20 @@ func newReleases() releases {
 	if base == "" {
 		base, mirror = defaultReleases, false
 	}
+
 	allowed := func(u *url.URL) bool { return u.Scheme == "https" || mirror && u.Scheme == "http" }
 	client := &http.Client{Timeout: 10 * time.Minute, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
 			return errors.New("too many redirects")
 		}
+
 		if !allowed(req.URL) {
 			return errors.New("redirect to a URL that is not HTTPS")
 		}
+
 		return nil
 	}}
+
 	return releases{base: base, mirror: mirror, client: client}
 }
 
@@ -142,40 +151,51 @@ func (r releases) get(rawURL string, limit int64, optional bool, show *progress)
 		if optional && errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
+
 		if err != nil {
 			return nil, updateFailed("cannot read " + rawURL)
 		}
+
 		if info, err := f.Stat(); err == nil {
 			size = info.Size()
 		}
+
 		body = f
 	} else {
 		if u, err := url.Parse(rawURL); err != nil || u.Scheme != "https" && !(r.mirror && u.Scheme == "http") {
 			return nil, invalid("release URLs must use HTTPS")
 		}
+
 		resp, err := r.client.Get(rawURL)
 		if err != nil {
 			return nil, updateFailed("download failed: " + rawURL)
 		}
+
 		if optional && resp.StatusCode == http.StatusNotFound {
 			resp.Body.Close()
 			return nil, nil
 		}
+
 		if resp.StatusCode != http.StatusOK {
 			resp.Body.Close()
 			return nil, updateFailed("download failed: " + rawURL + ": " + resp.Status)
 		}
+
 		body, size = resp.Body, resp.ContentLength
 	}
+
 	defer body.Close()
 	defer show.end()
+
 	data, err := io.ReadAll(io.LimitReader(show.download(body, path.Base(rawURL), size), limit+1))
 	if err != nil {
 		return nil, updateFailed("download failed: " + rawURL)
 	}
+
 	if int64(len(data)) > limit {
 		return nil, updateFailed("download is too large: " + rawURL)
 	}
+
 	return data, nil
 }
 
@@ -186,21 +206,27 @@ func (r releases) latest() (string, error) {
 	if !strings.HasPrefix(r.base, "https://") && !(r.mirror && strings.HasPrefix(r.base, "http://")) {
 		return "", fail
 	}
+
 	client := *r.client
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
 	resp, err := client.Head(r.base + "/latest")
 	if err != nil {
 		return "", fail
 	}
+
 	resp.Body.Close()
+
 	location, err := resp.Location()
 	if err != nil {
 		return "", fail
 	}
+
 	_, tag, ok := strings.Cut(location.Path, "/tag/")
 	if !ok || !releaseTag.MatchString(tag) {
 		return "", fail
 	}
+
 	return tag, nil
 }
 
@@ -209,35 +235,46 @@ func (r releases) latest() (string, error) {
 // false for a release from before signedSince that has no signature.
 func (r releases) download(tag string, show *progress) (binary []byte, signed bool, err error) {
 	dir := r.base + "/download/" + tag + "/"
+
 	sums, err := r.get(dir+"SHA256SUMS", maxSums, false, nil)
 	if err != nil {
 		return nil, false, err
 	}
+
 	sig, err := r.get(dir+"SHA256SUMS.sig", 1024, true, nil)
 	if err != nil {
 		return nil, false, err
 	}
+
 	n, _, _ := semver(tag)
 	if sig == nil && slices.Compare(n[:], signedSince[:]) >= 0 {
 		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "release " + tag + " has no SHA256SUMS.sig, but every release since v0.1.5 is signed; nothing changed"}
 	}
+
 	if sig != nil {
 		show.step("Checking the signature of SHA256SUMS")
 	}
+
 	if sig != nil && !ed25519.Verify(releaseKey, sums, sig) {
 		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "the signature of SHA256SUMS for " + tag + " is not valid; nothing changed"}
 	}
+
 	name := releaseArchive(runtime.GOOS, runtime.GOARCH)
+
 	archive, err := r.get(dir+name, maxArchive, false, show)
 	if err != nil {
 		return nil, false, err
 	}
+
 	show.step("Checking the checksum of " + name)
+
 	sum := sha256.Sum256(archive)
 	if !slices.Contains(strings.Split(string(sums), "\n"), hex.EncodeToString(sum[:])+"  "+name) {
 		return nil, false, &stack.Error{Code: "integration_unavailable", Message: "checksum mismatch for " + name + "; nothing changed"}
 	}
+
 	binary, err = extractBinary(archive, runtime.GOOS)
+
 	return binary, sig != nil, err
 }
 
@@ -260,10 +297,12 @@ func extractBinary(archive []byte, goos string) ([]byte, error) {
 	if goos == "windows" {
 		return extractZip(archive)
 	}
+
 	gz, err := gzip.NewReader(bytes.NewReader(archive))
 	if err != nil {
 		return nil, badArchive
 	}
+
 	tr := tar.NewReader(io.LimitReader(gz, 4*maxArchive))
 	var binary []byte
 	for {
@@ -271,25 +310,32 @@ func extractBinary(archive []byte, goos string) ([]byte, error) {
 		if err == io.EOF {
 			break
 		}
+
 		if err != nil {
 			return nil, badArchive
 		}
+
 		if unsafeEntry(h.Name, false) {
 			return nil, unsafeArchive
 		}
+
 		if path.Clean(h.Name) != "a-stack" {
 			continue
 		}
+
 		if binary != nil || h.Typeflag != tar.TypeReg || h.Size > maxArchive {
 			return nil, badArchive
 		}
+
 		if binary, err = io.ReadAll(io.LimitReader(tr, maxArchive)); err != nil {
 			return nil, badArchive
 		}
 	}
+
 	if binary == nil {
 		return nil, badArchive
 	}
+
 	return binary, nil
 }
 
@@ -298,29 +344,36 @@ func extractZip(archive []byte) ([]byte, error) {
 	if err != nil {
 		return nil, badArchive
 	}
+
 	var binary []byte
 	for _, f := range zr.File {
 		if unsafeEntry(f.Name, true) {
 			return nil, unsafeArchive
 		}
+
 		if path.Clean(f.Name) != "a-stack.exe" {
 			continue
 		}
+
 		if binary != nil || !f.Mode().IsRegular() || f.UncompressedSize64 > maxArchive {
 			return nil, badArchive
 		}
+
 		rc, err := f.Open()
 		if err != nil {
 			return nil, badArchive
 		}
+
 		binary, err = io.ReadAll(io.LimitReader(rc, maxArchive))
 		if closeErr := rc.Close(); err != nil || closeErr != nil {
 			return nil, badArchive
 		}
 	}
+
 	if binary == nil {
 		return nil, badArchive
 	}
+
 	return binary, nil
 }
 
@@ -330,10 +383,12 @@ func semver(v string) ([3]int, string, bool) {
 	if !releaseTag.MatchString(v) {
 		return n, "", false
 	}
+
 	core, pre, _ := strings.Cut(v[1:], "-")
 	for i, part := range strings.Split(core, ".") {
 		n[i], _ = strconv.Atoi(part)
 	}
+
 	return n, pre, true
 }
 
@@ -345,9 +400,11 @@ func newer(a, b string) bool {
 	if !okA || !okB {
 		return okA
 	}
+
 	if c := slices.Compare(na[:], nb[:]); c != 0 {
 		return c > 0
 	}
+
 	return pa != pb && (pa == "" || pb != "" && pa > pb)
 }
 
@@ -361,40 +418,51 @@ func runVersion(binary string) (string, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		out, err = exec.CommandContext(ctx, binary, "version").Output()
 		cancel()
+
 		if !errors.Is(err, syscall.ETXTBSY) && !(runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(32))) {
 			break
 		}
+
 		time.Sleep(100 * time.Millisecond)
 	}
+
 	var result struct {
 		Data struct{ Version string } `json:"data"`
 	}
 	if err != nil || json.Unmarshal(out, &result) != nil {
 		return "", errors.New("does not run")
 	}
+
 	return result.Data.Version, nil
 }
 
 func updateCommand(release versionFlag, check, noRestart, noRefresh, machine bool, stdout, stderr io.Writer) error {
 	target := release.value
+
 	if !slices.Contains(updateSystems, runtime.GOOS+"/"+runtime.GOARCH) {
 		return invalid("a-stack update supports Linux, macOS and Windows on amd64 and arm64 only")
 	}
+
 	if release.set && !releaseTag.MatchString(target) {
 		return invalid("--version needs a release such as v0.1.3")
 	}
+
 	if check && target != "" {
 		return invalid("--check takes no --version")
 	}
+
 	current := buildVersion()
+
 	r := newReleases()
 	write := func(data map[string]any, lines ...string) error {
 		if _, ok := data["restarted"]; !ok {
 			data["restarted"], data["service_version"] = false, ""
 		}
+
 		if machine {
 			return json.NewEncoder(stdout).Encode(map[string]any{"data": data})
 		}
+
 		_, err := io.WriteString(stdout, strings.Join(lines, "\n")+"\n")
 		return err
 	}
@@ -403,6 +471,7 @@ func updateCommand(release versionFlag, check, noRestart, noRefresh, machine boo
 		if err != nil {
 			return err
 		}
+
 		available := latest != current && !newer(current, latest)
 		line := "a-stack " + current + " is the latest version"
 		if available {
@@ -410,8 +479,10 @@ func updateCommand(release versionFlag, check, noRestart, noRefresh, machine boo
 		} else if latest != current {
 			line = "a-stack " + current + " is newer than the latest release " + latest
 		}
+
 		return write(map[string]any{"version": current, "latest": latest, "update_available": available}, line)
 	}
+
 	if target == "" && version == "" {
 		return invalid("this a-stack is a development build without a release version; run a-stack update --version vX.Y.Z to install a release")
 	}
@@ -422,26 +493,32 @@ func updateCommand(release versionFlag, check, noRestart, noRefresh, machine boo
 			return &stack.Error{Code: "forbidden", Message: "a package manager installed " + exe + "; update it with: " + manager}
 		}
 	}
+
 	if err == nil {
 		exe, err = stack.ResolvePath(exe)
 	}
+
 	if err != nil {
 		return updateFailed("cannot find the running a-stack binary")
 	}
+
 	if manager := packageUpdate(exe); manager != "" && runtime.GOOS == "windows" {
 		return &stack.Error{Code: "forbidden", Message: "a package manager installed " + exe + "; update it with: " + manager}
 	}
+
 	data := map[string]any{"previous": current, "version": current, "path": exe, "updated": false}
 	if target == "" {
 		if target, err = r.latest(); err != nil {
 			return err
 		}
+
 		if target == current || newer(current, target) {
 			return write(data, "a-stack "+current+" is already the latest version")
 		}
 	} else if target == current {
 		return write(data, "a-stack "+current+" is already installed in "+exe)
 	}
+
 	// Check the folder before the download, and write next to the binary
 	// so that the rename replaces it in one step.
 	dir := filepath.Dir(exe)
@@ -453,49 +530,64 @@ func updateCommand(release versionFlag, check, noRestart, noRefresh, machine boo
 	defer os.Remove(tmp.Name())
 	defer tmp.Close()
 	show := newProgress(stderr, machine)
+
 	binary, signed, err := r.download(target, show)
 	if err != nil {
 		return err
 	}
+
 	info, err := os.Stat(exe)
 	mode := fs.FileMode(0o755)
 	if err == nil {
 		mode = info.Mode().Perm()
 	}
+
 	if _, err = tmp.Write(binary); err == nil {
 		err = tmp.Chmod(mode | 0o100)
 	}
+
 	if err == nil {
 		err = tmp.Sync() // the rename must never publish an empty file
 	}
+
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
 	}
+
 	if err != nil {
 		return updateFailed("cannot write to " + dir + "; nothing changed")
 	}
+
 	show.step("Checking that a-stack " + target + " runs")
+
 	if got, err := runVersion(tmp.Name()); err != nil || got != target {
 		return updateFailed("the downloaded a-stack " + target + " does not run on this system; nothing changed")
 	}
+
 	show.step("Replacing " + exe)
+
 	if err = replaceBinary(tmp.Name(), exe, runtime.GOOS == "windows"); err != nil {
 		return updateFailed("cannot replace " + exe + ": " + err.Error())
 	}
+
 	if err = syncDir(dir); err != nil {
 		return updateFailed("replaced " + exe + " with a-stack " + target + ", but cannot sync " + dir + " to disk")
 	}
 
 	data["version"], data["updated"], data["signed"] = target, true, signed
+
 	lines := []string{"Updated a-stack " + current + " -> " + target + " in " + exe}
 	warnings := []string{}
 	if !signed {
 		warnings = append(warnings, "Warning: a-stack "+target+" has no release signature, as every release before v0.1.5; only its SHA-256 checksum was checked.")
 	}
+
 	if newer(current, target) {
 		warnings = append(warnings, "Warning: a-stack "+target+" is older than "+current+" and may not open the current database: serve then stops with exit code 4. To go back, run a-stack update --version "+current+", or restore the state.db.pre-vN copy that a schema migration left in the state directory (changes made after it are lost).")
 	}
+
 	data["warnings"] = warnings
+
 	lines = append(lines, warnings...)
 	folders, files := []string{}, []string{}
 	if !noRefresh {
@@ -503,6 +595,7 @@ func updateCommand(release versionFlag, check, noRestart, noRefresh, machine boo
 		var refreshWarnings []string
 		folders, files, refreshWarnings, ok = refreshInstalls(exe)
 		warnings = append(warnings, refreshWarnings...)
+
 		data["warnings"] = warnings
 		lines = append(lines, refreshWarnings...)
 		if !ok {
@@ -511,22 +604,27 @@ func updateCommand(release versionFlag, check, noRestart, noRefresh, machine boo
 			data["warnings"] = warnings
 			lines = append(lines, warning)
 		}
+
 		for _, file := range files {
 			lines = append(lines, "Refreshed "+file)
 		}
 	}
+
 	data["skills"], data["refreshed_files"] = folders, files
 	data["restarted"], data["service_version"] = false, ""
 	if !machine {
 		if err := write(data, lines...); err != nil {
 			return err
 		}
+
 		lines = nil
 	}
+
 	result, err := restartUpdatedService(target, noRestart, machine, stdout, data)
 	if err != nil {
 		return err
 	}
+
 	return write(data, append(lines, result, "Then run a-stack to open the view.")...)
 }
 
@@ -540,19 +638,24 @@ func replaceBinary(tmp, exe string, windows bool) error {
 	if !windows {
 		return os.Rename(tmp, exe)
 	}
+
 	old := exe + ".old"
 	if err := os.Remove(old); err != nil && !errors.Is(err, fs.ErrNotExist) {
 		old = exe + "." + strconv.FormatInt(time.Now().UnixNano(), 36) + ".old"
 	}
+
 	if err := stack.Rename(exe, old); err != nil {
 		return err
 	}
+
 	if err := stack.Rename(tmp, exe); err != nil {
 		if restoreErr := stack.Rename(old, exe); restoreErr != nil {
 			return errors.Join(err, errors.New("rollback failed; restore "+old+" to "+exe), restoreErr)
 		}
+
 		return err
 	}
+
 	return nil
 }
 
@@ -563,6 +666,7 @@ func removeOldBinaries() {
 	if err != nil {
 		return
 	}
+
 	entries, _ := os.ReadDir(filepath.Dir(exe))
 	for _, e := range entries {
 		if name := e.Name(); strings.HasPrefix(name, filepath.Base(exe)+".") && strings.HasSuffix(name, ".old") {
@@ -577,6 +681,7 @@ func syncDir(dir string) error {
 	if runtime.GOOS == "windows" {
 		return nil
 	}
+
 	f, err := os.Open(dir)
 	if err != nil {
 		return err
@@ -590,6 +695,7 @@ func syncDir(dir string) error {
 func refreshInstalls(exe string) (folders, files, warnings []string, ok bool) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+
 	out, err := exec.CommandContext(ctx, exe, "update", "--refresh", "--json").Output()
 	var result struct {
 		Data struct {
@@ -601,5 +707,6 @@ func refreshInstalls(exe string) (folders, files, warnings []string, ok bool) {
 	if json.Unmarshal(out, &result) != nil || result.Data.Skills == nil || result.Data.Files == nil {
 		return []string{}, []string{}, nil, false
 	}
+
 	return result.Data.Skills, result.Data.Files, result.Data.Warnings, err == nil
 }

@@ -33,16 +33,19 @@ type shortcutResult struct {
 // shortcut runs an Operator shortcut in this process, with a fake opener.
 func shortcut(t *testing.T, args ...string) (shortcutResult, string, string) {
 	t.Helper()
+
 	var stdout, stderr bytes.Buffer
 	if code := run(args, &stdout, &stderr); code != 0 {
 		t.Fatalf("%v: exit %d stderr=%s", args, code, stderr.String())
 	}
+
 	var envelope struct {
 		Data shortcutResult `json:"data"`
 	}
 	if strings.Contains(strings.Join(args, " "), "--json") && json.Unmarshal(stdout.Bytes(), &envelope) != nil {
 		t.Fatalf("%v: stdout is not one JSON document: %q", args, stdout.String())
 	}
+
 	return envelope.Data, stdout.String(), stderr.String()
 }
 
@@ -58,40 +61,50 @@ func TestCLIShortcutsWithRunningService(t *testing.T) {
 		launched = append(launched, u)
 		return errors.New("simulated opener failure")
 	}
+
 	alpha, beta, elsewhere := t.TempDir(), t.TempDir(), t.TempDir()
-	if err := os.Mkdir(filepath.Join(alpha, "sub"), 0700); err != nil {
+	if err := os.Mkdir(filepath.Join(alpha, "sub"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+
 	t.Chdir(elsewhere)
+
 	got, out, _ := shortcut(t, "--state-dir", dir, "--json")
 	if got.Hint == "" || !strings.Contains(got.Hint, "a-stack new") || got.URL != "" || len(launched) != 0 {
 		t.Fatalf("no Session hint: %q", out)
 	}
+
 	_, out, _ = shortcut(t, "--state-dir", dir)
 	if !strings.HasPrefix(out, "No Session yet.") || strings.Count(out, "\n") != 1 {
 		t.Fatalf("plain hint %q", out)
 	}
 
 	t.Chdir(alpha)
+
 	first, _, _ := shortcut(t, "new", "--state-dir", dir, "--json", "--no-browser")
 	canonicalAlpha, _ := filepath.EvalSymlinks(alpha)
 	if first.WorkspacePath != canonicalAlpha || first.SessionName != filepath.Base(canonicalAlpha) || !first.CurrentFolder || !operationIDPattern.MatchString(first.WorkspaceOperation) || !operationIDPattern.MatchString(first.SessionOperation) || first.WorkspaceOperation == first.SessionOperation || first.URL == "" || len(launched) != 0 {
 		t.Fatalf("new did not create Workspace and Session: %+v", first)
 	}
+
 	second, _, _ := shortcut(t, "new", "Second build", "--state-dir", dir, "--json", "--no-browser")
 	if second.WorkspaceID != first.WorkspaceID || second.WorkspaceOperation != "" || second.SessionName != "Second build" || second.SessionID == first.SessionID {
 		t.Fatalf("new did not reuse the Workspace: %+v", second)
 	}
+
 	// The same name again opens the open Session of that name.
 	again, _, _ := shortcut(t, "new", "--state-dir", dir, "--json", "--no-browser")
 	if again.SessionID != first.SessionID || !again.ExistingSession || again.SessionOperation != "" || first.ExistingSession {
 		t.Fatalf("new made a second Session of the same name: %+v", again)
 	}
+
 	_, out, _ = shortcut(t, "new", "Second build", "--state-dir", dir, "--no-browser")
 	if !strings.HasPrefix(out, "The Session \"Second build\" already exists in this folder. To make another one, run: a-stack new NAME\nOpening the Session \"Second build\"") {
 		t.Fatalf("plain new of an existing name %q", out)
 	}
+
 	t.Chdir(beta)
+
 	_, out, _ = shortcut(t, "new", "--state-dir", dir, "--no-browser")
 	if !strings.HasPrefix(out, "Created the Workspace ") || !strings.Contains(out, "Created the Session ") || !strings.Contains(out, "(current folder).\nhttp://") {
 		t.Fatalf("plain new output %q", out)
@@ -100,36 +113,44 @@ func TestCLIShortcutsWithRunningService(t *testing.T) {
 	// The newest open Session overall is in beta. A subfolder of alpha still
 	// prefers alpha's newest Session.
 	t.Chdir(elsewhere)
+
 	got, _, _ = shortcut(t, "--state-dir", dir, "--json", "--no-browser")
 	if got.WorkspacePath == canonicalAlpha || got.CurrentFolder || got.OtherOpenSessions == nil || *got.OtherOpenSessions != 2 {
 		t.Fatalf("bare did not open the newest Session: %+v", got)
 	}
+
 	t.Chdir(filepath.Join(alpha, "sub"))
+
 	got, _, _ = shortcut(t, "--state-dir", dir, "--json", "--no-browser")
 	if got.SessionID != second.SessionID || !got.CurrentFolder {
 		t.Fatalf("bare did not prefer the current folder: %+v", got)
 	}
+
 	// A change to the older alpha Session makes it the most recent one.
 	common := func(args ...string) []string { return append(args, "--state-dir", dir, "--json") }
 	receiptResult(t, common("session", "close", "--workspace", first.WorkspaceID, "--session", second.SessionID, "--expected-revision", "1", "--operation-id", "home-close-second"))
 	receiptResult(t, common("session", "close", "--workspace", first.WorkspaceID, "--session", first.SessionID, "--expected-revision", "1", "--operation-id", "home-close-first"))
 	receiptResult(t, common("session", "reopen", "--workspace", first.WorkspaceID, "--session", first.SessionID, "--expected-revision", "2", "--operation-id", "home-reopen-first"))
 	t.Chdir(elsewhere)
+
 	_, out, errout := shortcut(t, "--state-dir", dir)
 	u, err := url.Parse(strings.Split(strings.TrimSpace(out), "\n")[1])
 	if err != nil || len(u.Fragment) != 43 || !strings.Contains(out, "Opening the Session \""+first.SessionName+"\"") || !strings.Contains(out, "Other open Sessions: 1. To pick one, run: a-stack -r") {
 		t.Fatalf("bare did not open the most recently changed Session: %q", out)
 	}
+
 	if len(launched) != 1 || launched[0] != u.String() || errout != "Browser launch failed; open the printed URL.\n" || strings.Contains(errout, u.Fragment) {
 		t.Fatal("bare did not launch the URL safely")
 	}
 
 	// -r without a terminal or with --json lists all Sessions, closed ones too.
 	t.Chdir(alpha)
+
 	var stdout, stderr bytes.Buffer
 	if run([]string{"-r", "--state-dir", dir, "--json"}, &stdout, &stderr) != 0 || stderr.Len() != 0 {
 		t.Fatalf("resume list: %s", stderr.String())
 	}
+
 	var list struct {
 		Data struct {
 			Folder   string       `json:"folder"`
@@ -139,6 +160,7 @@ func TestCLIShortcutsWithRunningService(t *testing.T) {
 	if json.Unmarshal(stdout.Bytes(), &list) != nil || list.Data.Folder != canonicalAlpha || len(list.Data.Sessions) != 3 || list.Data.Sessions[0].SessionID != first.SessionID || !list.Data.Sessions[0].CurrentFolder || list.Data.Sessions[1].SessionID != second.SessionID || !list.Data.Sessions[1].Closed || bytes.Contains(stdout.Bytes(), []byte("#")) {
 		t.Fatalf("resume list %s", stdout.String())
 	}
+
 	if len(launched) != 1 {
 		t.Fatal("resume list opened a view")
 	}
@@ -147,16 +169,20 @@ func TestCLIShortcutsWithRunningService(t *testing.T) {
 func TestCLIBareStartsServiceAndKeepsItRunning(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "state")
 	t.Chdir(t.TempDir())
+
 	command := child(t, "--state-dir", dir, "--json", "--no-browser")
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var stderr bytes.Buffer
+
 	command.Stderr = &stderr
 	if err = command.Start(); err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() {
 		if command.ProcessState == nil {
 			_ = command.Process.Kill()
@@ -164,16 +190,20 @@ func TestCLIBareStartsServiceAndKeepsItRunning(t *testing.T) {
 		}
 	})
 	reader := bufio.NewReader(stdout)
+
 	ready, err := reader.ReadBytes('\n')
 	if err != nil || !json.Valid(ready) || !bytes.Contains(ready, []byte(`"status":"ready"`)) {
 		t.Fatalf("not ready: %s %v", ready, err)
 	}
+
 	hint, err := reader.ReadBytes('\n')
 	if err != nil || !bytes.Contains(hint, []byte(`"hint"`)) {
 		t.Fatalf("no hint: %s %v", hint, err)
 	}
+
 	// The hint did not stop the service: a second shortcut is a client of it.
 	created, _ := commandResult(t, []string{"new", "Started", "--state-dir", dir, "--json", "--no-browser"}, 0)
+
 	opened, _ := commandResult(t, []string{"--state-dir", dir, "--json", "--no-browser"}, 0)
 	var a, b struct {
 		Data shortcutResult `json:"data"`
@@ -181,12 +211,15 @@ func TestCLIBareStartsServiceAndKeepsItRunning(t *testing.T) {
 	if json.Unmarshal(created, &a) != nil || json.Unmarshal(opened, &b) != nil || b.Data.SessionID != a.Data.SessionID || b.Data.SessionName != "Started" {
 		t.Fatalf("second shortcut did not use the started service: %s %s", created, opened)
 	}
+
 	// A second serve on the owned state directory exits 3 (systemd RestartPreventExitStatus).
 	commandResult(t, []string{"serve", "--state-dir", dir, "--json"}, 3)
 	stopServe(t, command, syscall.SIGTERM)
+
 	if stderr.Len() != 0 {
 		t.Fatalf("shutdown: %s", stderr.String())
 	}
+
 	commandResult(t, []string{"health", "--state-dir", dir, "--json"}, 1)
 	// With a Session, a start opens it after the ready line, and the URL
 	// fragment appears only on stdout.
@@ -195,11 +228,14 @@ func TestCLIBareStartsServiceAndKeepsItRunning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	stderr.Reset()
+
 	command.Stderr = &stderr
 	if err = command.Start(); err != nil {
 		t.Fatal(err)
 	}
+
 	reader = bufio.NewReader(stdout)
 	lines := []string{}
 	for len(lines) < 4 {
@@ -207,13 +243,17 @@ func TestCLIBareStartsServiceAndKeepsItRunning(t *testing.T) {
 		if err != nil {
 			t.Fatalf("output %q: %v", lines, err)
 		}
+
 		lines = append(lines, line)
 	}
+
 	u, err := url.Parse(strings.TrimSpace(lines[3]))
 	if !strings.HasPrefix(lines[0], "The a-stack service is running at http://127.0.0.1:") || lines[1] != closeHint+"\n" || !strings.Contains(lines[2], `"Started"`) || err != nil || len(u.Fragment) != 43 {
 		t.Fatalf("started open output %q", lines)
 	}
+
 	stopServe(t, command, syscall.SIGINT)
+
 	if stderr.Len() != 0 {
 		t.Fatalf("shutdown: %s", stderr.String())
 	}
@@ -233,11 +273,14 @@ func TestCLIShortcutsReportLockedStateWithoutService(t *testing.T) {
 	if err := stack.MkdirPrivate(dir); err != nil {
 		t.Fatal(err)
 	}
+
 	// This stands for a serve that holds the lock but is still starting or hangs.
 	defer holdStateLock(t, filepath.Join(dir, "service.lock"))()
 	t.Chdir(t.TempDir())
+
 	for _, args := range [][]string{{}, {"-r"}, {"new"}} {
 		var stdout, stderr bytes.Buffer
+
 		code := run(append(args, "--state-dir", dir, "--json", "--no-browser"), &stdout, &stderr)
 		var envelope struct {
 			Error struct{ Code, Message string } `json:"error"`
@@ -252,37 +295,46 @@ func TestCLIStartedServiceStopsCleanlyOnHangup(t *testing.T) {
 	unixOnly(t, "no SIGHUP")
 	dir := filepath.Join(t.TempDir(), "state")
 	t.Chdir(t.TempDir())
+
 	command := child(t, "--state-dir", dir, "--json", "--no-browser")
 	stdout, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var stderr bytes.Buffer
+
 	command.Stderr = &stderr
 	if err = command.Start(); err != nil {
 		t.Fatal(err)
 	}
+
 	t.Cleanup(func() {
 		if command.ProcessState == nil {
 			_ = command.Process.Kill()
 			_ = command.Wait()
 		}
 	})
+
 	reader := bufio.NewReader(stdout)
 	for i := 0; i < 2; i++ { // the ready line and the hint
 		if _, err = reader.ReadBytes('\n'); err != nil {
 			t.Fatal(err)
 		}
 	}
+
 	if _, err = os.Stat(filepath.Join(dir, "service.json")); err != nil {
 		t.Fatal(err)
 	}
+
 	if command.Process.Signal(syscall.SIGHUP) != nil {
 		t.Fatal("hangup")
 	}
+
 	if err = command.Wait(); err != nil || stderr.Len() != 0 {
 		t.Fatalf("shutdown: %v %s", err, stderr.String())
 	}
+
 	if _, err = os.Stat(filepath.Join(dir, "service.json")); !os.IsNotExist(err) {
 		t.Fatalf("service.json left behind: %v", err)
 	}
@@ -299,14 +351,18 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	t.Chdir(t.TempDir())
 	var stdout, stderr bytes.Buffer
 	t.Chdir(homeDir)
+
 	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "not your home folder") {
 		t.Fatalf("new in the home folder: exit %d %s", code, stderr.String())
 	}
+
 	stderr.Reset()
 	t.Chdir(t.TempDir())
+
 	if code := run([]string{"new", "--orchestrator", "bad name", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "--orchestrator takes an Agent name") {
 		t.Fatalf("bad name: exit %d %s", code, stderr.String())
 	}
+
 	var made struct {
 		Data struct {
 			shortcutResult
@@ -316,24 +372,30 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 		} `json:"data"`
 	}
 	stdout.Reset()
+
 	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 0 || json.Unmarshal(stdout.Bytes(), &made) != nil {
 		t.Fatalf("new --orchestrator: exit %d %s %s", code, stdout.String(), stderr.String())
 	}
+
 	got := made.Data
 	if got.Credential != filepath.Join(root, "a-stack-agents", got.SessionID, "01-orch.json") || !stack.ValidID(got.OrchestratorID) || got.SessionOperation == "" {
 		t.Fatalf("hand-off result %+v", got)
 	}
+
 	info, err := os.Stat(got.Credential)
 	if err != nil || posixModes && info.Mode().Perm() != 0o600 {
 		t.Fatalf("credential file %v %v", info, err)
 	}
+
 	credential, err := stack.ReadCredential(got.Credential)
 	if err != nil || credential.Token == "" || strings.Contains(got.Brief, credential.Token) || strings.Contains(stdout.String(), credential.Token) {
 		t.Fatal("the brief or the output leaks the credential")
 	}
+
 	if !strings.HasPrefix(got.Brief, "Load the a-stack skill before running commands.") {
 		t.Fatalf("brief does not lead with loading the skill: %s", got.Brief)
 	}
+
 	// The brief names the hook install for the agent's harness; a state
 	// directory that is not the default goes into it.
 	install := "run a-stack hook install --state-dir " + shellQuote(dir) + " --credential-file " + shellQuote(got.Credential) + " --claude (or --codex, --pi or --opencode"
@@ -342,11 +404,14 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 			t.Fatalf("brief lacks %q: %s", want, got.Brief)
 		}
 	}
+
 	// The new credential names its Session, which now has this Orchestrator.
 	stdout.Reset()
+
 	if code := run([]string{"session", "inspect", "--as", "agent", "--credential-file", got.Credential, "--state-dir", dir}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), `"orchestrator_id":"`+got.OrchestratorID+`"`) {
 		t.Fatalf("inspect as the Orchestrator: %s %s", stdout.String(), stderr.String())
 	}
+
 	// The same hand-off again returns it, for example to an agent that lost it.
 	var again struct {
 		Data struct {
@@ -356,36 +421,46 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 		} `json:"data"`
 	}
 	stdout.Reset()
+
 	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 0 || json.Unmarshal(stdout.Bytes(), &again) != nil {
 		t.Fatalf("hand-off again: exit %d %s %s", code, stdout.String(), stderr.String())
 	}
+
 	if again.Data.OrchestratorID != got.OrchestratorID || !again.Data.Existing || again.Data.Brief != got.Brief {
 		t.Fatalf("hand-off again %+v", again.Data)
 	}
+
 	// With --no-browser an agent may be the caller: no view link, so no view secret.
 	if got.URL != "" || strings.Contains(stdout.String(), `"url"`) || !strings.Contains(got.Hint, "a-stack") {
 		t.Fatalf("hand-off made a view link: %+v", got)
 	}
+
 	// A credential file where v0.1.5 kept it also proves the hand-off.
 	legacy := filepath.Join(root, "a-stack-agents", "01-orch.json")
 	if err := os.Rename(got.Credential, legacy); err != nil {
 		t.Fatal(err)
 	}
+
 	stdout.Reset()
+
 	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), `"existing_orchestrator":true`) || json.Unmarshal(stdout.Bytes(), &made) != nil || made.Data.Credential != legacy {
 		t.Fatalf("hand-off from the v0.1.5 path: exit %d %s %s", code, stdout.String(), stderr.String())
 	}
+
 	// A worker's credential file, where v0.1.5 kept Orchestrators' files, does
 	// not pass as the Orchestrator's.
 	worker := filepath.Join(root, "a-stack-agents", "02-worker.json")
 	if code := run([]string{"agent", "register", "--as", "agent", "--credential-file", legacy, "--name", "02-worker", "--new-credential-file", worker, "--operation-id", "register-worker-1", "--state-dir", dir}, &stdout, &stderr); code != 0 {
 		t.Fatalf("register a worker: exit %d %s", code, stderr.String())
 	}
+
 	stdout.Reset()
 	stderr.Reset()
+
 	if code := run([]string{"new", "--orchestrator", "02-worker", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "already has an Orchestrator") {
 		t.Fatalf("a worker's file passed as the Orchestrator's: exit %d %s %s", code, stdout.String(), stderr.String())
 	}
+
 	// Another project gets its own credential file with the same Orchestrator
 	// name. (Within one Workspace, Agent names stay unique.)
 	var other struct {
@@ -398,33 +473,43 @@ func TestCLINewHandsOffToOrchestrator(t *testing.T) {
 	t.Chdir(project)
 	stdout.Reset()
 	stderr.Reset()
+
 	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 0 || json.Unmarshal(stdout.Bytes(), &other) != nil {
 		t.Fatalf("hand-off in another Session: exit %d %s %s", code, stdout.String(), stderr.String())
 	}
+
 	if other.Data.SessionID == got.SessionID || other.Data.Credential != filepath.Join(root, "a-stack-agents", other.Data.SessionID, "01-orch.json") {
 		t.Fatalf("hand-off in another Session %+v", other.Data)
 	}
+
 	// A subfolder of a project with a Workspace does not get a second team.
 	sub := filepath.Join(project, "src")
 	if err := os.Mkdir(sub, 0o700); err != nil {
 		t.Fatal(err)
 	}
+
 	t.Chdir(sub)
 	stderr.Reset()
+
 	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "inside the Workspace") {
 		t.Fatalf("hand-off in a subfolder: exit %d %s", code, stderr.String())
 	}
+
 	t.Chdir(project)
 	// The same Session with another name: it already has an Orchestrator.
 	stderr.Reset()
+
 	if code := run([]string{"new", "--orchestrator", "02-orch", "--state-dir", dir, "--json", "--no-browser"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "already has an Orchestrator") {
 		t.Fatalf("second Orchestrator: exit %d %s", code, stderr.String())
 	}
+
 	if _, err := os.Stat(filepath.Join(root, "a-stack-agents", other.Data.SessionID, "02-orch.json")); !os.IsNotExist(err) {
 		t.Fatal("a refused hand-off left a credential file")
 	}
+
 	// Without a service, the hand-off does not start one in the foreground.
 	stderr.Reset()
+
 	if code := run([]string{"new", "--orchestrator", "01-orch", "--state-dir", filepath.Join(root, "idle"), "--json", "--no-browser"}, &stdout, &stderr); code != 1 || !strings.Contains(stderr.String(), "a-stack service install") {
 		t.Fatalf("hand-off without a service: exit %d %s", code, stderr.String())
 	}
@@ -441,10 +526,12 @@ func TestOrchestratorJSONDoesNotOpenView(t *testing.T) {
 	defer func() { launchBrowser = old }()
 	launched := false
 	launchBrowser = func(string) error { launched = true; return nil }
+
 	var out, errout bytes.Buffer
 	if code := run([]string{"new", "--orchestrator", "01-review", "--state-dir", dir, "--json"}, &out, &errout); code != 0 {
 		t.Fatalf("unexpected code %d", code)
 	}
+
 	var data struct {
 		Data struct {
 			URL string `json:"url"`
@@ -453,12 +540,15 @@ func TestOrchestratorJSONDoesNotOpenView(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &data); err != nil {
 		t.Fatal(err)
 	}
+
 	if strings.Contains(data.Data.URL, "#") {
 		t.Error("JSON agent handoff contains a view credential fragment")
 	}
+
 	if strings.Contains(out.String(), "Herdr: bind yourself") {
 		t.Error("non-Herdr handoff asks for a Herdr binding")
 	}
+
 	if launched {
 		t.Error("JSON agent handoff launches browser")
 	}
@@ -470,32 +560,40 @@ func TestOrchestratorNameConflictDoesNotCreateSession(t *testing.T) {
 	launch(t, dir)
 	t.Setenv("HOME", t.TempDir())
 	t.Chdir(t.TempDir())
+
 	var out, errout bytes.Buffer
 	args := []string{"new", "first", "--orchestrator", "01-orch", "--state-dir", dir, "--json", "--no-browser"}
 	if code := run(args, &out, &errout); code != 0 {
 		t.Fatalf("first handoff: exit %d", code)
 	}
+
 	var first struct{ Data shortcutResult }
 	if err := json.Unmarshal(out.Bytes(), &first); err != nil {
 		t.Fatal(err)
 	}
+
 	args[1] = "second"
 	out.Reset()
 	errout.Reset()
+
 	if code := run(args, &out, &errout); code == 0 {
 		t.Fatal("accepted duplicate Agent name")
 	}
+
 	out.Reset()
 	errout.Reset()
+
 	if code := run([]string{"session", "list", "--workspace", first.Data.WorkspaceID, "--state-dir", dir, "--json"}, &out, &errout); code != 0 {
 		t.Fatalf("list: exit %d", code)
 	}
+
 	var sessions struct {
 		Data struct{ Items []stack.Session }
 	}
 	if err := json.Unmarshal(out.Bytes(), &sessions); err != nil {
 		t.Fatal(err)
 	}
+
 	if len(sessions.Data.Items) != 1 {
 		t.Fatalf("name conflict left %d Sessions, want 1", len(sessions.Data.Items))
 	}
@@ -512,11 +610,13 @@ func TestOrchestratorResumesUnappointedAgent(t *testing.T) {
 			t.Chdir(project)
 			common := func(args ...string) []string { return append(args, "--state-dir", dir, "--json") }
 			workspace := receiptResult(t, common("workspace", "create", "--path", project, "--operation-id", "resume-workspace"))
+
 			session := receiptResult(t, common("session", "create", "--workspace", workspace.ResourceID, "--name", "resume", "--operation-id", "resume-session"))
 			credential := filepath.Join(root, "a-stack-agents", session.ResourceID, "01-orch.json")
 			if err := stack.MkdirPrivate(filepath.Dir(credential)); err != nil {
 				t.Fatal(err)
 			}
+
 			register := func(name, path string) stack.Receipt {
 				return receiptResult(t, common("agent", "register", "--workspace", workspace.ResourceID, "--session", session.ResourceID, "--name", name, "--operation-id", "resume-"+name, "--new-credential-file", path))
 			}
@@ -529,36 +629,46 @@ func TestOrchestratorResumesUnappointedAgent(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				data = bytes.ReplaceAll(data, []byte("02-worker"), []byte("01-orch"))
-				if err := os.WriteFile(credential, data, 0600); err != nil {
+				if err := os.WriteFile(credential, data, 0o600); err != nil {
 					t.Fatal(err)
 				}
 			}
+
 			before, err := os.ReadFile(credential)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			var out, errout bytes.Buffer
+
 			code := run(common("new", "resume", "--orchestrator", "01-orch", "--no-browser"), &out, &errout)
 			if mismatch && code == 0 {
 				t.Fatal("appointed another Agent")
 			}
+
 			if !mismatch && code != 0 {
 				t.Fatalf("resume failed: exit %d", code)
 			}
+
 			after, err := os.ReadFile(credential)
 			if err != nil || !bytes.Equal(before, after) {
 				t.Fatal("changed existing credential")
 			}
+
 			out.Reset()
 			errout.Reset()
+
 			if code := run(common("session", "inspect", "--workspace", workspace.ResourceID, "--session", session.ResourceID), &out, &errout); code != 0 {
 				t.Fatalf("inspect: exit %d", code)
 			}
+
 			var inspected struct{ Data stack.Session }
 			if err := json.Unmarshal(out.Bytes(), &inspected); err != nil {
 				t.Fatal(err)
 			}
+
 			if mismatch {
 				if inspected.Data.OrchestratorID != nil {
 					t.Fatal("mismatch appointed an Agent")

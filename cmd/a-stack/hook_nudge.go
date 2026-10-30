@@ -32,6 +32,7 @@ func hookCacheDir(cache, agent string) string {
 	if runtime.GOOS == "windows" {
 		return filepath.Join(cache, "a-stack-hooks", agent)
 	}
+
 	return filepath.Join(cache, "a-stack", "hooks", agent)
 }
 
@@ -43,11 +44,14 @@ func hookCacheFile(agent, session, suffix string) (string, bool) {
 	if err != nil || session == "" || !stack.ValidID(agent) {
 		return "", false
 	}
+
 	dir := hookCacheDir(cache, agent)
 	if os.MkdirAll(dir, 0o700) != nil {
 		return "", false
 	}
+
 	sum := sha256.Sum256([]byte(session))
+
 	return filepath.Join(dir, hex.EncodeToString(sum[:16])+suffix), true
 }
 
@@ -63,26 +67,33 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 	if !ok {
 		return ""
 	}
+
 	dir := filepath.Dir(file)
+
 	release, ok := tryLock(dir)
 	if !ok {
 		return "" // another hook run of this Agent checks right now
 	}
+
 	defer release()
+
 	urgent := ""
 	if in.Event != "SessionStart" && in.Event != "SubagentStart" {
 		urgent = hookUrgentNudge(ctx, client, id, strings.TrimSuffix(file, ".json")+".urgent.json")
 	}
+
 	defer func() {
 		if urgent != "" {
 			text = urgent
 		}
 	}()
+
 	info, err := os.Stat(file)
 	first := err != nil
 	if !first && (in.Event == "SessionStart" || (in.Event != "UserPromptSubmit" && time.Since(info.ModTime()) < mailNudgeEvery)) {
 		return ""
 	}
+
 	// The first check reads into a file of its own, which becomes the cursor
 	// file only once it has read up to the newest message. A first check that
 	// runs out of time goes on at the next hook run, and still reports nothing.
@@ -91,7 +102,9 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 		pruneHookFiles(dir)
 		cursor = strings.TrimSuffix(file, ".json") + ".first.json"
 	}
+
 	promptCount := 0
+
 	var out struct {
 		Data stack.MailCheckPage `json:"data"`
 	}
@@ -99,9 +112,11 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 		if err := json.Unmarshal(data, &out); err != nil {
 			return err
 		}
+
 		if urgent != "" {
 			return nil // one urgent nudge covers the normal mail too
 		}
+
 		if in.Event == "UserPromptSubmit" {
 			for _, page := range out.Data.Tasks {
 				for _, message := range page.Messages {
@@ -110,39 +125,50 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 					}
 				}
 			}
+
 			if promptCount > 0 {
 				text = fmt.Sprintf("%d new a-stack mails, run your mail check", promptCount)
 			}
+
 			return nil
 		}
+
 		if first {
 			return nil
 		}
+
 		titles := []string{}
 		for _, page := range out.Data.Tasks {
 			news := false
 			for _, m := range page.Messages {
 				news = news || (m.SenderID != id.agent && m.Priority != "urgent")
 			}
+
 			if !news {
 				continue
 			}
+
 			data, err := client.Do(ctx, "POST", "/v1/task/show", stack.TaskReadRequest{Context: id.ref, TaskID: page.TaskID})
 			var show struct {
 				Data stack.TaskDetail `json:"data"`
 			}
+
 			if err != nil {
 				return fmt.Errorf("nudge title lookup: %w", err)
 			}
+
 			if err := json.Unmarshal(data, &show); err != nil {
 				return err
 			}
+
 			titles = append(titles, `"`+printable(truncate(show.Data.Title, 80))+`"`)
 		}
+
 		if len(titles) > 0 {
 			sort.Strings(titles)
 			text = "a-stack: New Task mail on " + strings.Join(titles, ", ") + "; load the a-stack skill, then run mail check."
 		}
+
 		return nil
 	}
 	for range catchUpPages {
@@ -153,16 +179,20 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 			now := time.Now()
 			_ = os.Chtimes(file, now, now) // wait 30 seconds before trying again
 		}
+
 		if err != nil {
 			return ""
 		}
+
 		if first && !out.Data.More {
 			_ = stack.Rename(cursor, file)
 		}
+
 		if !first || !out.Data.More {
 			break
 		}
 	}
+
 	return text
 }
 
@@ -177,37 +207,45 @@ type urgentHookCursor struct {
 // Called under the same lock as the normal scan, but never its throttle.
 func hookUrgentNudge(ctx context.Context, client *stack.Client, id hookIdentity, file string) string {
 	identity := fmt.Sprintf("%x", sha256.Sum256([]byte(client.Discovery.DatabaseID+"\n"+id.ref.WorkspaceID+"\n"+id.ref.SessionID+"\n"+client.Credential.Token)))
+
 	cursor := urgentHookCursor{Identity: identity, Positions: map[string]stack.UrgentMailPosition{}}
 	f, err := stack.Open(file)
 	if err == nil {
 		data, readErr := io.ReadAll(io.LimitReader(f, stack.MaxRequestBytes+1))
 		f.Close()
+
 		if readErr != nil || len(data) > stack.MaxRequestBytes || json.Unmarshal(data, &cursor) != nil || cursor.Identity != identity || cursor.Positions == nil {
 			return ""
 		}
 	} else if !os.IsNotExist(err) {
 		return ""
 	}
+
 	data, err := client.Do(ctx, "POST", "/v1/mail/urgent", stack.UrgentMailRequest{Context: id.ref, Positions: cursor.Positions, AfterTask: cursor.AfterTask})
 	if err != nil {
 		return ""
 	}
+
 	var out struct {
 		Data stack.UrgentMailPage `json:"data"`
 	}
 	if json.Unmarshal(data, &out) != nil {
 		return ""
 	}
+
 	for task, pos := range out.Data.Positions {
 		cursor.Positions[task] = pos
 	}
+
 	cursor.AfterTask = out.Data.NextTask
 	if stack.ReplacePrivate(file, cursor) != nil {
 		return ""
 	}
+
 	if out.Data.Urgent {
 		return urgentMailNudge
 	}
+
 	return ""
 }
 

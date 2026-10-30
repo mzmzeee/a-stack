@@ -10,6 +10,7 @@ import (
 // requireMessage checks an invalid_input error and the words it must name.
 func requireMessage(t *testing.T, err error, want string) {
 	t.Helper()
+
 	var e *Error
 	if !errors.As(err, &e) || e.Code != "invalid_input" || e.Message != want {
 		t.Fatalf("error = %v, want invalid_input %q", err, want)
@@ -23,6 +24,7 @@ func TestErrorsNameTheFieldAndOperationIDRule(t *testing.T) {
 		_, err := s.ChangeTask(ctx, f.a.Token, "report", TaskChangeRequest{Context: f.ref(0), OperationID: id, TaskID: f.taskID, ExpectedRevision: 3})
 		requireMessage(t, err, "operation ID must be 8–128 letters, digits, _ or -")
 	}
+
 	_, err := PrepareAgentCredential(filepath.Join(t.TempDir(), "a.json"), opaqueID(), "agent register", "reg1", nil)
 	requireMessage(t, err, OperationIDRule)
 	_, err = PrepareAgentCredential("relative.json", opaqueID(), "agent register", "register-1", nil)

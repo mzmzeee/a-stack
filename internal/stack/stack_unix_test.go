@@ -11,11 +11,13 @@ import (
 
 func TestFIFOCredentialFailsWithoutBlocking(t *testing.T) {
 	path := filepath.Join(privateTestDir(t), "fifo.json")
-	if err := syscall.Mkfifo(path, 0600); err != nil {
+	if err := syscall.Mkfifo(path, 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	done := make(chan error, 1)
 	go func() { _, err := ReadCredential(path); done <- err }()
+
 	select {
 	case err := <-done:
 		requireCode(t, err, "invalid_input")

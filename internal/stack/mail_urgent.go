@@ -39,29 +39,36 @@ func (s *Store) PeekUrgentMail(ctx context.Context, token string, r UrgentMailRe
 		return out, err
 	}
 	defer tx.Rollback()
+
 	if p.Kind != AgentCapability {
 		return out, failure("forbidden", "urgent mail peek requires an Agent credential")
 	}
+
 	if session.Closed {
 		return out, nil
 	}
+
 	after, err := decodeMailCheckCursor(r.SessionID, p.SubjectID, r.AfterTask)
 	if err != nil {
 		return out, err
 	}
+
 	for task, pos := range r.Positions {
 		if !ValidID(task) || pos.Sequence < 0 || len(pos.Due) > 35 || (pos.DueID != "" && !ValidID(pos.DueID)) {
 			return out, failure("invalid_input", "invalid urgent mail position")
 		}
 	}
+
 	ids, err := readIDs(ctx, tx, "SELECT task_id FROM task_assignees WHERE session_id=? AND agent_id=? AND task_id>? ORDER BY task_id LIMIT 101", r.SessionID, p.SubjectID, after)
 	if err != nil {
 		return out, publicError(err)
 	}
+
 	if len(ids) > 100 {
 		ids = ids[:100]
 		out.NextTask = encodeMailCheckCursor(r.SessionID, p.SubjectID, ids[99])
 	}
+
 	for _, task := range ids {
 		pos := r.Positions[task]
 		var sequence int64
@@ -71,22 +78,28 @@ func (s *Store) PeekUrgentMail(ctx context.Context, token string, r UrgentMailRe
 		if err != nil {
 			return out, publicError(err)
 		}
+
 		if sequence > pos.Sequence {
 			pos.Sequence = sequence
 			out.Urgent = true
 		}
+
 		var due string
 		var id string
+
 		err = tx.QueryRowContext(ctx, `SELECT rtrim(due_at,'Z'),message_id FROM mail_acks WHERE task_id=? AND recipient_id=? AND acked_at='' AND withdrawn_at='' AND reminder_state<>'suppressed' AND due_at<>'' AND rtrim(due_at,'Z')<=rtrim(?,'Z') AND (rtrim(due_at,'Z')>? OR (rtrim(due_at,'Z')=? AND message_id>?)) ORDER BY rtrim(due_at,'Z') DESC,message_id DESC LIMIT 1`, task, p.SubjectID, clockNow().UTC().Format(time.RFC3339Nano), pos.Due, pos.Due, pos.DueID).Scan(&due, &id)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return out, publicError(err)
 		}
+
 		if err == nil {
 			pos.Due = due
 			pos.DueID = id
 			out.Urgent = true
 		}
+
 		out.Positions[task] = pos
 	}
+
 	return out, nil
 }

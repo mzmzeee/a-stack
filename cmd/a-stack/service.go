@@ -56,11 +56,14 @@ func unitName() (string, error) {
 		if serviceOS == "windows" {
 			return taskName()
 		}
+
 		return "a-stack", nil
 	}
+
 	if !plainUnit.MatchString(name) {
 		return "", invalid("A_STACK_SERVICE_UNIT must be a plain unit name")
 	}
+
 	return name, nil
 }
 
@@ -72,6 +75,7 @@ func unitFile(unit, home string) (string, error) {
 	} else if !filepath.IsAbs(config) {
 		return "", invalid("XDG_CONFIG_HOME must be absolute")
 	}
+
 	return filepath.Join(config, "systemd", "user", unit+".service"), nil
 }
 
@@ -84,19 +88,23 @@ func unitWord(path, home, rel string) (string, error) {
 	if home != "" && path == filepath.Join(home, rel) {
 		return "%h/" + rel, nil
 	}
+
 	if strings.ContainsFunc(path, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
 		return "", invalid("cannot write a path with control characters into the unit: " + printable(path))
 	}
+
 	word := strings.NewReplacer("%", "%%", "$", "$$").Replace(path)
 	if plainWord.MatchString(path) {
 		return word, nil
 	}
+
 	return `"` + strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(word) + `"`, nil
 }
 
 // unitWords splits an ExecStart command as unitWord writes it.
 func unitWords(line, home string) []string {
 	var words []string
+
 	var b strings.Builder
 	inWord, quoted := false, false
 	for i := 0; i < len(line); i++ {
@@ -105,12 +113,14 @@ func unitWords(line, home string) []string {
 		if i+1 < len(line) {
 			next = line[i+1]
 		}
+
 		switch {
 		case c == ' ' && !quoted:
 			if inWord {
 				words = append(words, b.String())
 				b.Reset()
 			}
+
 			inWord = false
 			continue
 		case c == '"':
@@ -124,11 +134,14 @@ func unitWords(line, home string) []string {
 		default:
 			b.WriteByte(c)
 		}
+
 		inWord = true
 	}
+
 	if inWord {
 		words = append(words, b.String())
 	}
+
 	return words
 }
 
@@ -139,10 +152,12 @@ func renderUnit(exe, state, home string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	dir, err := unitWord(state, home, ".local/state/a-stack")
 	if err != nil {
 		return "", err
 	}
+
 	return strings.Replace(systemd.Unit, defaultExecStart, "ExecStart="+binary+" serve --state-dir "+dir+"\n", 1), nil
 }
 
@@ -161,6 +176,7 @@ func unitCommand(unit, home string) (binary, state string) {
 			}
 		}
 	}
+
 	return binary, state
 }
 
@@ -177,16 +193,19 @@ func healthContext(ctx context.Context, state string) (stack.Health, string, err
 	if err != nil {
 		return h, "", err
 	}
+
 	data, err := client.Do(ctx, "GET", "/v1/health", nil)
 	if err != nil {
 		return h, "", err
 	}
+
 	var envelope struct {
 		Data stack.Health `json:"data"`
 	}
 	if json.Unmarshal(data, &envelope) != nil {
 		return h, "", &stack.Error{Code: "storage_unavailable", Message: "invalid service response", Retryable: true}
 	}
+
 	return envelope.Data, client.Discovery.URL, nil
 }
 
@@ -196,10 +215,12 @@ func linger() (value, name string) {
 	if err != nil {
 		return "unknown", ""
 	}
+
 	out, err := runCommand("loginctl", "show-user", u.Username, "-p", "Linger")
 	if v, ok := strings.CutPrefix(out, "Linger="); err == nil && ok {
 		return v, u.Username
 	}
+
 	return "unknown", u.Username
 }
 
@@ -218,10 +239,12 @@ func serviceCommand(command, state string, machine bool, stdout io.Writer, shari
 	if err != nil {
 		return err
 	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return invalid("cannot find home directory")
 	}
+
 	var file string
 	switch serviceOS {
 	case "darwin":
@@ -232,18 +255,22 @@ func serviceCommand(command, state string, machine bool, stdout io.Writer, shari
 			return err
 		}
 	}
+
 	data := map[string]any{"unit": unit}
 	if command == "service install" && len(sharing) > 0 {
 		data["share"] = sharing[0]
 	}
+
 	if file != "" {
 		data["unit_file"] = file
 	}
+
 	wasRunning := false
 	if enabled, _ := data["share"].(bool); enabled {
 		_, _, err := health(state)
 		wasRunning = err == nil
 	}
+
 	var lines []string
 	switch {
 	case serviceOS == "windows":
@@ -257,13 +284,16 @@ func serviceCommand(command, state string, machine bool, stdout io.Writer, shari
 	default:
 		lines = serviceStatus(unit, file, state, home, data)
 	}
+
 	if err != nil {
 		return err
 	}
+
 	if enabled, _ := data["share"].(bool); enabled {
 		deadline := time.Now().Add(serviceWait)
 		for {
 			h, _, healthErr := health(state)
+
 			if wasRunning {
 				// Its old Host setting can survive removal of the proxy rule. A restart
 				// rechecks ownership and applies the desired configuration together.
@@ -272,21 +302,27 @@ func serviceCommand(command, state string, machine bool, stdout io.Writer, shari
 				lines = append(lines, hint)
 				break
 			}
+
 			if healthErr == nil && h.SharedURL != "" {
 				data["shared_url"] = h.SharedURL
 				lines = append(lines, "Shared at "+h.SharedURL)
 				break
 			}
+
 			if time.Now().After(deadline) {
 				return &stack.Error{Code: "integration_unavailable", Message: "service has not configured Tailscale Serve; check its log for Tailscale sign-in, HTTPS and port errors", Retryable: true}
 			}
+
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
+
 	if machine {
 		return json.NewEncoder(stdout).Encode(map[string]any{"data": data})
 	}
+
 	_, err = io.WriteString(stdout, strings.Join(lines, "\n")+"\n")
+
 	return err
 }
 
@@ -300,9 +336,11 @@ func serviceBinary() (string, error) {
 			exe = original
 		}
 	}
+
 	if err != nil {
 		return "", &stack.Error{Code: "integration_unavailable", Message: "cannot find the running a-stack binary"}
 	}
+
 	return exe, nil
 }
 
@@ -318,11 +356,13 @@ func installFile(file, content string) (string, error) {
 	} else if string(old) != content {
 		status = "updated"
 	}
+
 	if status != "unchanged" {
 		if err = writeFileAtomic(file, content); err != nil {
 			return "", &stack.Error{Code: "storage_unavailable", Message: "cannot write " + file + ": " + err.Error()}
 		}
 	}
+
 	return status, nil
 }
 
@@ -348,10 +388,12 @@ func serviceInstall(unit, file, state, home string, data map[string]any) ([]stri
 	if err != nil {
 		return nil, err
 	}
+
 	content, err := renderUnit(exe, state, home)
 	if err != nil {
 		return nil, err
 	}
+
 	// Only one service can own a state directory. A foreground serve would
 	// make the unit fail with exit code 3, so it must stop first.
 	_, err = systemctl("is-active", "--quiet", unit)
@@ -361,13 +403,16 @@ func serviceInstall(unit, file, state, home string, data map[string]any) ([]stri
 			return nil, &stack.Error{Code: "conflict", Message: "a-stack serve already runs for " + state + " outside systemd; press Ctrl-C in its terminal first, then run a-stack service install again"}
 		}
 	}
+
 	if err := configureServiceShare(state, data); err != nil {
 		return nil, err
 	}
+
 	status, err := installFile(file, content)
 	if err != nil {
 		return nil, err
 	}
+
 	// When systemd does not take a new unit, remove it again, so that the
 	// failed install leaves nothing behind.
 	undo := func(err error) error {
@@ -376,23 +421,29 @@ func serviceInstall(unit, file, state, home string, data map[string]any) ([]stri
 			os.Remove(file)
 			_, _ = systemctl("daemon-reload")
 		}
+
 		return err
 	}
 	if out, err := systemctl("daemon-reload"); err != nil {
 		return nil, undo(systemdFailed("daemon-reload", out))
 	}
+
 	if out, err := systemctl("enable", "--now", unit); err != nil {
 		return nil, undo(systemdFailed("enable --now "+unit, out))
 	}
+
 	data["unit_file_status"], data["binary"], data["state_dir"] = status, exe, state
+
 	lines := installedLines(status, "unit", file, exe, state)
 	if _, err := os.Stat(file + ".d"); err == nil {
 		lines = append(lines, "The drop-ins in "+file+".d also apply; check that they do not change ExecStart.")
 	}
+
 	url, err := waitForService(state)
 	if err != nil {
 		return nil, &stack.Error{Code: "integration_unavailable", Message: "systemd started " + unit + ".service, but the service does not answer; see systemctl --user status " + unit + " and journalctl --user -u " + unit, Retryable: true}
 	}
+
 	data["url"] = url
 	lines = append(lines, "systemd runs a-stack at "+url+". It starts again after a crash and when you log in.")
 	if status == "updated" && wasActive {
@@ -400,11 +451,13 @@ func serviceInstall(unit, file, state, home string, data map[string]any) ([]stri
 		data["restart_hint"] = hint
 		lines = append(lines, hint)
 	}
+
 	value, name := linger()
 	data["linger"] = value
 	if value == "no" {
 		lines = append(lines, lingerHint(name))
 	}
+
 	return lines, nil
 }
 
@@ -414,39 +467,50 @@ func writeFileAtomic(file, content string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(file)+"-")
 	if err != nil {
 		return err
 	}
 	defer os.Remove(tmp.Name())
+
 	_, err = tmp.WriteString(content)
 	if err == nil {
 		err = tmp.Chmod(0o644)
 	}
+
 	if closeErr := tmp.Close(); err == nil {
 		err = closeErr
 	}
+
 	if err != nil {
 		return err
 	}
+
 	return stack.Rename(tmp.Name(), file)
 }
 
 func serviceUninstall(unit, file string, data map[string]any) ([]string, error) {
 	data["removed"] = false
+
 	if _, err := os.Lstat(file); err != nil {
 		return []string{unit + ".service is not installed in " + file + "."}, nil
 	}
+
 	if out, err := systemctl("disable", "--now", unit); err != nil {
 		return nil, systemdFailed("disable --now "+unit, out)
 	}
+
 	if err := os.Remove(file); err != nil {
 		return nil, &stack.Error{Code: "storage_unavailable", Message: "cannot remove " + file + ": " + err.Error()}
 	}
+
 	if out, err := systemctl("daemon-reload"); err != nil {
 		return nil, systemdFailed("daemon-reload", out)
 	}
+
 	data["removed"] = true
+
 	return []string{"Stopped and disabled " + unit + ".service and removed " + file + ".", "The state directory and your data stay as they are."}, nil
 }
 
@@ -456,6 +520,7 @@ func systemdUnitFile(unit string) string {
 	if err != nil {
 		return ""
 	}
+
 	return path
 }
 
@@ -466,6 +531,7 @@ func serviceProgram() (binary, state string, running bool) {
 	if err != nil {
 		return "", "", false
 	}
+
 	switch serviceOS {
 	case "darwin":
 		return launchdProgram(launchdLabel(unit))
@@ -474,17 +540,21 @@ func serviceProgram() (binary, state string, running bool) {
 		binary, state, _ = taskCommand(content)
 		return binary, state, ok && taskRunning(unit)
 	}
+
 	home, err := os.UserHomeDir()
 	content, readErr := os.ReadFile(systemdUnitFile(unit))
 	if err != nil || readErr != nil {
 		return "", "", false
 	}
+
 	// cat includes drop-ins, whose last ExecStart overrides the main unit.
 	if loaded, err := systemctl("cat", unit); err == nil && loaded != "" {
 		content = []byte(loaded)
 	}
+
 	binary, state = unitCommand(string(content), home)
 	_, err = systemctl("is-active", "--quiet", unit)
+
 	return binary, state, err == nil
 }
 
@@ -501,10 +571,12 @@ func serviceStatus(unit, file, state, home string, data map[string]any) []string
 			}
 		}
 	}
+
 	enabled, _ := systemctl("is-enabled", unit)
 	active, _ := systemctl("is-active", unit)
 	value, name := linger()
 	data["installed"], data["enabled"], data["active"], data["linger"] = installed, enabled, active, value
+
 	column := func(label, text string) string { return fmt.Sprintf("%-11s%s", label, text) }
 	lines := []string{column("Unit file:", file)}
 	if loaded != "" {
@@ -513,6 +585,7 @@ func serviceStatus(unit, file, state, home string, data map[string]any) []string
 	} else if !installed {
 		lines[0] = column("Unit file:", "not installed; run a-stack service install")
 	}
+
 	lines = append(lines, column("Enabled:", enabled), column("Active:", active))
 	if installed || loaded != "" {
 		binary, dir := unitCommand(string(content), home)
@@ -520,19 +593,24 @@ func serviceStatus(unit, file, state, home string, data map[string]any) []string
 		if _, err := os.Stat(binary); err != nil {
 			binary += " (missing)"
 		}
+
 		lines = append(lines, column("Binary:", binary), column("State dir:", dir))
 		if dir != state {
 			lines = append(lines, column("", "The CLI uses "+state+"; run a-stack service install to use it in the unit too."))
 		}
+
 		if _, err := os.Stat(file + ".d"); err == nil {
 			data["drop_ins"] = file + ".d"
 			lines = append(lines, column("Drop-ins:", file+".d"))
 		}
 	}
+
 	if value == "no" {
 		value += "; " + lingerHint(name)
 	}
+
 	lines = append(lines, column("Linger:", value))
+
 	return append(lines, healthLine(state, data))
 }
 
@@ -544,9 +622,12 @@ func healthLine(state string, data map[string]any) string {
 		if !ok {
 			e = &stack.Error{Code: "storage_unavailable", Message: err.Error()}
 		}
+
 		data["health"] = map[string]any{"error": e}
 		return fmt.Sprintf("%-11s%s", "Health:", e.Message)
 	}
+
 	data["health"] = map[string]any{"data": h, "url": url}
+
 	return fmt.Sprintf("%-11sa-stack %s answers at %s", "Health:", h.Version, url)
 }

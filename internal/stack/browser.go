@@ -32,6 +32,7 @@ var browserAssetTags, browserAssets = func() (map[string]string, string) {
 		tags[name] = `"` + hex.EncodeToString(sum[:12]) + `"`
 		all.Write(sum[:])
 	}
+
 	return tags, hex.EncodeToString(all.Sum(nil)[:12])
 }()
 
@@ -66,39 +67,49 @@ func (s *Store) OpenBrowser(ctx context.Context, token string, r BrowserOpenRequ
 		if p.Kind != OperatorCapability {
 			return errOperatorView
 		}
+
 		return replaySession(ctx, tx, p, receipt)
 	}, func(ctx context.Context, tx *sql.Tx, p Principal) (Receipt, error) {
 		if p.Kind != OperatorCapability {
 			return Receipt{}, errOperatorView
 		}
+
 		session, err := ReadSession(ctx, tx, p, r.Context)
 		if err != nil {
 			return Receipt{}, err
 		}
+
 		if !validHash(r.CredentialHash) {
 			return Receipt{}, failure("invalid_input", "credential_hash must be a SHA-256 lowercase hex digest")
 		}
+
 		now := clockNow().Unix()
 		if _, err = tx.ExecContext(ctx, "DELETE FROM view_links WHERE expires_at<=?", now); err != nil {
 			return Receipt{}, storageError(err)
 		}
+
 		if _, err = tx.ExecContext(ctx, "DELETE FROM capabilities WHERE kind='browser' AND expires_at<=?", now); err != nil {
 			return Receipt{}, storageError(err)
 		}
+
 		var exists int
 		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM view_links WHERE code_hash=?", r.CredentialHash).Scan(&exists); err != nil {
 			return Receipt{}, storageError(err)
 		}
+
 		if exists != 0 {
 			return Receipt{}, failure("conflict", "credential hash already exists")
 		}
+
 		_, err = tx.ExecContext(ctx, "INSERT INTO view_links(code_hash,session_id,expires_at) VALUES(?,?,?)", r.CredentialHash, session.ID, now+int64(ViewLinkAge/time.Second))
 		if err != nil {
 			return Receipt{}, storageError(err)
 		}
+
 		if err = recordLifecycle(ctx, tx, p, "browser.open", session.ID, session.ID, session.Revision); err != nil {
 			return Receipt{}, err
 		}
+
 		return Receipt{ResourceID: session.ID, Revision: session.Revision, Outcome: "view-link-issued"}, nil
 	})
 }
@@ -107,10 +118,12 @@ var errOperatorView = failure("forbidden", "only the Operator opens the browser 
 
 func (c *Client) BrowserURL(ctx context.Context, ref Context) (string, error) {
 	code := opaqueID()
+
 	_, err := c.Do(ctx, "POST", "/v1/browser/open", BrowserOpenRequest{Context: ref, OperationID: opaqueID(), CredentialHash: tokenHash(code)})
 	if err != nil {
 		return "", err
 	}
+
 	return c.Discovery.URL + "/view/" + ref.WorkspaceID + "/" + ref.SessionID + "#" + code, nil
 }
 
@@ -128,6 +141,7 @@ func (s *Store) RedeemViewLink(ctx context.Context, r ViewRedeemRequest) (string
 	if !validToken(r.Code) {
 		return "", errViewLink
 	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return "", storageError(err)
@@ -135,27 +149,34 @@ func (s *Store) RedeemViewLink(ctx context.Context, r ViewRedeemRequest) (string
 	defer tx.Rollback()
 	var session string
 	var expires int64
+
 	err = tx.QueryRowContext(ctx, "DELETE FROM view_links WHERE code_hash=? RETURNING session_id,expires_at", tokenHash(r.Code)).Scan(&session, &expires)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", errViewLink
 	}
+
 	if err != nil {
 		return "", storageError(err)
 	}
+
 	// An expired code, or one sent for another Session, is used up all the same.
 	if _, err = ReadSession(ctx, tx, Principal{Kind: BrowserCapability, SessionID: session}, r.Context); err != nil || expires <= clockNow().Unix() {
 		if tx.Commit() != nil {
 			return "", storageError()
 		}
+
 		return "", errViewLink
 	}
+
 	token, err := issueViewToken(ctx, tx, session)
 	if err != nil {
 		return "", err
 	}
+
 	if err = tx.Commit(); err != nil {
 		return "", storageError(err)
 	}
+
 	return token, nil
 }
 
@@ -171,46 +192,58 @@ func (s *Store) RevokeViews(ctx context.Context, token string, r ViewRevokeReque
 	if r.All == (r.WorkspaceID != "" || r.SessionID != "") {
 		return 0, failure("invalid_input", "give either --all or --workspace and --session")
 	}
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, storageError(err)
 	}
 	defer tx.Rollback()
+
 	p, err := authenticate(ctx, tx, token)
 	if err != nil {
 		return 0, err
 	}
+
 	if p.Kind != OperatorCapability || (r.All && p.SessionID != "") {
 		return 0, failure("forbidden", "Operator credential for the requested scope required")
 	}
+
 	where, args := "", []any{}
 	if !r.All {
 		if _, err = ReadSession(ctx, tx, p, r.Context); err != nil {
 			return 0, publicError(err)
 		}
+
 		where, args = " AND session_id=?", []any{r.SessionID}
 	}
+
 	if _, err = tx.ExecContext(ctx, "DELETE FROM view_links WHERE 1"+where, args...); err != nil {
 		return 0, storageError(err)
 	}
+
 	result, err := tx.ExecContext(ctx, "DELETE FROM capabilities WHERE kind='browser'"+where, args...)
 	if err != nil {
 		return 0, storageError(err)
 	}
+
 	n, err := result.RowsAffected()
 	if err != nil {
 		return 0, storageError(err)
 	}
+
 	resource := r.SessionID
 	if r.All {
 		resource = "all"
 	}
+
 	if err = recordLifecycle(ctx, tx, p, "browser.revoke", resource, r.SessionID, 0); err != nil {
 		return 0, storageError(err)
 	}
+
 	if tx.Commit() != nil {
 		return 0, storageError()
 	}
+
 	return n, nil
 }
 
@@ -222,15 +255,18 @@ func (c *Client) RevokeViews(ctx context.Context, r ViewRevokeRequest) (json.Raw
 func (s *Service) browserAsset(w http.ResponseWriter, r *http.Request) bool {
 	path := r.URL.Path
 	parts := strings.Split(path, "/")
+
 	page := len(parts) == 4 && parts[1] == "view" && validToken(parts[2]) && validToken(parts[3])
 	asset := path == "/assets/app.css" || path == "/assets/app.js"
 	if !page && !asset {
 		return false
 	}
+
 	if r.Method != http.MethodGet || r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
 		writeError(w, failure("invalid_input", "body-free GET required"))
 		return true
 	}
+
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "no-referrer")
@@ -238,6 +274,7 @@ func (s *Service) browserAsset(w http.ResponseWriter, r *http.Request) bool {
 	w.Header().Set("X-A-Stack-Instance", s.Discovery.InstanceID)
 	w.Header().Set("X-A-Stack-Version", s.Version)
 	w.Header().Set("X-A-Stack-Assets", browserAssets)
+
 	if page {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_ = browserTemplate.Execute(w, struct{ Instance, Version, Assets string }{s.Discovery.InstanceID, s.Version, browserAssets})
@@ -246,29 +283,36 @@ func (s *Service) browserAsset(w http.ResponseWriter, r *http.Request) bool {
 		if path == "/assets/app.css" {
 			name, contentType = "browser/app.css", "text/css; charset=utf-8"
 		}
+
 		// The assets hold no data or credentials, so a browser may keep them,
 		// but it must ask each time whether they are still current.
 		tag := browserAssetTags[name]
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("ETag", tag)
+
 		if r.Header.Get("If-None-Match") == tag {
 			w.WriteHeader(http.StatusNotModified)
 			return true
 		}
+
 		b, _ := browserFiles.ReadFile(name)
 		w.Header().Set("Content-Type", contentType)
 		_, _ = w.Write(b)
 	}
+
 	return true
 }
+
 func (s *Service) browserHTTP(w http.ResponseWriter, r *http.Request, token string) bool {
 	if r.URL.Path != "/v1/browser/open" && r.URL.Path != "/v1/browser/revoke" {
 		return false
 	}
+
 	if r.Method != http.MethodPost {
 		writeError(w, failure("invalid_input", "POST JSON required"))
 		return true
 	}
+
 	var data any
 	var err error
 	if r.URL.Path == "/v1/browser/revoke" {
@@ -277,6 +321,7 @@ func (s *Service) browserHTTP(w http.ResponseWriter, r *http.Request, token stri
 		if err = requestJSON(w, r, &q); err == nil {
 			n, err = s.Store.RevokeViews(r.Context(), token, q)
 		}
+
 		data = map[string]int64{"revoked": n}
 	} else {
 		var q BrowserOpenRequest
@@ -284,11 +329,13 @@ func (s *Service) browserHTTP(w http.ResponseWriter, r *http.Request, token stri
 			data, err = s.Store.OpenBrowser(r.Context(), token, q)
 		}
 	}
+
 	if err != nil {
 		writeError(w, err)
 	} else {
 		writeJSON(w, http.StatusOK, map[string]any{"data": data})
 	}
+
 	return true
 }
 
@@ -299,16 +346,20 @@ func (s *Service) redeemHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, failure("invalid_input", "POST JSON required"))
 		return
 	}
+
 	var q ViewRedeemRequest
+
 	err := requestJSON(w, r, &q)
 	var token string
 	if err == nil {
 		token, err = s.Store.RedeemViewLink(r.Context(), q)
 	}
+
 	if err != nil {
 		writeError(w, err)
 		return
 	}
+
 	writeJSON(w, http.StatusOK, map[string]any{"data": map[string]string{"token": token}})
 }
 
@@ -326,6 +377,7 @@ func knownArchiveMark(r *http.Request, q *SnapshotRequest) {
 	if tag == "" {
 		return
 	}
+
 	q.hasKnownMark, q.knownMark = true, -1
 	parts := strings.Split(strings.Trim(tag, `"`), ":")
 	if len(parts) == 3 {
@@ -334,17 +386,21 @@ func knownArchiveMark(r *http.Request, q *SnapshotRequest) {
 		}
 	}
 }
+
 func snapshotConditional(w http.ResponseWriter, r *http.Request, data any) bool {
 	snapshot, ok := data.(SessionSnapshot)
 	if !ok {
 		return false
 	}
+
 	tag := snapshotTag(snapshot)
 	w.Header().Set("ETag", tag)
 	w.Header().Set("Cache-Control", "no-store")
+
 	if r.Header.Get("If-None-Match") == tag {
 		w.WriteHeader(http.StatusNotModified)
 		return true
 	}
+
 	return false
 }

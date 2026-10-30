@@ -45,14 +45,18 @@ func (b *writeBudget) level(agent string) budgetLevel {
 	if b.now != nil {
 		now = b.now()
 	}
+
 	l, ok := b.agents[agent]
 	if !ok {
 		return budgetLevel{WriteBurstBytes, now}
 	}
+
 	if elapsed := now.Sub(l.at).Seconds(); elapsed > 0 {
 		l.bytes = math.Min(WriteBurstBytes, l.bytes+elapsed*WriteRefillBytesPerMinute/60)
 	}
+
 	l.at = now
+
 	return l
 }
 
@@ -61,21 +65,26 @@ func (b *writeBudget) level(agent string) budgetLevel {
 func (b *writeBudget) check(agent string, cost int) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
 	l := b.level(agent)
 	if missing := float64(cost) - l.bytes; missing > 0 {
 		wait := int64(math.Ceil(missing * 60 / WriteRefillBytesPerMinute))
 		return &Error{Code: "rate_limited", Message: "this Agent wrote too much in a short time; retry the same command later", Retryable: true, RetryAfter: wait}
 	}
+
 	return nil
 }
+
 func (b *writeBudget) charge(agent string, cost int) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	l := b.level(agent)
 	l.bytes -= float64(cost)
+
 	if b.agents == nil {
 		b.agents = map[string]budgetLevel{}
 	}
+
 	b.agents[agent] = l
 }
 
@@ -91,14 +100,17 @@ type diskSpace struct {
 func (d *diskSpace) get(path string) (uint64, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
 	if d.at.IsZero() || time.Since(d.at) >= diskCheckInterval {
 		free := d.free
 		if free == nil {
 			free = diskFree
 		}
+
 		d.bytes, d.err = free(path)
 		d.at = time.Now()
 	}
+
 	return d.bytes, d.err
 }
 

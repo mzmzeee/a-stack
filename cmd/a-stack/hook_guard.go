@@ -21,11 +21,14 @@ func stopGuard(ctx context.Context, client *stack.Client, id hookIdentity, in ho
 	if !ok || os.Remove(marker) == nil || in.StopHookActive {
 		return false
 	}
+
 	reason, err := hookStopGuard(ctx, client, id)
 	if err != nil || reason == "" || os.WriteFile(marker, nil, 0o600) != nil {
 		return false
 	}
+
 	_ = json.NewEncoder(stdout).Encode(map[string]string{"decision": "block", "reason": reason})
+
 	return true
 }
 
@@ -40,32 +43,40 @@ func hookStopGuard(ctx context.Context, client *stack.Client, id hookIdentity) (
 	if err != nil || len(mine) == 0 {
 		return "", err
 	}
+
 	tasks, err := listPages[stack.Task](ctx, client, "/v1/task/list", id.ref)
 	if err != nil {
 		return "", err
 	}
+
 	for _, t := range tasks {
 		if !mine[t.ID] || t.Progress != "working" || t.NeedsYou || t.Archived || t.LastAction == "task.report" {
 			continue
 		}
+
 		setter := t.UpdatedBy // when the last action is the status change
 		if t.LastAction != "task.status" {
 			var reported bool
 			if setter, reported, err = workingSince(ctx, client, id.ref, t.ID); err != nil {
 				return "", err
 			}
+
 			if reported {
 				continue
 			}
 		}
+
 		if setter != id.agent {
 			continue // a helper's or a watching Orchestrator's stop
 		}
+
 		if session, err := inspectSession(ctx, client, id.ref); err != nil || session.Closed {
 			return "", err
 		}
+
 		return guardReason(id, t), nil
 	}
+
 	return "", nil
 }
 
@@ -79,9 +90,11 @@ func guardReason(id hookIdentity, t stack.Task) string {
 	fmt.Fprintf(&b, "1. Report and finish:\n%s task report --task %s --report 'What you did, and where' --expected-revision %d --operation-id %s\n", run, t.ID, t.Revision, op(t.Revision, "report"))
 	fmt.Fprintf(&b, "%s task status --task %s --progress finished --summary 'What you did' --expected-revision %d --operation-id %s\n", run, t.ID, t.Revision+1, op(t.Revision+1, "finish"))
 	fmt.Fprintf(&b, "2. Wait:\n%s task status --task %s --progress waiting --reason 'What it waits for' --expected-revision %d --operation-id %s\n", run, t.ID, t.Revision, op(t.Revision, "wait"))
+
 	if t.AssigneeCount > 1 {
 		fmt.Fprintf(&b, "Other Agents share this Task: read its report with task show before you replace it. If only your part is done, say so with mail send --task %s instead, and leave the Task working.\n", t.ID)
 	}
+
 	return b.String()
 }
 
@@ -93,9 +106,11 @@ func workingSince(ctx context.Context, client *stack.Client, ref stack.Context, 
 		if h.Action == "task.report" {
 			report = h.Sequence
 		}
+
 		if h.Changes.Progress != "" {
 			progress, setter = h.Sequence, h.ActorID
 		}
 	})
+
 	return setter, report > progress, err
 }

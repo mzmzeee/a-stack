@@ -11,14 +11,17 @@ func TestBrowserMailWaitPlainText(t *testing.T) {
 	if err != nil {
 		t.Skip("node is not installed")
 	}
+
 	js, err := browserFiles.ReadFile("browser/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	line := regexp.MustCompile(`(?m)^  const report=firstLine\(t.report_preview\).*;$`).Find(js)
 	if len(line) == 0 {
 		t.Fatal("missing Now wait text")
 	}
+
 	script := `const assert=require('node:assert/strict');
 const firstLine=text=>(text||'').split('\n')[0],plural=(n,s)=>n+' '+s;
 const setText=(node,text)=>{node.textContent=text};

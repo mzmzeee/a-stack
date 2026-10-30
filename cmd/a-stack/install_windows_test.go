@@ -26,10 +26,10 @@ func TestPowerShellInstallerWarnsAboutShadowing(t *testing.T) {
 	dir := t.TempDir()
 	old, target := filepath.Join(dir, "old copy", "a-stack.exe"), filepath.Join(dir, "new %copy%", "a-stack.exe")
 	for _, path := range []string{old, target} {
-		if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, nil, 0600); err != nil {
+		if err := os.WriteFile(path, nil, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -96,7 +96,7 @@ func TestPowerShellInstallerRejectsBrokenDownload(t *testing.T) {
 					defer server.Close()
 					dir := t.TempDir()
 					target := filepath.Join(dir, "a-stack.exe")
-					if err := os.WriteFile(target, []byte("keep the installed binary"), 0600); err != nil {
+					if err := os.WriteFile(target, []byte("keep the installed binary"), 0o600); err != nil {
 						t.Fatal(err)
 					}
 					t.Setenv("A_STACK_BASE_URL", server.URL)

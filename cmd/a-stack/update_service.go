@@ -38,14 +38,17 @@ func restartService(unit string) error {
 					return updateFailed("Task Scheduler did not stop " + unit + "; restart it manually: " + restartCommand(unit))
 				}
 			}
+
 			out, err = schtasks("/Run", "/TN", unit)
 		}
 	default:
 		out, err = systemctl("restart", unit)
 	}
+
 	if err != nil {
 		return updateFailed("the binary was updated, but the service restart failed: " + printable(out) + "; restart it manually: " + restartCommand(unit))
 	}
+
 	return nil
 }
 
@@ -53,28 +56,35 @@ func restartService(unit string) error {
 // It polls discovery again each time: the restarted service may change port.
 func restartUpdatedService(target string, noRestart bool, machine bool, stdout io.Writer, data map[string]any) (string, error) {
 	binary, state, running := updateService()
+
 	unit, err := unitName()
 	if err != nil {
 		return "", err
 	}
+
 	hint := "If a-stack serve is running, stop it with Ctrl-C and run a-stack serve again."
 	if running {
 		hint = "Restart the service: " + restartCommand(unit)
 	}
+
 	data["restart_hint"] = hint
 	if noRestart || !running {
 		return hint, nil
 	}
+
 	if !machine {
 		if _, err := io.WriteString(stdout, "Restarting the service: "+restartCommand(unit)+"\n"); err != nil {
 			return "", err
 		}
 	}
+
 	if err := restartService(unit); err != nil {
 		return "", err
 	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), updateWait)
 	defer cancel()
+
 	last := ""
 	for {
 		h, _, err := updateHealth(ctx, state)
@@ -87,12 +97,14 @@ func restartUpdatedService(target string, noRestart bool, machine bool, stdout i
 				return "Restarted the service; it runs " + target, nil
 			}
 		}
+
 		select {
 		case <-ctx.Done():
 			message := "the binary was updated, but the service did not come back"
 			if last != "" {
 				message = "the binary was updated, but the service still answers with " + last + "; the service manager runs " + binary + ". Check its ExecStart, plist or task (including a Homebrew Cellar path)"
 			}
+
 			return "", updateFailed(message + "; restart it manually: " + restartCommand(unit))
 		case <-time.After(200 * time.Millisecond):
 		}

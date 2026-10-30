@@ -39,6 +39,7 @@ func loadOrders(ctx context.Context, tx *sql.Tx, workspace string) (StandingOrde
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return o, storageError(err)
 	}
+
 	return o, nil
 }
 
@@ -49,6 +50,7 @@ func sessionOrders(ctx context.Context, tx *sql.Tx, workspace string) (*Standing
 	if err != nil || o.Body == "" {
 		return nil, err
 	}
+
 	o.WorkspaceID = ""
 	return &o, nil
 }
@@ -59,9 +61,11 @@ func validPlainText(field, body string, max int) error {
 	if err := validText(field, body, max, true); err != nil {
 		return err
 	}
+
 	if strings.ContainsFunc(body, func(r rune) bool { return (r < 0x20 && r != '\t' && r != '\n' && r != '\r') || r == 0x7f }) {
 		return failure("invalid_input", field+" must be plain text without control characters")
 	}
+
 	return nil
 }
 
@@ -74,10 +78,12 @@ func (s *Store) ReadOrders(ctx context.Context, token string, ref Context) (Stan
 		return StandingOrders{}, storageError(err)
 	}
 	defer tx.Rollback()
+
 	p, err := authenticate(ctx, tx, token)
 	if err != nil {
 		return StandingOrders{}, err
 	}
+
 	switch p.Kind {
 	case OperatorCapability:
 		if p.SessionID != "" {
@@ -85,6 +91,7 @@ func (s *Store) ReadOrders(ctx context.Context, token string, ref Context) (Stan
 				return StandingOrders{}, err
 			}
 		}
+
 		if err = workspaceExists(ctx, tx, ref.WorkspaceID); err != nil {
 			return StandingOrders{}, err
 		}
@@ -95,6 +102,7 @@ func (s *Store) ReadOrders(ctx context.Context, token string, ref Context) (Stan
 	default:
 		return StandingOrders{}, failure("forbidden", "browser views read standing orders in the Session snapshot")
 	}
+
 	return loadOrders(ctx, tx, ref.WorkspaceID)
 }
 
@@ -102,13 +110,16 @@ func workspaceExists(ctx context.Context, tx *sql.Tx, id string) error {
 	if !validToken(id) {
 		return failure("invalid_input", "explicit Workspace ID required")
 	}
+
 	var n int
 	if err := tx.QueryRowContext(ctx, "SELECT count(*) FROM workspaces WHERE id=?", id).Scan(&n); err != nil {
 		return storageError(err)
 	}
+
 	if n != 1 {
 		return failure("not_found", "Workspace not found")
 	}
+
 	return nil
 }
 
@@ -120,46 +131,59 @@ func (s *Store) ChangeOrders(ctx context.Context, token string, r OrdersRequest)
 	if r.Clear {
 		name = "workspace.orders.clear"
 	}
+
 	replay := func(ctx context.Context, tx *sql.Tx, p Principal, _ Receipt) error { return operator(p) }
+
 	return s.Mutate(ctx, token, operation(r.OperationID, name, r.WorkspaceID, r), replay, func(ctx context.Context, tx *sql.Tx, p Principal) (Receipt, error) {
 		if err := operator(p); err != nil {
 			return Receipt{}, err
 		}
+
 		if r.Clear && r.Body != "" {
 			return Receipt{}, failure("invalid_input", "clear takes no body")
 		}
+
 		if !r.Clear {
 			if err := validPlainText("standing orders", r.Body, MaxOrdersBytes); err != nil {
 				return Receipt{}, err
 			}
 		}
+
 		if err := workspaceExists(ctx, tx, r.WorkspaceID); err != nil {
 			return Receipt{}, err
 		}
+
 		current, err := loadOrders(ctx, tx, r.WorkspaceID)
 		if err != nil {
 			return Receipt{}, err
 		}
+
 		if err = expectedRevision(r.ExpectedRevision, current.Revision); err != nil {
 			return Receipt{}, err
 		}
+
 		outcome := "set"
 		if r.Clear {
 			outcome = "cleared"
 		}
+
 		if current.Body == r.Body {
 			return Receipt{ResourceID: r.WorkspaceID, Revision: current.Revision, Outcome: outcome}, nil
 		}
+
 		next := current.Revision + 1
 		if _, err = tx.ExecContext(ctx, "INSERT INTO workspace_orders VALUES(?,?,?,?) ON CONFLICT(workspace_id) DO UPDATE SET body=excluded.body,revision=excluded.revision,updated_at=excluded.updated_at", r.WorkspaceID, r.Body, next, now()); err != nil {
 			return Receipt{}, err
 		}
+
 		if _, err = tx.ExecContext(ctx, "UPDATE sessions SET read_revision=read_revision+1 WHERE workspace_id=?", r.WorkspaceID); err != nil {
 			return Receipt{}, err
 		}
+
 		if err = recordLifecycle(ctx, tx, p, name, r.WorkspaceID, "", next); err != nil {
 			return Receipt{}, err
 		}
+
 		return Receipt{ResourceID: r.WorkspaceID, Revision: next, Outcome: outcome}, nil
 	})
 }

@@ -22,6 +22,7 @@ func isMailCommand(command string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -49,6 +50,7 @@ func (f *mailFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.afterTask, "after-task", "", "Continue the Task scan after this token")
 	fs.IntVar(&f.taskLimit, "task-limit", 0, "Tasks per page: 1 to 100")
 }
+
 func mailAllowedFlags(command string) string {
 	switch command {
 	case "mail send":
@@ -64,6 +66,7 @@ func mailAllowedFlags(command string) string {
 	case "mail check":
 		return "cursor-file after-task task-limit limit"
 	}
+
 	return ""
 }
 
@@ -76,26 +79,33 @@ func readMailCursors(path string) (map[string]string, error) {
 		if os.IsNotExist(err) {
 			return map[string]string{}, nil
 		}
+
 		if err != nil {
 			return nil, invalid("cursor file is unavailable")
 		}
+
 		defer file.Close()
 		reader = file
 	}
+
 	data, err := io.ReadAll(io.LimitReader(reader, stack.MaxRequestBytes+1))
 	if err != nil || len(data) > stack.MaxRequestBytes || !utf8.Valid(data) {
 		return nil, invalid("cursor map exceeds the request limit or is not UTF-8")
 	}
+
 	var cursors map[string]string
 	if json.Unmarshal(data, &cursors) != nil || cursors == nil {
 		return nil, invalid("cursor file must contain one JSON object mapping Task IDs to cursor strings")
 	}
+
 	return cursors, nil
 }
+
 func mailRequest(ctx context.Context, client *stack.Client, command string, l lifecycleFlags, t taskFlags, f mailFlags, seen map[string]bool) ([]byte, error) {
 	if l.workspace == "" || l.session == "" {
 		return nil, missingContext
 	}
+
 	ref := stack.Context{WorkspaceID: l.workspace, SessionID: l.session}
 	var body any
 	switch command {
@@ -103,28 +113,35 @@ func mailRequest(ctx context.Context, client *stack.Client, command string, l li
 		if f.message == "" {
 			return nil, invalid("explicit --message required")
 		}
+
 		body = stack.MailAckRequest{Context: ref, OperationID: l.operationID, MessageID: f.message}
 	case "mail send", "mail reply":
 		if command == "mail reply" && f.message == "" {
 			return nil, invalid("explicit --message required")
 		}
+
 		if seen["body-file"] {
 			if seen["body"] {
 				return nil, invalid("choose --body or --body-file")
 			}
+
 			text, err := bodyText(t.bodyFile)
 			if err != nil {
 				return nil, err
 			}
+
 			t.body = text
 		}
+
 		if len(t.body) > stack.MaxMailBodyBytes || !utf8.ValidString(t.body) {
 			return nil, invalid("mail body must be UTF-8 and at most 64 KiB")
 		}
+
 		send := stack.MailSendRequest{Context: ref, OperationID: l.operationID, TaskID: t.task, Body: t.body, Mentions: f.mentions, AckRequired: f.ackRequired, AckFrom: f.ackFrom, AckDue: f.ackDue}
 		if f.urgent {
 			send.Priority = "urgent"
 		}
+
 		body = send
 		if command == "mail reply" {
 			body = stack.MailReplyRequest{MailSendRequest: send, MessageID: f.message, NoMentionSender: f.noMentionSender}
@@ -136,6 +153,7 @@ func mailRequest(ctx context.Context, client *stack.Client, command string, l li
 	default:
 		return nil, invalid("unknown mail command")
 	}
+
 	return client.Do(ctx, "POST", "/v1/"+strings.ReplaceAll(command, " ", "/"), body)
 }
 
@@ -159,37 +177,46 @@ func mailCheck(ctx context.Context, client *stack.Client, r stack.MailCheckReque
 			return nil, err
 		}
 	}
+
 	identity := fmt.Sprintf("%x", sha256.Sum256([]byte(client.Discovery.DatabaseID+"\n"+r.WorkspaceID+"\n"+r.SessionID+"\n"+client.Credential.Token)))
 	partial := false
 	if save {
 		if len(r.Cursors) > 0 && r.Cursors["identity"] != identity {
 			return nil, invalid("cursor file belongs to another database, Workspace, Session or Agent credential, or is unbound; use a new cursor file to replay retained mail")
 		}
+
 		delete(r.Cursors, "identity")
 		partial = r.Cursors["partial"] == "true"
 		delete(r.Cursors, "partial")
+
 		if r.AfterTask == "" {
 			r.AfterTask = r.Cursors[scanKey]
 		}
+
 		delete(r.Cursors, scanKey)
 	}
+
 	data, err := client.Do(ctx, "POST", "/v1/mail/check", r)
 	if err != nil || given && !save {
 		return data, err
 	}
+
 	var envelope struct {
 		Data stack.MailCheckPage `json:"data"`
 	}
 	if json.Unmarshal(data, &envelope) != nil {
 		return nil, &stack.Error{Code: "storage_unavailable", Message: "unexpected mail check response", Retryable: true}
 	}
+
 	out := mailCheckOutput{MailCheckPage: envelope.Data}
 	if !save {
 		if out.More {
 			out.Hint = "more mail is waiting; without --cursor-file each check starts again at the first message"
 		}
+
 		return json.Marshal(map[string]any{"data": out})
 	}
+
 	cursors := r.Cursors
 	out.Tasks = []stack.MailPage{}
 	for _, page := range envelope.Data.Tasks {
@@ -199,6 +226,7 @@ func mailCheck(ctx context.Context, client *stack.Client, r stack.MailCheckReque
 			out.Tasks = append(out.Tasks, page)
 		}
 	}
+
 	// Finish the scan before revisiting partial Tasks, even under continuous mail.
 	if out.NextTask != "" {
 		cursors[scanKey] = out.NextTask
@@ -208,17 +236,22 @@ func mailCheck(ctx context.Context, client *stack.Client, r stack.MailCheckReque
 	} else {
 		out.More = out.More || partial
 	}
+
 	cursors["identity"] = identity
 	out.NextTask = ""
+
 	data, err = json.Marshal(map[string]any{"data": out})
 	if err != nil {
 		return nil, err
 	}
+
 	if err = deliver(data); err != nil {
 		return nil, err
 	}
+
 	if stack.ReplacePrivate(path, cursors) != nil {
 		return nil, invalid("cannot write the cursor file; its folder must exist and be yours")
 	}
+
 	return nil, nil
 }

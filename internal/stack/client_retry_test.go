@@ -21,8 +21,10 @@ func TestClientTransportErrorsAreRetryable(t *testing.T) {
 		_, _ = w.Write([]byte(`{"data":`))
 	}))
 	defer partial.Close()
+
 	for _, url := range []string{cut.URL, partial.URL} {
 		client := &Client{Discovery: Discovery{URL: url, InstanceID: opaqueID()}, Credential: Credential{Kind: AgentCapability, Token: opaqueID()}, HTTP: &http.Client{}}
+
 		_, err := client.Do(ctx, "POST", "/v1/mail/send", map[string]string{"operation_id": "retry-after-cut"})
 		e, ok := err.(*Error)
 		if !ok || e.Code != "storage_unavailable" || !e.Retryable {

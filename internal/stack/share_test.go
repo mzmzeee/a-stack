@@ -13,9 +13,11 @@ const ownedServeJSON = `{"TCP":{"443":{"HTTPS":true}},"Web":{"server.example.ts.
 
 func fakeTailscale(t *testing.T) string {
 	t.Helper()
+
 	if runtime.GOOS == "windows" {
 		t.Skip("fake executable uses a POSIX shell")
 	}
+
 	bin := privateTestDir(t)
 	script := `#!/bin/sh
 printf '%s\n' "$*" >> "$FAKE_TS_LOG"
@@ -28,22 +30,26 @@ case "$*" in
  *) exit 2 ;;
 esac
 `
-	if err := os.WriteFile(filepath.Join(bin, "tailscale"), []byte(script), 0700); err != nil {
+	if err := os.WriteFile(filepath.Join(bin, "tailscale"), []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
+
 	t.Setenv("PATH", bin)
 	t.Setenv("FAKE_TS_LOG", filepath.Join(bin, "calls"))
 	t.Setenv("FAKE_TS_CONFIG", filepath.Join(bin, "config"))
 	t.Setenv("FAKE_TS_OWNED", ownedServeJSON)
 	t.Setenv("FAKE_TS_STATUS", `{"BackendState":"Running","Self":{"DNSName":"server.example.ts.net."}}`)
-	if err := os.WriteFile(os.Getenv("FAKE_TS_CONFIG"), []byte("{}"), 0600); err != nil {
+
+	if err := os.WriteFile(os.Getenv("FAKE_TS_CONFIG"), []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	return bin
 }
 
 func TestShareSetupIdempotenceAndCleanup(t *testing.T) {
 	fakeTailscale(t)
+
 	dir := privateTestDir(t)
 	s := &Service{lock: &stateLock{dir: dir}, Discovery: Discovery{URL: "http://" + SharedListen}}
 	for range 2 {
@@ -52,20 +58,25 @@ func TestShareSetupIdempotenceAndCleanup(t *testing.T) {
 			t.Fatalf("configure %q %v", url, err)
 		}
 	}
+
 	calls, _ := os.ReadFile(os.Getenv("FAKE_TS_LOG"))
 	if strings.Count(string(calls), "serve --bg") != 1 {
 		t.Fatalf("setup not idempotent: %s", calls)
 	}
+
 	if err := DisableShare(ctx, dir); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := DisableShare(ctx, dir); err != nil {
 		t.Fatal(err)
 	}
+
 	calls, _ = os.ReadFile(os.Getenv("FAKE_TS_LOG"))
 	if strings.Count(string(calls), "serve --https=443 off") != 1 {
 		t.Fatalf("cleanup not idempotent: %s", calls)
 	}
+
 	if strings.Contains(string(calls), "reset") || strings.Contains(string(calls), "funnel") {
 		t.Fatalf("destructive command: %s", calls)
 	}
@@ -80,9 +91,11 @@ func TestShareRefusesForeignRulesAndChangedOwnership(t *testing.T) {
 	} {
 		t.Run(config, func(t *testing.T) {
 			fakeTailscale(t)
-			if err := os.WriteFile(os.Getenv("FAKE_TS_CONFIG"), []byte(config), 0600); err != nil {
+
+			if err := os.WriteFile(os.Getenv("FAKE_TS_CONFIG"), []byte(config), 0o600); err != nil {
 				t.Fatal(err)
 			}
+
 			dir := privateTestDir(t)
 			s := &Service{lock: &stateLock{dir: dir}, Discovery: Discovery{URL: "http://" + SharedListen}}
 			_, err := s.ConfigureShare(ctx, true)
@@ -91,25 +104,31 @@ func TestShareRefusesForeignRulesAndChangedOwnership(t *testing.T) {
 			if err = DisableShare(ctx, dir); err != nil {
 				t.Fatal(err)
 			}
+
 			got, _ := os.ReadFile(os.Getenv("FAKE_TS_CONFIG"))
 			if string(got) != config {
 				t.Fatal("foreign rule changed")
 			}
 		})
 	}
+
 	t.Run("changed-owned", func(t *testing.T) {
 		fakeTailscale(t)
+
 		dir := privateTestDir(t)
 		s := &Service{lock: &stateLock{dir: dir}, Discovery: Discovery{URL: "http://" + SharedListen}}
 		if _, err := s.ConfigureShare(ctx, true); err != nil {
 			t.Fatal(err)
 		}
+
 		changed := strings.Replace(ownedServeJSON, "41677", "9999", 1)
-		if err := os.WriteFile(os.Getenv("FAKE_TS_CONFIG"), []byte(changed), 0600); err != nil {
+		if err := os.WriteFile(os.Getenv("FAKE_TS_CONFIG"), []byte(changed), 0o600); err != nil {
 			t.Fatal(err)
 		}
+
 		err := DisableShare(ctx, dir)
 		requireCode(t, err, "conflict")
+
 		got, _ := os.ReadFile(os.Getenv("FAKE_TS_CONFIG"))
 		if string(got) != changed {
 			t.Fatal("modified another owner's rule")
@@ -122,24 +141,31 @@ func TestShareErrorsAndSettings(t *testing.T) {
 	dir := privateTestDir(t)
 	s := &Service{lock: &stateLock{dir: dir}, Discovery: Discovery{URL: "http://" + SharedListen}}
 	t.Setenv("FAKE_TS_STATUS", `{"BackendState":"NeedsLogin"}`)
+
 	_, err := s.ConfigureShare(ctx, true)
 	if err == nil || !strings.Contains(err.Error(), "logged out") {
 		t.Fatalf("logged out: %v", err)
 	}
+
 	t.Setenv("FAKE_TS_FAIL", "1")
+
 	_, err = s.ConfigureShare(ctx, true)
 	if err == nil || !strings.Contains(err.Error(), "HTTPS/Serve") {
 		t.Fatalf("Serve unavailable: %v", err)
 	}
+
 	t.Setenv("PATH", privateTestDir(t))
+
 	_, err = s.ConfigureShare(ctx, true)
 	if err == nil || !strings.Contains(err.Error(), "missing") {
 		t.Fatalf("missing binary: %v", err)
 	}
+
 	for _, enabled := range []bool{true, false} {
 		if err = SaveShareSetting(dir, enabled); err != nil {
 			t.Fatal(err)
 		}
+
 		got, err := ShareEnabled(dir)
 		if err != nil || got != enabled {
 			t.Fatalf("settings %v %v", got, err)

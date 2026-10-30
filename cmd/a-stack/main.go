@@ -24,6 +24,7 @@ func main() {
 	if runtime.GOOS == "windows" {
 		removeOldBinaries()
 	}
+
 	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
@@ -32,9 +33,11 @@ func run(args []string, stdout, stderr io.Writer) int {
 	if isHookRun(args) || len(args) > 0 && args[0] == "statusline" {
 		return 0 // a hook or a status line never stops the harness
 	}
+
 	if err == nil {
 		return 0
 	}
+
 	return writeError(stderr, err)
 }
 
@@ -44,16 +47,20 @@ func writeError(stderr io.Writer, err error) int {
 	if !ok {
 		e = &stack.Error{Code: "storage_unavailable", Message: "command failed", Retryable: true}
 	}
+
 	_ = json.NewEncoder(stderr).Encode(map[string]any{"error": e})
 	if e == stack.ErrStateOwned || e == errStateBusy {
 		return 3 // systemd: RestartPreventExitStatus
 	}
+
 	if e.DatabaseUnusable() {
 		return 4 // a damaged database, or a newer or unknown schema
 	}
+
 	if e.Code == "invalid_input" {
 		return 2
 	}
+
 	return 1
 }
 func invalid(message string) error { return &stack.Error{Code: "invalid_input", Message: message} }
@@ -63,21 +70,27 @@ func writeData(stdout io.Writer, data []byte) error {
 	if len(data) == 0 || data[len(data)-1] != '\n' {
 		data = append(data, '\n')
 	}
+
 	n, err := stdout.Write(data)
 	if err == nil && n != len(data) {
 		return io.ErrShortWrite
 	}
+
 	return err
 }
+
 func buildVersion() string {
 	if version != "" {
 		return version
 	}
+
 	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
 		return info.Main.Version
 	}
+
 	return "dev"
 }
+
 func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
@@ -122,105 +135,135 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	watching.register(fs)
 	var hooks hookFlags
 	hooks.register(fs)
+
 	if len(args) > 0 && args[0] == "__complete" {
 		writeCompletions(fs, args[1:], stdout)
 		return nil
 	}
+
 	command, repeated, err := splitFlags(fs, args)
 	if err != nil {
 		return err
 	}
+
 	command, help = aliasCommands(command, help, release.set)
 	if help {
 		return writeHelp(fs, command, machine, stdout)
 	}
+
 	seen := map[string]bool{}
 	fs.Visit(func(f *flag.Flag) { seen[f.Name] = true })
+
 	cmd := strings.Join(command, " ")
 	if cmd == "version" {
 		delete(seen, "version") // a-stack --version
 	}
+
 	var connectArgs []string
 	if len(command) > 0 && command[0] == "connect" {
 		connectArgs = command[1:]
 		cmd = "connect"
 	}
+
 	var sharingArgs []string
 	if len(command) >= 2 && isSharingCommand(strings.Join(command[:2], " ")) {
 		sharingArgs = command[2:]
 		cmd = strings.Join(command[:2], " ")
 	}
+
 	var sessionName string
 	if len(command) > 0 && command[0] == "new" {
 		if len(command) > 2 {
 			return invalid("new takes at most one Session name; quote a name with spaces")
 		}
+
 		if len(command) == 2 {
 			sessionName = command[1]
 		}
+
 		cmd = "new"
 	}
+
 	if cmd != "" && cmd != "new" && !knownCommand(cmd) {
 		return unknownCommand(command, seen, stdout)
 	}
+
 	if cmd != "connect-code" && cmd != "connect" && cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && !isCompletionCommand(cmd) && cmd != "mcp" {
 		return invalid("unknown command; use --help")
 	}
+
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
 		return invalid("--as takes operator, agent or browser")
 	}
+
 	if err := validateCommandFlags(cmd, seen); err != nil {
 		return err
 	}
+
 	if seen["remote"] && remote == "" {
 		return invalid("--remote must name a profile")
 	}
+
 	if len(lifecycle.paths) > 1 && cmd != "task claim" && cmd != "task unclaim" {
 		return invalid("--path is given more than once")
 	}
+
 	if isCompletionCommand(cmd) {
 		return completionCommand(cmd, shell, stdout)
 	}
+
 	if cmd == "session export" {
 		if exporting.markdown && machine {
 			return invalid("choose --markdown or --json")
 		}
+
 		if seen["output"] && exporting.output == "" {
 			return invalid("--output must name a file")
 		}
 	}
+
 	if repeated && cmd != "task create" {
 		return invalid("--after is given more than once")
 	}
+
 	if !herdrSupported && (isHerdrCommand(cmd) || seen["herdr-executable"]) {
 		return invalid("Herdr is not supported on Windows; a-stack works without it, and Task mail reaches Agents through mail check")
 	}
+
 	if err := checkIDs(cmd, seen, lifecycle, tasks); err != nil {
 		return err
 	}
+
 	if isTaskCommand(cmd) {
 		if err := tasks.readText(cmd, seen); err != nil {
 			return err
 		}
 	}
+
 	if cmd == "version" {
 		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]string{"version": buildVersion()}})
 	}
+
 	if isSkillCommand(cmd) {
 		return skillCommand(cmd, project, refresh, machine, stdout)
 	}
+
 	if cmd == "update" {
 		if refresh {
 			if check || noRestart || noRefresh || release.set {
 				return invalid("update --refresh takes no --check, --version, --no-restart or --no-refresh")
 			}
+
 			return refreshInstalledFiles(machine, stdout)
 		}
+
 		return updateCommand(release, check, noRestart, noRefresh, machine, stdout, stderr)
 	}
+
 	if cmd == "connect" {
 		return connectCommand(connectArgs, joinCode, stdout)
 	}
+
 	stateFlag := state
 	if state == "" {
 		var err error
@@ -229,189 +272,242 @@ func execute(args []string, stdout, stderr io.Writer) error {
 			return err
 		}
 	}
+
 	if !filepath.IsAbs(state) {
 		return invalid("--state-dir must be absolute")
 	}
+
 	if isServiceCommand(cmd) {
 		return serviceCommand(cmd, state, machine, stdout, share)
 	}
+
 	ctx := context.Background()
 	if cmd == "connect-code" {
 		return connectCodeCommand(ctx, state, stdout)
 	}
+
 	if isSharingCommand(cmd) {
 		if kind != "" && kind != "operator" {
 			return invalid("Session sharing requires Operator credentials")
 		}
+
 		return sharingCommand(ctx, cmd, sharingArgs, state, credential, remote, agentFiles, joinCode, lifecycle, stdout)
 	}
+
 	if cmd == "statusline" {
 		statusLine(state, os.Stdin, stdout)
 		return nil
 	}
+
 	if isHookCommand(cmd) {
 		if (cmd == "hook enroll" || cmd == "hook status") && kind != "" && kind != "agent" {
 			return invalid(cmd + " requires Agent credentials")
 		}
+
 		id := hookIdentity{state: state, credential: credential, agent: lifecycle.agent, runtimeID: lifecycle.runtimeID, worktree: lifecycle.worktree, ref: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, noStopGuard: hooks.noStopGuard, noMailNudge: hooks.noMailNudge, harness: hooks.harness}
 		if cmd == "hook" {
 			runHook(id, os.Stdin, stdout)
 			return nil
 		}
+
 		id.state = stateFlag // the command names the state only when you did
 		if cmd == "hook status" {
 			return hookStatus(ctx, id, hooks, machine, stdout)
 		}
+
 		h := hookInstall{identity: id, name: lifecycle.name, flags: hooks, project: project, remove: cmd == "hook uninstall", enrollOnly: cmd == "hook enroll", machine: machine, stdout: stdout}
+
 		return h.run(ctx)
 	}
+
 	if cmd == "" || cmd == "new" {
 		h := home{state: state, mode: cmd, name: sessionName, orchestrator: orchestrator, resume: resume, machine: machine, noBrowser: noBrowser, stdout: stdout, stderr: stderr}
 		return h.run(ctx)
 	}
+
 	if cmd == "serve" {
 		if credential != "" || kind != "" {
 			return invalid("serve initializes its state Operator credential; credential selection applies to client commands")
 		}
+
 		log := detachConsole(state)
 		if log != nil {
 			defer log.Close()
 			stdout = log
 		}
+
 		var sharing []bool
 		if seen["share"] {
 			sharing = []bool{share}
 		}
+
 		err := serveForeground(ctx, state, listen, herdrExecutable, func(_ context.Context, service *stack.Service) error {
 			return json.NewEncoder(stdout).Encode(readyLine(service))
 		}, sharing...)
 		if err != nil && log != nil {
 			writeError(log, err)
 		}
+
 		return err
 	}
+
 	if cmd == "mcp" {
 		return mcpCommand(ctx, state, credential, kind, lifecycle, os.Stdin, stdout, remote)
 	}
+
 	if isWatchCommand(cmd) {
 		connect := func() (*stack.Client, error) { return commandClient(ctx, state, credential, kind, remote) }
 		watching.all = all
 		return watchCommand(ctx, connect, cmd, lifecycle.session, watching, machine, stdout, stderr)
 	}
+
 	client, err := commandClient(ctx, state, credential, kind, remote)
 	if err != nil {
 		return err
 	}
+
 	if err = loadContext(ctx, client, lifecycle, cmd); err != nil {
 		return err
 	}
+
 	if err = fillContext(client.Credential, &lifecycle, cmd); err != nil {
 		return err
 	}
+
 	if credential != "" && client.Credential.Kind == stack.AgentCapability {
 		pendingHookNotice(credential, stderr)
 	}
+
 	ref := stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}
 	if seen["agent"] {
 		if err = agentIDs(ctx, client, ref, "agent", &lifecycle.agent); err != nil {
 			return err
 		}
 	}
+
 	assignees := make([]*string, len(tasks.assign))
 	for i := range tasks.assign {
 		assignees[i] = &tasks.assign[i]
 	}
+
 	if err = agentIDs(ctx, client, ref, "assign", assignees...); err != nil {
 		return err
 	}
+
 	if cmd == "open" {
 		return openBrowser(ctx, client, stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, machine, noBrowser, stdout, stderr)
 	}
+
 	if cmd == "view revoke" {
 		data, err := client.RevokeViews(ctx, stack.ViewRevokeRequest{Context: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, All: all})
 		if err != nil {
 			return err
 		}
+
 		return writeData(stdout, data)
 	}
+
 	if isHerdrCommand(cmd) {
 		data, err := herdrRequest(ctx, client, cmd, lifecycle, herdrExecutable, credential)
 		if err != nil {
 			return err
 		}
+
 		return writeData(stdout, data)
 	}
+
 	if isNotificationCommand(cmd) {
 		data, err := notificationRequest(ctx, client, cmd, lifecycle)
 		if err != nil {
 			return err
 		}
+
 		return writeData(stdout, data)
 	}
+
 	if cmd == "mail check" {
 		if lifecycle.workspace == "" || lifecycle.session == "" {
 			return missingContext
 		}
+
 		data, err := mailCheck(ctx, client, stack.MailCheckRequest{Context: stack.Context{WorkspaceID: lifecycle.workspace, SessionID: lifecycle.session}, AfterTask: mail.afterTask, TaskLimit: mail.taskLimit, Limit: lifecycle.limit}, mail.cursorFile, seen["cursor-file"], func(data []byte) error { return writeData(stdout, data) })
 		if err != nil || data == nil {
 			return err
 		}
+
 		return writeData(stdout, data)
 	}
+
 	if isMailCommand(cmd) {
 		data, err := mailRequest(ctx, client, cmd, lifecycle, tasks, mail, seen)
 		if err != nil {
 			return err
 		}
+
 		return writeData(stdout, data)
 	}
+
 	if cmd == "task handoff" {
 		return taskHandoff(ctx, client, lifecycle, tasks, seen["limit"], machine, stdout)
 	}
+
 	if isTaskCommand(cmd) {
 		data, err := taskRequest(ctx, client, cmd, lifecycle, tasks, seen)
 		if err != nil {
 			return err
 		}
+
 		if cmd == "task create" && len(lifecycle.afters) == 0 {
 			unlinkedHint(ctx, client, ref, data, stderr)
 		}
+
 		return writeData(stdout, data)
 	}
+
 	if isOrdersCommand(cmd) {
 		data, err := ordersRequest(ctx, client, cmd, lifecycle, tasks, seen)
 		if err != nil {
 			return err
 		}
+
 		return writeData(stdout, data)
 	}
+
 	if cmd == "session export" {
 		return exportSession(ctx, client, lifecycle, exporting, machine, stdout)
 	}
+
 	if isLifecycleCommand(cmd) {
 		data, err := lifecycleRequest(ctx, client, cmd, lifecycle)
 		if err != nil {
 			return err
 		}
+
 		return writeData(stdout, data)
 	}
+
 	method, path := "GET", "/v1/health"
 	var body any
+
 	if cmd == "storage status" {
 		path = "/v1/storage"
 	}
+
 	if cmd == "storage backup" {
 		if destination == "" {
 			return invalid("--destination required")
 		}
+
 		method = "POST"
 		path = "/v1/storage/backup"
 		body = map[string]string{"destination": destination}
 	}
+
 	data, err := client.Do(ctx, method, path, body)
 	if err != nil {
 		return err
 	}
+
 	// Foundation commands use JSON in both modes; --json guarantees this remains
 	// machine-readable when future domain commands gain human-oriented output.
 	return writeData(stdout, data)
@@ -424,6 +520,7 @@ func readyLine(service *stack.Service) map[string]any {
 	if url := service.SharedURL(); url != "" {
 		data["shared_url"] = url
 	}
+
 	return map[string]any{"data": data}
 }
 
@@ -433,61 +530,76 @@ func serveForeground(ctx context.Context, state, listen, herdrExecutable string,
 	// SIGHUP too: a service in a closed terminal removes its discovery file.
 	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
+
 	enabled, err := stack.ShareEnabled(state)
 	if err != nil {
 		return err
 	}
+
 	if len(sharing) > 0 {
 		enabled = sharing[0]
 	}
+
 	if enabled {
 		if listen != "" && listen != stack.SharedListen {
 			return invalid("--share requires --listen " + stack.SharedListen)
 		}
+
 		listen = stack.SharedListen
 	}
+
 	stack.TuneServiceGC()
+
 	service, err := stack.Start(ctx, state, listen)
 	if err != nil {
 		return err
 	}
+
 	service.Version = buildVersion()
 	for _, line := range []string{service.Store.Migrated, service.Notice} {
 		if line != "" {
 			_, _ = io.WriteString(os.Stderr, line+"\n")
 		}
 	}
+
 	if herdrExecutable != "" {
 		if err = service.EnableNotifications(herdrExecutable); err != nil {
 			_ = service.Close(ctx)
 			return err
 		}
 	}
+
 	result := make(chan error, 1)
 	go func() { result <- service.Serve() }()
+
 	sharedURL, shareErr := service.ConfigureShare(ctx, enabled)
 	err = shareErr
 	if err == nil {
 		if sharedURL != "" {
 			_, _ = io.WriteString(os.Stderr, "Shared at "+sharedURL+"\n")
 		}
+
 		err = ready(ctx, service)
 	}
+
 	if err == nil {
 		select {
 		case <-ctx.Done():
 		case err = <-result:
 		}
 	}
+
 	// Stop catching signals, so a second Ctrl-C during the wait below ends
 	// the process at once.
 	stop()
 	closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	closeErr := service.Close(closeCtx)
+
 	if err != nil {
 		return err
 	}
+
 	return closeErr
 }
 
@@ -497,9 +609,11 @@ func aliasCommands(command []string, help, showVersion bool) ([]string, bool) {
 	if len(command) > 0 && command[0] == "help" {
 		return command[1:], true
 	}
+
 	if showVersion && len(command) == 0 {
 		return []string{"version"}, help
 	}
+
 	return command, help
 }
 
@@ -517,5 +631,6 @@ func (v *versionFlag) Set(s string) error {
 	if s != "true" && s != "false" {
 		v.value = s
 	}
+
 	return nil
 }

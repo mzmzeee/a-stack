@@ -5,10 +5,12 @@ import (
 	"time"
 )
 
-const ReceiptAge = 30 * 24 * time.Hour
-const receiptExpiryBatch = 200
-const receiptExpiryInterval = 24 * time.Hour
-const receiptExpiryPause = 10 * time.Millisecond
+const (
+	ReceiptAge            = 30 * 24 * time.Hour
+	receiptExpiryBatch    = 200
+	receiptExpiryInterval = 24 * time.Hour
+	receiptExpiryPause    = 10 * time.Millisecond
+)
 
 func expiredOperation() error {
 	return failure("operation_expired", "operation ID is older than 30 days; its result has expired and the change was not applied again; inspect the Task or retained history before making any new change")
@@ -27,10 +29,12 @@ func (s *Store) expireReceiptBatch(ctx context.Context, at time.Time) (int, erro
 	// RFC3339Nano omits the fractional part at whole seconds. Use an indexed
 	// upper bound, then parse candidates so those strings expire accurately too.
 	upper := cutoff.UTC().Truncate(time.Second).Add(time.Second).Format("2006-01-02T15:04:05")
+
 	rows, err := tx.QueryContext(ctx, "SELECT actor,operation_id,outcome,received_at FROM operation_receipts WHERE received_at<? ORDER BY received_at,actor,operation_id LIMIT ?", upper, receiptExpiryBatch)
 	if err != nil {
 		return 0, storageError(err)
 	}
+
 	type expired struct{ actor, id, outcome string }
 	items := []expired{}
 	for rows.Next() {
@@ -40,31 +44,39 @@ func (s *Store) expireReceiptBatch(ctx context.Context, at time.Time) (int, erro
 			rows.Close()
 			return 0, storageError(err)
 		}
+
 		timestamp, parseErr := time.Parse(time.RFC3339Nano, received)
 		if parseErr != nil {
 			rows.Close()
 			return 0, storageError(parseErr)
 		}
+
 		if !timestamp.After(cutoff) {
 			items = append(items, item)
 		}
 	}
+
 	err = rows.Err()
 	rows.Close()
+
 	if err != nil {
 		return 0, storageError(err)
 	}
+
 	for _, item := range items {
 		if _, err = tx.ExecContext(ctx, "INSERT INTO expired_operations(actor,operation_id,outcome) VALUES(?,?,?)", item.actor, item.id, item.outcome); err != nil {
 			return 0, storageError(err)
 		}
+
 		if _, err = tx.ExecContext(ctx, "DELETE FROM operation_receipts WHERE actor=? AND operation_id=?", item.actor, item.id); err != nil {
 			return 0, storageError(err)
 		}
 	}
+
 	if err = tx.Commit(); err != nil {
 		return 0, storageError(err)
 	}
+
 	return len(items), nil
 }
 
@@ -88,6 +100,7 @@ func (s *Store) runReceiptExpiry(ctx context.Context, interval, pause time.Durat
 			if err != nil || count < receiptExpiryBatch {
 				break
 			}
+
 			timer := time.NewTimer(pause)
 			select {
 			case <-ctx.Done():
@@ -96,7 +109,9 @@ func (s *Store) runReceiptExpiry(ctx context.Context, interval, pause time.Durat
 			case <-timer.C:
 			}
 		}
+
 		s.nextReceiptExpiry.Store(clockNow().Add(interval).Unix())
+
 		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():

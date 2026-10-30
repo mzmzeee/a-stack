@@ -14,6 +14,7 @@ import (
 
 func receiptResult(t *testing.T, args []string) stack.Receipt {
 	t.Helper()
+
 	data, _ := commandResult(t, args, 0)
 	var envelope struct {
 		Data stack.Receipt `json:"data"`
@@ -21,16 +22,20 @@ func receiptResult(t *testing.T, args []string) stack.Receipt {
 	if json.Unmarshal(data, &envelope) != nil || envelope.Data.ResourceID == "" {
 		t.Fatal("invalid mutation receipt")
 	}
+
 	return envelope.Data
 }
+
 func TestCLIEnrollmentAppointmentRebindAndLifecycle(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "state")
 	process := launch(t, dir)
+
 	root := t.TempDir()
 	private := filepath.Join(root, "credentials")
 	if stack.MkdirPrivate(private) != nil {
 		t.Fatal("private credential dir")
 	}
+
 	common := func(args ...string) []string { return append(args, "--state-dir", dir, "--json") }
 	workspace := receiptResult(t, common("workspace", "create", "--path", root, "--operation-id", "cli-workspace"))
 	session := receiptResult(t, common("session", "create", "--workspace", workspace.ResourceID, "--name", "First", "--operation-id", "cli-session"))
@@ -39,19 +44,23 @@ func TestCLIEnrollmentAppointmentRebindAndLifecycle(t *testing.T) {
 	withRef := func(args ...string) []string { return common(append(args, ref...)...) }
 	orchFile := filepath.Join(private, "orchestrator.json")
 	enroll := withRef("agent", "register", "--name", "01-orchestrator", "--operation-id", "cli-enroll-orch", "--new-credential-file", orchFile)
+
 	orchestrator := receiptResult(t, enroll)
 	replayed := receiptResult(t, enroll)
 	if replayed != orchestrator {
 		t.Fatal("enrollment duplicated")
 	}
+
 	orch := func(args ...string) []string {
 		return withRef(append(args, "--as", "agent", "--credential-file", orchFile)...)
 	}
 	receiptResult(t, orch("agent", "attach", "--agent", orchestrator.ResourceID, "--operation-id", "cli-attach-orch", "--expected-revision", "1", "--runtime-id", "cli-orchestrator-runtime"))
+
 	appointment := receiptResult(t, withRef("session", "appoint", "--agent", orchestrator.ResourceID, "--operation-id", "cli-appoint-orch", "--expected-revision", "1"))
 	if appointment.Revision != 2 {
 		t.Fatal("appointment revision")
 	}
+
 	workerFile := filepath.Join(private, "worker.json")
 	worktree := t.TempDir()
 	worker := receiptResult(t, orch("agent", "register", "--name", "02-worker", "--worktree", worktree, "--operation-id", "cli-enroll-worker", "--new-credential-file", workerFile))
@@ -63,21 +72,27 @@ func TestCLIEnrollmentAppointmentRebindAndLifecycle(t *testing.T) {
 	refused := filepath.Join(private, "refused.json")
 	commandResult(t, workerArgs(workerFile, "agent", "register", "--name", "03-other", "--operation-id", "cli-enroll-refused", "--new-credential-file", refused), 1)
 	commandResult(t, orch("agent", "register", "--name", "02-worker", "--operation-id", "cli-enroll-duplicate", "--new-credential-file", refused), 1)
+
 	if _, err := os.Lstat(refused); !os.IsNotExist(err) {
 		t.Fatal("a refused register left its credential file", err)
 	}
+
 	newFile := filepath.Join(private, "worker-rebound.json")
+
 	rebind := withRef("agent", "rebind", "--agent", worker.ResourceID, "--operation-id", "cli-rebind-worker", "--expected-revision", "2", "--runtime-id", "cli-new-runtime", "--new-credential-file", newFile)
 	rebound := receiptResult(t, rebind)
 	if rebound.ResourceID != worker.ResourceID || rebound.Revision != 3 {
 		t.Fatal("rebind changed identity")
 	}
+
 	old, _ := os.ReadFile(newFile)
+
 	retried := receiptResult(t, rebind)
 	after, _ := os.ReadFile(newFile)
 	if retried != rebound || !bytes.Equal(old, after) {
 		t.Fatal("rebind retry rotated credential")
 	}
+
 	commandResult(t, workerArgs(workerFile, "session", "inspect"), 1)
 	commandResult(t, workerArgs(newFile, "session", "inspect"), 0)
 	// The credential files name their context, and the token never shows.
@@ -87,19 +102,22 @@ func TestCLIEnrollmentAppointmentRebindAndLifecycle(t *testing.T) {
 			t.Fatalf("credential context of %s", name)
 		}
 	}
+
 	saved, _ := stack.ReadCredential(newFile)
 	short, _ := commandResult(t, common("session", "inspect", "--as", "agent", "--credential-file", newFile), 0)
 	if bytes.Contains(short, []byte(saved.Token)) || !bytes.Contains(short, []byte(session.ResourceID)) {
 		t.Fatal("context from the credential file")
 	}
+
 	commandResult(t, common("session", "inspect", "--workspace", workspace.ResourceID, "--session", other.ResourceID, "--as", "agent", "--credential-file", newFile), 2)
 	// A file from before v0.1.5 has no context: explicit flags still work, and
 	// without them the CLI asks the service (see credential_context_test.go).
 	oldFile := filepath.Join(private, "worker-old.json")
 	oldData, _ := json.Marshal(map[string]any{"kind": "agent", "token": saved.Token})
-	if os.WriteFile(oldFile, oldData, 0600) != nil {
+	if os.WriteFile(oldFile, oldData, 0o600) != nil {
 		t.Fatal("old credential file")
 	}
+
 	commandResult(t, workerArgs(oldFile, "session", "inspect"), 0)
 	commandResult(t, common("session", "inspect", "--workspace", workspace.ResourceID, "--session", other.ResourceID, "--as", "agent", "--credential-file", oldFile), 1)
 	commandResult(t, common("task", "list", "--as", "agent", "--credential-file", oldFile), 0)
@@ -107,40 +125,50 @@ func TestCLIEnrollmentAppointmentRebindAndLifecycle(t *testing.T) {
 	// A different cwd/worktree never creates or selects another Workspace.
 	command := child(t, workerArgs(newFile, "agent", "list")...)
 	command.Dir = worktree
+
 	output, err := command.Output()
 	if err != nil {
 		t.Fatal("explicit context failed in worktree")
 	}
+
 	var agents struct {
 		Data stack.Page[stack.Agent] `json:"data"`
 	}
 	if json.Unmarshal(output, &agents) != nil || len(agents.Data.Items) != 2 {
 		t.Fatal("shared explicit Workspace team")
 	}
+
 	found := false
 	for _, a := range agents.Data.Items {
 		if a.ID == worker.ResourceID {
 			found = a.WorkspaceID == workspace.ResourceID && a.WorktreePath == worktree
 		}
 	}
+
 	if !found {
 		t.Fatal("worktree silently changed Workspace")
 	}
+
 	closeArgs := withRef("session", "close", "--operation-id", "cli-close-session", "--expected-revision", strconv.FormatInt(appointment.Revision, 10))
 	closed := receiptResult(t, closeArgs)
 	if receiptResult(t, closeArgs) != closed {
 		t.Fatal("close retry")
 	}
+
 	commandResult(t, workerArgs(newFile, "agent", "observe", "--agent", worker.ResourceID, "--expected-revision", "3", "--runtime-id", "cli-new-runtime", "--runtime-state", "done"), 0)
+
 	opened := receiptResult(t, withRef("session", "reopen", "--operation-id", "cli-reopen-session", "--expected-revision", strconv.FormatInt(closed.Revision, 10)))
 	if opened.Revision != 4 {
 		t.Fatal("reopen revision")
 	}
+
 	stopServe(t, process, syscall.SIGTERM)
+
 	restarted := launch(t, dir)
 	if receiptResult(t, rebind) != rebound {
 		t.Fatal("restarted rebind receipt changed")
 	}
+
 	commandResult(t, workerArgs(newFile, "session", "inspect"), 0)
 	stopServe(t, restarted, syscall.SIGTERM)
 }

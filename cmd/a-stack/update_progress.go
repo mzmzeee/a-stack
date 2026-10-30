@@ -39,10 +39,12 @@ func newProgress(stderr io.Writer, machine bool) *progress {
 	if machine || !stderrTerminal(stderr) {
 		return nil
 	}
+
 	cols := 80
 	if f, ok := stderr.(*os.File); ok {
 		cols, _ = terminalSize(f)
 	}
+
 	return &progress{w: stderr, bar: os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb", cols: cols, now: time.Now}
 }
 
@@ -51,6 +53,7 @@ func (p *progress) step(line string) {
 	if p == nil {
 		return
 	}
+
 	p.end()
 	_, _ = io.WriteString(p.w, line+"\n")
 }
@@ -61,12 +64,15 @@ func (p *progress) download(body io.Reader, name string, total int64) io.Reader 
 	if p == nil {
 		return body
 	}
+
 	if !p.bar {
 		p.step("Downloading " + name)
 		return body
 	}
+
 	p.total, p.done, p.start = total, 0, p.now()
 	p.draw(p.start)
+
 	return io.TeeReader(body, p)
 }
 
@@ -76,6 +82,7 @@ func (p *progress) Write(b []byte) (int, error) {
 	if t := p.now(); t.Sub(p.drawn) >= 100*time.Millisecond {
 		p.draw(t)
 	}
+
 	return len(b), nil
 }
 
@@ -85,6 +92,7 @@ func (p *progress) end() {
 	if p == nil || !p.open {
 		return
 	}
+
 	p.draw(p.now())
 	_, _ = io.WriteString(p.w, "\n")
 	p.open, p.width = false, 0
@@ -96,6 +104,7 @@ func (p *progress) draw(t time.Time) {
 	if p.total > 0 {
 		text = "  " + mb(p.done) + " / " + mb(p.total) + " MB"
 	}
+
 	if s := t.Sub(p.start).Seconds(); s >= 0.1 {
 		rate := float64(p.done) / s
 		if rate >= 1e6 {
@@ -104,6 +113,7 @@ func (p *progress) draw(t time.Time) {
 			text += "  " + strconv.Itoa(int(rate/1e3)) + " kB/s"
 		}
 	}
+
 	line := "Downloading"
 	if p.total > 0 {
 		percent := min(p.done*100/p.total, 100)
@@ -112,14 +122,17 @@ func (p *progress) draw(t time.Time) {
 			fill := int(int64(n) * percent / 100)
 			line += " [" + strings.Repeat("#", fill) + strings.Repeat("-", n-fill) + "]"
 		}
+
 		line += fmt.Sprintf(" %3d%%", percent)
 	}
+
 	line += text
 	// A line as wide as the terminal wraps, and \r then goes back only to
 	// the start of its last row.
 	if len(line) > p.cols-1 {
 		line = line[:max(p.cols-1, 0)]
 	}
+
 	// Spaces cover the rest of a longer frame before.
 	_, _ = io.WriteString(p.w, "\r"+line+strings.Repeat(" ", max(p.width-len(line), 0)))
 	p.width, p.drawn, p.open = max(p.width, len(line)), t, true

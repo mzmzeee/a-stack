@@ -20,21 +20,25 @@ func distance(a, b string) int {
 		d[i] = make([]int, len(b)+1)
 		d[i][0] = i
 	}
+
 	for j := range d[0] {
 		d[0][j] = j
 	}
+
 	for i := 1; i <= len(a); i++ {
 		for j := 1; j <= len(b); j++ {
 			cost := 1
 			if a[i-1] == b[j-1] {
 				cost = 0
 			}
+
 			d[i][j] = min(d[i-1][j]+1, d[i][j-1]+1, d[i-1][j-1]+cost)
 			if i > 1 && j > 1 && a[i-1] == b[j-2] && a[i-2] == b[j-1] {
 				d[i][j] = min(d[i][j], d[i-2][j-2]+1)
 			}
 		}
 	}
+
 	return d[len(a)][len(b)]
 }
 
@@ -45,12 +49,14 @@ func nearest(word string, candidates []string) string {
 	if len(word) <= 4 {
 		limit = 1
 	}
+
 	best, bestDistance := "", limit+1
 	for _, c := range candidates {
 		if d := distance(word, c); d < bestDistance && c != word {
 			best, bestDistance = c, d
 		}
 	}
+
 	return best
 }
 
@@ -59,6 +65,7 @@ func short(word string) string {
 	if r := []rune(word); len(r) > 40 {
 		return string(r[:40]) + "…"
 	}
+
 	return word
 }
 
@@ -69,10 +76,12 @@ func unknownFlag(fs *flag.FlagSet, name string) error {
 			names = append(names, f.Name)
 		}
 	})
+
 	message := "unknown flag --" + short(name)
 	if guess := nearest(name, names); guess != "" {
 		message += " (did you mean --" + guess + "?)"
 	}
+
 	return invalid(message + "; use --help")
 }
 
@@ -93,6 +102,7 @@ func commandNames() []string {
 			}
 		}
 	}
+
 	return names
 }
 
@@ -100,6 +110,7 @@ func didYouMean(command string) string {
 	if guess := nearest(command, commandNames()); guess != "" {
 		return " (did you mean " + guess + "?)"
 	}
+
 	return ""
 }
 
@@ -113,20 +124,25 @@ func unknownCommand(words []string, seen map[string]bool, stdout io.Writer) erro
 			_, err := io.WriteString(stdout, text)
 			return err
 		}
+
 		var next []string
 		for _, name := range commandNames() {
 			if rest, ok := strings.CutPrefix(name, command+" "); ok && !strings.Contains(rest, " ") {
 				next = append(next, rest)
 			}
 		}
+
 		return invalid(command + " needs one more word: " + strings.Join(next, ", ") + "; run a-stack help " + command)
 	}
+
 	for n := len(words) - 1; n > 0; n-- {
 		known := strings.Join(words[:n], " ")
 		if !knownCommand(known) {
 			continue
 		}
+
 		stray := short(words[n])
+
 		message := "unexpected argument " + stray + " for " + known
 		accepted := acceptedFlags(known)
 		switch {
@@ -135,8 +151,10 @@ func unknownCommand(words []string, seen map[string]bool, stdout io.Writer) erro
 		case strings.Contains(accepted, " body "):
 			message += "; quote text that has spaces, as in --body 'two words'"
 		}
+
 		return invalid(message)
 	}
+
 	return invalid("unknown command " + short(command) + didYouMean(command) + "; use --help")
 }
 
@@ -144,25 +162,32 @@ func unknownCommand(words []string, seen map[string]bool, stdout io.Writer) erro
 // flag and the accepted flag it is closest to.
 func validateCommandFlags(command string, seen map[string]bool) error {
 	allowed := acceptedFlags(command)
+
 	names := make([]string, 0, len(seen))
 	for name := range seen {
 		names = append(names, name)
 	}
+
 	sort.Strings(names)
+
 	where := "a-stack " + command
 	if command == "" {
 		where = "a-stack without a command"
 	}
+
 	for _, name := range names {
 		if strings.Contains(allowed, " "+name+" ") {
 			continue
 		}
+
 		message := "--" + name + " does not apply to " + where
 		if guess := nearest(name, strings.Fields(allowed)); guess != "" {
 			message += "; did you mean --" + guess + "?"
 		}
+
 		return invalid(message + "; see a-stack help " + command)
 	}
+
 	return nil
 }
 
@@ -171,10 +196,12 @@ func validateCommandFlags(command string, seen map[string]bool) error {
 // (agentIDs); the hook commands take only an Agent ID.
 func checkIDs(command string, seen map[string]bool, l lifecycleFlags, t taskFlags) error {
 	type idFlag struct{ flag, value, kind, list string }
+
 	agentKind := "an Agent ID or name"
 	if isHookCommand(command) {
 		agentKind = "an Agent ID"
 	}
+
 	ids := []idFlag{
 		{"workspace", l.workspace, "a Workspace ID", "a-stack workspace list"},
 		{"session", l.session, "a Session ID", "a-stack session list"},
@@ -190,25 +217,31 @@ func checkIDs(command string, seen map[string]bool, l lifecycleFlags, t taskFlag
 			ids = append(ids, idFlag{"after", after, "a Task ID", "a-stack task list"})
 		}
 	}
+
 	for _, assign := range t.assign {
 		ids = append(ids, idFlag{"assign", assign, agentKind, "a-stack agent list"})
 	}
+
 	for _, id := range ids {
 		if !seen[id.flag] || stack.ValidID(id.value) {
 			continue
 		}
+
 		name := (id.flag == "agent" || id.flag == "assign") && looksLikeAgentName(id.value)
 		if name && agentKind != "an Agent ID" {
 			continue
 		}
+
 		what := short(id.value) + " is not one"
 		if id.value == "" {
 			what = "it is empty"
 		} else if name && len(id.value) < 40 {
 			what = id.value + " looks like a name"
 		}
+
 		return invalid("--" + id.flag + " takes " + id.kind + "; " + what + "; see " + id.list)
 	}
+
 	return nil
 }
 
@@ -216,5 +249,6 @@ func looksLikeAgentName(s string) bool {
 	if s == "" || len(s) > 64 || !strings.ContainsAny(s[:1], "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789") {
 		return false
 	}
+
 	return strings.Trim(s, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-") == ""
 }

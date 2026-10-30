@@ -50,35 +50,43 @@ func appendMailAcks(ctx context.Context, tx *sql.Tx, r MailSendRequest, message 
 		if len(r.AckFrom) > 0 || r.AckDue != "" {
 			return failure("invalid_input", "ack-from and ack-due require ack-required")
 		}
+
 		return nil
 	}
+
 	recipients := mentions
 	if len(r.AckFrom) > 0 {
 		names, err := mentionNames("ack", r.AckFrom)
 		if err != nil {
 			return err
 		}
+
 		recipients, err = resolveMentions(ctx, tx, r.TaskID, names)
 		if err != nil {
 			return err
 		}
 	}
+
 	if len(recipients) == 0 {
 		return failure("invalid_input", "ack-required needs at least one mentioned or selected current assignee")
 	}
+
 	due := ""
 	if r.AckDue != "" {
 		d, err := time.ParseDuration(r.AckDue)
 		if err != nil || d <= 0 {
 			return failure("invalid_input", "ack-due must be a positive duration")
 		}
+
 		due = clockNow().Add(d).UTC().Format(time.RFC3339Nano)
 	}
+
 	for _, id := range recipients {
 		if _, err := tx.ExecContext(ctx, "INSERT INTO mail_acks(message_id,task_id,recipient_id,due_at) VALUES(?,?,?,?)", message, r.TaskID, id, due); err != nil {
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -87,11 +95,13 @@ func ackScope(ctx context.Context, tx *sql.Tx, p Principal, r MailAckRequest) (s
 	if err != nil {
 		return "", err
 	}
+
 	var withdrawn string
 	err = tx.QueryRowContext(ctx, "SELECT withdrawn_at FROM mail_acks WHERE message_id=? AND recipient_id=?", r.MessageID, p.SubjectID).Scan(&withdrawn)
 	if errors.Is(err, sql.ErrNoRows) || err == nil && withdrawn != "" {
 		return "", failure("forbidden", "no active acknowledgement obligation for this recipient")
 	}
+
 	return task.ID, err
 }
 
@@ -103,22 +113,27 @@ func (s *Store) AckMail(ctx context.Context, token string, r MailAckRequest) (Re
 		if _, err := OpenSession(ctx, tx, p, r.Context); err != nil {
 			return Receipt{}, err
 		}
+
 		if _, err := ackScope(ctx, tx, p, r); err != nil {
 			return Receipt{}, err
 		}
+
 		result, err := tx.ExecContext(ctx, "UPDATE mail_acks SET acked_at=?,reminder_state=CASE WHEN reminder_state IN ('pending','submitting') THEN 'suppressed' ELSE reminder_state END WHERE message_id=? AND recipient_id=? AND acked_at=''", now(), r.MessageID, p.SubjectID)
 		if err != nil {
 			return Receipt{}, err
 		}
+
 		n, err := result.RowsAffected()
 		if err != nil {
 			return Receipt{}, err
 		}
+
 		if n > 0 {
 			if err = bumpSessionRead(ctx, tx, r.SessionID); err != nil {
 				return Receipt{}, err
 			}
 		}
+
 		return Receipt{ResourceID: r.MessageID, Outcome: "acknowledged"}, nil
 	})
 }
@@ -133,18 +148,22 @@ func readMailAcks(ctx context.Context, tx *sql.Tx, task, message string) ([]Mail
 		query += " AND k.message_id=?"
 		args = append(args, message)
 	}
+
 	rows, err := tx.QueryContext(ctx, query+" ORDER BY k.message_id,k.recipient_id LIMIT 501", args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
+
 	result := []MailAck{}
 	for rows.Next() {
 		var a MailAck
 		if err = rows.Scan(&a.MessageID, &a.TaskID, &a.RecipientID, &a.RecipientName, &a.DueAt, &a.AckedAt, &a.WithdrawnAt); err != nil {
 			return nil, err
 		}
+
 		result = append(result, a)
 	}
+
 	return result, rows.Err()
 }

@@ -9,6 +9,7 @@ func WindowsTaskName() (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return "a-stack-" + u.Uid, nil
 }
 
@@ -25,5 +26,6 @@ func windowsServiceCommand(verb, name string) string {
 	case "restart":
 		return end + "\nAfter the service stops: " + run
 	}
+
 	return ""
 }

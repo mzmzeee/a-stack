@@ -20,18 +20,22 @@ func (h *herdrAdapter) focus(ctx context.Context, b RuntimeBinding) (string, err
 	if !completeHerdrBinding(b) {
 		return "", failure("integration_unavailable", "the Agent has no complete Herdr binding; it can run a-stack herdr bind")
 	}
+
 	agent, reason := h.current(ctx, b)
 	if reason != "" {
 		return "", failure("integration_unavailable", "the Agent's Herdr pane could not be verified: "+reason)
 	}
+
 	if _, ok := h.agent(ctx, b, "agent", "focus", b.PaneID); ok {
 		return "agent", nil
 	}
+
 	if safeBindingField(agent.TabID) && !strings.HasPrefix(agent.TabID, "-") {
 		if _, _, _, err := h.command(ctx, b, "tab", "focus", agent.TabID); err == nil {
 			return "tab", nil
 		}
 	}
+
 	return "", failure("integration_unavailable", "Herdr did not focus the Agent's pane")
 }
 
@@ -42,6 +46,7 @@ func (s *Service) herdrFocus(ctx context.Context, token string, r HerdrFocusRequ
 	if err != nil {
 		return nil, err
 	}
+
 	var binding string
 	if err = operator(p); err == nil {
 		err = tx.QueryRowContext(ctx, "SELECT COALESCE(binding,'') FROM agents WHERE session_id=? AND id=?", session.ID, r.AgentID).Scan(&binding)
@@ -51,41 +56,54 @@ func (s *Service) herdrFocus(ctx context.Context, token string, r HerdrFocusRequ
 			err = storageError()
 		}
 	}
+
 	tx.Rollback()
+
 	if err != nil {
 		return nil, err
 	}
+
 	if s.notifier == nil {
 		return nil, failure("integration_unavailable", "start the service with --herdr-executable to use Herdr")
 	}
+
 	var b RuntimeBinding
 	_ = json.Unmarshal([]byte(binding), &b)
+
 	focused, err := s.notifier.adapter.focus(ctx, b)
 	if err != nil {
 		return nil, err
 	}
+
 	return map[string]string{"focused": focused}, nil
 }
+
 func (s *Service) herdrHTTP(w http.ResponseWriter, r *http.Request, token string) bool {
 	if r.URL.Path != "/v1/herdr/focus" {
 		return false
 	}
+
 	var q HerdrFocusRequest
 	var err error = failure("invalid_input", "POST JSON required")
 	if r.Method == http.MethodPost {
 		err = requestJSON(w, r, &q)
 	}
+
 	var data map[string]string
+
 	if err == nil && q.AgentID == "" {
 		err = failure("invalid_input", "agent_id required")
 	}
+
 	if err == nil {
 		data, err = s.herdrFocus(r.Context(), token, q)
 	}
+
 	if err != nil {
 		writeError(w, err)
 	} else {
 		writeJSON(w, http.StatusOK, map[string]any{"data": data})
 	}
+
 	return true
 }

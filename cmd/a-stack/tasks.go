@@ -21,6 +21,7 @@ func isTaskCommand(command string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -58,6 +59,7 @@ func (f *taskFlags) register(fs *flag.FlagSet) {
 		return nil
 	})
 }
+
 func taskAllowedFlags(command string) string {
 	switch command {
 	case "task create":
@@ -103,6 +105,7 @@ func taskAllowedFlags(command string) string {
 	case "session page":
 		return "page-kind task limit after read-revision"
 	}
+
 	return ""
 }
 
@@ -120,6 +123,7 @@ func textFlag(command, progress string) string {
 		if progress == "finished" {
 			return "summary"
 		}
+
 		return "reason"
 	case "task attention set":
 		return "question"
@@ -128,6 +132,7 @@ func textFlag(command, progress string) string {
 	case "answer":
 		return "text"
 	}
+
 	return ""
 }
 
@@ -141,6 +146,7 @@ func (f *taskFlags) readText(command string, seen map[string]bool) error {
 		if field == "" || seen[field] || seen["body"] && seen["body-file"] {
 			return invalid("choose one of --" + field + ", --body and --body-file")
 		}
+
 		text := f.body
 		if seen["body-file"] {
 			var err error
@@ -148,17 +154,21 @@ func (f *taskFlags) readText(command string, seen map[string]bool) error {
 				return err
 			}
 		}
+
 		seen[field] = true
 		*texts[field] = text
 	}
+
 	switch f.progress {
 	case "waiting", "cancelled", "finished":
 		if command == "task status" && strings.TrimSpace(*texts[field]) == "" {
 			return invalid("--" + field + " is required for --progress " + f.progress)
 		}
 	}
+
 	return nil
 }
+
 func bodyText(path string) (string, error) {
 	var reader io.Reader = os.Stdin
 	if path != "-" {
@@ -169,17 +179,22 @@ func bodyText(path string) (string, error) {
 		defer file.Close()
 		reader = file
 	}
+
 	data, err := io.ReadAll(io.LimitReader(reader, stack.MaxTaskTextBytes+1))
 	if err != nil || len(data) > stack.MaxTaskTextBytes || !utf8.Valid(data) {
 		return "", invalid("body must be UTF-8 and at most 64 KiB")
 	}
+
 	return string(data), nil
 }
+
 func taskRequest(ctx context.Context, client *stack.Client, command string, l lifecycleFlags, f taskFlags, seen map[string]bool) ([]byte, error) {
 	if l.workspace == "" || l.session == "" {
 		return nil, missingContext
 	}
+
 	ref := stack.Context{WorkspaceID: l.workspace, SessionID: l.session}
+
 	path := "/v1/" + strings.ReplaceAll(command, " ", "/")
 	var body any
 	switch command {
@@ -206,9 +221,11 @@ func taskRequest(ctx context.Context, client *stack.Client, command string, l li
 			kind = "graph_history"
 			path = "/v1/session/page"
 		}
+
 		if command != "task list" && strings.HasPrefix(command, "task ") && f.task == "" {
 			return nil, invalid("explicit --task required")
 		}
+
 		body = stack.SnapshotPageRequest{Context: ref, Kind: kind, TaskID: f.task, ReadRevision: f.readRevision, After: l.after, Limit: l.limit}
 	case "session snapshot":
 		body = stack.SnapshotRequest{Context: ref, KnownRevision: f.knownRevision}
@@ -222,17 +239,22 @@ func taskRequest(ctx context.Context, client *stack.Client, command string, l li
 		if seen["title"] {
 			r.Title = &f.title
 		}
+
 		if seen["description"] {
 			r.Description = &f.description
 		}
+
 		if seen["ticket"] {
 			r.TicketRef = &f.ticket
 		}
+
 		if seen["report"] {
 			r.Report = &f.report
 		}
+
 		body = r
 	}
+
 	return client.Do(ctx, "POST", path, body)
 }
 
@@ -247,16 +269,19 @@ func unlinkedHint(ctx context.Context, client *stack.Client, ref stack.Context, 
 	if json.Unmarshal(created, &receipt) != nil {
 		return
 	}
+
 	tasks, err := listPages[stack.Task](ctx, client, "/v1/task/list", ref)
 	if err != nil {
 		return
 	}
+
 	open := 0
 	for _, task := range tasks {
 		if task.ID != receipt.Data.ResourceID && (task.Progress == "waiting" || task.Progress == "working") {
 			open++
 		}
 	}
+
 	if open > 0 {
 		fmt.Fprintf(stderr, "a-stack: hint: the new Task has no prerequisites, and %d other Task(s) are open; give --after TASK_ID when it waits for one, or link it with dependency add\n", open)
 	}

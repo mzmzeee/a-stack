@@ -42,6 +42,7 @@ PRAGMA user_version=7;
 // schema8Reads is every read that shows Task texts or Task mail, as JSON.
 func schema8Reads(t *testing.T, f taskTeam, tasks []string) string {
 	t.Helper()
+
 	s := f.service.Store
 	var out []any
 	for _, id := range tasks {
@@ -49,38 +50,47 @@ func schema8Reads(t *testing.T, f taskTeam, tasks []string) string {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		history, err := s.SnapshotPage(ctx, f.operator.Token, SnapshotPageRequest{Context: f.ref(0), Kind: "history", TaskID: id, Limit: 100})
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		mail, err := s.ReadMail(ctx, f.a.Token, MailReadRequest{Context: f.ref(0), TaskID: id})
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		// Own mail reads now refresh reachability; compare retained content, not its read revision.
 		detail.ReadRevision, history.ReadRevision = 0, 0
 		out = append(out, detail, history, mail)
 	}
+
 	check, err := s.CheckMail(ctx, f.b.Token, MailCheckRequest{Context: f.ref(0)})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	b, _ := json.Marshal(append(out, check))
+
 	return string(b)
 }
 
 func tableSQL(t *testing.T, s *Store, name string) string {
 	t.Helper()
+
 	var text string
 	if err := s.db.QueryRow("SELECT sql FROM sqlite_schema WHERE name=?", name).Scan(&text); err != nil {
 		t.Fatal(name, err)
 	}
+
 	return text
 }
 
 func TestMigration8RowidTablesKeepReadsAndConstraints(t *testing.T) {
 	f := tasksFixture(t)
 	s := f.service.Store
+
 	long := strings.Repeat("A realistic report line with some detail. ", 60) // about 2.5 KB
 	var tasks []string
 	for _, title := range []string{"First", "Second"} {
@@ -89,29 +99,36 @@ func TestMigration8RowidTablesKeepReadsAndConstraints(t *testing.T) {
 		for _, agent := range []string{f.aID, f.bID} {
 			f.change(t, f.orch.Token, "assign", TaskChangeRequest{TaskID: id, ExpectedRevision: f.show(t, id).Revision, AgentID: agent})
 		}
+
 		f.change(t, f.a.Token, "report", TaskChangeRequest{TaskID: id, ExpectedRevision: f.show(t, id).Revision, Report: &long})
+
 		for _, body := range []string{"Short note for @03-worker", long + " @03-worker", "No mention"} {
 			if _, err := s.SendMail(ctx, f.a.Token, MailSendRequest{Context: f.ref(0), TaskID: id, OperationID: opaqueID(), Body: body}); err != nil {
 				t.Fatal(err)
 			}
 		}
 	}
+
 	before := schema8Reads(t, f, tasks)
 	path, state := s.path, f.service.lock.dir
 	if err := f.service.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err = db.Exec(undoMigration9 + undoMigration8); err != nil {
 		t.Fatal(err)
 	}
+
 	var old string
 	if db.QueryRow("SELECT group_concat(sql) FROM sqlite_schema WHERE name IN ('task_content','mail_messages')").Scan(&old) != nil || strings.Count(old, "WITHOUT ROWID") != 2 || !strings.Contains(old, "UNIQUE(id,task_id)") {
 		t.Fatal("no schema 7 layout:", old)
 	}
+
 	db.Close()
 
 	f.service = serveTest(t, state, "127.0.0.1:0")
@@ -119,26 +136,32 @@ func TestMigration8RowidTablesKeepReadsAndConstraints(t *testing.T) {
 	if countTest(t, s, "PRAGMA user_version") != schemaVersion || countTest(t, s, "PRAGMA foreign_keys") != 1 {
 		t.Fatal("not migrated, or foreign keys stay off")
 	}
+
 	if _, err = os.Stat(path + ".pre-v7"); err != nil {
 		t.Fatal("no copy before the migration:", err)
 	}
+
 	for _, table := range []string{"task_content", "mail_messages"} {
 		if strings.Contains(tableSQL(t, s, table), "WITHOUT ROWID") {
 			t.Fatalf("%s is still WITHOUT ROWID", table)
 		}
 	}
+
 	// The primary key, sequence and urgent indexes remain; UNIQUE(id,task_id) is gone.
 	if n := countTest(t, s, "SELECT count(*) FROM pragma_index_list('mail_messages')"); n != 3 {
 		t.Fatalf("mail_messages has %d indexes", n)
 	}
+
 	if after := schema8Reads(t, f, tasks); after != before {
 		t.Fatalf("reads changed:\nbefore %s\nafter  %s", before, after)
 	}
+
 	// The constraints of schema 7 still hold.
 	var message string
 	if err = s.db.QueryRow("SELECT id FROM mail_messages WHERE task_id=? AND sequence=1", tasks[0]).Scan(&message); err != nil {
 		t.Fatal(err)
 	}
+
 	for name, statement := range map[string]string{
 		"mention of a message of another Task": "INSERT INTO mail_mentions VALUES('" + message + "','" + tasks[1] + "','" + f.aID + "','self','now')",
 		"mention moved to another Task":        "UPDATE mail_mentions SET task_id='" + tasks[1] + "' WHERE message_id='" + message + "'",
@@ -153,11 +176,14 @@ func TestMigration8RowidTablesKeepReadsAndConstraints(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 	}
+
 	// New writes work in the new tables.
 	if _, err = s.SendMail(ctx, f.a.Token, MailSendRequest{Context: f.ref(0), TaskID: tasks[0], OperationID: opaqueID(), Body: "After @03-worker"}); err != nil {
 		t.Fatal(err)
 	}
+
 	f.change(t, f.a.Token, "report", TaskChangeRequest{TaskID: tasks[0], ExpectedRevision: f.show(t, tasks[0]).Revision, Report: new(string)})
+
 	if countTest(t, s, "SELECT count(*) FROM mail_mentions WHERE recipient_id='"+f.bID+"'") != 5 {
 		t.Fatal("mention lost")
 	}
@@ -167,25 +193,32 @@ func TestMigration8RowidTablesKeepReadsAndConstraints(t *testing.T) {
 func TestMigration8RefusesBrokenReferences(t *testing.T) {
 	f := tasksFixture(t)
 	f.create(t, "Task")
+
 	path, state := f.service.Store.path, f.service.lock.dir
 	if err := f.service.Close(ctx); err != nil {
 		t.Fatal(err)
 	}
+
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err = db.Exec(undoMigration9 + undoMigration8 + "INSERT INTO task_content VALUES('orphan','missing-task','report','x','missing-agent','now')"); err != nil {
 		t.Fatal(err)
 	}
+
 	db.Close()
+
 	_, err = Start(ctx, state, "127.0.0.1:0")
 	var e *Error
 	if !errors.As(err, &e) || !e.DatabaseUnusable() || !strings.Contains(e.Message, "foreign_key_check") {
 		t.Fatalf("start = %v", err)
 	}
+
 	db, _ = sql.Open("sqlite3", path)
 	defer db.Close()
+
 	var version int
 	if db.QueryRow("PRAGMA user_version").Scan(&version) != nil || version != 7 {
 		t.Fatalf("version %d after a refused migration", version)

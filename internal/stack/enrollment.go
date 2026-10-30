@@ -29,17 +29,21 @@ func PrepareAgentCredential(path, databaseID, action, operationID string, reques
 func PrepareRebindCredential(path, databaseID string, r AgentBindingRequest, name string) (string, error) {
 	return prepareAgentCredential(path, databaseID, "agent rebind", r.OperationID, r, name)
 }
+
 func prepareAgentCredential(path, databaseID, action, operationID string, request any, name string) (string, error) {
 	if !validOperationID(operationID) {
 		return "", failure("invalid_input", OperationIDRule)
 	}
+
 	if !filepath.IsAbs(path) || !validToken(databaseID) {
 		return "", failure("invalid_input", "new credential file must be an absolute file name")
 	}
+
 	err := checkPrivateDirectory(filepath.Dir(path))
 	if err != nil {
 		return "", failure("invalid_input", "create a private credential directory first")
 	}
+
 	b, err := json.Marshal(struct {
 		Action  string
 		Request any
@@ -47,12 +51,15 @@ func prepareAgentCredential(path, databaseID, action, operationID string, reques
 	if err != nil {
 		return "", failure("invalid_input", "invalid enrollment request")
 	}
+
 	sum := sha256.Sum256(b)
+
 	enrollment := Enrollment{OperationID: operationID, Digest: hex.EncodeToString(sum[:]), DatabaseID: databaseID}
 	if _, err = os.Lstat(path); os.IsNotExist(err) {
 		if _, err = statePath(path); err != nil {
 			return "", err
 		}
+
 		credential := Credential{Kind: AgentCapability, Token: opaqueID(), AgentName: name, Enrollment: &enrollment}
 		switch r := request.(type) {
 		case AgentRegisterRequest:
@@ -60,11 +67,13 @@ func prepareAgentCredential(path, databaseID, action, operationID string, reques
 		case AgentBindingRequest:
 			credential.WorkspaceID, credential.SessionID = r.WorkspaceID, r.SessionID
 		}
+
 		// The service rejects a bad ID or name with its own message; the file
 		// then keeps no context rather than one that ReadCredential refuses.
 		if !validContext(credential) {
 			credential.WorkspaceID, credential.SessionID, credential.AgentName = "", "", ""
 		}
+
 		if err = writePrivate(path, credential, false); err != nil {
 			var e *Error
 			if !errors.As(err, &e) || e.Code != "conflict" {
@@ -74,13 +83,16 @@ func prepareAgentCredential(path, databaseID, action, operationID string, reques
 	} else if err != nil {
 		return "", storageError(err)
 	}
+
 	credential, err := ReadCredential(path)
 	if err != nil {
 		return "", err
 	}
+
 	if credential.Kind != AgentCapability || credential.Enrollment == nil || *credential.Enrollment != enrollment {
 		return "", failure("operation_conflict", "credential file belongs to a different enrollment; resume its original request or use a new filename")
 	}
+
 	return tokenHash(credential.Token), nil
 }
 
@@ -89,12 +101,15 @@ func ReadRuntimeBinding(path string) (*RuntimeBinding, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var binding RuntimeBinding
 	if decodeJSON(data, &binding) != nil {
 		return nil, failure("invalid_input", "invalid private runtime binding file")
 	}
+
 	if err = validateBinding(&binding, true); err != nil {
 		return nil, err
 	}
+
 	return &binding, nil
 }

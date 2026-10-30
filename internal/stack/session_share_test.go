@@ -13,6 +13,7 @@ func TestRepositoryIdentity(t *testing.T) {
 			t.Errorf("network remote normalization: got %q, %v", got, err)
 		}
 	}
+
 	for _, tc := range []struct{ remote, want string }{
 		{"ssh://git@example.com:2222/Team/Repo.git", "example.com:2222/Team/Repo"},
 		{"ssh://git@[::1]/team/repo.git", "[::1]/team/repo"},
@@ -22,6 +23,7 @@ func TestRepositoryIdentity(t *testing.T) {
 			t.Errorf("identity preservation: got %q, %v; want %q", got, err, tc.want)
 		}
 	}
+
 	for _, remote := range []string{
 		"", "/tmp/repo", "../repo", "C:\\repo", "file:///tmp/repo", "example.com:",
 		"https://example.com/", "https://example.com/team/../repo", "https://example.com/team/%2e%2e/repo",

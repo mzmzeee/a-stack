@@ -30,9 +30,11 @@ func sqliteClass(err error) string {
 	if !errors.As(err, &driver) {
 		return ""
 	}
+
 	class := fmt.Sprintf("SQLite error %d (%s), extended code %d", int(driver.Code), driver.Code.Error(), int(driver.ExtendedCode))
 	if driver.SystemErrno != 0 {
 		class += fmt.Sprintf(", errno %d (%s)", int(driver.SystemErrno), driver.SystemErrno.Error())
 	}
+
 	return class
 }

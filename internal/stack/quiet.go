@@ -19,10 +19,12 @@ func (t Task) QuietAt() time.Time {
 	if t.Progress != "working" || t.NeedsYou {
 		return time.Time{}
 	}
+
 	last, _ := time.Parse(time.RFC3339Nano, t.UpdatedAt)
 	if mail, err := time.Parse(time.RFC3339Nano, t.LastMailAt); err == nil && mail.After(last) {
 		last = mail
 	}
+
 	return last.Add(QuietAfter)
 }
 
@@ -41,6 +43,7 @@ func quietMark(ctx context.Context, tx *sql.Tx, session string, at time.Time) (i
 		return 0, time.Time{}, storageError(err)
 	}
 	defer rows.Close()
+
 	var count int64
 	var next time.Time
 	for rows.Next() {
@@ -48,14 +51,17 @@ func quietMark(ctx context.Context, tx *sql.Tx, session string, at time.Time) (i
 		if err = rows.Scan(&t.UpdatedAt, &t.LastMailAt); err != nil {
 			return 0, time.Time{}, storageError(err)
 		}
+
 		if q := t.QuietAt(); !at.Before(q) {
 			count++
 		} else if next.IsZero() || q.Before(next) {
 			next = q
 		}
 	}
+
 	if err = rows.Err(); err != nil {
 		return 0, time.Time{}, storageError(err)
 	}
+
 	return count, next, nil
 }

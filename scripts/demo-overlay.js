@@ -104,7 +104,7 @@
   // Keep the layer above a dialog that just opened.
   function raise() {
     const now = new Set(document.querySelectorAll('dialog[open]'));
-    if ([...now].some(d => !openDialogs.has(d))) {
+    if ([...now].some((d) => !openDialogs.has(d))) {
       layer.hidePopover();
       layer.showPopover();
       transform();
@@ -127,10 +127,14 @@
         const r = el.getBoundingClientRect();
         const pad = 7;
         Object.assign(mark.ring.style, {
-          left: `${r.left - pad}px`, top: `${r.top - pad}px`,
-          width: `${r.width + 2 * pad}px`, height: `${r.height + 2 * pad}px`,
+          left: `${r.left - pad}px`,
+          top: `${r.top - pad}px`,
+          width: `${r.width + 2 * pad}px`,
+          height: `${r.height + 2 * pad}px`
         });
-        const w = innerWidth, h = innerHeight, gap = 70;
+        const w = innerWidth,
+          h = innerHeight,
+          gap = 70;
         const b = mark.bubble.getBoundingClientRect();
         const room = { below: h - r.bottom, above: r.top, right: w - r.right, left: r.left };
         const side = mark.side || Object.keys(room).sort((p, q) => room[q] - room[p])[0];
@@ -154,7 +158,8 @@
         }
         mark.bubble.style.left = `${bx}px`;
         mark.bubble.style.top = `${by}px`;
-        const mx = (ax + tx) / 2 + (ty - ay) * 0.25, my = (ay + ty) / 2 - (tx - ax) * 0.25;
+        const mx = (ax + tx) / 2 + (ty - ay) * 0.25,
+          my = (ay + ty) / 2 - (tx - ax) * 0.25;
         arrow.setAttribute('d', `M${ax} ${ay}Q${mx} ${my} ${tx} ${ty}`);
       }
     }
@@ -184,7 +189,10 @@
       mark = { target, ring, bubble, side };
       return 'ok';
     },
-    clear() { clear(); return 'ok'; },
+    clear() {
+      clear();
+      return 'ok';
+    },
     zoom(target, scale) {
       const el = find(target);
       if (!el || !scale || scale <= 1) {
@@ -194,12 +202,13 @@
         // The element's place without the current zoom.
         const cx = (r.left + r.width / 2 - view.x) / view.scale;
         const cy = (r.top + r.height / 2 - view.y) / view.scale;
-        const w = innerWidth, h = innerHeight;
+        const w = innerWidth,
+          h = innerHeight;
         const clamp = (v, low) => Math.min(0, Math.max(low, v));
         view = {
           scale,
           x: clamp(w / 2 - cx * scale, w - w * scale),
-          y: clamp(h / 2 - cy * scale, h - h * scale),
+          y: clamp(h / 2 - cy * scale, h - h * scale)
         };
       }
       transform();
@@ -237,9 +246,10 @@
     },
     ready(target, text) {
       const el = find(target);
-      return Boolean(el && el.getBoundingClientRect().width > 0 &&
-        (!text || el.textContent.includes(text)));
-    },
+      return Boolean(
+        el && el.getBoundingClientRect().width > 0 && (!text || el.textContent.includes(text))
+      );
+    }
   };
   return 'ok';
 })();

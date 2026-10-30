@@ -15,8 +15,10 @@ import (
 // MCP stdio: newline-delimited JSON-RPC, not Content-Length framing.
 // Current spec: https://modelcontextprotocol.io/specification/2026-07-28
 // Legacy initialize compatibility: /specification/2025-11-25/basic/lifecycle.
-const mcpVersion = "2026-07-28"
-const mcpMetaPrefix = "io.modelcontextprotocol/"
+const (
+	mcpVersion    = "2026-07-28"
+	mcpMetaPrefix = "io.modelcontextprotocol/"
+)
 
 var mcpVersions = []string{mcpVersion, "2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"}
 
@@ -39,23 +41,29 @@ func mcpCommand(ctx context.Context, state, credential, kind string, l lifecycle
 	if credential == "" || kind != "" && kind != "agent" {
 		return invalid("mcp requires --credential-file for one Agent; --as must be agent when given")
 	}
+
 	remote := ""
 	if len(remotes) > 0 {
 		remote = remotes[0]
 	}
+
 	client, err := commandClient(ctx, state, credential, string(stack.AgentCapability), remote)
 	if err != nil {
 		return err
 	}
+
 	if err = loadContext(ctx, client, l, "mcp"); err != nil {
 		return err
 	}
+
 	if err = fillContext(client.Credential, &l, "mcp"); err != nil {
 		return err
 	}
+
 	if l.workspace == "" || l.session == "" {
 		return missingContext
 	}
+
 	return serveMCP(ctx, client, stack.Context{WorkspaceID: l.workspace, SessionID: l.session}, stdin, stdout)
 }
 
@@ -70,6 +78,7 @@ func mcpID(raw json.RawMessage) bool {
 	if json.Unmarshal(raw, &value) == nil && string(raw) != "null" {
 		return true
 	}
+
 	_, err := strconv.ParseInt(string(raw), 10, 64)
 	return err == nil
 }
@@ -78,11 +87,13 @@ func serveMCP(ctx context.Context, client *stack.Client, ref stack.Context, stdi
 	scanner := bufio.NewScanner(stdin)
 	// The service bounds requests at 1 MiB. Leave room for the RPC envelope.
 	scanner.Buffer(make([]byte, 4096), 2*stack.MaxRequestBytes)
+
 	encoder := json.NewEncoder(stdout)
 	legacy, ready := "", false
 	for scanner.Scan() {
 		line := scanner.Bytes()
 		var req mcpRequest
+
 		var rpcErr *mcpRPCError
 		var result map[string]any
 		if !utf8.Valid(line) || !json.Valid(line) {
@@ -95,6 +106,7 @@ func serveMCP(ctx context.Context, client *stack.Client, ref stack.Context, stdi
 			if req.Method == "notifications/initialized" && legacy != "" {
 				ready = true
 			}
+
 			continue
 		} else {
 			params := map[string]json.RawMessage{}
@@ -102,9 +114,11 @@ func serveMCP(ctx context.Context, client *stack.Client, ref stack.Context, stdi
 			if len(req.Params) != 0 {
 				params, valid = mcpObject(req.Params)
 			}
+
 			meta, _ := mcpObject(params["_meta"])
 			var requested string
 			_ = json.Unmarshal(meta[mcpMetaPrefix+"protocolVersion"], &requested)
+
 			_, versionGiven := meta[mcpMetaPrefix+"protocolVersion"]
 			modern := versionGiven || req.Method == "server/discover"
 			switch {
@@ -120,6 +134,7 @@ func serveMCP(ctx context.Context, client *stack.Client, ref stack.Context, stdi
 			case req.Method != "initialize" && req.Method != "ping" && !ready:
 				rpcErr = &mcpRPCError{Code: -32600, Message: "Initialize first, then send notifications/initialized"}
 			}
+
 			if rpcErr == nil {
 				switch req.Method {
 				case "initialize":
@@ -128,18 +143,21 @@ func serveMCP(ctx context.Context, client *stack.Client, ref stack.Context, stdi
 					info, infoOK := mcpObject(params["clientInfo"])
 					_, capsOK := mcpObject(params["capabilities"])
 					var name, version string
+
 					_ = json.Unmarshal(info["name"], &name)
 					_ = json.Unmarshal(info["version"], &version)
 					if modern || legacy != "" || protocol == "" || !infoOK || name == "" || version == "" || !capsOK {
 						rpcErr = &mcpRPCError{Code: -32602, Message: "Invalid or repeated initialize"}
 						break
 					}
+
 					legacy = mcpVersions[1]
 					for _, supported := range mcpVersions[1:] {
 						if supported == protocol {
 							legacy = protocol
 						}
 					}
+
 					result = map[string]any{"protocolVersion": legacy, "capabilities": map[string]any{"tools": map[string]any{}}, "serverInfo": mcpServerInfo(), "instructions": mcpInstructions}
 				case "server/discover":
 					result = map[string]any{"supportedVersions": mcpVersions, "capabilities": map[string]any{"tools": map[string]any{}}, "instructions": mcpInstructions}
@@ -157,30 +175,36 @@ func serveMCP(ctx context.Context, client *stack.Client, ref stack.Context, stdi
 						rpcErr = &mcpRPCError{Code: -32602, Message: "Tool name is required"}
 						break
 					}
+
 					var tool *mcpTool
 					for i := range mcpTools {
 						if mcpTools[i].Name == name {
 							tool = &mcpTools[i]
 						}
 					}
+
 					if tool == nil {
 						rpcErr = &mcpRPCError{Code: -32602, Message: "Unknown tool"}
 						break
 					}
+
 					if raw := params["arguments"]; len(raw) != 0 {
 						if _, ok := mcpObject(raw); !ok {
 							rpcErr = &mcpRPCError{Code: -32602, Message: "Arguments must be an object"}
 							break
 						}
 					}
+
 					data, err := mcpCall(ctx, client, ref, *tool, params["arguments"])
 					if err != nil {
 						var e *stack.Error
 						if !errors.As(err, &e) {
 							e = &stack.Error{Code: "storage_unavailable", Message: "command failed", Retryable: true}
 						}
+
 						data, _ = json.Marshal(map[string]any{"error": e})
 					}
+
 					result = map[string]any{"content": []map[string]string{{"type": "text", "text": string(data)}}, "isError": err != nil}
 					if modern || legacy == "2025-11-25" || legacy == "2025-06-18" {
 						result["structuredContent"] = json.RawMessage(data)
@@ -189,28 +213,34 @@ func serveMCP(ctx context.Context, client *stack.Client, ref stack.Context, stdi
 					rpcErr = &mcpRPCError{Code: -32601, Message: "Method not found"}
 				}
 			}
+
 			if modern && result != nil {
 				result["resultType"] = "complete"
 				result["_meta"] = map[string]any{mcpMetaPrefix + "serverInfo": mcpServerInfo()}
 			}
 		}
+
 		id := req.ID
 		if len(id) == 0 {
 			id = json.RawMessage("null")
 		}
+
 		response := map[string]any{"jsonrpc": "2.0", "id": id}
 		if rpcErr != nil {
 			response["error"] = rpcErr
 		} else {
 			response["result"] = result
 		}
+
 		if err := encoder.Encode(response); err != nil {
 			return err
 		}
 	}
+
 	if scanner.Err() != nil {
 		return invalid("MCP input read failed or message exceeds 2 MiB")
 	}
+
 	return nil
 }
 

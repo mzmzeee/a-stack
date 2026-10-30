@@ -49,6 +49,7 @@ func mcpFieldType(tool, field string) string {
 	case "cursors":
 		return "object"
 	}
+
 	return "string"
 }
 
@@ -56,25 +57,31 @@ func mcpToolList() []mcpTool {
 	tools := append([]mcpTool(nil), mcpTools...)
 	for i := range tools {
 		tool := &tools[i]
+
 		properties := map[string]any{}
 		required := []string{}
 		for _, field := range strings.Fields(tool.fields) {
 			name := strings.TrimSuffix(field, "!")
+
 			kind := mcpFieldType(tool.Name, name)
 			property := map[string]any{"type": kind}
 			if kind == "array" {
 				property["items"] = map[string]string{"type": "string"}
 			}
+
 			if kind == "object" {
 				property["additionalProperties"] = map[string]string{"type": "string"}
 			}
+
 			properties[name] = property
 			if strings.HasSuffix(field, "!") {
 				required = append(required, name)
 			}
 		}
+
 		tool.InputSchema = map[string]any{"type": "object", "properties": properties, "required": required, "additionalProperties": false}
 	}
+
 	return tools
 }
 
@@ -85,17 +92,21 @@ func mcpArguments(tool mcpTool, raw json.RawMessage) (map[string]json.RawMessage
 	if len(raw) != 0 && (json.Unmarshal(raw, &args) != nil || args == nil) {
 		return nil, invalid("arguments must be an object")
 	}
+
 	allowed := map[string]bool{}
 	for _, field := range strings.Fields(tool.fields) {
 		name := strings.TrimSuffix(field, "!")
+
 		allowed[name] = true
 		value, exists := args[name]
 		if !exists {
 			if strings.HasSuffix(field, "!") {
 				return nil, invalid(name + " is required")
 			}
+
 			continue
 		}
+
 		var dest any
 		switch mcpFieldType(tool.Name, name) {
 		case "string":
@@ -107,9 +118,11 @@ func mcpArguments(tool mcpTool, raw json.RawMessage) (map[string]json.RawMessage
 		case "object":
 			dest = new(map[string]*string)
 		}
+
 		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) || json.Unmarshal(value, dest) != nil {
 			return nil, invalid("invalid argument type for " + name)
 		}
+
 		// encoding/json accepts null into a string as its zero value. Reject
 		// null members too, rather than silently changing an ID or cursor.
 		switch values := dest.(type) {
@@ -127,11 +140,13 @@ func mcpArguments(tool mcpTool, raw json.RawMessage) (map[string]json.RawMessage
 			}
 		}
 	}
+
 	for name := range args {
 		if !allowed[name] {
 			return nil, invalid("unknown tool argument")
 		}
 	}
+
 	return args, nil
 }
 
@@ -140,6 +155,7 @@ func mcpCall(ctx context.Context, client *stack.Client, ref stack.Context, tool 
 	if err != nil {
 		return nil, err
 	}
+
 	if tool.Name == "task_handoff" {
 		var task string
 		var limit int
@@ -149,17 +165,20 @@ func mcpCall(ctx context.Context, client *stack.Client, ref stack.Context, tool 
 		err := taskHandoff(ctx, client, lifecycleFlags{workspace: ref.WorkspaceID, session: ref.SessionID, limit: limit}, taskFlags{task: task}, args["limit"] != nil, true, &out)
 		return out.Bytes(), err
 	}
+
 	if tool.Name == "task_create" {
 		for _, alias := range []struct{ from, to string }{{"after", "prerequisite_ids"}, {"assign", "agent_ids"}} {
 			if value, ok := args[alias.from]; ok {
 				if _, exists := args[alias.to]; exists {
 					return nil, invalid("choose " + alias.from + " or " + alias.to)
 				}
+
 				args[alias.to] = value
 				delete(args, alias.from)
 			}
 		}
 	}
+
 	// Resolve names with the same helper as the CLI; this grants no authority.
 	for _, field := range []string{"agent_id", "agent_ids"} {
 		if raw, ok := args[field]; ok {
@@ -171,13 +190,16 @@ func mcpCall(ctx context.Context, client *stack.Client, ref stack.Context, tool 
 			} else {
 				_ = json.Unmarshal(raw, &names)
 			}
+
 			values := make([]*string, len(names))
 			for i := range names {
 				values[i] = &names[i]
 			}
+
 			if err := agentIDs(ctx, client, ref, "agent", values...); err != nil {
 				return nil, err
 			}
+
 			if field == "agent_id" {
 				args[field], _ = json.Marshal(names[0])
 			} else {
@@ -185,7 +207,9 @@ func mcpCall(ctx context.Context, client *stack.Client, ref stack.Context, tool 
 			}
 		}
 	}
+
 	args["workspace_id"], _ = json.Marshal(ref.WorkspaceID)
 	args["session_id"], _ = json.Marshal(ref.SessionID)
+
 	return client.Do(ctx, "POST", "/v1/"+strings.ReplaceAll(tool.Name, "_", "/"), args)
 }

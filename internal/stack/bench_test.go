@@ -36,32 +36,40 @@ func TestBenchServe(t *testing.T) {
 	if dir == "" || out == "" {
 		t.Skip("set ASTACK_BENCH_STATE and ASTACK_BENCH_OUT")
 	}
+
 	maxSeconds, _ := strconv.Atoi(os.Getenv("ASTACK_BENCH_MAX_SECONDS"))
 	if maxSeconds <= 0 {
 		maxSeconds = 3600
 	}
+
 	if rate, _ := strconv.Atoi(os.Getenv("ASTACK_BENCH_BLOCK_RATE")); rate > 0 {
 		runtime.SetBlockProfileRate(rate)
 		runtime.SetMutexProfileFraction(100)
 	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	TuneServiceGC() // as serve does
+
 	service, err := Start(ctx, dir, "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	result := make(chan error, 1)
 	go func() { result <- service.Serve() }()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/debug/pprof/", pprof.Index)
 	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
 	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+
 	profiler, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	go http.Serve(profiler, mux)
+
 	statsFile, err := os.Create(filepath.Join(out, "service-stats.jsonl"))
 	if err != nil {
 		t.Fatal(err)
@@ -71,6 +79,7 @@ func TestBenchServe(t *testing.T) {
 		encoder := json.NewEncoder(statsFile)
 		tick := time.NewTicker(time.Second)
 		defer tick.Stop()
+
 		for range tick.C {
 			db := service.Store.db.Stats()
 			var m runtime.MemStats
@@ -86,14 +95,17 @@ func TestBenchServe(t *testing.T) {
 	ready := map[string]any{"data": map[string]any{"status": "ready", "url": service.Discovery.URL, "pprof": "http://" + profiler.Addr().String(), "pid": os.Getpid()}}
 	b, _ := json.Marshal(ready)
 	fmt.Fprintln(os.Stdout, string(b))
+
 	select {
 	case <-ctx.Done():
 	case err = <-result:
 	case <-time.After(time.Duration(maxSeconds) * time.Second):
 	}
+
 	profiler.Close()
 	closeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
 	if closeErr := service.Close(closeCtx); closeErr != nil || err != nil {
 		t.Fatal(closeErr, err)
 	}
@@ -108,10 +120,12 @@ func TestBenchQueryPlans(t *testing.T) {
 	if path == "" {
 		t.Skip("set ASTACK_BENCH_QUERIES")
 	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var in struct {
 		Database string `json:"database"`
 		Analyze  bool   `json:"analyze"`
@@ -125,20 +139,25 @@ func TestBenchQueryPlans(t *testing.T) {
 	if err = json.Unmarshal(data, &in); err != nil {
 		t.Fatal(err)
 	}
+
 	if in.Runs < 6 {
 		in.Runs = 25
 	}
+
 	ctx := context.Background()
+
 	s, err := openStore(ctx, in.Database)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.db.Close()
+
 	if in.Analyze {
 		if _, err = s.db.ExecContext(ctx, "ANALYZE"); err != nil {
 			t.Fatal(err)
 		}
 	}
+
 	out := map[string]any{"sqlite": s.sqliteVersion, "analyze": in.Analyze}
 	plans := map[string]any{}
 	for name, q := range in.Queries {
@@ -147,6 +166,7 @@ func TestBenchQueryPlans(t *testing.T) {
 			plans[name] = map[string]any{"error": err.Error()}
 			continue
 		}
+
 		plan := []string{}
 		for rows.Next() {
 			var id, parent, unused int
@@ -154,32 +174,42 @@ func TestBenchQueryPlans(t *testing.T) {
 			if err = rows.Scan(&id, &parent, &unused, &detail); err != nil {
 				t.Fatal(err)
 			}
+
 			plan = append(plan, detail)
 		}
+
 		rows.Close()
+
 		samples := []float64{}
 		for i := 0; i < in.Runs; i++ {
 			tx, err := s.db.BeginTx(ctx, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			start := time.Now()
+
 			r, err := tx.QueryContext(ctx, q.SQL, q.Params...)
 			if err != nil {
 				tx.Rollback()
 				t.Fatal(name, err)
 			}
+
 			for r.Next() {
 			}
+
 			r.Close()
 			samples = append(samples, float64(time.Since(start).Microseconds())/1000)
 			tx.Rollback()
 		}
+
 		samples = samples[5:]
 		sort.Float64s(samples)
 		plans[name] = map[string]any{"plan": plan, "n": len(samples), "p50_ms": samples[len(samples)/2], "p95_ms": samples[len(samples)*95/100]}
 	}
+
 	out["queries"] = plans
+
 	b, _ := json.MarshalIndent(out, "", " ")
 	if err = os.WriteFile(in.Out, b, 0o600); err != nil {
 		t.Fatal(err)
@@ -204,21 +234,27 @@ func loadBenchFixture(b *testing.B) (benchFixture, *Store) {
 	if path == "" {
 		b.Skip("set ASTACK_BENCH_FIXTURE")
 	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	var f benchFixture
 	if err = json.Unmarshal(data, &f); err != nil {
 		b.Fatal(err)
 	}
+
 	s, err := openStore(context.Background(), f.Database)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	b.Cleanup(func() { s.db.Close() })
+
 	return f, s
 }
+
 func (f benchFixture) ref() Context {
 	return Context{WorkspaceID: f.WorkspaceID, SessionID: f.SessionID}
 }
@@ -227,58 +263,71 @@ func BenchmarkFixtureAuthenticate(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	ctx := context.Background()
 	b.ReportAllocs()
+
 	for i := 0; i < b.N; i++ {
 		if _, err := authenticate(ctx, s.db, f.Agent); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
+
 func BenchmarkFixtureSnapshotUnchanged(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	ctx := context.Background()
+
 	first, err := s.Snapshot(ctx, f.Operator, SnapshotRequest{Context: f.ref()})
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	b.ReportAllocs()
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		if _, err := s.Snapshot(ctx, f.Operator, SnapshotRequest{Context: f.ref(), KnownRevision: first.Session.ReadRevision}); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
+
 func BenchmarkFixtureSnapshotCounts(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	ctx := context.Background()
 	b.ReportAllocs()
+
 	for i := 0; i < b.N; i++ {
 		if _, err := s.Snapshot(ctx, f.Operator, SnapshotRequest{Context: f.ref()}); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
+
 func benchPage(b *testing.B, s *Store, f benchFixture, kind string, limit int) {
 	ctx := context.Background()
 	b.ReportAllocs()
+
 	for i := 0; i < b.N; i++ {
 		page, err := s.SnapshotPage(ctx, f.Operator, SnapshotPageRequest{Context: f.ref(), Kind: kind, Limit: limit})
 		if err != nil {
 			b.Fatal(err)
 		}
+
 		if _, err = json.Marshal(map[string]any{"data": page}); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
+
 func BenchmarkFixtureTaskPage100(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	benchPage(b, s, f, "tasks", 100)
 }
+
 func BenchmarkFixtureAssignmentPage100(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	benchPage(b, s, f, "assignments", 100)
 }
+
 func BenchmarkFixtureDependencyPage100(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	benchPage(b, s, f, "dependencies", 100)
@@ -289,12 +338,14 @@ func BenchmarkFixtureFullCollection(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	ctx := context.Background()
 	b.ReportAllocs()
+
 	pages := 0
 	for i := 0; i < b.N; i++ {
 		snap, err := s.Snapshot(ctx, f.Operator, SnapshotRequest{Context: f.ref()})
 		if err != nil {
 			b.Fatal(err)
 		}
+
 		pages = 1
 		for _, kind := range []string{"tasks", "agents", "assignments", "dependencies"} {
 			after := ""
@@ -303,38 +354,48 @@ func BenchmarkFixtureFullCollection(b *testing.B) {
 				if err != nil {
 					b.Fatal(err)
 				}
+
 				if _, err = json.Marshal(map[string]any{"data": page}); err != nil {
 					b.Fatal(err)
 				}
+
 				pages++
+
 				if page.Next == "" {
 					break
 				}
+
 				after = page.Next
 			}
 		}
 	}
+
 	b.ReportMetric(float64(pages), "requests/op")
 }
+
 func BenchmarkFixtureShowTask(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	ctx := context.Background()
 	b.ReportAllocs()
+
 	for i := 0; i < b.N; i++ {
 		if _, err := s.ShowTask(ctx, f.Agent, TaskReadRequest{Context: f.ref(), TaskID: f.TaskID}); err != nil {
 			b.Fatal(err)
 		}
 	}
 }
+
 func BenchmarkFixtureMailReadFirst100(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	ctx := context.Background()
 	b.ReportAllocs()
+
 	for i := 0; i < b.N; i++ {
 		page, err := s.ReadMail(ctx, f.Agent, MailReadRequest{Context: f.ref(), TaskID: f.TaskID, Limit: 100})
 		if err != nil {
 			b.Fatal(err)
 		}
+
 		if _, err = json.Marshal(map[string]any{"data": page}); err != nil {
 			b.Fatal(err)
 		}
@@ -351,17 +412,22 @@ func mailCheckRound(b *testing.B, s *Store, f benchFixture, cursors map[string]s
 		if err != nil {
 			b.Fatal(err)
 		}
+
 		if _, err = json.Marshal(map[string]any{"data": page}); err != nil {
 			b.Fatal(err)
 		}
+
 		calls++
+
 		for _, task := range page.Tasks {
 			cursors[task.TaskID] = task.Cursor
 			messages += len(task.Messages)
 		}
+
 		if page.NextTask == "" {
 			return calls, messages
 		}
+
 		after = page.NextTask
 	}
 }
@@ -375,12 +441,15 @@ func BenchmarkFixtureMailCheckIdleRound(b *testing.B) {
 			break
 		}
 	}
+
 	b.ReportAllocs()
 	b.ResetTimer()
+
 	calls := 0
 	for i := 0; i < b.N; i++ {
 		calls, _ = mailCheckRound(b, s, f, cursors)
 	}
+
 	b.ReportMetric(float64(calls), "requests/op")
 	b.ReportMetric(float64(len(cursors)), "tasks")
 }
@@ -389,6 +458,7 @@ func BenchmarkFixtureMailCheckIdleRound(b *testing.B) {
 func BenchmarkFixtureMailCheckColdCatchUp(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	b.ReportAllocs()
+
 	calls, messages := 0, 0
 	for i := 0; i < b.N; i++ {
 		cursors := map[string]string{}
@@ -396,20 +466,24 @@ func BenchmarkFixtureMailCheckColdCatchUp(b *testing.B) {
 		for {
 			c, m := mailCheckRound(b, s, f, cursors)
 			calls += c
+
 			messages += m
 			if m == 0 {
 				break
 			}
 		}
 	}
+
 	b.ReportMetric(float64(calls), "requests/op")
 	b.ReportMetric(float64(messages), "messages/op")
 }
+
 func BenchmarkFixtureMailSend(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	ctx := context.Background()
 	prefix := opaqueID()[:12]
 	b.ReportAllocs()
+
 	for i := 0; i < b.N; i++ {
 		_, err := s.SendMail(ctx, f.Agent, MailSendRequest{Context: f.ref(), OperationID: fmt.Sprintf("bench-%s-%d", prefix, i), TaskID: f.TaskID, Body: "Benchmark progress note for @" + f.PeerName + " with a short realistic body."})
 		if err != nil {
@@ -417,19 +491,23 @@ func BenchmarkFixtureMailSend(b *testing.B) {
 		}
 	}
 }
+
 func BenchmarkFixtureTaskStatus(b *testing.B) {
 	f, s := loadBenchFixture(b)
 	ctx := context.Background()
 	prefix := opaqueID()[:12]
 	b.ReportAllocs()
+
 	for i := 0; i < b.N; i++ {
 		detail, err := s.ShowTask(ctx, f.Agent, TaskReadRequest{Context: f.ref(), TaskID: f.TaskID})
 		if err != nil {
 			b.Fatal(err)
 		}
+
 		if detail.Progress == "finished" || detail.Progress == "cancelled" {
 			b.Fatal("fixture Task must stay open")
 		}
+
 		_, err = s.ChangeTask(ctx, f.Agent, "status", TaskChangeRequest{Context: f.ref(), OperationID: fmt.Sprintf("bench-%s-%d", prefix, i), TaskID: f.TaskID, ExpectedRevision: detail.Revision, Progress: "working", Reason: fmt.Sprintf("bench step %d", i)})
 		if err != nil {
 			b.Fatal(err)
@@ -444,11 +522,14 @@ func BenchmarkClientSetup(b *testing.B) {
 	if err := writePrivate(filepath.Join(dir, "service.json"), Discovery{URL: "http://127.0.0.1:1", DatabaseID: opaqueID(), InstanceID: opaqueID()}, true); err != nil {
 		b.Fatal(err)
 	}
+
 	credential := filepath.Join(dir, "agent.json")
 	if err := writePrivate(credential, Credential{Kind: AgentCapability, Token: opaqueID()}, true); err != nil {
 		b.Fatal(err)
 	}
+
 	b.ReportAllocs()
+
 	for i := 0; i < b.N; i++ {
 		if _, err := NewClient(dir, credential, AgentCapability); err != nil {
 			b.Fatal(err)
@@ -464,15 +545,18 @@ func BenchmarkClientHealthRoundTrip(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	go service.Serve()
 	b.Cleanup(func() { service.Close(context.Background()) })
 	b.ReportAllocs()
 	b.ResetTimer()
+
 	for i := 0; i < b.N; i++ {
 		client, err := NewClient(dir, "", OperatorCapability)
 		if err != nil {
 			b.Fatal(err)
 		}
+
 		if _, err = client.Do(context.Background(), "GET", "/v1/health", nil); err != nil {
 			b.Fatal(err)
 		}

@@ -25,6 +25,7 @@ func termios(fd uintptr) (syscall.Termios, error) {
 	if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, fd, ioctlGetTermios, uintptr(unsafe.Pointer(&t))); e != 0 {
 		return t, e
 	}
+
 	return t, nil
 }
 
@@ -42,6 +43,7 @@ func terminalSize(f *os.File) (int, int) {
 	if _, _, e := syscall.Syscall(syscall.SYS_IOCTL, f.Fd(), syscall.TIOCGWINSZ, uintptr(unsafe.Pointer(&size))); e != 0 || size.cols == 0 {
 		return 80, 24
 	}
+
 	return int(size.cols), int(size.rows)
 }
 
@@ -55,6 +57,7 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 	if err != nil {
 		return sessionRow{}, err
 	}
+
 	raw := saved
 	raw.Iflag &^= syscall.IGNBRK | syscall.BRKINT | syscall.PARMRK | syscall.ISTRIP | syscall.INLCR | syscall.IGNCR | syscall.ICRNL | syscall.IXON
 	raw.Lflag &^= syscall.ECHO | syscall.ECHONL | syscall.ICANON | syscall.ISIG | syscall.IEXTEN
@@ -65,6 +68,7 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 	resized := make(chan os.Signal, 1)
 	signal.Notify(resized, syscall.SIGWINCH)
 	defer signal.Stop(resized)
+
 	keys, stopKeys, err := readKeys(int(in.Fd()))
 	if err != nil {
 		return sessionRow{}, err
@@ -76,6 +80,7 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 		if drawn > 1 {
 			fmt.Fprintf(out, "\r\x1b[%dA", drawn-1)
 		}
+
 		_, _ = io.WriteString(out, "\r\x1b[J")
 	}
 	defer func() {
@@ -83,11 +88,13 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 		_, _ = io.WriteString(out, "\x1b[?25h")
 		setTermios(in.Fd(), &saved)
 	}()
+
 	_, _ = io.WriteString(out, "\x1b[?25l")
 	for {
 		width, height := terminalSize(out)
 		clear()
 		lines := p.render(width, height, home, time.Now())
+
 		_, _ = io.WriteString(out, strings.Join(lines, "\n"))
 		drawn = len(lines)
 		select {
@@ -95,6 +102,7 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 			if !ok {
 				return sessionRow{}, errPickerCancelled
 			}
+
 			switch p.input(k) {
 			case pickChoose:
 				return p.chosen(), nil
@@ -109,12 +117,15 @@ func runPicker(ctx context.Context, in, out *os.File, p *picker, home string) (s
 			_, _ = io.WriteString(out, "\x1b[?25h")
 			setTermios(in.Fd(), &saved)
 			signal.Stop(signals)
+
 			if s == syscall.SIGQUIT {
 				// Go's own SIGQUIT handler prints a stack dump and exits
 				// with 2; exit as a shell reports a quit instead.
 				os.Exit(128 + int(syscall.SIGQUIT))
 			}
+
 			_ = syscall.Kill(os.Getpid(), s.(syscall.Signal))
+
 			return sessionRow{}, errPickerCancelled
 		case <-ctx.Done():
 			return sessionRow{}, ctx.Err()
@@ -129,42 +140,52 @@ func readKeys(fd int) (<-chan []byte, func(), error) {
 	// macOS has no pipe2, so set close-on-exec under ForkLock, as os.Pipe does.
 	var pipe [2]int
 	syscall.ForkLock.RLock()
+
 	err := syscall.Pipe(pipe[:])
 	if err == nil {
 		syscall.CloseOnExec(pipe[0])
 		syscall.CloseOnExec(pipe[1])
 	}
+
 	syscall.ForkLock.RUnlock()
+
 	if err != nil {
 		return nil, nil, err
 	}
+
 	if fd >= 1024 || pipe[0] >= 1024 {
 		_ = syscall.Close(pipe[0])
 		_ = syscall.Close(pipe[1])
 		return nil, nil, errors.New("file descriptor too large for select")
 	}
+
 	keys := make(chan []byte)
 	quit, done := make(chan struct{}), make(chan struct{})
 	go func() {
 		defer close(done)
 		defer close(keys)
+
 		buf := make([]byte, 256)
 		for {
 			var set syscall.FdSet
 			addFD(&set, fd)
 			addFD(&set, pipe[0])
+
 			if err := waitReadable(max(fd, pipe[0])+1, &set); err == syscall.EINTR {
 				continue
 			} else if err != nil || hasFD(&set, pipe[0]) {
 				return
 			}
+
 			n, err := syscall.Read(fd, buf)
 			if err == syscall.EINTR || err == syscall.EAGAIN {
 				continue
 			}
+
 			if err != nil || n <= 0 {
 				return
 			}
+
 			select {
 			case keys <- append([]byte(nil), buf[:n]...):
 			case <-quit:
@@ -179,6 +200,7 @@ func readKeys(fd int) (<-chan []byte, func(), error) {
 		_ = syscall.Close(pipe[0])
 		_ = syscall.Close(pipe[1])
 	}
+
 	return keys, stop, nil
 }
 

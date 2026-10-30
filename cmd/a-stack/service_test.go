@@ -35,10 +35,12 @@ func serviceSetup(t *testing.T) (f *fakeSystemd, exe, state, file string) {
 	t.Setenv("HOME", filepath.Join(root, "home"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "config"))
 	t.Setenv("A_STACK_SERVICE_UNIT", "")
+
 	exe = filepath.Join(root, "my bin", "a-stack")
 	if os.MkdirAll(filepath.Dir(exe), 0o755) != nil || os.WriteFile(exe, nil, 0o755) != nil {
 		t.Fatal("binary")
 	}
+
 	f = &fakeSystemd{replies: map[string]func() (string, error){
 		"is-active --quiet a-stack": func() (string, error) { return "", errExit },
 		"is-active a-stack":         func() (string, error) { return "inactive", errExit },
@@ -57,14 +59,17 @@ func serviceSetup(t *testing.T) (f *fakeSystemd, exe, state, file string) {
 		default:
 			t.Fatalf("unexpected command %s %v", name, args)
 		}
+
 		f.calls = append(f.calls, call)
 		if reply := f.replies[call]; reply != nil {
 			return reply()
 		}
+
 		return "", nil
 	}
 	executable, serviceWait = func() (string, error) { return exe, nil }, 2*time.Second
 	t.Cleanup(func() { runCommand, executable, serviceWait, serviceOS = oldRun, oldExecutable, oldWait, oldOS })
+
 	return f, exe, filepath.Join(root, "state"), filepath.Join(root, "config", "systemd", "user", "a-stack.service")
 }
 
@@ -72,10 +77,12 @@ func serviceSetup(t *testing.T) (f *fakeSystemd, exe, state, file string) {
 func startTestService(t *testing.T, state string) {
 	t.Helper()
 	ctx := context.Background()
+
 	service, err := stack.Start(ctx, state, "")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	done := make(chan error, 1)
 	go func() { done <- service.Serve() }()
 	t.Cleanup(func() {
@@ -86,10 +93,12 @@ func startTestService(t *testing.T, state string) {
 
 func runService(t *testing.T, wantCode int, args ...string) (string, string) {
 	t.Helper()
+
 	var out, errout bytes.Buffer
 	if code := run(append([]string{"service"}, args...), &out, &errout); code != wantCode {
 		t.Fatalf("service %v: exit %d, want %d; stdout=%s stderr=%s", args, code, wantCode, out.String(), errout.String())
 	}
+
 	return out.String(), errout.String()
 }
 
@@ -98,6 +107,7 @@ func TestServiceUnitEmbedMatchesRepository(t *testing.T) {
 	if err != nil || string(data) != systemd.Unit || strings.Count(systemd.Unit, defaultExecStart) != 1 {
 		t.Fatal("the embedded unit differs from contrib/systemd/a-stack.service or lost its ExecStart line")
 	}
+
 	// The default paths keep the unit as it is.
 	if unit, err := renderUnit(filepath.Join("/home/u", ".local", "bin", "a-stack"), filepath.Join("/home/u", ".local", "state", "a-stack"), "/home/u"); err != nil || unit != systemd.Unit {
 		t.Fatalf("default unit changed: %v", err)
@@ -111,10 +121,12 @@ func TestServiceUnitWordsRoundTrip(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if binary, state := unitCommand(unit, home); binary != path || state != "/srv/state dir" {
 			t.Fatalf("%q came back as %q and %q", path, binary, state)
 		}
 	}
+
 	if _, err := renderUnit("/x\n[Service]", "/s", home); err == nil {
 		t.Fatal("a newline in a path reached the unit")
 	}
@@ -126,17 +138,21 @@ func TestServiceInstallStatusUninstall(t *testing.T) {
 		startTestService(t, state)
 		return "", nil
 	}
+
 	out, _ := runService(t, 0, "install", "--state-dir", state)
 	want, _ := renderUnit(exe, state, os.Getenv("HOME"))
 	if data, err := os.ReadFile(file); err != nil || string(data) != want || !strings.Contains(want, `ExecStart="`+exe+`" serve --state-dir `+state+"\n") {
 		t.Fatalf("unit file: %v\n%s", err, data)
 	}
+
 	if info, _ := os.Stat(file); info.Mode().Perm() != 0o644 {
 		t.Fatalf("unit mode %v", info.Mode())
 	}
+
 	if !slices.Equal(f.calls, []string{"is-active --quiet a-stack", "daemon-reload", "enable --now a-stack", "loginctl show-user"}) {
 		t.Fatalf("calls %v", f.calls)
 	}
+
 	for _, line := range []string{"Wrote " + file + ".", "It runs " + exe + " serve --state-dir " + state + ".", "systemd runs a-stack at http://127.0.0.1:", "loginctl enable-linger "} {
 		if !strings.Contains(out, line) {
 			t.Fatalf("install output lacks %q:\n%s", line, out)
@@ -149,6 +165,7 @@ func TestServiceInstallStatusUninstall(t *testing.T) {
 	f.replies["is-enabled a-stack"] = func() (string, error) { return "enabled", nil }
 	f.replies["enable --now a-stack"] = nil
 	f.replies["loginctl show-user"] = func() (string, error) { return "Linger=yes", nil }
+
 	var result struct {
 		Data map[string]any `json:"data"`
 	}
@@ -161,6 +178,7 @@ func TestServiceInstallStatusUninstall(t *testing.T) {
 	if os.WriteFile(file, []byte("[Service]\nExecStart=/old/a-stack serve\n"), 0o644) != nil {
 		t.Fatal("edit")
 	}
+
 	out, _ = runService(t, 0, "install", "--state-dir", state)
 	if data, _ := os.ReadFile(file); string(data) != want || !strings.Contains(out, "Updated "+file+"; it differed") || !strings.Contains(out, "systemctl --user restart a-stack") || strings.Contains(out, "enable-linger") {
 		t.Fatalf("update output:\n%s", out)
@@ -171,6 +189,7 @@ func TestServiceInstallStatusUninstall(t *testing.T) {
 	if json.Unmarshal([]byte(out), &result) != nil || result.Data["installed"] != true || result.Data["enabled"] != "enabled" || result.Data["active"] != "active" || result.Data["binary"] != exe || result.Data["state_dir"] != state || !strings.Contains(out, `"health":{"data":{"database_id"`) {
 		t.Fatalf("status %s", out)
 	}
+
 	out, _ = runService(t, 0, "status", "--state-dir", state)
 	if !strings.Contains(out, "Unit file:") || !strings.Contains(out, file) || !strings.Contains(out, "answers at http://127.0.0.1:") {
 		t.Fatalf("status text:\n%s", out)
@@ -181,14 +200,17 @@ func TestServiceInstallStatusUninstall(t *testing.T) {
 	if _, err := os.Stat(file); !os.IsNotExist(err) || !slices.Equal(f.calls, []string{"disable --now a-stack", "daemon-reload"}) || !strings.Contains(out, "removed "+file) {
 		t.Fatalf("uninstall %v %v:\n%s", err, f.calls, out)
 	}
+
 	if _, err := os.Stat(filepath.Join(state, "state.db")); err != nil {
 		t.Fatal("uninstall touched the state directory")
 	}
+
 	f.calls = nil
 	out, _ = runService(t, 0, "uninstall", "--json")
 	if len(f.calls) != 0 || out != `{"data":{"removed":false,"unit":"a-stack","unit_file":"`+file+`"}}`+"\n" {
 		t.Fatalf("second uninstall %v %s", f.calls, out)
 	}
+
 	out, _ = runService(t, 0, "status", "--state-dir", state)
 	if !strings.Contains(out, "not installed; run a-stack service install") {
 		t.Fatalf("status without unit:\n%s", out)
@@ -198,10 +220,12 @@ func TestServiceInstallStatusUninstall(t *testing.T) {
 func TestServiceInstallRefusesAForegroundServe(t *testing.T) {
 	f, _, state, file := serviceSetup(t)
 	startTestService(t, state)
+
 	_, errout := runService(t, 1, "install", "--state-dir", state)
 	if !strings.Contains(errout, `"code":"conflict"`) || !strings.Contains(errout, "press Ctrl-C in its terminal first") {
 		t.Fatalf("stderr %s", errout)
 	}
+
 	if _, err := os.Stat(file); !os.IsNotExist(err) || !slices.Equal(f.calls, []string{"is-active --quiet a-stack"}) {
 		t.Fatalf("install changed something: %v %v", err, f.calls)
 	}
@@ -215,11 +239,15 @@ func TestServiceInstallFailures(t *testing.T) {
 	if !strings.Contains(errout, "does not answer; see systemctl --user status a-stack") {
 		t.Fatalf("stderr %s", errout)
 	}
+
 	f.replies["enable --now a-stack"] = func() (string, error) { return "Failed to enable unit", errExit }
+
 	if _, errout = runService(t, 1, "install", "--state-dir", state); !strings.Contains(errout, "systemctl --user enable --now a-stack failed: Failed to enable unit") {
 		t.Fatalf("stderr %s", errout)
 	}
+
 	f.replies["disable --now a-stack"] = func() (string, error) { return "Access denied", errExit }
+
 	if _, errout = runService(t, 1, "uninstall"); !strings.Contains(errout, "Access denied") {
 		t.Fatalf("stderr %s", errout)
 	}
@@ -236,13 +264,17 @@ func TestServiceInstallFailureRemovesANewUnit(t *testing.T) {
 			if _, errout := runService(t, 1, "install", "--state-dir", state); !strings.Contains(errout, "systemctl --user "+step+" failed: Failed to connect to bus") {
 				t.Fatalf("stderr %s", errout)
 			}
+
 			if _, err := os.Stat(file); !os.IsNotExist(err) || !slices.Contains(f.calls, "disable a-stack") {
 				t.Fatalf("the new unit stayed: %v %v", err, f.calls)
 			}
+
 			if os.MkdirAll(filepath.Dir(file), 0o755) != nil || os.WriteFile(file, []byte("[Service]\n"), 0o644) != nil {
 				t.Fatal("unit")
 			}
+
 			runService(t, 1, "install", "--state-dir", state)
+
 			if _, err := os.Stat(file); err != nil {
 				t.Fatal("an earlier unit was removed:", err)
 			}
@@ -255,25 +287,31 @@ func TestServiceInstallFailureRemovesANewUnit(t *testing.T) {
 // to "enabled" and "active". Update also needs that unit's state directory.
 func TestServiceFromAnotherUnitFile(t *testing.T) {
 	f, exe, state, file := serviceSetup(t)
+
 	other := filepath.Join(t.TempDir(), "a-stack.service")
 	unit, err := renderUnit(exe, "/other/state", os.Getenv("HOME"))
 	if err != nil || os.WriteFile(other, []byte(unit), 0o644) != nil {
 		t.Fatal(err)
 	}
+
 	f.replies["show -p FragmentPath --value a-stack"] = func() (string, error) { return other, nil }
 	f.replies["is-enabled a-stack"] = func() (string, error) { return "enabled", nil }
 	f.replies["is-active a-stack"] = func() (string, error) { return "active", nil }
 	f.replies["is-active --quiet a-stack"] = func() (string, error) { return "", nil }
+
 	out, _ := runService(t, 0, "status", "--state-dir", state)
 	for _, want := range []string{"Unit file: " + other + " (a-stack service install would write " + file + ")", "Active:    active", "State dir: /other/state", "The CLI uses " + state} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("status lacks %q:\n%s", want, out)
 		}
 	}
+
 	if binary, dir, running := serviceProgram(); binary != exe || dir != "/other/state" || !running {
 		t.Fatalf("service program: %q %q %v", binary, dir, running)
 	}
+
 	f.replies["is-active --quiet a-stack"] = func() (string, error) { return "", errExit }
+
 	if _, _, running := serviceProgram(); running {
 		t.Fatal("the service does not run")
 	}
@@ -283,10 +321,12 @@ func TestServiceUnitNameAndConfigFolder(t *testing.T) {
 	f, _, state, _ := serviceSetup(t)
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("A_STACK_SERVICE_UNIT", "a-stack-try")
+
 	out, _ := runService(t, 0, "status", "--state-dir", state, "--json")
 	if !strings.Contains(out, `"unit_file":"`+filepath.Join(os.Getenv("HOME"), ".config", "systemd", "user", "a-stack-try.service")+`"`) || !slices.Contains(f.calls, "is-active a-stack-try") {
 		t.Fatalf("status %s %v", out, f.calls)
 	}
+
 	t.Setenv("A_STACK_SERVICE_UNIT", "../a-stack")
 	runService(t, 2, "status")
 	t.Setenv("A_STACK_SERVICE_UNIT", "")

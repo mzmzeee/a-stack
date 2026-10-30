@@ -19,20 +19,25 @@ func ordersRequest(ctx context.Context, client *stack.Client, command string, l 
 		return client.Do(ctx, "POST", path, stack.Context{WorkspaceID: l.workspace, SessionID: l.session})
 	case "workspace orders set":
 		body := t.body
+
 		if seen["body"] == seen["body-file"] {
 			return nil, invalid("choose one of --body and --body-file")
 		}
+
 		if seen["body-file"] {
 			var err error
 			if body, err = bodyText(t.bodyFile); err != nil {
 				return nil, err
 			}
 		}
+
 		if len(body) > stack.MaxOrdersBytes {
 			return nil, invalid(fmt.Sprintf("standing orders exceed %d bytes", stack.MaxOrdersBytes))
 		}
+
 		return client.Do(ctx, "POST", path, stack.OrdersRequest{OperationID: l.operationID, WorkspaceID: l.workspace, ExpectedRevision: l.revision, Body: body})
 	}
+
 	return client.Do(ctx, "POST", path, stack.OrdersRequest{OperationID: l.operationID, WorkspaceID: l.workspace, ExpectedRevision: l.revision})
 }
 
@@ -46,15 +51,19 @@ func ordersReminder(o *stack.StandingOrders, command string) string {
 	if o == nil || strings.TrimSpace(o.Body) == "" {
 		return ""
 	}
+
 	lines := strings.Split(strings.TrimRight(strings.ReplaceAll(o.Body, "\r\n", "\n"), "\n"), "\n")
 	var b strings.Builder
 	b.WriteString("Standing orders of this Workspace, from the Operator. They override your own defaults:\n")
+
 	for i, line := range lines {
 		if i == ordersLines {
 			fmt.Fprintf(&b, "  (%d more lines; read them all with: %s workspace orders show)\n", len(lines)-i, command)
 			break
 		}
+
 		b.WriteString("  " + printable(truncate(strings.ReplaceAll(line, "\t", "  "), 200)) + "\n")
 	}
+
 	return b.String()
 }

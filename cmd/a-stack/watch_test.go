@@ -28,21 +28,25 @@ func newTeam(t *testing.T) *team {
 	t.Helper()
 	ctx := context.Background()
 	root := t.TempDir()
+
 	f := &team{t: t, state: filepath.Join(root, "state"), project: filepath.Join(root, "project")}
 	service, err := stack.Start(ctx, f.state, "")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	done := make(chan error, 1)
 	go func() { done <- service.Serve() }()
 	t.Cleanup(func() {
 		_ = service.Close(ctx)
 		<-done
 	})
+
 	private := filepath.Join(root, "credentials")
-	if os.Mkdir(f.project, 0700) != nil || stack.MkdirPrivate(private) != nil {
+	if os.Mkdir(f.project, 0o700) != nil || stack.MkdirPrivate(private) != nil {
 		t.Fatal("fixture directories")
 	}
+
 	f.project, _ = filepath.EvalSymlinks(f.project)
 	f.orchFile, f.workerFile = filepath.Join(private, "orch.json"), filepath.Join(private, "worker.json")
 	f.workspace = f.receipt("", "workspace", "create", "--path", f.project, "--operation-id", "team-workspace").ResourceID
@@ -52,6 +56,7 @@ func newTeam(t *testing.T) *team {
 	f.worker = f.receipt(f.orchFile, f.scoped("agent", "register", "--name", "02-worker", "--new-credential-file", f.workerFile, "--operation-id", "team-worker")...).ResourceID
 	f.task = f.receipt(f.orchFile, f.scoped("task", "create", "--title", "Build the parser", "--operation-id", "team-task")...).ResourceID
 	f.receipt(f.orchFile, f.scoped("task", "assign", "--task", f.task, "--agent", f.worker, "--expected-revision", "1", "--operation-id", "team-assign")...)
+
 	return f
 }
 
@@ -62,10 +67,12 @@ func (f *team) scoped(args ...string) []string {
 // run runs the CLI as the Operator (credential "") or as an Agent.
 func (f *team) run(credential string, args ...string) (string, string, int) {
 	f.t.Helper()
+
 	args = append(args, "--state-dir", f.state)
 	if credential != "" {
 		args = append(args, "--as", "agent", "--credential-file", credential)
 	}
+
 	var out, errout bytes.Buffer
 	code := run(args, &out, &errout)
 	return out.String(), errout.String(), code
@@ -73,6 +80,7 @@ func (f *team) run(credential string, args ...string) (string, string, int) {
 
 func (f *team) receipt(credential string, args ...string) stack.Receipt {
 	f.t.Helper()
+
 	out, errout, code := f.run(credential, append(args, "--json")...)
 	var envelope struct {
 		Data stack.Receipt `json:"data"`
@@ -80,6 +88,7 @@ func (f *team) receipt(credential string, args ...string) stack.Receipt {
 	if code != 0 || json.Unmarshal([]byte(out), &envelope) != nil {
 		f.t.Fatalf("%v: exit %d %s", args[:2], code, errout)
 	}
+
 	return envelope.Data
 }
 
@@ -101,6 +110,7 @@ func (s *syncBuffer) Write(p []byte) (int, error) {
 	defer s.mu.Unlock()
 	return s.b.Write(p)
 }
+
 func (s *syncBuffer) String() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -109,11 +119,13 @@ func (s *syncBuffer) String() string {
 
 func waitFor(t *testing.T, what string, out *syncBuffer, want string) {
 	t.Helper()
+
 	deadline := time.Now().Add(5 * time.Second)
 	for !strings.Contains(out.String(), want) {
 		if time.Now().After(deadline) {
 			t.Fatalf("%s: no %q in:\n%s", what, want, out.String())
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
 }
@@ -122,20 +134,26 @@ func TestStatusCountsTheCurrentFolder(t *testing.T) {
 	f := newTeam(t)
 	elsewhere := t.TempDir()
 	t.Chdir(elsewhere)
+
 	if _, errout, code := f.run("", "status"); code != 2 || !strings.Contains(errout, "this folder has no Workspace") {
 		t.Fatalf("status outside a Workspace: %d %s", code, errout)
 	}
-	if err := os.Mkdir(filepath.Join(f.project, "sub"), 0700); err != nil {
+
+	if err := os.Mkdir(filepath.Join(f.project, "sub"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+
 	t.Chdir(filepath.Join(f.project, "sub"))
 	rev := f.taskChange(f.workerFile, "status-working", 2, "status", "--progress", "working")
 	f.receipt(f.orchFile, f.scoped("task", "create", "--title", "Waits", "--operation-id", "status-waits")...)
+
 	out, _, code := f.run("", "status")
 	if code != 0 || !strings.HasPrefix(out, `"Build" in `) || !strings.HasSuffix(out, ": 0 needs you · 1 working · 1 waiting · 0 finished\n") {
 		t.Fatalf("status: %d %q", code, out)
 	}
+
 	f.taskChange(f.workerFile, "status-ask", rev, "attention", "set", "--question", "Which parser?")
+
 	out, _, _ = f.run("", "status", "--json")
 	var envelope struct {
 		Data struct {
@@ -145,19 +163,24 @@ func TestStatusCountsTheCurrentFolder(t *testing.T) {
 	if json.Unmarshal([]byte(out), &envelope) != nil || len(envelope.Data.Sessions) != 1 {
 		t.Fatalf("status --json: %s", out)
 	}
+
 	if s := envelope.Data.Sessions[0]; s.SessionID != f.session || s.NeedsYou != 1 || s.Working != 0 || s.Waiting != 1 {
 		t.Fatalf("status counts: %+v", s)
 	}
+
 	// --all and --session work from any folder; a closed Session counts only
 	// when --session names it.
 	t.Chdir(elsewhere)
 	f.receipt("", f.scoped("session", "close", "--expected-revision", "2", "--operation-id", "status-close")...)
+
 	if out, _, _ = f.run("", "status", "--all"); out != "No open Session here. To create one, run: a-stack new\n" {
 		t.Fatalf("status --all with a closed Session: %q", out)
 	}
+
 	if out, _, _ = f.run("", "status", "--session", f.session); !strings.Contains(out, "(closed): 1 needs you") {
 		t.Fatalf("status --session: %q", out)
 	}
+
 	if _, errout, code := f.run("", "status", "--all", "--session", f.session); code != 2 || !strings.Contains(errout, "--all or --session") {
 		t.Fatalf("both scopes: %s", errout)
 	}
@@ -166,10 +189,12 @@ func TestStatusCountsTheCurrentFolder(t *testing.T) {
 func TestWatchPrintsChangesAndRings(t *testing.T) {
 	f := newTeam(t)
 	t.Chdir(f.project)
+
 	client, err := stack.NewClient(f.state, "", stack.OperatorCapability)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var out, errout syncBuffer
 	var mu sync.Mutex
 	notices := []string{}
@@ -184,9 +209,11 @@ func TestWatchPrintsChangesAndRings(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- w.watch(ctx) }()
 	waitFor(t, "start", &out, "0 needs you · 0 working · 1 waiting · 0 finished\n")
+
 	if !strings.HasPrefix(out.String(), "Watching the Sessions of ") {
 		t.Fatalf("watch header: %q", out.String())
 	}
+
 	rev := f.taskChange(f.workerFile, "watch-working", 2, "status", "--progress", "working")
 	waitFor(t, "progress", &out, "  Build  Build the parser: waiting → working\n")
 	rev = f.taskChange(f.workerFile, "watch-ask", rev, "attention", "set", "--question", "Which <b>parser</b>?")
@@ -200,14 +227,18 @@ func TestWatchPrintsChangesAndRings(t *testing.T) {
 	f.receipt(f.orchFile, f.scoped("task", "create", "--title", "Next \x1b[31mstep", "--operation-id", "watch-next")...)
 	waitFor(t, "new Task", &out, "Next �[31mstep: new Task, waiting\n")
 	cancel()
+
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
+
 	mu.Lock()
 	defer mu.Unlock()
+
 	if len(notices) != 1 || notices[0] != "a-stack: 1 needs you in Build|" {
 		t.Fatalf("notices without --notify-text: %q", notices)
 	}
+
 	if strings.Count(out.String(), "\a") != 1 || errout.String() != "" {
 		t.Fatalf("bell or diagnostics: %q %q", out.String(), errout.String())
 	}
@@ -219,6 +250,7 @@ func TestWatchSkipsUnchangedSessionsAndNotifiesText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var out, errout syncBuffer
 	notices := []string{}
 	w := &watcher{client: client, session: f.session, machine: true, notify: true, notifyText: true, stdout: &out, stderr: &errout, notifier: func(summary, body string) error {
@@ -226,19 +258,24 @@ func TestWatchSkipsUnchangedSessionsAndNotifiesText(t *testing.T) {
 		return nil
 	}}
 	w.setup()
+
 	if _, err := w.poll(context.Background(), true); err != nil {
 		t.Fatal(err)
 	}
+
 	known := w.seen[f.session]
 	known.tasks[f.task] = stack.Task{ID: "marker"}
 	if _, err := w.poll(context.Background(), false); err != nil || w.seen[f.session].tasks[f.task].ID != "marker" || out.String() != "" {
 		t.Fatalf("an unchanged Session was read again: %v %q", err, out.String())
 	}
+
 	delete(known.tasks, f.task)
 	f.taskChange(f.workerFile, "skip-ask", 2, "attention", "set", "--question", "A & B?")
+
 	if _, err := w.poll(context.Background(), false); err != nil {
 		t.Fatal(err)
 	}
+
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 	var first, second struct {
 		Data watchEvent `json:"data"`
@@ -246,6 +283,7 @@ func TestWatchSkipsUnchangedSessionsAndNotifiesText(t *testing.T) {
 	if len(lines) != 2 || json.Unmarshal([]byte(lines[0]), &first) != nil || json.Unmarshal([]byte(lines[1]), &second) != nil || first.Data.Change != "created" || second.Data.Change != "needs_you" || second.Data.Text != "A & B?" || strings.Contains(out.String(), "\a") {
 		t.Fatalf("JSON events: %q", out.String())
 	}
+
 	if len(notices) != 1 || notices[0] != "a-stack: 1 needs you in Build|A & B?" {
 		t.Fatalf("notice with text: %q", notices)
 	}
@@ -257,9 +295,11 @@ func TestNoticeArgs(t *testing.T) {
 	if got := noticeArgs("linux", "-s", "-a <b> & c"); !slices.Equal(got, []string{"--app-name=a-stack", "--", "-s", "-a &lt;b&gt; &amp; c"}) {
 		t.Fatalf("notify-send %q", got)
 	}
+
 	if got := noticeArgs("linux", "s", ""); !slices.Equal(got, []string{"--app-name=a-stack", "--", "s"}) {
 		t.Fatalf("notify-send without body %q", got)
 	}
+
 	if got := noticeArgs("darwin", "s", "a <b> & c\x07"); got[len(got)-2] != "s" || got[len(got)-1] != "a <b> & c"+printable("\x07") {
 		t.Fatalf("osascript %q", got)
 	}
@@ -267,6 +307,7 @@ func TestNoticeArgs(t *testing.T) {
 
 func TestStatusLineForClaudeCode(t *testing.T) {
 	f := newTeam(t)
+
 	line := func(state, input string) string {
 		var out bytes.Buffer
 		statusLine(state, strings.NewReader(input), &out)
@@ -276,17 +317,21 @@ func TestStatusLineForClaudeCode(t *testing.T) {
 	if got := line(f.state, input); got != "a-stack Build: 0 needs you · 0 working\n" {
 		t.Fatalf("status line %q", got)
 	}
+
 	rev := f.taskChange(f.workerFile, "line-working", 2, "status", "--progress", "working")
 	f.taskChange(f.workerFile, "line-ask", rev, "attention", "set", "--question", "Which?")
 	f.receipt("", "session", "create", "--workspace", f.workspace, "--name", "Second", "--operation-id", "line-second")
+
 	if got := line(f.state, `{"cwd":`+jsonString(f.project)+`}`); got != "a-stack: 1 needs you · 0 working\n" {
 		t.Fatalf("status line of two Sessions %q", got)
 	}
+
 	for _, quiet := range []string{line(f.state, `{"cwd":"/"}`), line(f.state, "nonsense"), line(filepath.Join(t.TempDir(), "none"), input)} {
 		if quiet != "" {
 			t.Fatalf("status line printed %q", quiet)
 		}
 	}
+
 	var out, errout bytes.Buffer
 	if code := run([]string{"statusline", "--no-such-flag"}, &out, &errout); code != 0 || out.Len() != 0 || errout.Len() != 0 {
 		t.Fatalf("statusline error: %d %q %q", code, out.String(), errout.String())
@@ -303,10 +348,12 @@ func TestQuietTasksInStatusListAndWatch(t *testing.T) {
 	f := newTeam(t)
 	t.Chdir(f.project)
 	f.taskChange(f.workerFile, "quiet-working", 2, "status", "--progress", "working")
+
 	client, err := stack.NewClient(f.state, "", stack.OperatorCapability)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var out, errout syncBuffer
 	w := &watcher{client: client, stdout: &out, stderr: &errout, interval: 20 * time.Millisecond}
 	w.setup()
@@ -317,6 +364,7 @@ func TestQuietTasksInStatusListAndWatch(t *testing.T) {
 	quietLine := "Build the parser: quiet: Working, but no change or Task mail for 700ms\n\a"
 	waitFor(t, "quiet", &out, quietLine)
 	time.Sleep(200 * time.Millisecond)
+
 	if strings.Count(out.String(), "\a") != 1 {
 		t.Fatalf("watch rang more than once: %q", out.String())
 	}
@@ -325,10 +373,12 @@ func TestQuietTasksInStatusListAndWatch(t *testing.T) {
 	if code != 0 || !strings.HasSuffix(status, ": 0 needs you · 1 working (1 quiet) · 0 waiting · 0 finished\n") {
 		t.Fatalf("status: %q", status)
 	}
+
 	status, _, _ = f.run("", "status", "--json")
 	if !strings.Contains(status, `"working":1,"quiet":1,`) {
 		t.Fatalf("status --json: %s", status)
 	}
+
 	list, _, _ := f.run(f.workerFile, f.scoped("task", "list")...)
 	if !strings.Contains(list, `"quiet":true`) {
 		t.Fatalf("task list: %s", list)
@@ -336,21 +386,27 @@ func TestQuietTasksInStatusListAndWatch(t *testing.T) {
 
 	// Task mail ends quiet; the Task rings again once it is quiet again.
 	f.receipt(f.workerFile, f.scoped("mail", "send", "--task", f.task, "--body", "Still on it", "--operation-id", "quiet-mail")...)
+
 	list, _, _ = f.run(f.workerFile, f.scoped("task", "list")...)
 	if !strings.Contains(list, `"quiet":false`) || !strings.Contains(list, `"last_mail_at":`) {
 		t.Fatalf("task list after mail: %s", list)
 	}
+
 	deadline := time.Now().Add(5 * time.Second)
 	for strings.Count(out.String(), "\a") < 2 {
 		if time.Now().After(deadline) {
 			t.Fatalf("no second quiet bell: %q", out.String())
 		}
+
 		time.Sleep(10 * time.Millisecond)
 	}
+
 	cancel()
+
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
+
 	if strings.Count(out.String(), quietLine) != 2 || errout.String() != "" {
 		t.Fatalf("quiet lines: %q %q", out.String(), errout.String())
 	}

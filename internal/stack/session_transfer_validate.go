@@ -13,26 +13,32 @@ func validateTransferSnapshot(ctx context.Context, tx *sql.Tx, b TransferBundle)
 	bad := func() error {
 		return failure("invalid_input", "transfer snapshot contains an invalid or out-of-Session reference")
 	}
+
 	columns := make([][]string, len(transferTables))
 	ids := map[string]map[string]string{}
 	for i, spec := range transferTables {
 		if b.Tables[i].Name != spec.name {
 			return bad()
 		}
+
 		rows, err := tx.QueryContext(ctx, "SELECT * FROM "+spec.name+" LIMIT 0")
 		if err != nil {
 			return storageError(err)
 		}
+
 		columns[i], err = rows.Columns()
 		rows.Close()
+
 		if err != nil {
 			return storageError(err)
 		}
+
 		ids[spec.name] = map[string]string{}
 		for _, row := range b.Tables[i].Rows {
 			if len(row) != len(columns[i]) {
 				return bad()
 			}
+
 			id, task := "", ""
 			for j, col := range columns[i] {
 				if col == "id" {
@@ -42,30 +48,38 @@ func validateTransferSnapshot(ctx context.Context, tx *sql.Tx, b TransferBundle)
 						return bad()
 					}
 				}
+
 				if col == "task_id" {
 					task, _ = row[j].(string)
 				}
 			}
+
 			if id != "" {
 				if _, exists := ids[spec.name][id]; exists {
 					return bad()
 				}
+
 				ids[spec.name][id] = task
 			}
 		}
 	}
+
 	if len(b.Tables[0].Rows) != 1 {
 		return bad()
 	}
+
 	contains := func(table string, value any) bool {
 		if value == nil {
 			return true
 		}
+
 		id, ok := value.(string)
 		if !ok {
 			return false
 		}
+
 		_, ok = ids[table][id]
+
 		return ok
 	}
 	for i, spec := range transferTables {
@@ -74,6 +88,7 @@ func validateTransferSnapshot(ctx context.Context, tx *sql.Tx, b TransferBundle)
 			for j, col := range columns[i] {
 				values[col] = row[j]
 			}
+
 			for col, value := range values {
 				switch col {
 				case "workspace_id":
@@ -105,6 +120,7 @@ func validateTransferSnapshot(ctx context.Context, tx *sql.Tx, b TransferBundle)
 					if !ok {
 						return bad()
 					}
+
 					if strings.HasPrefix(actor, "agent:") {
 						if !contains("agents", strings.TrimPrefix(actor, "agent:")) {
 							return bad()
@@ -129,19 +145,23 @@ func validateTransferSnapshot(ctx context.Context, tx *sql.Tx, b TransferBundle)
 					}
 				}
 			}
+
 			if spec.name == "sessions" {
 				if values["id"] != b.Session.ID || fmt.Sprint(values["read_revision"]) != fmt.Sprint(b.Session.ReadRevision) || fmt.Sprint(values["revision"]) != fmt.Sprint(b.Session.Revision) {
 					return bad()
 				}
+
 				closed := "0"
 				if b.Session.Closed {
 					closed = "1"
 				}
+
 				if fmt.Sprint(values["closed"]) != closed {
 					return bad()
 				}
 			}
 		}
 	}
+
 	return nil
 }

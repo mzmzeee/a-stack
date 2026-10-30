@@ -85,7 +85,9 @@ class Terminal:
         with self.lock:
             while text not in self.text[self.since :]:
                 if not self.changed.wait(timeout=30):
-                    raise SystemExit(f"demo-terminal: the terminal never showed {text!r}")
+                    raise SystemExit(
+                        f"demo-terminal: the terminal never showed {text!r}"
+                    )
 
     def type(self, text):
         with self.lock:
@@ -107,7 +109,9 @@ class Terminal:
             events = list(self.events)
         whole = list("".join(text for _, text in events))
         for match in FRAGMENT.finditer("".join(whole)):
-            whole[match.start() + 1 : match.end()] = "•" * (match.end() - match.start() - 1)
+            whole[match.start() + 1 : match.end()] = "•" * (
+                match.end() - match.start() - 1
+            )
         with open(path, "w", encoding="utf-8") as out:
             out.write(json.dumps({"version": 2, "width": cols, "height": rows}) + "\n")
             offset = 0

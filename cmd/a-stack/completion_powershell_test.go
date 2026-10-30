@@ -13,17 +13,22 @@ func TestCompletionPowerShell(t *testing.T) {
 	if err != nil {
 		t.Skip("PowerShell not installed")
 	}
+
 	f := newTeam(t)
+
 	dir := t.TempDir()
 	cli := filepath.Join(dir, "a-stack.exe")
 	if out, err := exec.Command("go", "build", "-o", cli, ".").CombinedOutput(); err != nil {
 		t.Fatalf("build completion binary: %v %s", err, out)
 	}
+
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
 	path := filepath.Join(dir, "completion.ps1")
-	if err := os.WriteFile(path, []byte(helpOutput(t, "completion", "powershell")), 0600); err != nil {
+	if err := os.WriteFile(path, []byte(helpOutput(t, "completion", "powershell")), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }
 	for _, test := range []struct{ line, want string }{
 		{"a-stack.exe upd", "update"},

@@ -36,6 +36,7 @@ func clockNow() time.Time {
 	if t := fixedClock.Load(); t != nil {
 		return *t
 	}
+
 	return time.Now()
 }
 
@@ -51,53 +52,67 @@ func (s *Store) archiveMark(ctx context.Context, tx *sql.Tx, session Session) (i
 	s.marksMu.Lock()
 	m, ok := s.marks[session.ID]
 	s.marksMu.Unlock()
+
 	if ok && m.revision == session.ReadRevision && at.Before(m.next) {
 		return m.count, nil
 	}
+
 	cutoff := at.Add(-ArchiveAge).UTC().Format(time.RFC3339Nano)
 	var next string
 	m = archiveMarkState{revision: session.ReadRevision, next: at.Add(ArchiveAge)}
+
 	err := tx.QueryRowContext(ctx, "SELECT count(*) FILTER (WHERE ended_at<=?1),COALESCE(min(ended_at) FILTER (WHERE ended_at>?1),'') FROM tasks WHERE session_id=?2 AND progress IN ('finished','cancelled') AND archived_at=''", cutoff, session.ID).Scan(&m.count, &next)
 	if err != nil {
 		return 0, storageError(err)
 	}
+
 	// With no younger done Task, only a change can move the mark, and a change
 	// raises the read revision.
 	if ended, err := time.Parse(time.RFC3339Nano, next); err == nil {
 		m.next = ended.Add(ArchiveAge)
 	}
+
 	quiet, quietNext, err := quietMark(ctx, tx, session.ID, at)
 	if err != nil {
 		return 0, err
 	}
+
 	var overdue int64
 	var ackNext string
+
 	err = tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE julianday(k.due_at)<=julianday(?1)),COALESCE(min(k.due_at) FILTER (WHERE julianday(k.due_at)>julianday(?1)),'') FROM mail_acks k JOIN tasks t ON t.id=k.task_id WHERE t.session_id=?2 AND k.acked_at='' AND k.withdrawn_at='' AND k.due_at<>''`, at.UTC().Format(time.RFC3339Nano), session.ID).Scan(&overdue, &ackNext)
 	if err != nil {
 		return 0, storageError(err)
 	}
+
 	m.count += overdue
 	if due, err := time.Parse(time.RFC3339Nano, ackNext); err == nil && due.Before(m.next) {
 		m.next = due
 	}
+
 	stalled, stalledNext, err := s.stallMark(ctx, tx, session, at)
 	if err != nil {
 		return 0, err
 	}
+
 	m.count += stalled
 	if !stalledNext.IsZero() && stalledNext.Before(m.next) {
 		m.next = stalledNext
 	}
+
 	m.count += quiet
 	if !quietNext.IsZero() && quietNext.Before(m.next) {
 		m.next = quietNext
 	}
+
 	s.marksMu.Lock()
 	if s.marks == nil {
 		s.marks = map[string]archiveMarkState{}
 	}
+
 	s.marks[session.ID] = m
 	s.marksMu.Unlock()
+
 	return m.count, nil
 }
 
@@ -115,6 +130,7 @@ func deriveArchive(t *Task, at time.Time) {
 	if t.Progress != "finished" && t.Progress != "cancelled" {
 		return
 	}
+
 	switch {
 	case t.ArchivedAt != "":
 		t.ArchivedReason = "command"
@@ -125,7 +141,9 @@ func deriveArchive(t *Task, at time.Time) {
 		if err != nil || at.Sub(ended) < ArchiveAge {
 			return
 		}
+
 		t.ArchivedReason = "age"
 	}
+
 	t.Archived = true
 }

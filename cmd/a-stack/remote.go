@@ -24,15 +24,18 @@ func connectCommand(args []string, code string, stdout io.Writer) error {
 		} else {
 			data, err = stack.ConnectRemote(context.Background(), args[0], args[1])
 		}
+
 		if err == nil && code != "" {
 			err = stack.JoinRemoteOwner(context.Background(), args[0], code)
 		}
 	default:
 		return invalid("use connect NAME URL, connect list, or connect remove NAME")
 	}
+
 	if err != nil {
 		return err
 	}
+
 	return json.NewEncoder(stdout).Encode(map[string]any{"data": data})
 }
 
@@ -41,11 +44,13 @@ func configureServiceShare(state string, data map[string]any) error {
 	if !ok {
 		return nil
 	}
+
 	if !enabled {
 		if err := stack.DisableShare(context.Background(), state); err != nil {
 			return err
 		}
 	}
+
 	return stack.SaveShareSetting(state, enabled)
 }
 
@@ -53,5 +58,6 @@ func commandClient(ctx context.Context, state, credential, kind, remote string) 
 	if remote != "" {
 		return stack.NewRemoteClient(ctx, remote, credential, stack.CapabilityKind(kind))
 	}
+
 	return stack.NewClientContext(ctx, state, credential, stack.CapabilityKind(kind))
 }

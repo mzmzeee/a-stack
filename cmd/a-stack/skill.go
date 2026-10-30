@@ -28,19 +28,24 @@ func skillFolders(project bool) ([]string, error) {
 		if err != nil {
 			return nil, invalid("cannot read the current folder")
 		}
+
 		return []string{filepath.Join(dir, ".claude", "skills", skillName), filepath.Join(dir, ".agents", "skills", skillName)}, nil
 	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, invalid("cannot find home directory")
 	}
+
 	claude := filepath.Join(home, ".claude")
 	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
 		if !filepath.IsAbs(dir) {
 			return nil, invalid("CLAUDE_CONFIG_DIR must be absolute")
 		}
+
 		claude = dir
 	}
+
 	return []string{filepath.Join(claude, "skills", skillName), filepath.Join(home, ".agents", "skills", skillName)}, nil
 }
 
@@ -52,6 +57,7 @@ func skillCommand(command string, project, refresh, machine bool, stdout io.Writ
 	if err != nil {
 		return err
 	}
+
 	done, refreshed := []string{}, []string{}
 	for _, folder := range folders {
 		found := true
@@ -67,28 +73,35 @@ func skillCommand(command string, project, refresh, machine bool, stdout io.Writ
 		} else {
 			found, err = removeSkill(folder)
 		}
+
 		if err != nil {
 			return &stack.Error{Code: "storage_unavailable", Message: "cannot write " + folder + ": " + err.Error()}
 		}
+
 		if found {
 			done = append(done, folder)
 		}
 	}
+
 	key, text := "installed", "Installed the a-stack skill "+buildVersion()+" in:\n"
 	if command == "skill uninstall" {
 		key, text = "removed", "Removed the a-stack skill from:\n"
 	}
+
 	if len(done) == 0 {
 		text = "The a-stack skill is not installed in " + strings.Join(folders, " or ") + ".\n"
 	}
+
 	if machine {
 		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"skill": skillName, "version": buildVersion(), key: done, "refreshed_files": refreshed}})
 	}
+
 	if refresh {
 		text = ""
 		for _, file := range refreshed {
 			text += "Refreshed " + file + "\n"
 		}
+
 		if len(refreshed) == 0 {
 			text = "No unchanged older a-stack skill files to refresh.\n"
 		}
@@ -97,7 +110,9 @@ func skillCommand(command string, project, refresh, machine bool, stdout io.Writ
 			text += "  " + folder + "\n"
 		}
 	}
+
 	_, err = io.WriteString(stdout, text)
+
 	return err
 }
 
@@ -109,45 +124,56 @@ func installSkill(target string) error {
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return err
 	}
+
 	tmp, err := os.MkdirTemp(parent, "."+skillName+"-new-")
 	if err != nil {
 		return err
 	}
 	defer os.RemoveAll(tmp)
+
 	err = fs.WalkDir(skills.FS, skillName, func(name string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
+
 		path := filepath.Join(tmp, filepath.FromSlash(strings.TrimPrefix(name, skillName)))
 		if d.IsDir() {
 			if err = os.MkdirAll(path, 0o755); err == nil {
 				err = os.Chmod(path, 0o755) // MkdirTemp made tmp 0700
 			}
+
 			return err
 		}
+
 		data, err := skills.FS.ReadFile(name)
 		if err == nil {
 			err = os.WriteFile(path, data, 0o644)
 		}
+
 		if err == nil {
 			err = os.Chmod(path, 0o644) // whatever the umask
 		}
+
 		return err
 	})
 	if err != nil {
 		return err
 	}
+
 	if _, err := os.Lstat(target); err != nil {
 		return stack.Rename(tmp, target)
 	}
+
 	old := tmp + "-old"
 	if err := stack.Rename(target, old); err != nil {
 		return err
 	}
+
 	if err := stack.Rename(tmp, target); err != nil {
 		_ = stack.Rename(old, target)
 		return err
 	}
+
 	return os.RemoveAll(old)
 }
 
@@ -156,5 +182,6 @@ func removeSkill(target string) (bool, error) {
 	if _, err := os.Lstat(target); err != nil {
 		return false, nil
 	}
+
 	return true, os.RemoveAll(target)
 }

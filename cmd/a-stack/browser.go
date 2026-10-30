@@ -3,8 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/mzmzeee/a-stack/internal/stack"
 	"io"
+
+	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
 // launchBrowser opens a URL in the default browser: see browser_unix.go and
@@ -31,20 +32,24 @@ func openView(ctx context.Context, client *stack.Client, ref stack.Context, note
 			return err
 		}
 	}
+
 	if machine {
 		data := map[string]any{}
 		if url != "" {
 			data["url"] = url
 		}
+
 		for k, v := range notes.fields {
 			data[k] = v
 		}
+
 		err = json.NewEncoder(stdout).Encode(map[string]any{"data": data})
 	} else {
 		lines := append([]string{}, notes.before...)
 		if url != "" {
 			lines = append(lines, url)
 		}
+
 		lines = append(lines, notes.after...)
 		for _, line := range lines {
 			if _, err = io.WriteString(stdout, line+"\n"); err != nil {
@@ -52,11 +57,14 @@ func openView(ctx context.Context, client *stack.Client, ref stack.Context, note
 			}
 		}
 	}
+
 	if err != nil {
 		return err
 	}
+
 	if url != "" && !noBrowser && launchBrowser(url) != nil {
 		_, _ = io.WriteString(stderr, "Browser launch failed; open the printed URL.\n")
 	}
+
 	return nil
 }

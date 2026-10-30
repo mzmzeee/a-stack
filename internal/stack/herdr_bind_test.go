@@ -10,15 +10,18 @@ import (
 // fixture's pane, with a fake harness that prints its version.
 func bindFixture(t *testing.T, harnessOutput string) (*noticeFixture, func(string) string) {
 	t.Helper()
+
 	f := noticeTestFixture(t)
 	bin := t.TempDir()
 	for _, harness := range []string{"claude", "codex", "pi", "opencode"} {
-		if err := os.WriteFile(filepath.Join(bin, harness), []byte("#!/bin/sh\necho '"+harnessOutput+"'\n"), 0700); err != nil {
+		if err := os.WriteFile(filepath.Join(bin, harness), []byte("#!/bin/sh\necho '"+harnessOutput+"'\n"), 0o700); err != nil {
 			t.Fatal(err)
 		}
 	}
+
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	env := map[string]string{"HERDR_ENV": "1", "HERDR_PANE_ID": f.config.Binding.PaneID, "HERDR_SOCKET_PATH": f.config.Binding.Endpoint}
+
 	return f, func(name string) string { return env[name] }
 }
 
@@ -28,18 +31,22 @@ func TestHerdrBindReadsOwnPane(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	want := f.config.Binding
+
 	want.InstanceID, want.HarnessVersion = "herdr:"+want.TerminalID, "0.164.2"
 	want.Notices = "" // the service supplies the role-dependent default
 	if *binding != want {
 		t.Fatalf("binding %+v, want %+v", *binding, want)
 	}
+
 	// The named pane is not renamed, and the binding passes the notice check.
 	for _, call := range f.calls(t) {
 		if len(call.Args) > 1 && call.Args[1] == "rename" {
 			t.Fatal("renamed an already named pane")
 		}
 	}
+
 	f.n.adapter.verified = verifiedHarness
 	if reason := f.n.adapter.verify(ctx, *binding); reason != "" {
 		t.Fatal("bound pane fails the notice check", reason)
@@ -53,17 +60,21 @@ func TestHerdrBindReadsClaudePane(t *testing.T) {
 	f.config.Mode = "claude"
 	f.config.Binding.NativeSessionID = "01a177e8-1ea1-7623-a669-4a9689138d05"
 	f.write(t)
+
 	binding, err := HerdrBind(ctx, f.n.adapter.executable, "03-worker", env)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if binding.Harness != "claude" || binding.HarnessVersion != "2.1.310" || binding.NativeSessionID != f.config.Binding.NativeSessionID {
 		t.Fatalf("Claude binding %+v", *binding)
 	}
+
 	f.n.adapter.verified = verifiedHarness
 	for _, status := range []string{"idle", "working", "done", "blocked", "unknown"} {
 		f.config.Status = status
 		f.write(t)
+
 		reason := f.n.adapter.verify(ctx, *binding)
 		if status == "blocked" || status == "unknown" {
 			if reason != "runtime_unavailable" {
@@ -73,11 +84,14 @@ func TestHerdrBindReadsClaudePane(t *testing.T) {
 			t.Fatal("verified Claude pane rejected:", status, reason)
 		}
 	}
+
 	f.config.Status = "idle"
 	f.write(t)
+
 	if state, reason := f.n.adapter.submit(ctx, *binding); state != NoticeSubmitted {
 		t.Fatal("notice to bound Claude pane was not submitted:", reason)
 	}
+
 	binding.NativeSessionID = "replacement-session"
 	if _, reason := f.n.adapter.current(ctx, *binding); reason != "identity_changed" {
 		t.Fatal("changed Claude session matched:", reason)
@@ -92,28 +106,35 @@ func TestHerdrBindReadsPiPane(t *testing.T) {
 	f.config.Mode = "pi"
 	f.config.Binding.NativeSessionID = "/home/u/.pi/agent/sessions/--home-u-code--/2026-10-25T12-11-56-744Z_01a172f9.jsonl"
 	f.write(t)
+
 	binding, err := HerdrBind(ctx, f.n.adapter.executable, "03-worker", env)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if binding.Harness != "pi" || binding.HarnessVersion != "1.4.0" || binding.NativeSessionID != f.config.Binding.NativeSessionID {
 		t.Fatalf("Pi binding %+v", *binding)
 	}
+
 	if _, reason := f.n.adapter.current(ctx, *binding); reason != "" {
 		t.Fatal("the bound Pi pane does not match its binding:", reason)
 	}
+
 	f.n.adapter.verified = verifiedHarness
 	if reason := f.n.adapter.verify(ctx, *binding); reason != "" {
 		t.Fatal("the bound Pi 1.4 pane fails the notice check:", reason)
 	}
+
 	if state, reason := f.n.adapter.submit(ctx, *binding); state != NoticeSubmitted {
 		t.Fatal("a notice to the bound Pi pane was not submitted:", reason)
 	}
+
 	for _, mode := range []string{"pi_id", "pi_relative"} {
 		f.config.Mode = mode
 		f.write(t)
 		_, err = HerdrBind(ctx, f.n.adapter.executable, "03-worker", env)
 		requireCode(t, err, "integration_missing")
+
 		if _, reason := f.n.adapter.current(ctx, *binding); reason != "identity_changed" {
 			t.Fatal(mode, "matched the binding:", reason)
 		}
@@ -127,16 +148,20 @@ func TestHerdrBindReadsOpenCodePane(t *testing.T) {
 	f.config.Mode = "opencode"
 	f.config.Binding.NativeSessionID = "ses_e8b290839ffeqqdrmQcQ7mRxGG"
 	f.write(t)
+
 	binding, err := HerdrBind(ctx, f.n.adapter.executable, "03-worker", env)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if binding.Harness != "opencode" || binding.HarnessVersion != "1.19.4" || binding.NativeSessionID != f.config.Binding.NativeSessionID {
 		t.Fatalf("OpenCode binding %+v", *binding)
 	}
+
 	if _, reason := f.n.adapter.current(ctx, *binding); reason != "" {
 		t.Fatal("the bound OpenCode pane does not match its binding:", reason)
 	}
+
 	f.n.adapter.verified = verifiedHarness
 	if reason := f.n.adapter.verify(ctx, *binding); reason != "unsupported_harness" {
 		t.Fatal("OpenCode notices are not verified:", reason)
@@ -147,18 +172,22 @@ func TestHerdrBindNamesUnnamedPane(t *testing.T) {
 	f, env := bindFixture(t, "codex-cli 0.164.0")
 	f.config.Mode = "unnamed"
 	f.write(t)
+
 	binding, err := HerdrBind(ctx, f.n.adapter.executable, "03-Worker_With-A-Very-Long-Name-Indeed", env)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if binding.HerdrAlias != "a-03-worker_with-a-very-long-nam" || !herdrName.MatchString(binding.HerdrAlias) {
 		t.Fatal("alias", binding.HerdrAlias)
 	}
+
 	calls := f.calls(t)
 	last := calls[len(calls)-1].Args
 	if len(last) != 4 || last[1] != "rename" || last[2] != f.config.Binding.PaneID {
 		t.Fatal("rename did not target the caller's own pane", last)
 	}
+
 	f.config.Mode = "rename_taken"
 	f.write(t)
 	_, err = HerdrBind(ctx, f.n.adapter.executable, "03-worker", env)
@@ -179,23 +208,30 @@ func TestHerdrBindRefusals(t *testing.T) {
 			f, env := bindFixture(t, test.harness)
 			f.config.Mode = test.mode
 			f.write(t)
+
 			if test.mode == "outside" {
 				env = func(string) string { return "" }
 			}
+
 			binding, err := HerdrBind(ctx, f.n.adapter.executable, "03-worker", env)
+
 			code := test.code
 			if code == "unsupported_herdr" || code == "herdr_unavailable" {
 				code = "integration_unavailable"
 			}
+
 			requireCode(t, err, code)
+
 			if binding != nil {
 				t.Fatal("refused bind returned a binding")
 			}
+
 			if test.code == "integration_missing" && test.mode == "missing" {
 				if e := err.(*Error); e.Message != "Herdr has no session for this pane; run herdr integration install codex, restart codex in this pane, then bind again" {
 					t.Fatal("hint", e.Message)
 				}
 			}
+
 			for _, call := range f.calls(t) {
 				if len(call.Args) > 1 && (call.Args[1] == "rename" || call.Args[1] == "prompt" || call.Args[0] == "pane") {
 					t.Fatal("refused bind changed Herdr", call.Args)

@@ -152,24 +152,27 @@ Docs: https://github.com/mzmzeee/a-stack
 
 // requiredFlags marks the flags a command cannot run without. Flags that are
 // required wherever a command accepts them are in alwaysRequired.
-var alwaysRequired = " operation-id expected-revision "
-var requiredFlags = map[string]string{
-	"open": "workspace session", "storage backup": "destination", "mcp": "credential-file",
-	"workspace create": "path", "session create": "workspace name",
-	"session list": "workspace", "agent register": "name new-credential-file",
-	"workspace orders show": "workspace", "workspace orders set": "workspace", "workspace orders clear": "workspace",
-	"session appoint": "agent", "agent attach": "agent", "agent rebind": "agent new-credential-file",
-	"agent observe": "agent runtime-id runtime-state", "task assign": "agent", "task unassign": "agent",
-	"task claim": "path", "task unclaim": "path", "task create": "title", "task status": "progress", "task reference add": "location",
-	"task reference remove": "reference", "dependency add": "from to", "dependency remove": "from to",
-	"mail ack": "message operation-id", "mail reply": "message", "mail recipients": "task",
-	"session page": "page-kind", "answer": "question-id", "herdr bind": "agent", "herdr focus": "agent",
-}
+var (
+	alwaysRequired = " operation-id expected-revision "
+	requiredFlags  = map[string]string{
+		"open": "workspace session", "storage backup": "destination", "mcp": "credential-file",
+		"workspace create": "path", "session create": "workspace name",
+		"session list": "workspace", "agent register": "name new-credential-file",
+		"workspace orders show": "workspace", "workspace orders set": "workspace", "workspace orders clear": "workspace",
+		"session appoint": "agent", "agent attach": "agent", "agent rebind": "agent new-credential-file",
+		"agent observe": "agent runtime-id runtime-state", "task assign": "agent", "task unassign": "agent",
+		"task claim": "path", "task unclaim": "path", "task create": "title", "task status": "progress", "task reference add": "location",
+		"task reference remove": "reference", "dependency add": "from to", "dependency remove": "from to",
+		"mail ack": "message operation-id", "mail reply": "message", "mail recipients": "task",
+		"session page": "page-kind", "answer": "question-id", "herdr bind": "agent", "herdr focus": "agent",
+	}
+)
 
 func flagRequired(command, name string) bool {
 	if strings.Contains(alwaysRequired, " "+name+" ") || strings.Contains(" "+requiredFlags[command]+" ", " "+name+" ") {
 		return true
 	}
+
 	scoped := isTaskCommand(command) || isMailCommand(command) || isNotificationCommand(command) || strings.HasPrefix(command, "agent ") || strings.HasPrefix(command, "session ") || strings.HasPrefix(command, "herdr ")
 	switch name {
 	case "workspace":
@@ -179,6 +182,7 @@ func flagRequired(command, name string) bool {
 	case "task":
 		return isTaskCommand(command) && command != "session page" || command == "mail send" || command == "mail read"
 	}
+
 	return false
 }
 
@@ -190,6 +194,7 @@ func knownCommand(command string) bool {
 			}
 		}
 	}
+
 	return false
 }
 
@@ -207,6 +212,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 		})
 		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus", "completion bash", "completion zsh", "completion fish", "completion powershell", "completion install", "completion uninstall", "mcp", "connect", "hook enroll", "hook status", "connect-code")...), "flags": flags}})
 	}
+
 	command := strings.Join(words, " ")
 	var text string
 	switch {
@@ -220,7 +226,9 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 			return invalid("no help for " + short(command) + didYouMean(command) + "; use --help")
 		}
 	}
+
 	_, err := io.WriteString(stdout, text)
+
 	return err
 }
 
@@ -228,19 +236,24 @@ func rowName(r helpRow) string {
 	if r.display != "" {
 		return r.display
 	}
+
 	return r.command
 }
 
 func topHelp() string {
 	var b strings.Builder
 	b.WriteString("Keep an eye on your AI coding agents.\n\nUsage: a-stack <command> [flags]\n")
+
 	for _, g := range helpGroups {
 		b.WriteString("\n" + g.title + ":\n")
+
 		for _, r := range g.rows {
 			b.WriteString(column(rowName(r), r.text))
 		}
 	}
+
 	b.WriteString("\n" + strings.Replace(helpTail, "~/.local/state/a-stack", stateDirDefault, 1))
+
 	return b.String()
 }
 
@@ -255,9 +268,11 @@ func prefixHelp(prefix string) string {
 			}
 		}
 	}
+
 	if b.Len() == 0 {
 		return ""
 	}
+
 	return "Usage: a-stack " + prefix + " <command> [flags]\n\nCommands:\n" + b.String() + "\nRun a-stack help " + prefix + " <command> for its flags.\n"
 }
 
@@ -270,10 +285,12 @@ func commandHelp(fs *flag.FlagSet, command string) string {
 			}
 		}
 	}
+
 	usage := "a-stack " + command
 	if command == "new" {
 		usage += " [NAME]"
 	}
+
 	accepted := acceptedFlags(command)
 	var own, common strings.Builder
 	for _, name := range strings.Fields(accepted) {
@@ -281,19 +298,23 @@ func commandHelp(fs *flag.FlagSet, command string) string {
 		if command == "task create" && name == "after" {
 			label = "--after ID" // a prerequisite, not a cursor
 		}
+
 		if !strings.Contains(commonFlags, " "+name+" ") {
 			own.WriteString(column(label, flagText(fs, command, name)))
 		}
 	}
+
 	for _, name := range strings.Fields(commonFlags) {
 		if strings.Contains(accepted, " "+name+" ") {
 			common.WriteString(column(flagLabel(fs, name), flagText(fs, command, name)))
 		}
 	}
+
 	out := text + ".\n\nUsage: " + usage + " [flags]\n"
 	if own.Len() > 0 {
 		out += "\nFlags:\n" + own.String()
 	}
+
 	return out + "\nCommon flags:\n" + common.String()
 }
 
@@ -309,13 +330,16 @@ func flagLabel(fs *flag.FlagSet, name string) string {
 	case "version":
 		return "--version VERSION"
 	}
+
 	label := "--" + name
 	if b, ok := fs.Lookup(name).Value.(interface{ IsBoolFlag() bool }); ok && b.IsBoolFlag() {
 		return label
 	}
+
 	if value, ok := flagValues[name]; ok {
 		return label + " " + value
 	}
+
 	return label + " VALUE"
 }
 
@@ -349,9 +373,11 @@ func flagText(fs *flag.FlagSet, command, name string) string {
 	if hook, ok := hookFlagText[name]; ok && isHookCommand(command) {
 		text = hook
 	}
+
 	if command == "task create" && name == "after" {
 		text = "Prerequisite Task ID; repeat for more"
 	}
+
 	if name == "body" && command == "workspace orders set" {
 		text = "The standing orders as text"
 	} else if name == "body" && command != "mail send" && command != "mail reply" {
@@ -360,14 +386,17 @@ func flagText(fs *flag.FlagSet, command, name string) string {
 			text += ", or --summary with --progress finished"
 		}
 	}
+
 	if name == "name" && command == "agent register" {
 		text = "Agent name"
 	} else if name == "name" && command == "session create" {
 		text = "Session name"
 	}
+
 	if name == "limit" && command == "task handoff" {
 		text = "How many of the latest Task mails to show: 1 to 500 (default 20)"
 	}
+
 	switch {
 	case !flagRequired(command, name):
 	case name == "workspace" || name == "session":
@@ -376,6 +405,7 @@ func flagText(fs *flag.FlagSet, command, name string) string {
 	default:
 		text += " (required)"
 	}
+
 	return text
 }
 
@@ -389,6 +419,7 @@ func column(name, text string) string {
 	} else {
 		line += strings.Repeat(" ", indent-len(line))
 	}
+
 	used := indent
 	for i, word := range strings.Fields(text) {
 		if i > 0 && used+1+len([]rune(word)) > width {
@@ -398,8 +429,10 @@ func column(name, text string) string {
 			line += " "
 			used++
 		}
+
 		line += word
 		used += len([]rune(word))
 	}
+
 	return line + "\n"
 }

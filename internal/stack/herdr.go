@@ -38,15 +38,19 @@ func versionParts(s string) ([3]int, bool) {
 	if len(parts) != 3 {
 		return v, false
 	}
+
 	for i, part := range parts {
 		n, err := strconv.Atoi(part)
 		if err != nil || n < 0 || len(part) > 9 || (len(part) > 1 && part[0] == '0') || strings.ContainsAny(part, "+-") {
 			return v, false
 		}
+
 		v[i] = n
 	}
+
 	return v, true
 }
+
 func verifiedHarness(b RuntimeBinding) bool {
 	floor, ok := verifiedHarnesses[b.Harness]
 	v, valid := versionParts(b.HarnessVersion)
@@ -90,9 +94,11 @@ type herdrResponse struct {
 func safeBindingField(s string) bool {
 	return s != "" && len(s) <= 512 && utf8.ValidString(s) && !strings.ContainsFunc(s, unicode.IsControl)
 }
+
 func completeHerdrBinding(b RuntimeBinding) bool {
 	return safeBindingField(b.InstanceID) && herdrName.MatchString(b.HerdrAlias) && filepath.IsAbs(b.Endpoint) && safeBindingField(b.Endpoint) && safeBindingField(b.PaneID) && !strings.HasPrefix(b.PaneID, "-") && safeBindingField(b.TerminalID) && safeBindingField(b.NativeSessionID) && safeBindingField(b.Harness) && safeBindingField(b.HarnessVersion)
 }
+
 func (a herdrAgent) matches(b RuntimeBinding) bool {
 	return a.Name == b.HerdrAlias && a.PaneID == b.PaneID && a.TerminalID == b.TerminalID && a.Agent == b.Harness && nativeSession(b.Harness, a.Session.Agent, a.Session.Kind, a.Session.Source, a.Session.Value) && a.Session.Value == b.NativeSessionID
 }
@@ -111,9 +117,11 @@ func (b *boundedOutput) Write(p []byte) (int, error) {
 		b.overflow = true
 		p = p[:remaining]
 	}
+
 	b.data = append(b.data, p...)
 	return n, nil
 }
+
 func (h *herdrAdapter) command(ctx context.Context, b RuntimeBinding, args ...string) ([]byte, []byte, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, h.timeout)
 	defer cancel()
@@ -125,15 +133,18 @@ func (h *herdrAdapter) command(ctx context.Context, b RuntimeBinding, args ...st
 			command.Env = append(command.Env, name+"="+value)
 		}
 	}
+
 	command.Env = append(command.Env, "HERDR_SOCKET_PATH="+b.Endpoint)
 	var stdout, stderr boundedOutput
 	command.Stdout = &stdout
 	command.Stderr = &stderr
+
 	command.WaitDelay = 250 * time.Millisecond
 	err := command.Run()
 	if stdout.overflow || stderr.overflow {
 		return nil, nil, command.Process != nil, failure("integration_unavailable", "Herdr output exceeded the metadata limit")
 	}
+
 	return stdout.data, stderr.data, command.Process != nil, err
 }
 
@@ -150,9 +161,11 @@ func (h *herdrAdapter) compatible(ctx context.Context, b RuntimeBinding) string 
 	if err != nil || !utf8.Valid(out) || json.Unmarshal(out, &status) != nil || !status.Running {
 		return "herdr_unavailable"
 	}
+
 	if status.Protocol != herdrProtocol || !status.Compatible || !status.EndpointCompatible {
 		return "unsupported_herdr"
 	}
+
 	return ""
 }
 
@@ -162,27 +175,34 @@ func (h *herdrAdapter) current(ctx context.Context, b RuntimeBinding) (herdrAgen
 	if reason := h.compatible(ctx, b); reason != "" {
 		return herdrAgent{}, reason
 	}
+
 	out, _, _, err := h.command(ctx, b, "agent", "get", b.HerdrAlias)
 	if err != nil {
 		return herdrAgent{}, "runtime_unavailable"
 	}
+
 	var response herdrResponse
 	if !utf8.Valid(out) || json.Unmarshal(out, &response) != nil || !response.Result.Agent.matches(b) {
 		return herdrAgent{}, "identity_changed"
 	}
+
 	return response.Result.Agent, ""
 }
+
 func (h *herdrAdapter) verify(ctx context.Context, b RuntimeBinding) string {
 	if !completeHerdrBinding(b) {
 		return "binding_incomplete"
 	}
+
 	if !h.verified(b) {
 		return "unsupported_harness"
 	}
+
 	agent, reason := h.current(ctx, b)
 	if reason != "" {
 		return reason
 	}
+
 	switch agent.Status {
 	case "working", "idle", "done":
 		return ""
@@ -198,15 +218,19 @@ func (h *herdrAdapter) submit(ctx context.Context, b RuntimeBinding) (NoticeStat
 	if !started {
 		return NoticePending, "preinput_failure"
 	}
+
 	var response herdrResponse
 	if err != nil {
 		if utf8.Valid(diagnostic) && json.Unmarshal(diagnostic, &response) == nil && response.Error.Code == "agent_blocked" {
 			return NoticePending, "runtime_blocked"
 		}
+
 		return NoticeUncertain, "delivery_uncertain"
 	}
+
 	if !utf8.Valid(out) || json.Unmarshal(out, &response) != nil || response.Error.Code != "" || !response.Result.Agent.matches(b) {
 		return NoticeUncertain, "delivery_uncertain"
 	}
+
 	return NoticeSubmitted, "submitted"
 }

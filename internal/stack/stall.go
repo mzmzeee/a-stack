@@ -13,9 +13,11 @@ ALTER TABLE agents ADD COLUMN last_mail_read_at TEXT;
 CREATE INDEX notice_batch_refs_message ON notice_batch_refs(recipient_id,message_id);
 `
 
-const MentionEscalationAfter = 10 * time.Minute
-const MailStalledAfter = 30 * time.Minute
-const OrchestratorReachabilityAfter = 15 * time.Minute
+const (
+	MentionEscalationAfter        = 10 * time.Minute
+	MailStalledAfter              = 30 * time.Minute
+	OrchestratorReachabilityAfter = 15 * time.Minute
+)
 
 // MailWait describes a current mention, not an acknowledgement obligation.
 type MailWait struct {
@@ -52,32 +54,39 @@ func mailWaits(ctx context.Context, tx *sql.Tx, session, task, agent string) ([]
 		query += " AND m.task_id=?"
 		args = append(args, task)
 	}
+
 	if agent != "" {
 		query += " AND m.recipient_id=?"
 		args = append(args, agent)
 	}
+
 	query += ` GROUP BY m.task_id,msg.sender_id,a.id ORDER BY MIN(rtrim(msg.received_at,'Z')),m.task_id,a.id LIMIT 100`
+
 	rows, err := tx.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, storageError(err)
 	}
 	defer rows.Close()
+
 	var waits []MailWait
 	for rows.Next() {
 		var w MailWait
 		if err = rows.Scan(&w.TaskID, &w.SenderName, &w.RecipientID, &w.RecipientName, &w.Since); err != nil {
 			return nil, storageError(err)
 		}
+
 		at, err := time.Parse(time.RFC3339Nano, w.Since)
 		if err != nil {
 			return nil, storageError(err)
 		}
+
 		age := clockNow().Sub(at)
 		w.Minutes = max(0, int(age/time.Minute))
 		w.Stalled = age >= MailStalledAfter
 		w.Text = fmt.Sprintf("%s has waited %d min for %s", w.SenderName, w.Minutes, w.RecipientName)
 		waits = append(waits, w)
 	}
+
 	return waits, rows.Err()
 }
 
@@ -85,26 +94,32 @@ func (s *Store) stallMark(ctx context.Context, tx *sql.Tx, session Session, at t
 	var count int64
 	var nextStamp string
 	cutoff := at.Add(-MailStalledAfter).UTC().Format(time.RFC3339Nano)
+
 	err := tx.QueryRowContext(ctx, `SELECT count(*) FILTER (WHERE rtrim(msg.received_at,'Z')<=rtrim(?1,'Z')),COALESCE((min(rtrim(msg.received_at,'Z')) FILTER (WHERE rtrim(msg.received_at,'Z')>rtrim(?1,'Z')))||'Z','')`+unreadMentionSQL+` AND x.session_id=?2`, cutoff, session.ID).Scan(&count, &nextStamp)
 	if err != nil {
 		return 0, time.Time{}, storageError(err)
 	}
+
 	var next time.Time
 	if stamp, err := time.Parse(time.RFC3339Nano, nextStamp); err == nil {
 		next = stamp.Add(MailStalledAfter)
 	}
+
 	warning, err := s.orchestratorWarning(ctx, tx, session)
 	if err != nil {
 		return 0, time.Time{}, err
 	}
+
 	if warning != "" {
 		count++
 	}
+
 	if session.OrchestratorID != nil && warning == "" {
 		var observed, read string
 		if err = tx.QueryRowContext(ctx, "SELECT observed_at,COALESCE(last_mail_read_at,'') FROM agents WHERE id=?", *session.OrchestratorID).Scan(&observed, &read); err != nil {
 			return 0, time.Time{}, storageError(err)
 		}
+
 		for _, stamp := range []string{observed, read} {
 			if t, e := time.Parse(time.RFC3339Nano, stamp); e == nil {
 				due := t.Add(OrchestratorReachabilityAfter)
@@ -114,6 +129,7 @@ func (s *Store) stallMark(ctx context.Context, tx *sql.Tx, session Session, at t
 			}
 		}
 	}
+
 	return count, next, nil
 }
 
@@ -121,26 +137,33 @@ func (s *Store) orchestratorWarning(ctx context.Context, tx *sql.Tx, session Ses
 	if session.OrchestratorID == nil || session.Closed {
 		return "", nil
 	}
+
 	var encoded, observed, read, reason string
+
 	err := tx.QueryRowContext(ctx, `SELECT COALESCE(a.binding,''),a.observed_at,COALESCE(a.last_mail_read_at,''),COALESCE(d.reason,'') FROM agents a LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id WHERE a.id=?`, *session.OrchestratorID).Scan(&encoded, &observed, &read, &reason)
 	if err != nil {
 		return "", storageError(err)
 	}
+
 	var binding RuntimeBinding
 	_ = json.Unmarshal([]byte(encoded), &binding)
+
 	reachable := binding.Notices == "pane" && s.noticeWake != nil && completeHerdrBinding(binding) && verifiedHarness(binding)
 	switch reason {
 	case "runtime_unavailable", "identity_changed", "unsupported_harness", "binding_incomplete", "herdr_unavailable", "unsupported_herdr", "runtime_blocked":
 		reachable = false
 	}
+
 	if reachable {
 		return "", nil
 	}
+
 	for _, stamp := range []string{observed, read} {
 		at, e := time.Parse(time.RFC3339Nano, stamp)
 		if e == nil && clockNow().Sub(at) < OrchestratorReachabilityAfter {
 			return "", nil
 		}
 	}
+
 	return "the Orchestrator cannot be reached by mail: send the blocking question as Task mail with --ack-required, set the Task Waiting naming the recipient, and use Needs you only when the Operator must unblock it.", nil
 }

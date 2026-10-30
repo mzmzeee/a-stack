@@ -14,8 +14,10 @@ import (
 // bindableHarnesses are the harnesses whose Herdr integration reports a
 // native session and whose `--version` herdr bind can read. Notices still need
 // a verified line in verifiedHarnesses.
-var bindableHarnesses = map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true}
-var harnessVersionPattern = regexp.MustCompile(`[0-9]+\.[0-9]+\.[0-9]+`)
+var (
+	bindableHarnesses     = map[string]bool{"claude": true, "codex": true, "pi": true, "opencode": true}
+	harnessVersionPattern = regexp.MustCompile(`[0-9]+\.[0-9]+\.[0-9]+`)
+)
 
 // nativeSession reports whether Herdr's session of a pane is the harness's
 // own: an ID, or for Pi the absolute path of its session file.
@@ -23,9 +25,11 @@ func nativeSession(harness, agent, kind, source, value string) bool {
 	if agent != harness || source != "herdr:"+harness || value == "" {
 		return false
 	}
+
 	if harness == "pi" {
 		return kind == "path" && filepath.IsAbs(value)
 	}
+
 	return kind == "id"
 }
 
@@ -36,6 +40,7 @@ func (h *herdrAdapter) agent(ctx context.Context, b RuntimeBinding, args ...stri
 	if err != nil || !utf8.Valid(out) || json.Unmarshal(out, &response) != nil {
 		return herdrAgent{}, false
 	}
+
 	return response.Result.Agent, true
 }
 
@@ -48,36 +53,44 @@ func HerdrBind(ctx context.Context, executable, agentName string, getenv func(st
 	if getenv("HERDR_ENV") != "1" || !safeBindingField(pane) || strings.HasPrefix(pane, "-") || !filepath.IsAbs(socket) || !safeBindingField(socket) {
 		return nil, failure("invalid_input", "run herdr bind inside your own Herdr pane: HERDR_ENV, HERDR_PANE_ID or HERDR_SOCKET_PATH is missing")
 	}
+
 	h := newHerdr(executable)
 	b := RuntimeBinding{Endpoint: socket, PaneID: pane}
 	if reason := h.compatible(ctx, b); reason != "" {
 		return nil, failure("integration_unavailable", "Herdr is not running or not supported: "+reason)
 	}
+
 	agent, ok := h.agent(ctx, b, "agent", "get", pane)
 	if !ok || !bindableHarnesses[agent.Agent] {
 		return nil, failure("integration_missing", "Herdr sees no Claude Code, Codex, Pi or OpenCode in this pane; start your harness in it, then bind again")
 	}
+
 	harness := agent.Agent
 	if !nativeSession(harness, agent.Session.Agent, agent.Session.Kind, agent.Session.Source, agent.Session.Value) {
 		return nil, failure("integration_missing", "Herdr has no session for this pane; run herdr integration install "+harness+", restart "+harness+" in this pane, then bind again")
 	}
+
 	alias := agent.Name
 	if alias == "" {
 		alias = "a-" + strings.ToLower(agentName)
+
 		alias = alias[:min(len(alias), 32)]
 		renamed, ok := h.agent(ctx, b, "agent", "rename", pane, alias)
 		if !ok || renamed.Name != alias || renamed.TerminalID != agent.TerminalID {
 			return nil, failure("conflict", "Herdr did not take the name "+alias+" for this pane; another agent may use it")
 		}
 	}
+
 	version, err := harnessVersion(ctx, harness)
 	if err != nil {
 		return nil, err
 	}
+
 	binding := &RuntimeBinding{InstanceID: "herdr:" + agent.TerminalID, HerdrAlias: alias, Endpoint: socket, PaneID: agent.PaneID, TerminalID: agent.TerminalID, NativeSessionID: agent.Session.Value, Harness: harness, HarnessVersion: version}
 	if len(binding.InstanceID) > 128 || !completeHerdrBinding(*binding) {
 		return nil, failure("integration_unavailable", "Herdr returned incomplete pane data")
 	}
+
 	return binding, nil
 }
 
@@ -90,10 +103,12 @@ func harnessVersion(ctx context.Context, harness string) (string, error) {
 	var stdout boundedOutput
 	command.Stdout = &stdout
 	command.WaitDelay = 250 * time.Millisecond
+
 	err := command.Run()
 	version := harnessVersionPattern.FindString(string(stdout.data))
 	if _, ok := versionParts(version); err != nil || !ok {
 		return "", failure("integration_unavailable", harness+" --version printed no version")
 	}
+
 	return version, nil
 }

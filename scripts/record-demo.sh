@@ -53,7 +53,7 @@ scenes=(
   "demo|now|Your terminal|Pick another Session"
 )
 # The step badge of the caption in the feature GIFs.
-declare -A badge=([demo-graph]=Graph [demo-archive]=Archive [demo-agents]=Agents)
+declare -A badge=([demo - graph]=Graph [demo - archive]=Archive [demo - agents]=Agents)
 
 # Pacing: a callout stays up HOLD seconds after its change settles, and BEAT
 # seconds pass before the next command or change.
@@ -75,7 +75,10 @@ VIEW_CSS_WIDTH=1280 VIEW_CSS_HEIGHT=640 VIEW_DEVICE_SCALE=1.6
 # How far the overlay zooms in on a card.
 ZOOM=1.5
 
-die() { printf 'record-demo: %s\n' "$*" >&2; exit 1; }
+die() {
+  printf 'record-demo: %s\n' "$*" >&2
+  exit 1
+}
 step() { printf '== %s\n' "$*"; }
 
 for tool in go python3 ffmpeg magick gifsicle agent-browser curl sha256sum; do
@@ -86,10 +89,14 @@ browser_bin="$(command -v agent-browser)"
 build_cache="$(go env GOCACHE)"
 
 case "$(uname -m)" in
-  x86_64) agg_asset='agg-x86_64-unknown-linux-musl'
-    agg_sha256=ddcbf6ca044c8ac3a434dcb9ee89fb9e3be87209982b7c2adb55f782e8f0f390 ;;
-  aarch64) agg_asset='agg-aarch64-unknown-linux-gnu'
-    agg_sha256=2b4be407b97e00e1c313a41d154ced8fa3d02c560c8f47a0db4950a2576444c9 ;;
+  x86_64)
+    agg_asset='agg-x86_64-unknown-linux-musl'
+    agg_sha256=ddcbf6ca044c8ac3a434dcb9ee89fb9e3be87209982b7c2adb55f782e8f0f390
+    ;;
+  aarch64)
+    agg_asset='agg-aarch64-unknown-linux-gnu'
+    agg_sha256=2b4be407b97e00e1c313a41d154ced8fa3d02c560c8f47a0db4950a2576444c9
+    ;;
   *) die "no agg build for $(uname -m)" ;;
 esac
 agg="$repo/.tmp/agg-$AGG_VERSION"
@@ -709,7 +716,7 @@ for lane in {1..3}; do
   for n in {1..14}; do
     key="scale-$lane-$n"
     new_task "$key" "Pipeline $lane: step $n" "SCALE-$lane-$n" 'A stage in the integration pipeline.'
-    if [ "$n" -gt 1 ]; then depends "scale-$lane-$((n-1))" "$key"; fi
+    if [ "$n" -gt 1 ]; then depends "scale-$lane-$((n - 1))" "$key"; fi
     assign "$key" 02-backend
   done
 done
@@ -846,8 +853,8 @@ make_gif() {
     end="${scene_switch[n + 1]}"
     if [ "$(scene_field $((n + 1)) 1)" = "$name" ]; then end="${scene_start[n + 1]}"; fi
     from="$(since "${scene_start[n]}")" to="$(since "$end")"
-    inputs+=(-loop 1 -framerate "$FPS" -t "$(python3 -c 'import sys;print(float(sys.argv[2])-float(sys.argv[1]))' "$from" "$to")" \
-      -i "$work_dir/caption-$n.png")
+    inputs+=(-loop 1 -framerate "$FPS" -t "$(python3 -c 'import sys;print(float(sys.argv[2])-float(sys.argv[1]))' "$from" "$to")"
+    -i "$work_dir/caption-$n.png")
     filters+="[0:v]trim=start=$from:end=$to,setpts=PTS-STARTPTS"
     if [ "$name" != demo ]; then filters+=",crop=$GIF_WIDTH:$VIEW_HEIGHT:0:$term_height"; fi
     filters+="[v$count];[$count:v]setsar=1[c$count];[c$count][v$count]vstack=inputs=2:shortest=1[s$count];"
