@@ -6,6 +6,18 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Seed benchmark mail cursors through the CLI so identity binding stays valid. Fail steady-load runs on request errors or exhausted retries, while reporting retried revision conflicts separately.
+
+- Refuse an empty or missing state database beside an existing Operator credential, rather than silently creating an empty installation with a new identity. Interrupted first starts still recover.
+- Treat SQLite corruption detected during the first startup query as unusable (exit 4, with restore guidance), instead of asking supervisors to retry it forever. Transient storage failures remain retryable.
+
+- Fix the benchmark's obsolete snapshot ETag and measure the full validation runner's bounded unread-notice hold instead of expecting a burst to bypass the pane cooldown.
+
+- Hide the Now board and Stalled while Session data is unknown, instead of showing misleading empty columns.
+- Apply search and status filters to Stalled items, just like the other Now columns.
+
+- Refresh active enrolled hooks on a five-minute heartbeat, so a continuously working Orchestrator does not falsely appear unreachable.
+
 - Browser snippet tests now ignore source layout while retaining exact plain-text checks, so formatting does not break acknowledgement, mail-wait or Operator-label coverage. Validation callbacks bind loop values instead of relying on layout-sensitive lint suppressions.
 
 - Unreachable-Orchestrator warnings now tell blocked workers to request an ACK, set Waiting naming the recipient, and use Needs you only for Operator-owned blockers.

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"os"
@@ -10,6 +11,37 @@ import (
 
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
+
+func TestServeExitsFourForDamagedState(t *testing.T) {
+	for _, damage := range []string{"empty", "header"} {
+		t.Run(damage, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "state")
+			s, err := stack.Start(context.Background(), dir, "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if err = s.Close(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+
+			data := []byte("broken sqlite header")
+			if damage == "empty" {
+				data = nil
+			}
+
+			if err = os.WriteFile(filepath.Join(dir, "state.db"), data, 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			stdout, stderr := commandResult(t, []string{"serve", "--state-dir", dir, "--json"}, 4)
+			var envelope struct{ Error stack.Error }
+			if len(stdout) != 0 || json.Unmarshal(stderr, &envelope) != nil || envelope.Error.Retryable || !strings.Contains(envelope.Error.Message, "restore a backup") {
+				t.Fatalf("unexpected startup response: %s %s", stdout, stderr)
+			}
+		})
+	}
+}
 
 // A database with a newer schema stops serve with exit code 4, which the
 // systemd unit lists in RestartPreventExitStatus, and prints no ready line.

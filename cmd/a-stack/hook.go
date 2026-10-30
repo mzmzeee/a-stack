@@ -202,7 +202,7 @@ func hookContext(stdout io.Writer, event, text string) {
 }
 
 // hookObserve records the runtime state. It reads the Agent first and writes
-// only when the state changes, so a tool call costs one read.
+// on state changes or a five-minute heartbeat. Most tool calls cost one read.
 func hookObserve(ctx context.Context, client *stack.Client, id hookIdentity, state string) error {
 	agents, err := listPages[stack.Agent](ctx, client, "/v1/agent/list", id.ref)
 	if err != nil {
@@ -210,7 +210,8 @@ func hookObserve(ctx context.Context, client *stack.Client, id hookIdentity, sta
 	}
 
 	for _, a := range agents {
-		if a.ID == id.agent && a.RuntimeState != state {
+		observed, _ := time.Parse(time.RFC3339Nano, a.ObservedAt)
+		if a.ID == id.agent && (a.RuntimeState != state || time.Since(observed) >= 5*time.Minute) {
 			_, err = client.Do(ctx, "POST", "/v1/agent/observe", stack.AgentObserveRequest{Context: id.ref, AgentID: a.ID, ExpectedRevision: a.Revision, RuntimeID: id.runtimeID, State: state})
 			return err
 		}

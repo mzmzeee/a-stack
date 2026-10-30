@@ -69,6 +69,8 @@ Schema 8 stores Task texts and Task mail in rowid tables, and new Tasks no longe
 GOTOOLCHAIN=go1.27.3 python3 scripts/bench.py --out /absolute/path/outside/the/repo --quick
 ```
 
+The idle-poll measurement reuses the server's snapshot ETag, including its time-dependent archive mark, and requires an empty HTTP 304 response. The CLI creates and updates each Agent's identity-bound mail cursor file before steady load. The run exits nonzero if any steady-load CLI request fails, except a revision conflict followed by a successful retry. Conflicts are counted separately per level; an exhausted retry is an error too. `cli-calls.csv` retains each attempt, including failed and retried ones.
+
 `--quick` is a short smoke run. Without it, a full run takes about 25 minutes. `--out` must be an absolute folder outside any Git checkout, on a normal disk (not tmpfs), so that disk syncs cost what they really cost. The script deletes its temporary state when it ends, unless you add `--keep`. Run `python3 scripts/bench.py --help` for the options to change the Session size, the number of Agents and the run time.
 
 Laptop power settings change the numbers a lot: a run on battery was about 2.2 times slower. Compare only runs made under the same conditions.

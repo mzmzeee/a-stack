@@ -1249,9 +1249,9 @@
     const focused = document.activeElement,
       byID = new Map(model.tasks.map((t) => [t.id, t]));
     for (const [id] of nowCards) if (!byID.has(id)) nowCards.delete(id);
-    const stalled = model.tasks.flatMap((t) =>
-      (t.mail_waits || []).filter((w) => w.stalled).map((w) => ({ t, w }))
-    );
+    const stalled = model.tasks
+      .filter(matches)
+      .flatMap((t) => (t.mail_waits || []).filter((w) => w.stalled).map((w) => ({ t, w })));
     stalledSection.hidden = !stalled.length;
     const liveStalls = new Set();
     placeAll(
@@ -1490,7 +1490,8 @@
       );
       $('clear-filters').hidden = true;
       graph.parentElement.style.visibility = 'hidden';
-      nowPanel.firstElementChild.style.visibility = 'hidden';
+      nowPanel.querySelector('.now-layout').style.visibility = 'hidden';
+      stalledSection.hidden = true;
       updateSource();
       return;
     }
@@ -1551,7 +1552,7 @@
     );
     $('clear-filters').hidden = !state.query.trim() && state.filter === 'all';
     graph.parentElement.style.visibility = count && !onlyHidden ? 'visible' : 'hidden';
-    nowPanel.firstElementChild.style.visibility = count ? 'visible' : 'hidden';
+    nowPanel.querySelector('.now-layout').style.visibility = count ? 'visible' : 'hidden';
     updateHint();
     if (state.selected) {
       if (model.tasks.some((t) => t.id === state.selected)) loadDetail();

@@ -3,7 +3,6 @@
 
 import argparse
 import contextlib
-import datetime
 import hashlib
 import http.client
 import http.server
@@ -1503,77 +1502,72 @@ def measurements(binary):
                         )
 
                     run.wait(
-                        lambda: submitted() == 30000,
-                        "10k burst did not drain",
-                        timeout=90,
+                        lambda: submitted() == 1500,
+                        "burst did not submit one 500-ref batch per recipient",
                     )
-                    check(
-                        len(run.prompts()) == 60,
-                        "already-waiting burst did not use 500-ref batches",
-                    )
+                    hold_start = time.monotonic_ns()
+                    run.stop()
+                    run.start(notices=True)
+                    for _ in range(20):
+                        targets = run.status()["targets"]
+                        check(
+                            len(run.prompts()) == 3
+                            and submitted() == 1500
+                            and all(
+                                t["reason"] == "notice_waiting_mail"
+                                for t in targets
+                                if t["counts"].get("pending", 0)
+                            ),
+                            "restart or unread burst bypassed the one-notice hold: "
+                            + str([(t.get("reason"), t["counts"]) for t in targets]),
+                        )
+                        time.sleep(0.1)
+                    hold_ms = (time.monotonic_ns() - hold_start) / 1e6
                     burst_storage = run.cli("storage", "status")
                     burst_backup = inspect_backup(run.backup("ten-thousand-submitted"))
                     check(
-                        burst_backup["rows"]["notice_batch_refs"] == 30000
-                        and burst_backup["rows"]["notice_batches"] == 60,
+                        burst_backup["rows"]["notice_batch_refs"] == 1500
+                        and burst_backup["rows"]["notice_batches"] == 3,
                         "burst coverage rows wrong",
                     )
-                    send_samples, observed_samples, sample_ids = [], [], []
+                    send_samples = []
                     for index in range(WARMUP + SAMPLES):
-                        expected = submitted() + 1
                         start = time.monotonic_ns()
-                        receipt = run.mail(tasks[0], f"Timed {index:02d} @03-worker")
+                        run.mail(tasks[0], f"Timed {index:02d} @03-worker")
                         received = time.monotonic_ns()
-                        run.wait(
-                            lambda expected=expected: submitted() == expected,
-                            "isolated notice not durably submitted",
+                        check(
+                            submitted() == 1500 and len(run.prompts()) == 3,
+                            "new mail bypassed the unread notice hold",
                         )
-                        end = time.monotonic_ns()
                         if index >= WARMUP:
                             send_samples.append(received - start)
-                            observed_samples.append(end - start)
-                            sample_ids.append(receipt["resource_id"])
-                    final_path = run.backup("single-send-samples")
-                    claim_spans = []
-                    with sqlite3.connect(
-                        final_path.as_uri() + "?mode=ro", uri=True
-                    ) as database:
-                        for message in sample_ids:
-                            created, updated, state = database.execute(
-                                "SELECT b.created_at,b.updated_at,b.state FROM notice_batches b JOIN notice_batch_refs r ON r.batch_id=b.id WHERE r.message_id=?",
-                                (message,),
-                            ).fetchone()
-                            check(
-                                state == "submitted",
-                                "sample submission did not persist",
-                            )
-                            claim_spans.append(
-                                int(
-                                    (
-                                        datetime.datetime.fromisoformat(updated)
-                                        - datetime.datetime.fromisoformat(created)
-                                    ).total_seconds()
-                                    * 1e9
-                                )
-                            )
+                    final_backup = inspect_backup(run.backup("held-send-samples"))
+                    check(
+                        final_backup["rows"]["mail_messages"]
+                        == 10000 + WARMUP + SAMPLES
+                        and final_backup["rows"]["mail_mentions"]
+                        == 30000 + WARMUP + SAMPLES
+                        and final_backup["notice_states"].get("pending", 0)
+                        == 28500 + WARMUP + SAMPLES,
+                        "held messages were lost or duplicated",
+                    )
                     result["mail_10000"] = {
                         "messages": 10000,
                         "body_utf8_bytes_each": 56,
                         "stored_body_bytes": body_bytes,
                         "nonself_recipients_each": 3,
                         "pending_references": 30000,
-                        "fake_submissions": 60,
+                        "fake_submissions": 3,
+                        "submitted_references": 1500,
+                        "held_references": 28500,
+                        "hold_observation_after_restart_ms": round(hold_ms, 3),
+                        "hold_contract": "one pending notice per recipient; no own reads; pane cooldown is ten minutes",
+                        "held_samples_backup": final_backup,
                         "http_setup_ms_not_cli_latency": round(setup_ms, 3),
                         "pending_backup": retained,
                         "submitted_backup": burst_backup,
                         "physical_after_burst": burst_storage,
                         "cli_send": percentiles(send_samples),
-                        "send_start_to_observed_submitted": percentiles(
-                            observed_samples
-                        ),
-                        "claim_stamp_to_outcome_stamp": percentiles(claim_spans),
-                        "observation_poll_interval_ms": 20,
-                        "batch_stamp_limit": "claim/outcome stamps are inside transactions, not pure postcommit latency",
                         "isolated_timing_messages_including_warmup": WARMUP + SAMPLES,
                     }
             finally:
