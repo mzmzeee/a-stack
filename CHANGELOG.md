@@ -6,6 +6,9 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Hide the Now board and Stalled while Session data is unknown, instead of showing misleading empty columns.
+- Apply search and status filters to Stalled items, just like the other Now columns.
+
 - Refresh active enrolled hooks on a five-minute heartbeat, so a continuously working Orchestrator does not falsely appear unreachable.
 
 - Browser snippet tests now ignore source layout while retaining exact plain-text checks, so formatting does not break acknowledgement, mail-wait or Operator-label coverage. Validation callbacks bind loop values instead of relying on layout-sensitive lint suppressions.
