@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 )
 
 func TestJoinCodesSingleUseAndScope(t *testing.T) {
@@ -54,7 +55,105 @@ func TestJoinCodesSingleUseAndScope(t *testing.T) {
 	requireCode(t, err, "forbidden")
 }
 
-func TestOwnerCodeCleanup(t *testing.T) {
+func TestJoinRecoveryAfterUnrelatedIssuance(t *testing.T) {
+	for _, owner := range []bool{false, true} {
+		t.Run(map[bool]string{false: "session", true: "owner"}[owner], func(t *testing.T) {
+			f := tasksFixture(t)
+			s := f.service.Store
+			code, secret := opaqueID(), opaqueID()
+			actor := context.WithValue(ctx, requestActorKey{}, RequestActor{Login: "first@example.com"})
+			issue := func(code, login string) error {
+				if owner {
+					return s.CreateOwnerCode(ctx, f.operator.Token, tokenHash(code))
+				}
+
+				_, err := s.InviteSession(ctx, f.operator.Token, SessionInviteRequest{Context: f.ref(0), OperationID: opaqueID(), Login: login, CodeHash: tokenHash(code)})
+				return err
+			}
+
+			join := SessionJoinRequest{Code: code, CredentialHash: tokenHash(secret)}
+			if !owner {
+				join.SessionID = f.sessions[0]
+			}
+
+			retry := func(actor context.Context, request SessionJoinRequest) error {
+				if owner {
+					return s.JoinOwner(actor, request)
+				}
+
+				_, err := s.JoinSession(actor, request)
+				return err
+			}
+
+			if err := issue(code, "first@example.com"); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := retry(actor, join); err != nil {
+				t.Fatal(err)
+			}
+
+			unusedCode := opaqueID()
+			if err := issue(unusedCode, "second@example.com"); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := retry(actor, join); err != nil {
+				t.Error("exact lost-response join retry lost after unrelated issuance", err)
+			}
+
+			table := "session_invites"
+			if owner {
+				table = "owner_join_codes"
+			}
+
+			// A committed join can recover for 24 hours after expiry, but an unused code cannot enroll then.
+			expired := clockNow().UTC().Add(-time.Hour).Format(time.RFC3339Nano)
+			execTest(t, s, "UPDATE "+table+" SET expires_at=?", expired)
+			unused := join
+			unused.Code = unusedCode
+			unused.CredentialHash = tokenHash(opaqueID())
+			secondActor := context.WithValue(ctx, requestActorKey{}, RequestActor{Login: "second@example.com"})
+			requireCode(t, retry(secondActor, unused), "forbidden")
+
+			if err := retry(actor, join); err != nil {
+				t.Error("exact retry inside post-expiry recovery window", err)
+			}
+
+			wrong := join
+			wrong.CredentialHash = tokenHash(opaqueID())
+			requireCode(t, retry(actor, wrong), "forbidden")
+			other := context.WithValue(ctx, requestActorKey{}, RequestActor{Login: "other@example.com"})
+			requireCode(t, retry(other, join), "forbidden")
+
+			if err := issue(opaqueID(), "third@example.com"); err != nil {
+				t.Fatal(err)
+			}
+
+			if err := retry(actor, join); err != nil {
+				t.Error("cleanup removed recovery record", err)
+			}
+
+			if owner {
+				requireCode(t, issue(code, "first@example.com"), "conflict")
+				requireCode(t, retry(other, wrong), "forbidden")
+			}
+
+			execTest(t, s, "UPDATE "+table+" SET expires_at=?", clockNow().UTC().Add(-25*time.Hour).Format(time.RFC3339Nano))
+			requireCode(t, retry(actor, join), "forbidden")
+
+			if err := issue(opaqueID(), "fourth@example.com"); err != nil {
+				t.Fatal(err)
+			}
+
+			if owner {
+				requireCode(t, issue(code, "first@example.com"), "conflict")
+			}
+		})
+	}
+}
+
+func TestOwnerCodeRetirement(t *testing.T) {
 	f := tasksFixture(t)
 	s := f.service.Store
 	for i := 0; i < 100; i++ {
@@ -66,8 +165,8 @@ func TestOwnerCodeCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if countTest(t, s, "SELECT count(*) FROM owner_join_codes") != 1 {
-		t.Fatal("expired owner codes retained")
+	if countTest(t, s, "SELECT count(*) FROM owner_join_codes") != 101 {
+		t.Fatal("expired owner-code retirement records lost")
 	}
 
 	actor := context.WithValue(ctx, requestActorKey{}, RequestActor{Login: "owner@example.com"})
@@ -76,9 +175,7 @@ func TestOwnerCodeCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := s.CreateOwnerCode(ctx, f.operator.Token, tokenHash(code)); err != nil {
-		t.Fatal(err)
-	}
+	requireCode(t, s.CreateOwnerCode(ctx, f.operator.Token, tokenHash(code)), "conflict")
 
 	if err := s.JoinOwner(actor, join); err != nil {
 		t.Fatal("same-code issuance must not reset used code", err)
@@ -88,11 +185,20 @@ func TestOwnerCodeCleanup(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if countTest(t, s, "SELECT count(*) FROM owner_join_codes") != 1 {
-		t.Fatal("used owner code retained")
+	if countTest(t, s, "SELECT count(*) FROM owner_join_codes") != 102 {
+		t.Fatal("used owner-code retirement record lost")
 	}
 
-	requireCode(t, s.JoinOwner(actor, join), "forbidden")
+	// A, consume A, issue B, replay issuance A: A must never authorize another principal.
+	requireCode(t, s.CreateOwnerCode(ctx, f.operator.Token, tokenHash(code)), "conflict")
+	other := context.WithValue(ctx, requestActorKey{}, RequestActor{Login: "different@example.com"})
+	wrong := join
+	wrong.CredentialHash = tokenHash(opaqueID())
+	requireCode(t, s.JoinOwner(other, wrong), "forbidden")
+
+	if err := s.JoinOwner(actor, join); err != nil {
+		t.Fatal("unrelated issuance lost exact owner recovery", err)
+	}
 
 	if _, err := s.InspectSession(ctx, secret, f.ref(0)); err != nil {
 		t.Fatal("cleanup revoked enrolled owner", err)

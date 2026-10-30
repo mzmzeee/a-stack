@@ -46,8 +46,8 @@ func TestSessionInvitationLimitAndCleanup(t *testing.T) {
 		}
 	}
 
-	if successes != 16 || countTest(t, s, "SELECT count(*) FROM session_invites") != 16 {
-		t.Fatal("invitation rows not bounded/consumed row not removed")
+	if successes != 16 || countTest(t, s, "SELECT count(*) FROM session_invites WHERE consumed_hash=''") != 16 || countTest(t, s, "SELECT count(*) FROM session_invites") != 17 {
+		t.Fatal("active invitation cap or consumed recovery row lost")
 	}
 
 	if got := countTest(t, s, "SELECT count(*) FROM lifecycle_history") - before; got != 16 {
@@ -69,13 +69,22 @@ func TestSessionInvitationLimitAndCleanup(t *testing.T) {
 		t.Fatal("replace at capacity", err)
 	}
 
-	// Cleanup does not revoke a successfully enrolled Operator, but ends code retries.
+	// Issuance preserves both enrolled credentials and exact lost-response recovery.
 	if _, err = s.InspectSession(ctx, secret, f.ref(0)); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = s.JoinSession(actor, join)
-	requireCode(t, err, "forbidden")
+	if _, err = s.JoinSession(actor, join); err != nil {
+		t.Fatal("unrelated invitations lost join recovery", err)
+	}
+
+	_, err = s.InviteSession(ctx, secret, SessionInviteRequest{Context: f.ref(0), OperationID: opaqueID(), Login: "friend@example.com", CodeHash: tokenHash(opaqueID())})
+	requireCode(t, err, "conflict")
+
+	if _, err = s.JoinSession(actor, join); err != nil {
+		t.Fatal("same-login reissue lost join recovery", err)
+	}
+
 	// Legacy expired rows are cleaned in the same transaction as a fresh invitation.
 	execTest(t, s, "UPDATE session_invites SET expires_at='2000-01-01T00:00:00Z'")
 
@@ -90,7 +99,7 @@ func TestSessionInvitationLimitAndCleanup(t *testing.T) {
 		t.Fatal("injected issuance failure ignored")
 	}
 
-	if countTest(t, s, "SELECT count(*) FROM session_invites") != 116 {
+	if countTest(t, s, "SELECT count(*) FROM session_invites") != 117 {
 		t.Fatal("failed issuance committed cleanup")
 	}
 

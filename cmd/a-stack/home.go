@@ -633,20 +633,28 @@ func (h *home) sessions(ctx context.Context, client *stack.Client) ([]sessionRow
 				link := links[i]
 
 				r := sessionRow{WorkspaceID: link.WorkspaceID, WorkspacePath: link.Path, SessionID: link.SessionID, Name: link.Name, Remote: link.Remote, CredentialFile: link.CredentialFile, CurrentFolder: within(h.cwd, link.Path), Unreachable: true}
-				remote, err := sharingRemoteClient(remoteCtx, link.Remote, link.CredentialFile, stack.OperatorCapability)
+
+				probeCtx, stopProbe := context.WithTimeout(remoteCtx, 600*time.Millisecond)
+				remote, err := sharingRemoteClient(probeCtx, link.Remote, link.CredentialFile, stack.OperatorCapability)
 				if err == nil {
-					if session, err := inspectSession(remoteCtx, remote, link.Context); err == nil {
+					if session, err := inspectSession(probeCtx, remote, link.Context); err == nil {
 						r.Closed, r.Unreachable = session.Closed, false
 					}
 				}
 
+				stopProbe()
 				linked[i] = r
 			}
 		})
 	}
 
-	for i := range links {
-		jobs <- i
+	// Current-folder links get the first slots; output order is independent of scheduling.
+	for _, currentOnly := range []bool{true, false} {
+		for i, link := range links {
+			if within(h.cwd, link.Path) == currentOnly {
+				jobs <- i
+			}
+		}
 	}
 
 	close(jobs)

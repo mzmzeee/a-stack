@@ -27,9 +27,14 @@ func (s *Store) CreateOwnerCode(ctx context.Context, token, hash string) error {
 		return err
 	}
 
-	// Preserve the requested hash so retrying issuance cannot revive a retired code.
-	if _, err = tx.ExecContext(ctx, "DELETE FROM owner_join_codes WHERE code_hash<>? AND (expires_at<=? OR consumed_hash<>'')", hash, now()); err != nil {
+	// Owner-only issuance keeps its small rows permanently: retired hashes cannot be revived.
+	var retired bool
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM owner_join_codes WHERE code_hash=? AND (consumed_hash<>'' OR expires_at<=?))", hash, now()).Scan(&retired); err != nil {
 		return storageError(err)
+	}
+
+	if retired {
+		return failure("conflict", "owner code hash has already been used or expired; generate a new code")
 	}
 
 	if _, err = tx.ExecContext(ctx, "INSERT INTO owner_join_codes(code_hash,expires_at) VALUES(?,?) ON CONFLICT DO NOTHING", hash, clockNow().UTC().Add(24*time.Hour).Format(time.RFC3339Nano)); err != nil {
@@ -56,7 +61,7 @@ func (s *Store) JoinOwner(ctx context.Context, r SessionJoinRequest) error {
 	defer tx.Rollback()
 	var consumed, login string
 
-	err = tx.QueryRowContext(ctx, "SELECT consumed_hash,login FROM owner_join_codes WHERE code_hash=? AND expires_at>?", tokenHash(r.Code), now()).Scan(&consumed, &login)
+	err = tx.QueryRowContext(ctx, "SELECT consumed_hash,login FROM owner_join_codes WHERE code_hash=? AND (expires_at>? OR (consumed_hash=? AND expires_at>?))", tokenHash(r.Code), now(), r.CredentialHash, clockNow().UTC().Add(-joinRecoveryWindow).Format(time.RFC3339Nano)).Scan(&consumed, &login)
 	if err != nil && err != sql.ErrNoRows {
 		return storageError(err)
 	}

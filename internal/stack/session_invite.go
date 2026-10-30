@@ -19,6 +19,8 @@ CREATE TABLE session_transfers(id TEXT PRIMARY KEY, session_id TEXT NOT NULL, di
 CREATE TABLE session_locations(session_id TEXT PRIMARY KEY REFERENCES sessions(id) DEFERRABLE INITIALLY DEFERRED, transfer_id TEXT NOT NULL REFERENCES session_transfers(id), state TEXT NOT NULL CHECK(state IN ('staged','sealed','active')), peer_database TEXT NOT NULL, remote TEXT NOT NULL) WITHOUT ROWID;
 `
 
+const joinRecoveryWindow = 24 * time.Hour
+
 type SessionInviteRequest struct {
 	Context
 	OperationID string `json:"operation_id"`
@@ -62,13 +64,22 @@ func (s *Store) InviteSession(ctx context.Context, token string, r SessionInvite
 			return Receipt{}, failure("invalid_input", "exact Tailscale login required")
 		}
 
-		// Retired codes no longer support enrollment retries; enrolled credentials remain valid.
-		if _, err = tx.ExecContext(ctx, "DELETE FROM session_invites WHERE session_id=? AND (expires_at<=? OR consumed_hash<>'')", session.ID, now()); err != nil {
+		// Keep committed-join evidence through the recovery window, including same-login reissue.
+		if _, err = tx.ExecContext(ctx, "DELETE FROM session_invites WHERE session_id=? AND expires_at<=?", session.ID, clockNow().UTC().Add(-joinRecoveryWindow).Format(time.RFC3339Nano)); err != nil {
 			return Receipt{}, err
 		}
 
+		var recovering bool
+		if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM session_invites WHERE session_id=? AND login=? AND consumed_hash<>'')", session.ID, r.Login).Scan(&recovering); err != nil {
+			return Receipt{}, err
+		}
+
+		if recovering {
+			return Receipt{}, failure("conflict", "this login already joined; keep its invitation for join recovery until 24 hours after expiry")
+		}
+
 		var active int
-		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM session_invites WHERE session_id=? AND login<>?", session.ID, r.Login).Scan(&active); err != nil {
+		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM session_invites WHERE session_id=? AND login<>? AND consumed_hash='' AND expires_at>?", session.ID, r.Login, now()).Scan(&active); err != nil {
 			return Receipt{}, err
 		}
 
@@ -111,7 +122,7 @@ func (s *Store) JoinSession(ctx context.Context, r SessionJoinRequest) (Context,
 	defer tx.Rollback()
 	var consumed string
 
-	err = tx.QueryRowContext(ctx, "SELECT consumed_hash FROM session_invites WHERE session_id=? AND login=? AND code_hash=? AND expires_at>?", r.SessionID, actor.Login, tokenHash(r.Code), now()).Scan(&consumed)
+	err = tx.QueryRowContext(ctx, "SELECT consumed_hash FROM session_invites WHERE session_id=? AND login=? AND code_hash=? AND (expires_at>? OR (consumed_hash=? AND expires_at>?))", r.SessionID, actor.Login, tokenHash(r.Code), now(), r.CredentialHash, clockNow().UTC().Add(-joinRecoveryWindow).Format(time.RFC3339Nano)).Scan(&consumed)
 	if err != nil && err != sql.ErrNoRows {
 		return Context{}, storageError(err)
 	}

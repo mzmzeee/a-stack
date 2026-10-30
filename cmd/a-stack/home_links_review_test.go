@@ -3,9 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -96,6 +99,99 @@ func TestHomeMixedSlowHealthyLinks(t *testing.T) {
 	for _, row := range result.Data.Sessions {
 		if row.Remote == "b-healthy" && row.Unreachable {
 			t.Error("resume marked healthy remote unreachable")
+		}
+	}
+}
+
+func TestHomeSaturatedProbes(t *testing.T) {
+	local, remote := newTeam(t), newTeam(t)
+	client, err := stack.NewClient(local.state, "", stack.OperatorCapability)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rc, err := stack.NewClient(remote.state, "", stack.OperatorCapability)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for i := 0; i < 9; i++ {
+		ref := stack.Context{WorkspaceID: remote.workspace, SessionID: base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{byte(i + 1)}, 32))}
+
+		name := fmt.Sprintf("a-slow-%d", i)
+		path := local.project
+		if i == 8 {
+			name = "z-healthy"
+			ref.SessionID = remote.session
+			path = remote.project
+		}
+
+		_, err = client.Do(context.Background(), "POST", "/v1/session/link", stack.SessionLinkRequest{Link: stack.SessionLink{Context: ref, Path: path, Remote: name, DatabaseID: rc.Discovery.DatabaseID, CredentialFile: filepath.Join(remote.state, "operator.json"), Name: name}})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var active, peak atomic.Int32
+	original := sharingRemoteClient
+	sharingRemoteClient = func(ctx context.Context, name, file string, kind stack.CapabilityKind) (*stack.Client, error) {
+		n := active.Add(1)
+		defer active.Add(-1)
+
+		for {
+			old := peak.Load()
+			if n <= old || peak.CompareAndSwap(old, n) {
+				break
+			}
+		}
+
+		if name != "z-healthy" {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+
+		return rc, nil
+	}
+	t.Cleanup(func() { sharingRemoteClient = original })
+	// Slow links get priority here: the healthy ninth must still get a turn.
+	h := &home{state: local.state, cwd: local.project}
+	for range 2 {
+		start := time.Now()
+
+		rows, err := h.sessions(context.Background(), client)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		found := false
+		for _, row := range rows {
+			if row.Remote == "z-healthy" {
+				found = true
+
+				if row.Unreachable {
+					t.Error("eight hung links starved healthy ninth")
+				}
+			}
+		}
+
+		if !found || time.Since(start) > 3*time.Second || active.Load() != 0 || peak.Load() > 8 {
+			t.Fatalf("probe bounds: found=%v active=%d peak=%d", found, active.Load(), peak.Load())
+		}
+	}
+
+	// With less than one slow probe's budget, only current-folder priority can reach the healthy link.
+	h.cwd = remote.project
+	short, cancel := context.WithTimeout(context.Background(), 350*time.Millisecond)
+	defer cancel()
+
+	rows, err := h.sessions(short, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, row := range rows {
+		if row.Remote == "z-healthy" && row.Unreachable {
+			t.Fatal("current-folder link was not prioritized")
 		}
 	}
 }
