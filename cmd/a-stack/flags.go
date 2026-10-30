@@ -4,6 +4,8 @@ import (
 	"flag"
 	"strconv"
 	"strings"
+
+	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
 // splitFlags lets flags appear before or after the command; stdlib flag stops
@@ -12,6 +14,10 @@ func splitFlags(fs *flag.FlagSet, args []string) (command []string, repeated boo
 	given := map[string]bool{}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
+		if a == "--" {
+			return append(command, args[i+1:]...), repeated, nil
+		}
+
 		if !strings.HasPrefix(a, "-") {
 			command = append(command, a)
 			continue
@@ -20,6 +26,11 @@ func splitFlags(fs *flag.FlagSet, args []string) (command []string, repeated boo
 		name, value, hasValue := strings.Cut(strings.TrimLeft(a, "-"), "=")
 		f := fs.Lookup(name)
 		if f == nil {
+			if stack.ValidID(a) {
+				command = append(command, a)
+				continue
+			}
+
 			return nil, false, unknownFlag(fs, name)
 		}
 

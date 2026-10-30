@@ -112,7 +112,7 @@ func TestSharingDocumentedCLIWorkflow(t *testing.T) {
 		t.Helper()
 
 		if args[0] != "connect" {
-			args = append(args, "--state-dir", localState)
+			args = append([]string{"--state-dir", localState}, args...)
 		}
 
 		encoded, _ := json.Marshal(args)
@@ -157,14 +157,14 @@ func TestSharingDocumentedCLIWorkflow(t *testing.T) {
 	inviteCode := value(cli(ownerHome, owner.project, owner.state, true, "session", "invite", "friend@example.com"), "code")
 	login.Store("friend@example.com")
 	cli(friendHome, friend.project, friend.state, true, "connect", "team", proxy.URL)
-	cli(friendHome, friend.project, friend.state, false, "session", "link", "team", session)
-	cli(friendHome, friend.project, friend.state, false, "session", "link", "team", session, "--code", "wrong")
+	cli(friendHome, friend.project, friend.state, false, "session", "link", "--", "team", session)
+	cli(friendHome, friend.project, friend.state, false, "session", "link", "--code", "wrong", "--", "team", session)
 	login.Store("stranger@example.com")
-	cli(friendHome, friend.project, friend.state, false, "session", "link", "team", session, "--code", inviteCode)
+	cli(friendHome, friend.project, friend.state, false, "session", "link", "--code", inviteCode, "--", "team", session)
 	login.Store("friend@example.com")
-	linked := cli(friendHome, friend.project, friend.state, true, "session", "link", "team", session, "--code", inviteCode)
+	linked := cli(friendHome, friend.project, friend.state, true, "session", "link", "--code", inviteCode, "--", "team", session)
 	friendCredential := value(linked, "credential_file")
-	cli(friendHome, friend.project, friend.state, true, "session", "link", "team", session, "--code", inviteCode)
+	cli(friendHome, friend.project, friend.state, true, "session", "link", "--code", inviteCode, "--", "team", session)
 	cli(friendHome, friend.project, friend.state, true, "session", "inspect", "--remote", "team", "--credential-file", friendCredential)
 	// A separate client credential cannot consume the invitation again.
 	anotherHome := filepath.Join(root, "another-home")
@@ -173,7 +173,7 @@ func TestSharingDocumentedCLIWorkflow(t *testing.T) {
 	}
 
 	cli(anotherHome, friend.project, friend.state, true, "connect", "team", proxy.URL)
-	cli(anotherHome, friend.project, friend.state, false, "session", "link", "team", session, "--code", inviteCode)
+	cli(anotherHome, friend.project, friend.state, false, "session", "link", "--code", inviteCode, "--", "team", session)
 	login.Store("owner@example.com")
 	cli(ownerHome, owner.project, owner.state, true, "session", "unshare", "--agent-files", manifest)
 	cli(ownerHome, owner.project, owner.state, true, "session", "inspect", "--workspace", owner.workspace, "--session", owner.session)
