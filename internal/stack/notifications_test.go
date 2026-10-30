@@ -219,7 +219,7 @@ func noticeTestFixture(t *testing.T) *noticeFixture {
 	if err = os.WriteFile(wrapper, []byte("#!/bin/sh\nGORACE=atexit_sleep_ms=0 "+coverage+"exec "+quote(executable)+" -test.run=^TestHerdrExecutableHelper$ -- "+quote(dir)+" \"$@\"\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	binding := RuntimeBinding{InstanceID: "fixture-instance", HerdrAlias: "fixture-b", Endpoint: filepath.Join(dir, "recorded.sock"), PaneID: "w1:p2", TerminalID: "terminal-2", NativeSessionID: "native-2", Harness: "codex", HarnessVersion: "0.164.0"}
+	binding := RuntimeBinding{Notices: "pane", InstanceID: "fixture-instance", HerdrAlias: "fixture-b", Endpoint: filepath.Join(dir, "recorded.sock"), PaneID: "w1:p2", TerminalID: "terminal-2", NativeSessionID: "native-2", Harness: "codex", HarnessVersion: "0.164.0"}
 	_, err = f.service.Store.BindAgent(ctx, f.b.Token, "attach", AgentBindingRequest{Context: f.ref(0), OperationID: opaqueID(), AgentID: f.bID, ExpectedRevision: 1, Runtime: &binding})
 	if err != nil {
 		t.Fatal(err)
@@ -335,7 +335,7 @@ func TestNotificationsExactBurstBatchAndEndpoint(t *testing.T) {
 			want := []string{"agent", "prompt", f.config.Binding.PaneID, noticeText}
 			a, _ := json.Marshal(call.Args)
 			b, _ := json.Marshal(want)
-			if string(a) != string(b) || len(call.Args[3]) > 256 || !strings.Contains(call.Args[3], "Only if this runtime has its own verified a-stack Agent registration") || !strings.Contains(call.Args[3], "Otherwise ignore") || strings.Contains(call.Args[3], f.taskID) {
+			if string(a) != string(b) || len(call.Args[3]) > 256 || call.Args[3] != "a-stack: new Task mail for you. If you are a registered a-stack Agent, run your mail check." || strings.Contains(call.Args[3], f.taskID) {
 				t.Fatal("unexpected prompt argv/payload")
 			}
 		}
@@ -368,6 +368,7 @@ func TestNotificationsArrivalAndRecipientSerialization(t *testing.T) {
 		t.Fatal("arrival bypassed unread notice hold")
 	}
 	f.read(t, f.b.Token, "", 50)
+	f.n.clock = func() time.Time { return time.Now().Add(noticeCooldown) }
 	if r := f.drain(t, 4); r.Submitted != 1 || f.prompts(t) != 2 || countTest(t, f.service.Store, "SELECT count(*) FROM notice_batch_refs") != 3 {
 		t.Fatal("arrival batch lost or repeated")
 	}
@@ -826,9 +827,10 @@ func TestNotificationsClosureAndRebindDuringSubmission(t *testing.T) {
 					t.Fatal("reopen bypassed unread notice hold")
 				}
 				f.read(t, f.b.Token, "", 50)
+				f.n.clock = func() time.Time { return time.Now().Add(noticeCooldown) }
 			}
 			if f.drain(t, 4).Submitted != 1 || f.prompts(t) != 2 {
-				t.Fatal("own read/new binding did not drain remaining fresh work")
+				t.Fatal("cooldown/new binding did not drain remaining fresh work")
 			}
 		})
 	}

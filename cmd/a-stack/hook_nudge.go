@@ -80,7 +80,7 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 	}()
 	info, err := os.Stat(file)
 	first := err != nil
-	if !first && (in.Event == "SessionStart" || time.Since(info.ModTime()) < mailNudgeEvery) {
+	if !first && (in.Event == "SessionStart" || (in.Event != "UserPromptSubmit" && time.Since(info.ModTime()) < mailNudgeEvery)) {
 		return ""
 	}
 	// The first check reads into a file of its own, which becomes the cursor
@@ -91,6 +91,7 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 		pruneHookFiles(dir)
 		cursor = strings.TrimSuffix(file, ".json") + ".first.json"
 	}
+	promptCount := 0
 	var out struct {
 		Data stack.MailCheckPage `json:"data"`
 	}
@@ -98,8 +99,24 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 		if err := json.Unmarshal(data, &out); err != nil {
 			return err
 		}
-		if first || urgent != "" {
-			return nil // the generic urgent nudge also prompts a read of normal mail
+		if urgent != "" {
+			return nil // one urgent nudge covers the normal mail too
+		}
+		if in.Event == "UserPromptSubmit" {
+			for _, page := range out.Data.Tasks {
+				for _, message := range page.Messages {
+					if message.SenderID != id.agent && message.Priority != "urgent" {
+						promptCount++
+					}
+				}
+			}
+			if promptCount > 0 {
+				text = fmt.Sprintf("%d new a-stack mails, run your mail check", promptCount)
+			}
+			return nil
+		}
+		if first {
+			return nil
 		}
 		titles := []string{}
 		for _, page := range out.Data.Tasks {

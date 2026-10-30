@@ -6,7 +6,7 @@ The Operator follows the Session through its Task graph, so plan the work as a g
 
 Set up `me` as [SKILL.md](../SKILL.md) shows, with your own credential. If nobody gave you one, make it yourself with `a-stack new --orchestrator 01-orchestrator --no-browser --json` (see SKILL.md); do not ask the Operator for IDs. For each command's flags, see [commands.md](commands.md).
 
-Inside Herdr, bind yourself too: run `me agent list` for your current revision, then `me herdr bind --agent YOUR_AGENT_ID --expected-revision R --operation-id orch-bind-1`. `me session inspect` gives `your_agent_id`. For `integration_missing`, have the Operator install the named integration and restart your harness in that pane, then bind again.
+Keep the Operator's pane free of typed notices. Inside Herdr, use hook-only delivery: run `me agent list` for your current revision, then `me herdr bind --notices hook --agent YOUR_AGENT_ID --expected-revision R --operation-id orch-bind-1`. You can instead leave the pane unbound and enroll hooks with `me hook enroll`. `me session inspect` gives `your_agent_id`. For `integration_missing`, have the Operator install the named integration and restart your harness in that pane, then bind again.
 
 ## 1. Choose the smallest team
 
@@ -115,7 +115,11 @@ Report/finish owners: Build = 02-worker; Verify = 03-verifier
 Candidate: branch feature/api; send the exact commit in Build mail at handoff
 Evidence: verifier inspects spec, diff and relevant callers, runs required checks, reports commit, results and limits
 Findings: Build mail with finding IDs; Verify mail/report links them and records the verdict
-Other assignees you can @mention: 03-verifier, 01-orchestrator
+Other assignees: 03-verifier, 01-orchestrator
+Delivery: unattended worker tabs use pane notices; any human-facing pane uses --notices hook.
+The Orchestrator follows your report file and Task mail; progress mail needs no mention to be seen.
+Mentions interrupt: use them only for a question, decision, blocking finding or final DONE.
+Never mention the same Agent again until it answered or 10 minutes passed.
 ```
 
 ## 6. Watch the work
@@ -123,7 +127,7 @@ Other assignees you can @mention: 03-verifier, 01-orchestrator
 - `me task list` shows each Task's `progress`, `needs_you` and `unassigned`.
 - `me session snapshot --known-revision N` returns `unchanged: true` while nothing changed since read revision N. Then you need not read the pages again.
 - `me task show --task T` shows the report, and `me task history --task T` shows every change.
-- `me mail check --cursor-file /your/private/folder/mail.json` reads the new mail of the Tasks that you are assigned to.
+- Run `me mail check --cursor-file /your/private/folder/mail.json` after each worker handoff and before reporting to the Operator. It reads new mail from all Tasks you are assigned to. Follow report files too; progress mail carries no mention.
 - If an Agent seems not to react, check `me notifications status` for your own notices, and ask the Operator to check it for the team. A mention cannot wake an unbound or unavailable runtime.
 
 When a Task shows `needs_you`, the Operator must answer. You cannot answer for the Operator. The Operator answers with `a-stack answer` or in the browser view, and the Task's assignees get the answer as Task mail from the Operator.

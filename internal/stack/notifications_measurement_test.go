@@ -45,7 +45,10 @@ func TestNotificationsLatencyBatchingAndGrowth(t *testing.T) {
 	}
 	latencies := make([]int64, 0, 20)
 	bodyBytes := 0
+	clock := time.Now()
+	f.n.clock = func() time.Time { return clock }
 	readAll := func() {
+		clock = clock.Add(noticeCooldown)
 		for _, token := range []string{f.b.Token, f.orch.Token, c.Token} {
 			if _, err := s.CheckMail(ctx, token, MailCheckRequest{Context: f.ref(0)}); err != nil {
 				t.Fatal(err)

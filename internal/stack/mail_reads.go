@@ -164,11 +164,11 @@ func (s *Store) ReadMail(ctx context.Context, token string, r MailReadRequest) (
 	return page, nil
 }
 
-// Only a successful authenticated Agent read clears its submitted-notice hold.
-// Browser reads and failed reads cannot re-arm another recipient.
+// An own read records that mail was checked, but never shortens pane cooldown.
+// Browser reads and failed reads cannot change another recipient's notice state.
 func rearmMailNotice(ctx context.Context, tx *sql.Tx, p Principal, session string) error {
 	if p.Kind == AgentCapability {
-		result, err := tx.ExecContext(ctx, `UPDATE notice_targets SET reason='mail_checked',next_attempt=0,updated_at=?
+		result, err := tx.ExecContext(ctx, `UPDATE notice_targets SET reason='mail_checked',updated_at=?
  WHERE session_id=? AND recipient_id=? AND reason='notice_waiting_mail'`, now(), session, p.SubjectID)
 		if err != nil {
 			return storageError()

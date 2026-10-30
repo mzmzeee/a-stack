@@ -18,7 +18,7 @@ func noticeWarning(reason string) *NoticeWarning {
 	fix := ""
 	switch reason {
 	case "notice_waiting_mail":
-		fix = "Notice waiting until the Agent reads its mail, or the 10-minute cooldown passes."
+		fix = "Notice waiting for the 10-minute pane cooldown; reading mail does not shorten it."
 	case "notice_waiting_idle":
 		fix = "Notice waiting until the Agent is idle, or the 10-minute cooldown passes; its hooks can nudge it between tool calls."
 	case "delivery_uncertain", "recovery_uncertain":
@@ -44,8 +44,11 @@ func noticeWarning(reason string) *NoticeWarning {
 
 func (s *Store) noticeWarningTx(ctx context.Context, tx *sql.Tx, session, agent string) (*NoticeWarning, error) {
 	var encoded, reason string
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(a.binding,''),COALESCE(d.reason,'') FROM agents a
- LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id WHERE a.session_id=? AND a.id=?`, session, agent).Scan(&encoded, &reason); err != nil {
+	var hookOnly bool
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(a.binding,''),COALESCE(d.reason,''),
+ COALESCE(json_extract(a.binding,'$.notices'),CASE WHEN s.orchestrator_id=a.id THEN 'hook' ELSE 'pane' END)='hook'
+ FROM agents a JOIN sessions s ON s.id=a.session_id
+ LEFT JOIN notice_targets d ON d.session_id=a.session_id AND d.recipient_id=a.id WHERE a.session_id=? AND a.id=?`, session, agent).Scan(&encoded, &reason, &hookOnly); err != nil {
 		return nil, storageError()
 	}
 	var uncertain int
@@ -59,6 +62,9 @@ func (s *Store) noticeWarningTx(ctx context.Context, tx *sql.Tx, session, agent 
 		warning := noticeWarning(reason)
 		warning.UnresolvedUncertain = uncertain
 		return warning, nil
+	}
+	if hookOnly {
+		return nil, nil
 	}
 	var binding RuntimeBinding
 	_ = json.Unmarshal([]byte(encoded), &binding)

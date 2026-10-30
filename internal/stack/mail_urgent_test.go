@@ -144,8 +144,12 @@ func TestHookPeeksNeverRearmTerminalNotice(t *testing.T) {
 	if _, err := f.service.Store.CheckMail(ctx, f.b.Token, MailCheckRequest{Context: f.ref(0)}); err != nil {
 		t.Fatal(err)
 	}
+	if f.drain(t, 4).Submitted != 0 {
+		t.Fatal("own read bypassed pane cooldown")
+	}
+	f.n.clock = func() time.Time { return time.Now().Add(noticeCooldown) }
 	if f.drain(t, 4).Submitted != 1 {
-		t.Fatal("own read did not re-arm")
+		t.Fatal("cooldown did not release next batch")
 	}
 }
 
