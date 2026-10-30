@@ -57,6 +57,8 @@ func schema8Reads(t *testing.T, f taskTeam, tasks []string) string {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// Own mail reads now refresh reachability; compare retained content, not its read revision.
+		detail.ReadRevision, history.ReadRevision = 0, 0
 		out = append(out, detail, history, mail)
 	}
 	check, err := s.CheckMail(ctx, f.b.Token, MailCheckRequest{Context: f.ref(0)})

@@ -148,6 +148,10 @@ func (s *Store) InspectSession(ctx context.Context, token string, ref Context) (
 	if p.Kind == AgentCapability {
 		session.YourAgentID = p.SubjectID
 	}
+	session.OrchestratorWarning, err = s.orchestratorWarning(ctx, tx, session)
+	if err != nil {
+		return session, err
+	}
 	session.StandingOrders, err = sessionOrders(ctx, tx, session.WorkspaceID)
 	if err == nil {
 		session.Claims, err = sessionClaims(ctx, tx, session.ID)

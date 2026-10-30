@@ -13,6 +13,7 @@ func TestMailAckDeadlineChangesETagWithoutWrite(t *testing.T) {
 	t.Cleanup(func() { fixedClock.Store(nil) })
 	f := mailFixture(t)
 	ackSend(t, f, []string{"03-worker"}, "1h")
+	ackCheck(t, f, f.b.Token) // no unread-mention deadline in this ACK-only test
 	_, token := viewTest(t, f.taskTeam, f.ref(0))
 	poll := viewPoller(t, f.taskTeam, token)
 	_, tag, first := poll(0, "")

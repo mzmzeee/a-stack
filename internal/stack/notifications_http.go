@@ -12,6 +12,7 @@ type NoticeRequest struct {
 	After   string `json:"after,omitempty"`
 }
 type NoticeTargetStatus struct {
+	MailWaits           []MailWait          `json:"mail_waits,omitempty"`
 	AgentID             string              `json:"agent_id"`
 	AgentName           string              `json:"agent_name"`
 	Reason              string              `json:"reason"`
@@ -85,6 +86,10 @@ func (s *Service) notificationStatus(ctx context.Context, token string, r Notice
 		counts.Close()
 		if err != nil {
 			return result, storageError()
+		}
+		row.MailWaits, err = mailWaits(ctx, tx, session.ID, "", id)
+		if err != nil {
+			return result, err
 		}
 		row.UnresolvedUncertain = row.Counts[NoticeUncertain]
 		if row.UnresolvedUncertain > 0 {

@@ -359,6 +359,7 @@ func (h *home) briefOrchestrator(ctx context.Context, client *stack.Client, row 
 		"Your name: " + h.orchestrator + "   Your private folder: make one with mktemp -d",
 		"Work in: " + h.cwd,
 		"Hooks: in that folder, run " + install + " --claude (or --codex, --pi or --opencode for your harness) once. They work from the next start or resume of your session.",
+		"Reachability: enroll your own hooks with me hook enroll and your harness flag, or bind in Herdr. Run me mail check --cursor-file /your/private/folder/mail.json at startup and between work steps, including while workers build. Check me session inspect for reachability warnings; a mention alone does not mean you received it.",
 		"Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register an Agent for each Task that you hand out and brief each Agent.",
 	}, "\n")
 	if os.Getenv("HERDR_ENV") == "1" {

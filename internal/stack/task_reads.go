@@ -55,6 +55,8 @@ type SnapshotPage struct {
 	Next         string `json:"next,omitempty"`
 }
 type SnapshotAgent struct {
+	MailWaits           []MailWait `json:"mail_waits,omitempty"`
+	OrchestratorWarning string     `json:"orchestrator_warning,omitempty"`
 	Agent
 	RuntimeSource   string         `json:"runtime_source"`
 	RuntimeVerified bool           `json:"runtime_verified"`
@@ -144,6 +146,10 @@ func (s *Store) Snapshot(ctx context.Context, token string, r SnapshotRequest) (
 		return SessionSnapshot{}, err
 	}
 	unchanged := r.KnownRevision == session.ReadRevision && (!r.hasKnownMark || r.knownMark == mark)
+	session.OrchestratorWarning, err = s.orchestratorWarning(ctx, tx, session)
+	if err != nil {
+		return SessionSnapshot{}, err
+	}
 	snapshot := SessionSnapshot{Source: "local-service", CapturedAt: now(), Session: session, WorkspaceName: filepath.Base(workspacePath), Unchanged: unchanged, archiveMark: mark}
 	if snapshot.Unchanged {
 		return snapshot, nil
@@ -169,6 +175,10 @@ func (s *Store) ShowTask(ctx context.Context, token string, r TaskReadRequest) (
 		return TaskDetail{}, err
 	}
 	task, err := taskInSession(ctx, tx, r.TaskID, r.SessionID)
+	if err != nil {
+		return TaskDetail{}, err
+	}
+	task.MailWaits, err = mailWaits(ctx, tx, r.SessionID, r.TaskID, "")
 	if err != nil {
 		return TaskDetail{}, err
 	}
@@ -364,7 +374,11 @@ func (s *Store) SnapshotPage(ctx context.Context, token string, r SnapshotPageRe
 func (s *Store) snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequest, id string) (any, error) {
 	switch r.Kind {
 	case "tasks":
-		return taskInSession(ctx, tx, id, r.SessionID)
+		task, err := taskInSession(ctx, tx, id, r.SessionID)
+		if err == nil {
+			task.MailWaits, err = mailWaits(ctx, tx, r.SessionID, id, "")
+		}
+		return task, err
 	case "agents":
 		agent, err := agentInSession(ctx, tx, id, r.SessionID)
 		source := "not-observed"
@@ -375,7 +389,22 @@ func (s *Store) snapshotItem(ctx context.Context, tx *sql.Tx, r SnapshotPageRequ
 			return nil, err
 		}
 		warning, err := s.noticeWarningTx(ctx, tx, r.SessionID, id)
-		return SnapshotAgent{Agent: agent, RuntimeSource: source, RuntimeVerified: false, NoticeWarning: warning}, err
+		if err != nil {
+			return nil, err
+		}
+		waits, err := mailWaits(ctx, tx, r.SessionID, "", id)
+		if err != nil {
+			return nil, err
+		}
+		session, err := loadSession(ctx, tx, r.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		unreachable := ""
+		if session.OrchestratorID != nil && *session.OrchestratorID == id {
+			unreachable, err = s.orchestratorWarning(ctx, tx, session)
+		}
+		return SnapshotAgent{Agent: agent, RuntimeSource: source, RuntimeVerified: false, NoticeWarning: warning, MailWaits: waits, OrchestratorWarning: unreachable}, err
 	case "dependencies":
 		var edge Dependency
 		err := tx.QueryRowContext(ctx, "SELECT d.id,d.prerequisite_id,d.dependent_id,p.progress,n.progress,d.created_by,d.created_at FROM dependencies d JOIN tasks p ON p.id=d.prerequisite_id JOIN tasks n ON n.id=d.dependent_id WHERE d.id=? AND d.session_id=?", id, r.SessionID).Scan(&edge.ID, &edge.PrerequisiteID, &edge.DependentID, &edge.PrerequisiteProgress, &edge.DependentProgress, &edge.CreatedBy, &edge.CreatedAt)

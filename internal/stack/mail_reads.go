@@ -168,19 +168,15 @@ func (s *Store) ReadMail(ctx context.Context, token string, r MailReadRequest) (
 // Browser reads and failed reads cannot change another recipient's notice state.
 func rearmMailNotice(ctx context.Context, tx *sql.Tx, p Principal, session string) error {
 	if p.Kind == AgentCapability {
-		result, err := tx.ExecContext(ctx, `UPDATE notice_targets SET reason='mail_checked',updated_at=?
- WHERE session_id=? AND recipient_id=? AND reason='notice_waiting_mail'`, now(), session, p.SubjectID)
-		if err != nil {
-			return storageError()
+		if _, err := tx.ExecContext(ctx, "UPDATE agents SET last_mail_read_at=? WHERE id=? AND session_id=?", now(), p.SubjectID, session); err != nil {
+			return storageError(err)
 		}
-		count, err := result.RowsAffected()
-		if err != nil {
-			return storageError()
+		if err := bumpSessionRead(ctx, tx, session); err != nil {
+			return storageError(err)
 		}
-		if count > 0 {
-			if err = bumpSessionRead(ctx, tx, session); err != nil {
-				return storageError()
-			}
+		if _, err := tx.ExecContext(ctx, `UPDATE notice_targets SET reason='mail_checked',updated_at=?
+ WHERE session_id=? AND recipient_id=? AND reason='notice_waiting_mail'`, now(), session, p.SubjectID); err != nil {
+			return storageError(err)
 		}
 	}
 	if tx.Commit() != nil {

@@ -7,7 +7,7 @@ import (
 )
 
 // task handoff prints what a fresh Agent needs to take over a Task, and
-// changes nothing.
+// refreshes own-mail-read evidence without changing the Task or Session lifecycle.
 func TestTaskHandoffBrief(t *testing.T) {
 	f := newTeam(t)
 	design := f.receipt(f.orchFile, f.scoped("task", "create", "--title", "Design the grammar", "--operation-id", "handoff-design")...).ResourceID
@@ -30,7 +30,11 @@ func TestTaskHandoffBrief(t *testing.T) {
 			} `json:"data"`
 		}
 		_ = json.Unmarshal([]byte(out), &s)
-		return string(s.Data.Session)
+		var stable map[string]any
+		_ = json.Unmarshal(s.Data.Session, &stable)
+		delete(stable, "read_revision") // own mail reads refresh the read projection
+		data, _ := json.Marshal(stable)
+		return string(data)
 	}
 	before := snapshot()
 

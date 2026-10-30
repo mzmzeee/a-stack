@@ -51,35 +51,36 @@ const MaxTaskNoteBytes = 2048
 // LastMailAt is the time of the latest Task mail. Quiet marks a Working Task with no change and no Task mail
 // for QuietAfter that does not wait for the Operator's answer (see QuietAt).
 type Task struct {
-	Claims                                          []string `json:"claims"`
-	ReportPreview                                   string   `json:"report_preview,omitempty"`
-	QuestionPreview                                 string   `json:"question_preview,omitempty"`
-	LastAction                                      string   `json:"last_action,omitempty"`
-	OverdueAcks                                     int      `json:"overdue_acks"`
-	MailCount                                       int64    `json:"mail_count"`
-	LastMailAt                                      string   `json:"last_mail_at,omitempty"`
-	Quiet                                           bool     `json:"quiet"`
-	Archived                                        bool     `json:"archived"`
-	ArchivedReason                                  string   `json:"archived_reason,omitempty"`
-	ArchivedAt                                      string   `json:"archived_at,omitempty"`
-	EndedAt                                         string   `json:"ended_at,omitempty"`
-	ID                                              string   `json:"id"`
-	SessionID                                       string   `json:"session_id"`
-	Title                                           string   `json:"title"`
-	TicketRef                                       string   `json:"ticket_ref,omitempty"`
-	Progress                                        string   `json:"progress"`
-	Revision                                        int64    `json:"revision"`
-	AssigneeCount                                   int      `json:"assignee_count"`
-	Unassigned                                      bool     `json:"unassigned"`
-	NeedsYou                                        bool     `json:"needs_you"`
-	ReferenceCount                                  int      `json:"reference_count"`
-	PrerequisiteCount                               int      `json:"prerequisite_count"`
-	CancelledPrerequisiteCount                      int      `json:"cancelled_prerequisite_count"`
-	CreatedBy                                       string   `json:"created_by"`
-	UpdatedBy                                       string   `json:"updated_by"`
-	CreatedAt                                       string   `json:"created_at"`
-	UpdatedAt                                       string   `json:"updated_at"`
-	ReportAt                                        string   `json:"report_at,omitempty"`
+	MailWaits                                       []MailWait `json:"mail_waits,omitempty"`
+	Claims                                          []string   `json:"claims"`
+	ReportPreview                                   string     `json:"report_preview,omitempty"`
+	QuestionPreview                                 string     `json:"question_preview,omitempty"`
+	LastAction                                      string     `json:"last_action,omitempty"`
+	OverdueAcks                                     int        `json:"overdue_acks"`
+	MailCount                                       int64      `json:"mail_count"`
+	LastMailAt                                      string     `json:"last_mail_at,omitempty"`
+	Quiet                                           bool       `json:"quiet"`
+	Archived                                        bool       `json:"archived"`
+	ArchivedReason                                  string     `json:"archived_reason,omitempty"`
+	ArchivedAt                                      string     `json:"archived_at,omitempty"`
+	EndedAt                                         string     `json:"ended_at,omitempty"`
+	ID                                              string     `json:"id"`
+	SessionID                                       string     `json:"session_id"`
+	Title                                           string     `json:"title"`
+	TicketRef                                       string     `json:"ticket_ref,omitempty"`
+	Progress                                        string     `json:"progress"`
+	Revision                                        int64      `json:"revision"`
+	AssigneeCount                                   int        `json:"assignee_count"`
+	Unassigned                                      bool       `json:"unassigned"`
+	NeedsYou                                        bool       `json:"needs_you"`
+	ReferenceCount                                  int        `json:"reference_count"`
+	PrerequisiteCount                               int        `json:"prerequisite_count"`
+	CancelledPrerequisiteCount                      int        `json:"cancelled_prerequisite_count"`
+	CreatedBy                                       string     `json:"created_by"`
+	UpdatedBy                                       string     `json:"updated_by"`
+	CreatedAt                                       string     `json:"created_at"`
+	UpdatedAt                                       string     `json:"updated_at"`
+	ReportAt                                        string     `json:"report_at,omitempty"`
 	descriptionRef, reportRef, reasonRef, resultRef string
 	chainDone                                       bool
 }

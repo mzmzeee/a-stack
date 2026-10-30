@@ -8,6 +8,8 @@ Set up `me` as [SKILL.md](../SKILL.md) shows, with your own credential. If nobod
 
 Keep the Operator's pane free of typed notices. Inside Herdr, use hook-only delivery: run `me agent list` for your current revision, then `me herdr bind --notices hook --agent YOUR_AGENT_ID --expected-revision R --operation-id orch-bind-1`. You can instead leave the pane unbound and enroll hooks with `me hook enroll`. `me session inspect` gives `your_agent_id`. For `integration_missing`, have the Operator install the named integration and restart your harness in that pane, then bind again.
 
+Before handing out work, enroll your own hooks with `me hook enroll` and your harness flag, or bind in Herdr as above. Run `me mail check --cursor-file /your/private/folder/mail.json` at startup and between work steps, including while waiting for builders. Check `me session inspect` for an Orchestrator reachability warning. Resolve it before relying on mentions; installation alone is not enrollment.
+
 ## 1. Choose the smallest team
 
 Record the choice and its reason in the Task description before registering Agents:
@@ -127,7 +129,7 @@ Never mention the same Agent again until it answered or 10 minutes passed.
 - `me task list` shows each Task's `progress`, `needs_you` and `unassigned`.
 - `me session snapshot --known-revision N` returns `unchanged: true` while nothing changed since read revision N. Then you need not read the pages again.
 - `me task show --task T` shows the report, and `me task history --task T` shows every change.
-- Run `me mail check --cursor-file /your/private/folder/mail.json` after each worker handoff and before reporting to the Operator. It reads new mail from all Tasks you are assigned to. Follow report files too; progress mail carries no mention.
+- Run `me mail check --cursor-file /your/private/folder/mail.json` after each worker handoff and before reporting to the Operator. It reads new mail from all Tasks you are assigned to. Follow report files too; progress mail carries no mention. Answer blocking questions before starting another long step, and check mail while workers build.
 - If an Agent seems not to react, check `me notifications status` for your own notices, and ask the Operator to check it for the team. A mention cannot wake an unbound or unavailable runtime.
 
 When a Task shows `needs_you`, the Operator must answer. You cannot answer for the Operator. The Operator answers with `a-stack answer` or in the browser view, and the Task's assignees get the answer as Task mail from the Operator.
