@@ -143,7 +143,7 @@ func (h *home) last(ctx context.Context, client *stack.Client) error {
 
 	open := []sessionRow{}
 	for _, r := range rows {
-		if !r.Closed {
+		if !r.Closed && !r.Unreachable {
 			open = append(open, r)
 		}
 	}
@@ -618,8 +618,21 @@ func (h *home) sessions(ctx context.Context, client *stack.Client) ([]sessionRow
 		return nil, err
 	}
 
+	// One shared deadline bounds the whole listing, even with many offline links.
+	remoteCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
 	for _, link := range links {
-		rows = append(rows, sessionRow{WorkspaceID: link.WorkspaceID, WorkspacePath: link.Path, SessionID: link.SessionID, Name: link.Name, Remote: link.Remote, CredentialFile: link.CredentialFile, CurrentFolder: within(h.cwd, link.Path)})
+		r := sessionRow{WorkspaceID: link.WorkspaceID, WorkspacePath: link.Path, SessionID: link.SessionID, Name: link.Name, Remote: link.Remote, CredentialFile: link.CredentialFile, CurrentFolder: within(h.cwd, link.Path), Unreachable: true}
+		remote, err := sharingRemoteClient(remoteCtx, link.Remote, link.CredentialFile, stack.OperatorCapability)
+		if err == nil {
+			if session, err := inspectSession(remoteCtx, remote, link.Context); err == nil {
+				r.Closed, r.Unreachable = session.Closed, false
+				r.ChangedAt = later(r.ChangedAt, session.UpdatedAt)
+			}
+		}
+
+		rows = append(rows, r)
 	}
 
 	sortRows(rows)

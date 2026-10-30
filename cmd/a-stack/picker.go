@@ -25,6 +25,7 @@ type sessionRow struct {
 	SessionID      string    `json:"session_id"`
 	Name           string    `json:"name"`
 	Closed         bool      `json:"closed"`
+	Unreachable    bool      `json:"unreachable,omitempty"`
 	Tasks          int       `json:"tasks"`
 	NeedsYou       int       `json:"needs_you"`
 	ChangedAt      time.Time `json:"changed_at"`
@@ -149,6 +150,10 @@ func truncateLeft(s string, width int) string {
 }
 
 func rowState(r sessionRow) string {
+	if r.Unreachable {
+		return "unreachable"
+	}
+
 	if r.Closed {
 		return "closed"
 	}

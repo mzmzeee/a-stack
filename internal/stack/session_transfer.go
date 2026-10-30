@@ -154,6 +154,10 @@ func (s *Store) ExportTransfer(ctx context.Context, token string, r TransferExpo
 		return result, storageError(err)
 	}
 
+	if err = limitTransferExports(ctx, tx, session.ID); err != nil {
+		return result, err
+	}
+
 	if _, err = tx.ExecContext(ctx, "INSERT INTO workspace_repositories(repository,workspace_id) VALUES(?,?) ON CONFLICT(repository) DO NOTHING", r.Repository, session.WorkspaceID); err != nil {
 		return result, failure("conflict", "Workspace repository identity differs")
 	}
@@ -170,7 +174,7 @@ func (s *Store) ExportTransfer(ctx context.Context, token string, r TransferExpo
 
 	// Revoke earlier owners in the same transaction that issues the new snapshot.
 	// Only then disclose their release proofs, allowing destinations to replace staging.
-	if _, err = tx.ExecContext(ctx, "UPDATE session_transfers SET state='superseded' WHERE session_id=? AND direction='out' AND state='prepared'", session.ID); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE session_transfers SET state='superseded',payload='' WHERE session_id=? AND direction='out' AND state IN ('prepared','superseded')", session.ID); err != nil {
 		return result, storageError(err)
 	}
 
@@ -225,6 +229,50 @@ func (s *Store) ExportTransfer(ctx context.Context, token string, r TransferExpo
 	}
 
 	return result, storageOrNil(err)
+}
+
+// Keep the budget in the export transaction so restarts and different Operators
+// cannot reset it. Current-transfer retries return before consuming the budget.
+func limitTransferExports(ctx context.Context, tx *sql.Tx, session string) error {
+	key := "transfer_exports:" + session
+	var encoded string
+	var budget struct {
+		Hour  int64 `json:"hour"`
+		Count int   `json:"count"`
+	}
+
+	err := tx.QueryRowContext(ctx, "SELECT value FROM metadata WHERE key=?", key).Scan(&encoded)
+	if err != nil && err != sql.ErrNoRows {
+		return storageError(err)
+	}
+
+	if err == nil {
+		if err = json.Unmarshal([]byte(encoded), &budget); err != nil {
+			return storageError(err)
+		}
+	}
+
+	now := clockNow().Unix()
+
+	hour := now / 3600
+	if budget.Hour != hour {
+		budget.Hour, budget.Count = hour, 0
+	}
+
+	if budget.Count >= 16 {
+		return &Error{Code: "rate_limited", Message: "Session export limit reached (16 per hour); retry later", Retryable: true, RetryAfter: (hour+1)*3600 - now}
+	}
+
+	budget.Count++
+
+	data, err := json.Marshal(budget)
+	if err != nil {
+		return storageError(err)
+	}
+
+	_, err = tx.ExecContext(ctx, "INSERT INTO metadata(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", key, string(data))
+
+	return storageOrNil(err)
 }
 
 func storageOrNil(err error) error {
@@ -495,6 +543,7 @@ func (s *Store) ImportTransfer(ctx context.Context, token string, r TransferImpo
 		}
 	}
 
+	// Inbound payload is only a digest; retain it after activation/supersession for retries.
 	_, err = tx.ExecContext(ctx, "INSERT INTO session_transfers(id,session_id,direction,state,read_revision,peer_database,remote,payload,release_hash) VALUES(?,?,'in','staged',?,?,'',?,?)", b.TransferID, b.Session.ID, b.Session.ReadRevision, b.SourceDatabase, digest, b.ReleaseHash)
 	if err == nil {
 		_, err = tx.ExecContext(ctx, "INSERT INTO session_locations(session_id,transfer_id,state,peer_database,remote) VALUES(?,?,'staged',?,'') ON CONFLICT(session_id) DO UPDATE SET transfer_id=excluded.transfer_id,state=excluded.state,peer_database=excluded.peer_database,remote=''", b.Session.ID, b.TransferID, b.SourceDatabase)
