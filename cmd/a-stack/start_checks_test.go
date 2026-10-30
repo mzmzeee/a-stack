@@ -20,16 +20,20 @@ func TestServeExitsFourForDamagedState(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			if err = s.Close(context.Background()); err != nil {
 				t.Fatal(err)
 			}
+
 			data := []byte("broken sqlite header")
 			if damage == "empty" {
 				data = nil
 			}
+
 			if err = os.WriteFile(filepath.Join(dir, "state.db"), data, 0o600); err != nil {
 				t.Fatal(err)
 			}
+
 			stdout, stderr := commandResult(t, []string{"serve", "--state-dir", dir, "--json"}, 4)
 			var envelope struct{ Error stack.Error }
 			if len(stdout) != 0 || json.Unmarshal(stderr, &envelope) != nil || envelope.Error.Retryable || !strings.Contains(envelope.Error.Message, "restore a backup") {

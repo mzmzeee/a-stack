@@ -20,6 +20,7 @@ func TestDatabaseStartErrorClassification(t *testing.T) {
 			}
 		})
 	}
+
 	if err := databaseStartError("fixture.db", os.ErrPermission); !err.Retryable || err.DatabaseUnusable() {
 		t.Fatal(err)
 	}

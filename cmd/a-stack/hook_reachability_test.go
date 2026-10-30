@@ -2,11 +2,12 @@ package main
 
 import (
 	"database/sql"
-	"github.com/mzmzeee/a-stack/internal/stack"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
 func TestActiveHookOrchestratorReachable(t *testing.T) {
@@ -24,34 +25,44 @@ func TestActiveHookOrchestratorReachable(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+
 	old := time.Now().Add(-16 * time.Minute).UTC().Format(time.RFC3339Nano)
 	if _, err = db.Exec("UPDATE agents SET observed_at=? WHERE id=?", old, f.orch); err != nil {
 		t.Fatal(err)
 	}
+
 	f.receipt(f.workerFile, f.scoped("mail", "send", "--task", f.task, "--body", "Blocking question @01-orchestrator", "--urgent", "--operation-id", "race-active-hook-mail")...)
+
 	out := hookEvent(t, id, "PostToolUse", "")
 	if !strings.Contains(out, "Urgent Task mail") {
 		t.Fatalf("fixture hook did not receive mail: %s", out)
 	}
+
 	var observed string
 	if err = db.QueryRow("SELECT observed_at FROM agents WHERE id=?", f.orch).Scan(&observed); err != nil {
 		t.Fatal(err)
 	}
+
 	inspected, stderr, code := f.run(f.orchFile, f.scoped("session", "inspect", "--json")...)
 	if code != 0 {
 		t.Fatalf("inspect: %s", stderr)
 	}
+
 	if observed == old {
 		t.Fatal("active hook did not refresh observation")
 	}
+
 	hookEvent(t, id, "PostToolUse", "")
+
 	var unchanged string
 	if err = db.QueryRow("SELECT observed_at FROM agents WHERE id=?", f.orch).Scan(&unchanged); err != nil {
 		t.Fatal(err)
 	}
+
 	if unchanged != observed {
 		t.Fatal("fresh observation should not be rewritten on every tool call")
 	}
+
 	if strings.Contains(inspected, "the Orchestrator cannot be reached by mail") {
 		t.Fatal("FALSE UNREACHABLE: enrolled active hook just delivered urgent mail, but session inspect tells workers Orchestrator cannot be reached")
 	}

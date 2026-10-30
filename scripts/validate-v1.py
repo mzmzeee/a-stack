@@ -3,7 +3,6 @@
 
 import argparse
 import contextlib
-import datetime
 import hashlib
 import http.client
 import http.server
@@ -1516,7 +1515,8 @@ def measurements(binary):
                             and submitted() == 1500
                             and all(
                                 t["reason"] == "notice_waiting_mail"
-                                for t in targets if t["counts"].get("pending", 0)
+                                for t in targets
+                                if t["counts"].get("pending", 0)
                             ),
                             "restart or unread burst bypassed the one-notice hold: "
                             + str([(t.get("reason"), t["counts"]) for t in targets]),
@@ -1543,9 +1543,12 @@ def measurements(binary):
                             send_samples.append(received - start)
                     final_backup = inspect_backup(run.backup("held-send-samples"))
                     check(
-                        final_backup["rows"]["mail_messages"] == 10000 + WARMUP + SAMPLES
-                        and final_backup["rows"]["mail_mentions"] == 30000 + WARMUP + SAMPLES
-                        and final_backup["notice_states"].get("pending", 0) == 28500 + WARMUP + SAMPLES,
+                        final_backup["rows"]["mail_messages"]
+                        == 10000 + WARMUP + SAMPLES
+                        and final_backup["rows"]["mail_mentions"]
+                        == 30000 + WARMUP + SAMPLES
+                        and final_backup["notice_states"].get("pending", 0)
+                        == 28500 + WARMUP + SAMPLES,
                         "held messages were lost or duplicated",
                     )
                     result["mail_10000"] = {

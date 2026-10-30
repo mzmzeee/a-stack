@@ -44,6 +44,7 @@ func databaseStartError(path string, err error) *Error {
 	if sqliteCorrupt(err) {
 		return unusableDatabase("the state database %s is damaged (SQLite integrity check); keep the file and restore a backup: %s", path, restoreDocs)
 	}
+
 	return storageError(err)
 }
 

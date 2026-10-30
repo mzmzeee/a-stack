@@ -10,13 +10,16 @@ func TestNowLoadingAndFilters(t *testing.T) {
 	if err != nil {
 		t.Skip("node is not installed")
 	}
+
 	js, err := browserFiles.ReadFile("browser/app.js")
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	source := string(js)
 	loading := assetBetween(t, source, "if (!model) {", "setText(document.querySelector('.workspace-title h1')")
 	stalls := assetBetween(t, source, "const stalled =", "const liveStalls =")
+
 	matches := assetBetween(t, source, "function matches(t)", "function status(n, t)")
 	script := `const assert=require('node:assert/strict');
 const board={style:{}}, stalledSection={style:{},hidden:false};

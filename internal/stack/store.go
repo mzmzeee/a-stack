@@ -93,12 +93,14 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 	if err != nil {
 		return nil, storageError(err)
 	}
+
 	if info.Size() == 0 {
 		// Operator credentials are written only after the schema commit.
 		_, err = os.Lstat(filepath.Join(filepath.Dir(path), "operator.json"))
 		if err == nil {
 			return nil, unusableDatabase("the state database %s is empty in an initialized state directory; keep the files and restore a backup: %s", path, restoreDocs)
 		}
+
 		if !os.IsNotExist(err) {
 			return nil, storageError(err)
 		}
@@ -134,6 +136,7 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 	if err = db.QueryRowContext(ctx, "PRAGMA quick_check").Scan(&check); err != nil {
 		return nil, databaseStartError(path, err)
 	}
+
 	if check != "ok" {
 		return nil, unusableDatabase("the state database %s failed the integrity check (PRAGMA quick_check); stop here, keep the file, and restore a backup: %s", path, restoreDocs)
 	}
