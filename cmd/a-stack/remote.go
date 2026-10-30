@@ -4,11 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"strings"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-func connectCommand(args []string, stdout io.Writer) error {
+func connectCommand(args []string, code string, stdout io.Writer) error {
 	var data any
 	var err error
 	switch {
@@ -18,7 +19,14 @@ func connectCommand(args []string, stdout io.Writer) error {
 		err = stack.RemoveRemote(args[1])
 		data = map[string]string{"removed": args[1]}
 	case len(args) == 2:
-		data, err = stack.ConnectRemote(context.Background(), args[0], args[1])
+		if existing, e := stack.ReadRemote(args[0]); code != "" && e == nil && existing.URL == strings.TrimSuffix(args[1], "/") {
+			data = existing
+		} else {
+			data, err = stack.ConnectRemote(context.Background(), args[0], args[1])
+		}
+		if err == nil && code != "" {
+			err = stack.JoinRemoteOwner(context.Background(), args[0], code)
+		}
 	default:
 		return invalid("use connect NAME URL, connect list, or connect remove NAME")
 	}

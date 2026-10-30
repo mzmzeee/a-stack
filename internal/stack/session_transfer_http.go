@@ -36,7 +36,7 @@ func transferJSON(w http.ResponseWriter, r *http.Request, target any) error {
 }
 
 func (s *Service) transferHTTP(w http.ResponseWriter, r *http.Request, token string) bool {
-	if r.URL.Path != "/v1/session/invite" && r.URL.Path != "/v1/session/link" && r.URL.Path != "/v1/session/links" && !strings.HasPrefix(r.URL.Path, "/v1/session/transfer/") {
+	if r.URL.Path != "/v1/connect/code" && r.URL.Path != "/v1/session/invite" && r.URL.Path != "/v1/session/link" && r.URL.Path != "/v1/session/links" && !strings.HasPrefix(r.URL.Path, "/v1/session/transfer/") {
 		return false
 	}
 	if r.Method != http.MethodPost {
@@ -46,6 +46,13 @@ func (s *Service) transferHTTP(w http.ResponseWriter, r *http.Request, token str
 	var data any
 	var err error
 	switch r.URL.Path {
+	case "/v1/connect/code":
+		var request struct {
+			CodeHash string `json:"code_hash"`
+		}
+		if err = requestJSON(w, r, &request); err == nil {
+			err = s.Store.CreateOwnerCode(r.Context(), token, request.CodeHash)
+		}
 	case "/v1/session/links":
 		var request struct{}
 		if err = requestJSON(w, r, &request); err == nil {

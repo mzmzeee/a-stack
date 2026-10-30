@@ -2,7 +2,7 @@
 
 An a-stack service can accept HTTPS connections from your tailnet. The service still listens only on loopback. Tailscale Serve terminates HTTPS and forwards requests to it. There is no Funnel or public-internet mode.
 
-A shared Session has one writable copy, on the server. Sharing moves a Session there; linking makes it appear beside your local Sessions. This is not database sync, and there are no offline writes. Existing bearer credentials control access. A Tailscale identity grants access only after an Operator invites that exact login to a Session.
+A shared Session has one writable copy, on the server. Sharing moves a Session there; linking makes it appear beside your local Sessions. This is not database sync, and there are no offline writes. Existing bearer credentials control access. Enrollment needs a one-time code as well as a Tailscale identity. A Session invitation is bound to that exact login and Session.
 
 ## On the server
 
@@ -39,36 +39,42 @@ a-stack --remote team --as agent --credential-file /private/agent.json task list
 a-stack connect remove team
 ```
 
-`connect` checks reachability, the running version and discovery fields through HTTPS `/v1/health`. It saves the URL, version and database ID, not a credential. Names use letters, digits, underscores and hyphens, up to 64 characters; `list` and `remove` are reserved. An existing name is not overwritten. Remove it before connecting again.
+`connect` checks reachability, the running version and discovery fields through HTTPS `/v1/health`. Without `--code`, it saves only the URL, version and database ID. With an owner code, it also enrolls a fresh owner credential in the private `a-stack/remote-credentials` config directory. You can retry enrollment with the same name, URL and code after a lost response; the database identity stays pinned. Names use letters, digits, underscores and hyphens, up to 64 characters; `list` and `remove` are reserved. An existing name is not overwritten. Remove it before connecting again.
 
 Profiles are private JSON files under the operating system's config directory: `$XDG_CONFIG_HOME/a-stack/remotes` or `~/.config/a-stack/remotes` on Linux, `~/Library/Application Support/a-stack/remotes` on macOS, and `%AppData%\a-stack\remotes` on Windows.
 
-API commands, including `open`, `watch` and `mcp`, accept `--remote NAME`. Supply an explicit credential file issued by that server through a trusted channel. a-stack never substitutes your local Operator credential. `--remote` does not apply to local service management or `new`. The Session picker opens linked Sessions on their server. Transferred and remotely registered Agent credential files remember their remote profile, so their CLI commands and hooks reach that server without an extra flag. Local Agent credentials keep using the local service. Remote discovery shares the hook's deadline, so an unreachable server does not hold up the harness. Cross-machine Herdr delivery needs a relay; the server does not send notices to a laptop's local runtime endpoint.
+API commands, including `open`, `watch` and `mcp`, accept `--remote NAME`. They use the owner credential enrolled by `connect --code`, or an explicit `--credential-file` issued by that server. a-stack never substitutes your local Operator credential. `--remote` does not apply to local service management or `new`. The Session picker opens linked Sessions on their server. Transferred and remotely registered Agent credential files remember their remote profile, so their CLI commands and hooks reach that server without an extra flag. Local Agent credentials keep using the local service. Remote discovery shares the hook's deadline, so an unreachable server does not hold up the harness. Cross-machine Herdr delivery needs a relay; the server does not send notices to a laptop's local runtime endpoint.
 
 Every new remote client fetches the current instance ID. If the database ID changed, it stops before sending the bearer credential. Check the server before removing and recreating the profile. A network failure is an error, not a switch to the local service. Nothing is queued offline. If a write may have committed, retry it with the same operation ID.
 
 ## Work together
 
-Start the server with `a-stack serve --share` as above. On your laptop, connect to it and share the open Session of your project folder:
+Start the server with `a-stack serve --share` as above (or install its shared service). In another terminal **on the server**, run:
+
+```sh
+a-stack connect-code
+```
+
+It prints a single-use owner code. Send it to your laptop through a private channel. The code expires after 24 hours; it grants service-wide ownership, so do not give it to friends. No credential file needs to be copied. On your laptop, connect and share the open Session of your project folder:
 
 ```sh
 cd ~/code/my-project
-a-stack connect team https://server.example.ts.net
-a-stack session share --remote team --credential-file /private/server-operator.json
+a-stack connect team https://server.example.ts.net --code OWNER_CODE
+a-stack session share --remote team
 a-stack session invite friend@example.com
 ```
 
-The first share needs the server owner's Operator credential, copied through a trusted private channel. Do not give that service-wide credential to a friend. Keep it outside the checkout, in an owner-only directory. With exactly one remote profile, `--remote` can be omitted. The repository must have a network `origin` remote. SSH and HTTPS forms of the same host and repository match; repository path case and non-default ports remain significant.
+`session invite` prints a separate single-use code for the friend. Send that code and the Session ID through a private channel. It expires after 24 hours; inviting the same login again replaces its unused code. Codes are stored hashed, never as plaintext in the service. A retry with the same already-enrolled credential is allowed, but a consumed code cannot enroll a second credential. With exactly one remote profile, `--remote` can be omitted. The repository must have a network `origin` remote. SSH and HTTPS forms of the same host and repository match; repository path case and non-default ports remain significant.
 
 Your friend signs into Tailscale with the invited login, then runs this in their clone:
 
 ```sh
 a-stack connect team https://server.example.ts.net
-a-stack session link team SESSION_ID
+a-stack session link team SESSION_ID --code INVITE_CODE
 a-stack
 ```
 
-Use the Session ID printed by share. `session link` also accepts the URL of an already connected profile. The server checks the Tailscale identity and invitation, then accepts a fresh private Session-scoped Operator credential. No server credential needs to be sent to the friend. The link result names its private credential file for explicit remote CLI commands. Both Operators open the same server Session view. They can answer questions, close or reopen that Session, appoint its Orchestrator, and invite another login. They cannot read unrelated Sessions, create unrelated Sessions, revoke all views, or back up the server. They can read the Workspace standing orders but cannot change them. The server owner retains service-wide access.
+Use the Session ID printed by share. `session link` also accepts the URL of an already connected profile. The friend needs a running local a-stack. If it is missing, run `a-stack service install` locally, then retry link; the error includes the exact command for a custom state directory. The server checks the Tailscale identity, invitation and code, then accepts a fresh private Session-scoped Operator credential. No server credential needs to be sent to the friend. The link result names its private credential file for explicit remote CLI commands. Both Operators open the same server Session view. They can answer questions, close or reopen that Session, appoint its Orchestrator, and invite another login. They cannot read unrelated Sessions, create unrelated Sessions, revoke all views, or back up the server. They can read the Workspace standing orders but cannot change them. The server owner retains service-wide access.
 
 Run `a-stack` or `a-stack -r` to open a linked Session. If the server is unavailable, opening the link fails; it never opens the old local copy. To bring the Session back to the machine holding its Agent credentials:
 
@@ -80,7 +86,9 @@ This moves the current server data back and seals the server copy. Other machine
 
 ### Credentials and hooks
 
-Share and unshare need every registered Agent's current private credential. They check the standard `a-stack-agents` paths and recognized installed hooks, not a recursive search of your home directory. For files kept elsewhere, pass `--agent-files /private/agents.json`. This is a JSON object whose keys are Agent IDs and whose values are absolute credential-file paths. Missing or mismatched credentials stop the transfer before cutover.
+Share and unshare need every registered Agent's current private credential **on the machine running the transfer**, including Agents that ran on other machines. They check the standard `a-stack-agents` paths and recognized installed hooks, not a recursive search of your home directory. For files kept elsewhere, pass `--agent-files /private/agents.json`. This is a JSON object whose keys are Agent IDs and whose values are absolute credential-file paths. Missing or mismatched credentials stop the transfer before cutover.
+
+If Agents run on several machines, pause them first. Either keep the Session shared, or bring all their current credential files to the unsharing machine through a private channel and list those paths in the manifest. Do not put credentials in Git. Unshare does not copy remote harnesses or edit their hooks. To resume on the local service, move the harnesses to that machine and explicitly rebind/enroll their native sessions there. Keep the Session shared if they must continue running remotely; old links and credentials will not forward to the local copy.
 
 New credentials are written beside the old files, with the transfer ID in the filename. The old files are not overwritten. Installed hook commands are repointed to the new files and Workspace. Exact native-session enrollment moves only when its machine, credential generation and Agent revision match; the native harness session is retained. Sharing does not enroll an unrelated process just because it runs in the same folder. Keep the original and new files private. Agents with hand-written shell helpers must update those helpers to the new credential paths; installed hooks are updated automatically.
 
@@ -90,7 +98,7 @@ When you register an Agent through `--remote`, its new credential remembers that
 
 The destination imports the snapshot in one transaction, initially read-only. The source stays writable until the destination confirms that import. The source then checks its read revision and retained rows against the snapshot, seals itself, and the destination activates. During the short sealed/staged gap, requests fail clearly. A transfer never automatically unseals a source whose destination might already be active.
 
-Rerun the same share or unshare command after a network failure or interruption. A private journal under the operating system's config directory, `a-stack/transfers`, retains the transfer ID and prepared credential paths. Do not delete it during a transfer. If the source changed during import, the command leaves it intact and asks you to rerun; the next import replaces the inactive staged copy. A failed import rolls back without changing source work.
+Rerun the same share or unshare command after a network failure or interruption. A private journal under the operating system's config directory, `a-stack/transfers`, retains the transfer ID and prepared credential paths. An exclusive folder lock prevents overlapping local share/unshare commands. Remote profiles and credentials are validated before the first journal is saved. Correct a preflight mistake and retry normally; after export begins, connection arguments and database identities are pinned. Do not delete it during a transfer. If the source changed during import, the command leaves it intact and asks you to rerun; the next import replaces the inactive staged copy. A failed import rolls back without changing source work. Starting a newer export durably fences older source transfers. The source releases a secret proof only after fencing; the destination requires that proof before replacing older staging. A superseded transfer cannot seal the source.
 
 Tasks, graph edges, mail and acknowledgements, reports, history, Agent identities and needed standing orders move together. Opaque IDs, revisions and per-Task mail sequence numbers stay. Database-local integer history row keys are reassigned, retaining order and content. Conflicting destination IDs, Agent names or nonempty standing orders stop the import. Browser grants, source capability hashes and local notice-delivery batches are not copied. In-flight notices become uncertain rather than being sent again. Agent retry tombstones move with their Session.
 
@@ -100,13 +108,13 @@ Transfers currently accept snapshots up to 64 MiB and require the same schema on
 
 - Remote URLs must be HTTPS origins without credentials, a path, a query or a fragment. Certificates are verified normally. Clients ignore proxy environment variables and never follow redirects.
 - The service accepts only its loopback Host or its exact configured MagicDNS Host. An Origin must match the URL for that Host. There is no wildcard Host allowance or CORS.
-- On the configured Serve Host from a loopback peer, `Tailscale-User-Login` and `Tailscale-User-Name` become request attribution. Serve strips client copies and supplies its own. Missing headers, such as on tagged devices, produce no actor. Non-ASCII names are decoded from Serve's RFC 2047 header encoding. Requests marked by Serve as Funnel traffic are rejected. These headers do not replace bearer authorization, except at the invitation-gated Session enrollment endpoint. Operator actions record the login and display name in history; answers also keep them on the question and its Task mail.
+- On the configured Serve Host from a loopback peer, `Tailscale-User-Login` and `Tailscale-User-Name` become request attribution. Serve strips client copies and supplies its own. Missing headers, such as on tagged devices, produce no actor. Non-ASCII names are decoded from Serve's RFC 2047 header encoding. Requests marked by Serve as Funnel traffic are rejected. These headers do not replace bearer authorization, except at enrollment endpoints, which also require a valid one-time code. Operator actions record the login and display name in history; answers also keep them on the question and its Task mail.
 - The configured Serve Host exposes only database ID, instance ID and version at unauthenticated `/v1/health`. Data endpoints retain their bearer and instance checks. Local health remains authenticated.
-- Processes on the server can forge proxy headers by calling loopback directly. Do not host untrusted local users there. Tailnet ACLs and HTTPS do not protect the backend from them.
+- Processes on the server can forge proxy headers by calling loopback directly, but those headers alone cannot enroll an owner or Session Operator: the one-time code is also required. Keep codes private. Do not host untrusted local users there. Tailnet ACLs and HTTPS do not protect the backend from them.
 
 ## Operator labels
 
-All Operators remain equal. Labels identify who made a change; they are not accounts or permissions. The service records the trusted login and display name for Needs you answers, standing-order changes, Session close/reopen, Orchestrator appointments, view issue/revoke and Agent credential changes. Agent actions keep their Agent identity, even when sent through Serve.
+Operators with the same scope remain equal. Labels identify who made a change; they are not accounts or permissions. The service records the trusted login and display name for Needs you answers, standing-order changes, Session close/reopen, Orchestrator appointments, view issue/revoke and Agent credential changes. Agent actions keep their Agent identity, even when sent through Serve.
 
 The view shows the answerer's display name, or `Operator (login)` when no name is supplied, and the answer time. `task history`, `task show`, answer mail and mutation receipts include `actor_login` and `actor_name` when available. A retry returns the original receipt and actor. A second answer with a new operation ID names who already answered and when; it never replaces the answer or sends another mail.
 

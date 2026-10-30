@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const undoMigration13 = `DROP TABLE session_links; DROP TABLE session_locations; DROP TABLE session_transfers; DROP TABLE workspace_repositories; DROP TABLE session_invites; DROP TABLE session_operators; PRAGMA user_version=12;`
+const undoMigration13 = `DROP TABLE owner_join_codes; DROP TABLE session_links; DROP TABLE session_locations; DROP TABLE session_transfers; DROP TABLE workspace_repositories; DROP TABLE session_invites; DROP TABLE session_operators; PRAGMA user_version=12;`
 
 func TestSchema13Upgrade(t *testing.T) {
 	f := tasksFixture(t)

@@ -261,7 +261,7 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 		s.redeemHTTP(w, r)
 		return
 	}
-	if shared && r.URL.Path == "/v1/session/join" {
+	if shared && (r.URL.Path == "/v1/session/join" || r.URL.Path == "/v1/connect/join") {
 		s.sessionJoinHTTP(w, r)
 		return
 	}

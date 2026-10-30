@@ -11,13 +11,15 @@ import (
 // TransferBundle is a Session snapshot, never a database backup. The fixed table
 // list excludes capabilities, browser grants and machine-local delivery state.
 type TransferBundle struct {
-	Schema         int             `json:"schema"`
-	SourceDatabase string          `json:"source_database"`
-	TransferID     string          `json:"transfer_id"`
-	Repository     string          `json:"repository"`
-	Session        Session         `json:"session"`
-	Orders         StandingOrders  `json:"orders"`
-	Tables         []TransferTable `json:"tables"`
+	ReleaseHash    string            `json:"release_hash"`
+	Released       map[string]string `json:"released,omitempty"`
+	Schema         int               `json:"schema"`
+	SourceDatabase string            `json:"source_database"`
+	TransferID     string            `json:"transfer_id"`
+	Repository     string            `json:"repository"`
+	Session        Session           `json:"session"`
+	Orders         StandingOrders    `json:"orders"`
+	Tables         []TransferTable   `json:"tables"`
 }
 type TransferTable struct {
 	Name string  `json:"name"`
@@ -123,9 +125,12 @@ func (s *Store) ExportTransfer(ctx context.Context, token string, r TransferExpo
 	if err != nil {
 		return result, err
 	}
-	var payload string
-	err = tx.QueryRowContext(ctx, "SELECT payload FROM session_transfers WHERE id=? AND session_id=? AND direction='out'", r.TransferID, r.SessionID).Scan(&payload)
+	var payload, state string
+	err = tx.QueryRowContext(ctx, "SELECT payload,state FROM session_transfers WHERE id=? AND session_id=? AND direction='out'", r.TransferID, r.SessionID).Scan(&payload, &state)
 	if err == nil {
+		if state != "prepared" {
+			return result, failure("conflict", "transfer has been superseded; resume the current transfer")
+		}
 		if json.Unmarshal([]byte(payload), &result) != nil || result.Repository != r.Repository {
 			return result, failure("conflict", "transfer ID already used")
 		}
@@ -145,7 +150,31 @@ func (s *Store) ExportTransfer(ctx context.Context, token string, r TransferExpo
 	if err != nil {
 		return result, err
 	}
-	result = TransferBundle{Schema: schemaVersion, SourceDatabase: s.id, TransferID: r.TransferID, Repository: r.Repository, Session: session, Orders: orders}
+	// Revoke earlier owners in the same transaction that issues the new snapshot.
+	// Only then disclose their release proofs, allowing destinations to replace staging.
+	if _, err = tx.ExecContext(ctx, "UPDATE session_transfers SET state='superseded' WHERE session_id=? AND direction='out' AND state='prepared'", session.ID); err != nil {
+		return result, storageError(err)
+	}
+	released := map[string]string{}
+	rows, err := tx.QueryContext(ctx, "SELECT id,release_token FROM session_transfers WHERE session_id=? AND direction='out' AND state='superseded'", session.ID)
+	if err != nil {
+		return result, storageError(err)
+	}
+	for rows.Next() {
+		var id, proof string
+		if err = rows.Scan(&id, &proof); err != nil {
+			rows.Close()
+			return result, storageError(err)
+		}
+		released[id] = proof
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return result, storageError(err)
+	}
+	release := opaqueID()
+	result = TransferBundle{ReleaseHash: tokenHash(release), Released: released, Schema: schemaVersion, SourceDatabase: s.id, TransferID: r.TransferID, Repository: r.Repository, Session: session, Orders: orders}
 	for _, spec := range transferTables {
 		_, rows, err := transferRows(ctx, tx, spec, session.ID)
 		if err != nil {
@@ -160,7 +189,7 @@ func (s *Store) ExportTransfer(ctx context.Context, token string, r TransferExpo
 	if len(data) > MaxTransferBytes-65536 {
 		return result, failure("invalid_input", "Session exceeds the transfer size limit")
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO session_transfers(id,session_id,direction,state,read_revision,peer_database,remote,payload) VALUES(?,?,'out','prepared',?,'','',?)", r.TransferID, session.ID, session.ReadRevision, string(data))
+	_, err = tx.ExecContext(ctx, "INSERT INTO session_transfers(id,session_id,direction,state,read_revision,peer_database,remote,payload,release_token) VALUES(?,?,'out','prepared',?,'','',?,?)", r.TransferID, session.ID, session.ReadRevision, string(data), release)
 	if err == nil {
 		err = tx.Commit()
 	}
@@ -191,7 +220,7 @@ func (s *Store) ImportTransfer(ctx context.Context, token string, r TransferImpo
 			return result, err
 		}
 	}
-	if b.Schema != schemaVersion || !validToken(b.TransferID) || !validToken(b.SourceDatabase) || b.SourceDatabase == s.id || !validToken(b.Session.ID) || b.Repository == "" || len(b.Repository) > 4096 || len(b.Tables) != len(transferTables) {
+	if !validHash(b.ReleaseHash) || b.Schema != schemaVersion || !validToken(b.TransferID) || !validToken(b.SourceDatabase) || b.SourceDatabase == s.id || !validToken(b.Session.ID) || b.Repository == "" || len(b.Repository) > 4096 || len(b.Tables) != len(transferTables) {
 		return result, failure("invalid_input", "invalid Session transfer snapshot")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -284,6 +313,14 @@ func (s *Store) ImportTransfer(ctx context.Context, token string, r TransferImpo
 		if !returning {
 			return result, failure("conflict", "Session ID already exists")
 		}
+		var previous, releaseHash string
+		err = tx.QueryRowContext(ctx, "SELECT t.id,t.release_hash FROM session_locations l JOIN session_transfers t ON t.id=l.transfer_id WHERE l.session_id=? AND l.state='staged'", b.Session.ID).Scan(&previous, &releaseHash)
+		if err != nil && err != sql.ErrNoRows {
+			return result, storageError(err)
+		}
+		if err == nil && (!validToken(b.Released[previous]) || tokenHash(b.Released[previous]) != releaseHash) {
+			return result, failure("conflict", "staged transfer still owns this Session; source release proof required")
+		}
 		if _, err = tx.ExecContext(ctx, "UPDATE session_transfers SET state='superseded' WHERE id IN (SELECT transfer_id FROM session_locations WHERE session_id=? AND state='staged')", b.Session.ID); err != nil {
 			return result, storageError(err)
 		}
@@ -328,7 +365,10 @@ func (s *Store) ImportTransfer(ctx context.Context, token string, r TransferImpo
 							if json.Unmarshal([]byte(encoded), &binding) != nil {
 								return result, failure("invalid_input", "invalid runtime binding in transfer")
 							}
-							binding.Machine, binding.RemoteMachine = r.Machine, !r.LocalRuntime
+							if binding.Machine == "" {
+								binding.Machine = r.Machine
+							}
+							binding.RemoteMachine = !r.LocalRuntime || binding.Machine != r.Machine
 							encoded, err := json.Marshal(binding)
 							if err != nil {
 								return result, storageError(err)
@@ -372,7 +412,7 @@ func (s *Store) ImportTransfer(ctx context.Context, token string, r TransferImpo
 			return result, storageError(err)
 		}
 	}
-	_, err = tx.ExecContext(ctx, "INSERT INTO session_transfers(id,session_id,direction,state,read_revision,peer_database,remote,payload) VALUES(?,?,'in','staged',?,?,'',?)", b.TransferID, b.Session.ID, b.Session.ReadRevision, b.SourceDatabase, digest)
+	_, err = tx.ExecContext(ctx, "INSERT INTO session_transfers(id,session_id,direction,state,read_revision,peer_database,remote,payload,release_hash) VALUES(?,?,'in','staged',?,?,'',?,?)", b.TransferID, b.Session.ID, b.Session.ReadRevision, b.SourceDatabase, digest, b.ReleaseHash)
 	if err == nil {
 		_, err = tx.ExecContext(ctx, "INSERT INTO session_locations(session_id,transfer_id,state,peer_database,remote) VALUES(?,?,'staged',?,'') ON CONFLICT(session_id) DO UPDATE SET transfer_id=excluded.transfer_id,state=excluded.state,peer_database=excluded.peer_database,remote=''", b.Session.ID, b.TransferID, b.SourceDatabase)
 	}

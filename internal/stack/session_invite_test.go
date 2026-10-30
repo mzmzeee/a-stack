@@ -8,12 +8,12 @@ import (
 func TestSessionInvitationScope(t *testing.T) {
 	f := tasksFixture(t)
 	s := f.service.Store
-	invite := SessionInviteRequest{Context: f.ref(0), OperationID: opaqueID(), Login: "friend@example.com"}
+	invite := SessionInviteRequest{CodeHash: tokenHash("test-join-code"), Context: f.ref(0), OperationID: opaqueID(), Login: "friend@example.com"}
 	if _, err := s.InviteSession(ctx, f.operator.Token, invite); err != nil {
 		t.Fatal(err)
 	}
 	secret := opaqueID()
-	join := SessionJoinRequest{SessionID: f.sessions[0], CredentialHash: tokenHash(secret)}
+	join := SessionJoinRequest{Code: "test-join-code", SessionID: f.sessions[0], CredentialHash: tokenHash(secret)}
 	_, err := s.JoinSession(ctx, join)
 	requireCode(t, err, "forbidden")
 	wrong := context.WithValue(ctx, requestActorKey{}, RequestActor{Login: "other@example.com"})
@@ -45,10 +45,10 @@ func TestSessionInvitationScope(t *testing.T) {
 	requireCode(t, err, "forbidden")
 	_, err = s.RevokeViews(ctx, secret, ViewRevokeRequest{All: true})
 	requireCode(t, err, "forbidden")
-	if _, err = s.InviteSession(ctx, secret, SessionInviteRequest{Context: f.ref(0), OperationID: opaqueID(), Login: "next@example.com"}); err != nil {
+	if _, err = s.InviteSession(ctx, secret, SessionInviteRequest{CodeHash: tokenHash("test-join-code"), Context: f.ref(0), OperationID: opaqueID(), Login: "next@example.com"}); err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.InviteSession(ctx, secret, SessionInviteRequest{Context: f.ref(1), OperationID: opaqueID(), Login: "next@example.com"})
+	_, err = s.InviteSession(ctx, secret, SessionInviteRequest{CodeHash: tokenHash("test-join-code"), Context: f.ref(1), OperationID: opaqueID(), Login: "next@example.com"})
 	requireCode(t, err, "forbidden")
 	session, err := s.InspectSession(ctx, secret, f.ref(0))
 	if err != nil {

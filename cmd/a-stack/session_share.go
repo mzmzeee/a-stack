@@ -76,7 +76,7 @@ func sessionLinks(ctx context.Context, client *stack.Client) ([]stack.SessionLin
 	return decodeData[[]stack.SessionLink](data)
 }
 
-func sharingCommand(ctx context.Context, command string, args []string, state, credential, remote, agentFiles string, flags lifecycleFlags, out io.Writer) error {
+func sharingCommand(ctx context.Context, command string, args []string, state, credential, remote, agentFiles, code string, flags lifecycleFlags, out io.Writer) error {
 	if credential != "" {
 		absolute, err := filepath.Abs(credential)
 		if err != nil {
@@ -94,6 +94,9 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 	}
 	local, err := stack.NewClient(state, "", stack.OperatorCapability)
 	if err != nil {
+		if command == "session link" {
+			return invalid(fmt.Sprintf("session link needs a running local service; run a-stack --state-dir %q service install, then retry", state))
+		}
 		return err
 	}
 	config, err := os.UserConfigDir()
@@ -105,6 +108,9 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 		return err
 	}
 	if command == "session link" {
+		if _, err = sessionLinks(ctx, local); err != nil {
+			return invalid(fmt.Sprintf("session link cannot reach the local service; run a-stack --state-dir %q service install, then retry", state))
+		}
 		if len(args) != 2 {
 			return invalid("session link takes REMOTE-or-URL SESSION")
 		}
@@ -129,7 +135,7 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 			return e
 		}
 		file := filepath.Join(private, profile.DatabaseID+"-"+args[1]+"-operator.json")
-		ref, e := stack.JoinRemoteSession(ctx, name, args[1], file)
+		ref, e := stack.JoinRemoteSession(ctx, name, args[1], file, code)
 		if e != nil {
 			return e
 		}
@@ -186,17 +192,33 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 		if operation == "" {
 			operation = operationID()
 		}
-		data, e := client.Do(ctx, "POST", "/v1/session/invite", stack.SessionInviteRequest{Context: ref, OperationID: operation, Login: args[0]})
+		invitation := newJoinCode()
+		digest := sha256.Sum256([]byte(invitation))
+		data, e := client.Do(ctx, "POST", "/v1/session/invite", stack.SessionInviteRequest{Context: ref, OperationID: operation, Login: args[0], CodeHash: hex.EncodeToString(digest[:])})
 		if e != nil {
 			return e
 		}
-		return writeData(out, data)
+		receipt, e := decodeData[stack.Receipt](data)
+		if e != nil {
+			return e
+		}
+		return json.NewEncoder(out).Encode(map[string]any{"data": map[string]any{"receipt": receipt, "code": invitation, "expires_in": "24h"}})
 	}
 	if len(args) != 0 {
 		return invalid(command + " takes no positional arguments")
 	}
 	journalKey := sha256.Sum256([]byte(folder + "\x00" + command))
 	journalFile := filepath.Join(private, hex.EncodeToString(journalKey[:])+".json")
+	lockKey := sha256.Sum256([]byte(folder))
+	lockDir := filepath.Join(private, hex.EncodeToString(lockKey[:])+".lock")
+	if err = stack.MkdirPrivate(lockDir); err != nil {
+		return err
+	}
+	release, locked := tryLock(lockDir)
+	if !locked {
+		return invalid("another transfer is using this folder; retry when it finishes")
+	}
+	defer release()
 	var journal shareJournal
 	if data, e := os.ReadFile(journalFile); e == nil {
 		decoder := json.NewDecoder(bytes.NewReader(data))
@@ -206,6 +228,9 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 		}
 	} else if !os.IsNotExist(e) {
 		return e
+	}
+	if !journal.Started && journal.Bundle.TransferID == "" {
+		journal = shareJournal{}
 	}
 	if journal.ID == "" {
 		journal = shareJournal{ID: shareToken(), Folder: folder, Command: command, Remote: remote, RemoteCredential: credential}
@@ -253,19 +278,33 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 		if e != nil {
 			return e
 		}
-		if err = saveShareJournal(journalFile, journal); err != nil {
-			return err
-		}
+	}
+	if journal.Started && ((remote != "" && remote != journal.Remote) || (credential != "" && credential != journal.RemoteCredential)) {
+		return invalid("transfer connection is pinned; retry with its original remote and credential")
 	}
 	server, err := sharingRemoteClient(ctx, journal.Remote, journal.RemoteCredential, stack.OperatorCapability)
 	if err != nil {
 		return err
+	}
+	if journal.RemoteCredential == "" {
+		journal.RemoteCredential, err = stack.RemoteOwnerCredential(journal.Remote)
+		if err != nil {
+			return err
+		}
 	}
 	source, dest := local, server
 	targetRemote := journal.Remote
 	if command == "session unshare" {
 		source, dest = server, local
 		targetRemote = ""
+	}
+	if journal.Started && (journal.SourceDatabase != source.Discovery.DatabaseID || journal.DestinationDatabase != dest.Discovery.DatabaseID) {
+		return invalid("transfer database identity changed")
+	}
+	journal.Started = true
+	journal.SourceDatabase, journal.DestinationDatabase = source.Discovery.DatabaseID, dest.Discovery.DatabaseID
+	if err = saveShareJournal(journalFile, journal); err != nil {
+		return err
 	}
 	if journal.Bundle.TransferID == "" {
 		data, e := source.Do(ctx, "POST", "/v1/session/transfer/export", stack.TransferExportRequest{Context: journal.Source, TransferID: journal.ID, Repository: journal.Repository})
@@ -350,6 +389,8 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 
 type shareAgent struct{ Old, New, Hash string }
 type shareJournal struct {
+	Started                                                   bool
+	SourceDatabase, DestinationDatabase                       string
 	ID, Folder, Command, Remote, RemoteCredential, Repository string
 	Source, Destination                                       stack.Context
 	Bundle                                                    stack.TransferBundle

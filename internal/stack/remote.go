@@ -260,7 +260,14 @@ func NewRemoteClient(ctx context.Context, name, credentialFile string, kind Capa
 
 func newRemoteClient(ctx context.Context, name, credentialFile string, kind CapabilityKind, client *http.Client) (*Client, error) {
 	if credentialFile == "" {
-		return nil, failure("invalid_input", "--remote requires an explicit --credential-file for the remote service")
+		var err error
+		credentialFile, err = RemoteOwnerCredential(name)
+		if err != nil {
+			return nil, err
+		}
+		if _, err = ReadCredential(credentialFile); err != nil {
+			return nil, failure("invalid_input", "remote owner enrollment required: connect NAME URL --code CODE, or supply --credential-file")
+		}
 	}
 	if kind != "" && !validKind(kind) {
 		return nil, failure("invalid_input", "invalid credential kind")

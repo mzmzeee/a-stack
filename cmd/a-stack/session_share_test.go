@@ -47,11 +47,23 @@ func TestCLIShareUnsharePreservesEnrollment(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := sharingRemoteClient
-	sharingRemoteClient = func(_ context.Context, _, _ string, _ stack.CapabilityKind) (*stack.Client, error) {
+	sharingRemoteClient = func(_ context.Context, _ string, credential string, _ stack.CapabilityKind) (*stack.Client, error) {
+		if credential == "" {
+			return nil, invalid("server credential required")
+		}
 		return stack.NewClient(destination.state, "", stack.OperatorCapability)
 	}
 	t.Cleanup(func() { sharingRemoteClient = original })
 	var out, errout bytes.Buffer
+	if code := run([]string{"session", "share", "--state-dir", source.state, "--remote", "team"}, &out, &errout); code == 0 {
+		t.Fatal("missing credential should fail preflight")
+	}
+	journals, err := filepath.Glob(filepath.Join(home, "config", "a-stack", "transfers", "*.json"))
+	if err != nil || len(journals) != 0 {
+		t.Fatal("failed preflight persisted a journal", err)
+	}
+	out.Reset()
+	errout.Reset()
 	args := []string{"session", "share", "--state-dir", source.state, "--remote", "team", "--credential-file", filepath.Join(destination.state, "operator.json"), "--agent-files", manifest}
 	if code := run(args, &out, &errout); code != 0 {
 		t.Fatalf("share exit %d: %s", code, errout.String())

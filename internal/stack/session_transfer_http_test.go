@@ -32,6 +32,7 @@ func transferCall[T any](t *testing.T, c *Client, path string, request any) T {
 func TestTransferThroughTLSAndFriendLink(t *testing.T) {
 	source := tasksFixture(t)
 	server := tasksFixture(t)
+	server.service.Version = "test"
 	task, question := askTest(t, source, "Share one answer?")
 	local, err := NewClient(source.dir, "", OperatorCapability)
 	if err != nil {
@@ -54,6 +55,28 @@ func TestTransferThroughTLSAndFriendLink(t *testing.T) {
 	defer proxy.Close()
 	destination := &Client{Discovery: server.service.Discovery, Credential: server.operator, HTTP: proxy.Client()}
 	destination.Discovery.URL = proxy.URL
+	config := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", config)
+	t.Setenv("AppData", config)
+	if _, err = connectRemote(ctx, "team", proxy.URL, proxy.Client()); err != nil {
+		t.Fatal(err)
+	}
+	ownerCode := opaqueID()
+	transferCall[any](t, destination, "/v1/connect/code", map[string]string{"code_hash": tokenHash(ownerCode)})
+	ownerFile, err := RemoteOwnerCredential("team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 2; i++ {
+		if _, err = joinRemoteCredentialUsing(ctx, "team", "", ownerFile, ownerCode, proxy.Client()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The default remote credential is the enrolled server owner, never the local owner.
+	destination, err = newRemoteClient(ctx, "team", "", OperatorCapability, proxy.Client())
+	if err != nil {
+		t.Fatal(err)
+	}
 	transferID := opaqueID()
 	bundle := transferCall[TransferBundle](t, local, "/v1/session/transfer/export", TransferExportRequest{Context: source.ref(0), TransferID: transferID, Repository: "example.com/team/repo"})
 	secrets := map[string]string{source.orchID: opaqueID(), source.aID: opaqueID(), source.bID: opaqueID()}
@@ -78,15 +101,15 @@ func TestTransferThroughTLSAndFriendLink(t *testing.T) {
 	if view.YourAgentID != source.aID {
 		t.Fatal("Agent identity changed")
 	}
-	transferCall[Receipt](t, destination, "/v1/session/invite", SessionInviteRequest{Context: active.Context, OperationID: opaqueID(), Login: "friend@example.com"})
+	transferCall[Receipt](t, destination, "/v1/session/invite", SessionInviteRequest{CodeHash: tokenHash("test-join-code"), Context: active.Context, OperationID: opaqueID(), Login: "friend@example.com"})
 	friendSecret := opaqueID()
 	unauthenticated := *destination
 	unauthenticated.Credential = Credential{}
 	login.Store("stranger@example.com")
-	_, err = unauthenticated.Do(ctx, http.MethodPost, "/v1/session/join", SessionJoinRequest{SessionID: active.SessionID, CredentialHash: tokenHash(friendSecret)})
+	_, err = unauthenticated.Do(ctx, http.MethodPost, "/v1/session/join", SessionJoinRequest{Code: "test-join-code", SessionID: active.SessionID, CredentialHash: tokenHash(friendSecret)})
 	requireCode(t, err, "forbidden")
 	login.Store("friend@example.com")
-	ref := transferCall[Context](t, &unauthenticated, "/v1/session/join", SessionJoinRequest{SessionID: active.SessionID, CredentialHash: tokenHash(friendSecret)})
+	ref := transferCall[Context](t, &unauthenticated, "/v1/session/join", SessionJoinRequest{Code: "test-join-code", SessionID: active.SessionID, CredentialHash: tokenHash(friendSecret)})
 	friend := *destination
 	friend.Credential = Credential{Kind: OperatorCapability, Token: friendSecret}
 	_, err = friend.Do(ctx, "POST", "/v1/session/inspect", server.ref(0))
