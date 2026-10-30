@@ -90,6 +90,7 @@ type Health struct {
 	SharedURL     string `json:"shared_url,omitempty"`
 }
 type Service struct {
+	transferBusy  atomic.Bool  // bounds snapshot decoding and encoding per service
 	serveHost     atomic.Value // string; configured HTTPS name, empty for local-only
 	Store         *Store
 	Discovery     Discovery

@@ -24,7 +24,12 @@ func transferJSON(w http.ResponseWriter, r *http.Request, target any) error {
 		return failure("invalid_input", "Content-Type application/json required")
 	}
 
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, int64(apiSizeLimit(r.URL.Path))))
+	limit := MaxRequestBytes
+	if r.URL.Path == "/v1/session/transfer/import" {
+		limit = MaxTransferBytes
+	}
+
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, int64(limit)))
 	decoder.UseNumber()
 	decoder.DisallowUnknownFields()
 
@@ -48,6 +53,29 @@ func (s *Service) transferHTTP(w http.ResponseWriter, r *http.Request, token str
 	if r.Method != http.MethodPost {
 		writeError(w, failure("invalid_input", "POST required"))
 		return true
+	}
+
+	if r.URL.Path == "/v1/session/transfer/import" || r.URL.Path == "/v1/session/transfer/export" {
+		p, err := authenticate(r.Context(), s.Store.db, token)
+		if err == nil {
+			if r.URL.Path == "/v1/session/transfer/import" {
+				err = operator(p)
+			} else if p.Kind != OperatorCapability {
+				err = failure("forbidden", "Operator credential required")
+			}
+		}
+
+		if err != nil {
+			writeError(w, err)
+			return true
+		}
+
+		if !s.transferBusy.CompareAndSwap(false, true) {
+			writeError(w, &Error{Code: "rate_limited", Message: "another Session transfer is in progress; retry later", Retryable: true, RetryAfter: 1})
+			return true
+		}
+
+		defer s.transferBusy.Store(false)
 	}
 
 	var data any
