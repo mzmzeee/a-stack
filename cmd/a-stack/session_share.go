@@ -112,13 +112,8 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 		return err
 	}
 
-	config, err := os.UserConfigDir()
+	private, err := transferDirectory()
 	if err != nil {
-		return err
-	}
-
-	private := filepath.Join(config, "a-stack", "transfers")
-	if err = stack.MkdirPrivate(private); err != nil {
 		return err
 	}
 
@@ -250,9 +245,8 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 
 	journalKey := sha256.Sum256([]byte(folder + "\x00" + command))
 	journalFile := filepath.Join(private, hex.EncodeToString(journalKey[:])+".json")
-	lockKey := sha256.Sum256([]byte(folder))
 
-	lockDir := filepath.Join(private, hex.EncodeToString(lockKey[:])+".lock")
+	lockDir := transferLockDirectory(private, folder)
 	if err = stack.MkdirPrivate(lockDir); err != nil {
 		return err
 	}
@@ -481,6 +475,21 @@ type (
 		Link                                                      stack.SessionLink
 	}
 )
+
+func transferDirectory() (string, error) {
+	config, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+
+	dir := filepath.Join(config, "a-stack", "transfers")
+	return dir, stack.MkdirPrivate(dir)
+}
+
+func transferLockDirectory(private, folder string) string {
+	key := sha256.Sum256([]byte(folder))
+	return filepath.Join(private, hex.EncodeToString(key[:])+".lock")
+}
 
 func saveShareJournal(file string, journal shareJournal) error {
 	data, err := json.Marshal(journal)

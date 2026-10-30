@@ -68,7 +68,12 @@ func TestCLIShareUnsharePreservesEnrollment(t *testing.T) {
 		t.Fatal("missing credential should fail preflight")
 	}
 
-	journals, err := filepath.Glob(filepath.Join(home, "config", "a-stack", "transfers", "*.json"))
+	private, err := transferDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	journals, err := filepath.Glob(filepath.Join(private, "*.json"))
 	if err != nil || len(journals) != 0 {
 		t.Fatal("failed preflight persisted a journal", err)
 	}

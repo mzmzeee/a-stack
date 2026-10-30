@@ -2,8 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -25,9 +23,12 @@ func TestTransferJournalExclusiveLock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	key := sha256.Sum256([]byte(folder))
+	private, err := transferDirectory()
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	dir := filepath.Join(home, "config", "a-stack", "transfers", hex.EncodeToString(key[:])+".lock")
+	dir := transferLockDirectory(private, folder)
 	if err = stack.MkdirPrivate(dir); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func TestTransferJournalExclusiveLock(t *testing.T) {
 	for _, command := range []string{"share", "unshare"} {
 		var out, stderr bytes.Buffer
 		if run([]string{"session", command, "--state-dir", source.state}, &out, &stderr) == 0 || !strings.Contains(stderr.String(), "another transfer") {
-			t.Fatalf("%s did not honor folder lock", command)
+			t.Fatalf("%s did not honor folder lock: %s", command, stderr.String())
 		}
 	}
 }
