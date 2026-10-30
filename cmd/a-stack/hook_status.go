@@ -20,7 +20,7 @@ func installedHookIdentity(command, harness string) (hookIdentity, bool) {
 	}
 	m := legacyHookPattern.FindStringSubmatch(command)
 	unquote := func(s string) string { return filepath.FromSlash(strings.ReplaceAll(s[1:len(s)-1], `'\''`, `'`)) }
-	return hookIdentity{credential: unquote(m[2]), agent: m[3], worktree: unquote(m[4]), harness: harness}, true
+	return hookIdentity{credential: unquote(m[2]), agent: m[3], worktree: unquote(m[4]), harness: harness, noMailNudge: strings.Contains(command, " --no-mail-nudge --worktree ")}, true
 }
 
 func installedHookCommands(file string) ([]string, error) {
@@ -54,6 +54,7 @@ func installedHookCommands(file string) ([]string, error) {
 }
 
 type hookStatusRow struct {
+	UrgentMail       bool   `json:"urgent_mail"`
 	Harness          string `json:"harness"`
 	Worktree         string `json:"worktree,omitempty"`
 	Installed        bool   `json:"installed"`
@@ -171,6 +172,7 @@ func hookStatus(ctx context.Context, id hookIdentity, flags hookFlags, machine b
 				home, _ := os.UserHomeDir()
 				row.AgentEnrolled = !session.Closed && revision > 0 && !holdsHome(worktree, home) && enrolledHook(check, hookInput{SessionID: e.Session, AgentID: e.Subagent}) == revision
 				row.Enrolled = row.Tagged && row.AgentEnrolled && known && e.Session == f.nativeSession && e.Subagent == f.nativeAgent
+				row.UrgentMail = row.Enrolled && !installed.noMailNudge
 				for _, p := range pending {
 					if p.Harness == harness && p.Worktree == worktree {
 						row.MigrationPending = true
@@ -201,7 +203,7 @@ func hookStatus(ctx context.Context, id hookIdentity, flags hookFlags, machine b
 		} else if !row.SessionKnown {
 			current = "unknown (native session metadata unavailable)"
 		}
-		if _, err := fmt.Fprintf(out, "%s: installed=%t, Agent enrolled=%t, current session=%s, migration pending=%t %s\n", row.Harness, row.Installed, row.AgentEnrolled, current, row.MigrationPending, printable(row.Worktree)); err != nil {
+		if _, err := fmt.Fprintf(out, "%s: installed=%t, Agent enrolled=%t, current session=%s, migration pending=%t, urgent mail=%t (requires enrolled mail hooks) %s\n", row.Harness, row.Installed, row.AgentEnrolled, current, row.MigrationPending, row.UrgentMail, printable(row.Worktree)); err != nil {
 			return err
 		}
 	}

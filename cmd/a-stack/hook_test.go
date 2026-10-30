@@ -875,7 +875,7 @@ func TestHookMailNudgeNamesTheTaskOnceAndKeepsTheAgentsCursor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantFiles := []string{"enrollment"}
+	wantFiles := []string{hex.EncodeToString(sum[:16]) + ".urgent.json", "enrollment"}
 	if !posixModes {
 		// Windows locks a persistent file; Unix locks the directory itself.
 		wantFiles = append([]string{".lock"}, wantFiles...)
