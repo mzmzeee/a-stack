@@ -567,7 +567,7 @@ function patchView(view) {
 }
 function age(timestamp) {const seconds=Math.max(0,Math.floor((Date.now()-new Date(timestamp).getTime())/1000));return seconds<60?`${seconds}s ago`:seconds<3600?`${Math.floor(seconds/60)}m ago`:seconds<86400?`${Math.floor(seconds/3600)}h ago`:`${Math.floor(seconds/86400)}d ago`;}
 // The runtime state is what the service last observed, so it says "unverified" and its age.
-function agentMeta(a) { return `${a.id===model.snapshot.session.orchestrator_id?'Orchestrator':'Agent'} · runtime ${a.runtime_attached?(a.runtime_state || 'unknown'):'unbound'} · unverified${a.observed_at?' · '+age(a.observed_at):''}`; }
+function agentMeta(a) { return `${a.id===model.snapshot.session.orchestrator_id?'Orchestrator':'Agent'}${a.machine?' · '+a.machine:''} · runtime ${a.runtime_attached?(a.runtime_state || 'unknown'):'unbound'} · unverified${a.observed_at?' · '+age(a.observed_at):''}`; }
 function updateRuntimeAges() { if(model&&state.view==='agents')for(const a of model.agents){const r=rows.get(a.id);if(r)setText(r.meta,agentMeta(a));} }
 function plural(n,word) { return `${n} ${word}${n===1?'':'s'}`; }
 // Saved data older than 10 s, or no data at all, gets a banner above the view and "Stale" in the tab title.

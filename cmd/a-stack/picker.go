@@ -18,15 +18,17 @@ var errPickerCancelled = errors.New("picker cancelled")
 // sessionRow is one Session as the Operator shortcuts list it. It holds IDs and
 // names only, never credentials.
 type sessionRow struct {
-	WorkspaceID   string    `json:"workspace_id"`
-	WorkspacePath string    `json:"workspace_path"`
-	SessionID     string    `json:"session_id"`
-	Name          string    `json:"name"`
-	Closed        bool      `json:"closed"`
-	Tasks         int       `json:"tasks"`
-	NeedsYou      int       `json:"needs_you"`
-	ChangedAt     time.Time `json:"changed_at"`
-	CurrentFolder bool      `json:"current_folder"`
+	Remote         string    `json:"remote,omitempty"`
+	CredentialFile string    `json:"-"`
+	WorkspaceID    string    `json:"workspace_id"`
+	WorkspacePath  string    `json:"workspace_path"`
+	SessionID      string    `json:"session_id"`
+	Name           string    `json:"name"`
+	Closed         bool      `json:"closed"`
+	Tasks          int       `json:"tasks"`
+	NeedsYou       int       `json:"needs_you"`
+	ChangedAt      time.Time `json:"changed_at"`
+	CurrentFolder  bool      `json:"current_folder"`
 }
 
 // sortRows puts the most recently changed Session first.

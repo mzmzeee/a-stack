@@ -49,7 +49,8 @@ var helpGroups = []helpGroup{
 	}},
 	{"Service", []helpRow{
 		{"serve", "", "Run the service in the foreground"},
-		{"connect", "connect NAME URL | list | remove NAME", "Manage HTTPS remote profiles"},
+		{"connect", "connect NAME URL [--code CODE] | list | remove NAME", "Connect and optionally enroll as server owner"},
+		{"connect-code", "", "Print a one-time owner code on the server"},
 		{"health", "", "Check the running service"},
 		{"version", "", "Print the version"},
 		{"update", "", "Install the latest release in place of this binary"},
@@ -68,6 +69,10 @@ var helpGroups = []helpGroup{
 		{"session create", "", "Create a Session in a Workspace"},
 		{"session list", "", "List the Sessions of a Workspace"},
 		{"session inspect", "", "Show one Session"},
+		{"session share", "", "Move this folder's Session to a connected server"},
+		{"session unshare", "", "Move a linked Session back to this machine"},
+		{"session link", "session link REMOTE-or-URL SESSION --code CODE", "Link an invited shared Session into this folder"},
+		{"session invite", "session invite LOGIN", "Invite a Tailscale login to this Session"},
 		{"session export", "", "Export a Session's Tasks and reports, without mail bodies"},
 		{"session close", "", "Close a Session"},
 		{"session reopen", "", "Reopen a closed Session"},
@@ -200,7 +205,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus", "completion bash", "completion zsh", "completion fish", "completion powershell", "completion install", "completion uninstall", "mcp", "connect", "hook enroll", "hook status")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus", "completion bash", "completion zsh", "completion fish", "completion powershell", "completion install", "completion uninstall", "mcp", "connect", "hook enroll", "hook status", "connect-code")...), "flags": flags}})
 	}
 	command := strings.Join(words, " ")
 	var text string
@@ -318,8 +323,8 @@ func flagLabel(fs *flag.FlagSet, name string) string {
 // no help shows the fallback VALUE.
 var flagValues = map[string]string{
 	"harness": "NAME", "native-session": "ID", "native-agent": "ID",
-	"remote":    "NAME",
-	"state-dir": "DIR", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE", "output": "FILE",
+	"remote": "NAME",
+	"code":   "CODE", "state-dir": "DIR", "agent-files": "FILE", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE", "output": "FILE",
 	"herdr-executable": "FILE", "workspace": "ID", "session": "ID", "operation-id": "ID", "path": "DIR",
 	"name": "NAME", "orchestrator": "NAME", "agent": "ID", "worktree": "DIR", "new-credential-file": "FILE", "runtime-id": "ID",
 	"runtime-file": "FILE", "runtime-state": "STATE", "expected-revision": "N", "limit": "N", "after": "CURSOR",

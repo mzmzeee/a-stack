@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-const undoMigration13 = `DROP INDEX mail_messages_urgent; ALTER TABLE mail_messages DROP COLUMN priority; PRAGMA user_version=12;`
+const undoMigration13 = undoMigration14 + `DROP INDEX mail_messages_urgent; ALTER TABLE mail_messages DROP COLUMN priority; PRAGMA user_version=12;`
 
 func TestMigration13RetainsMailAndDefaultsPriority(t *testing.T) {
 	f := mailFixture(t)

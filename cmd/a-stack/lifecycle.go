@@ -12,7 +12,7 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-var lifecycleCommands = []string{"workspace create", "workspace list", "workspace orders show", "workspace orders set", "workspace orders clear", "session create", "session list", "session inspect", "session export", "session close", "session reopen", "session appoint", "agent register", "agent list", "agent attach", "agent rebind", "agent observe"}
+var lifecycleCommands = []string{"workspace create", "workspace list", "workspace orders show", "workspace orders set", "workspace orders clear", "session create", "session list", "session inspect", "session export", "session share", "session unshare", "session link", "session invite", "session close", "session reopen", "session appoint", "agent register", "agent list", "agent attach", "agent rebind", "agent observe"}
 
 func isLifecycleCommand(command string) bool {
 	for _, c := range lifecycleCommands {
@@ -62,6 +62,20 @@ func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 // acceptedFlags lists the flags a command accepts, space-separated with a
 // space at both ends. Help uses the same list.
 func acceptedFlags(command string) string {
+	if isSharingCommand(command) {
+		flags := " state-dir credential-file as json help "
+		switch command {
+		case "session share":
+			flags += " remote agent-files "
+		case "session unshare":
+			flags += " agent-files "
+		case "session link":
+			flags += " code "
+		case "session invite":
+			flags += " remote workspace session operation-id "
+		}
+		return flags
+	}
 	// No service and no credential.
 	if isCompletionCommand(command) {
 		if command == "completion install" || command == "completion uninstall" {
@@ -70,7 +84,7 @@ func acceptedFlags(command string) string {
 		return " help "
 	}
 	if command == "connect" {
-		return " json help "
+		return " code json help "
 	}
 	if command == "version" {
 		return " json help "
@@ -202,11 +216,29 @@ func lifecycleCall(ctx context.Context, client *stack.Client, command string, f 
 		body = stack.SessionChangeRequest{Context: ref, OperationID: f.operationID, ExpectedRevision: f.revision, AgentID: f.agent}
 	case "agent register":
 		r := stack.AgentRegisterRequest{Context: ref, OperationID: f.operationID, Name: f.name, WorktreePath: f.worktree}
+		if client.RemoteName != "" {
+			var err error
+			r.Machine, err = os.Hostname()
+			if err != nil {
+				return nil, err
+			}
+			if r.WorktreePath == "" {
+				r.WorktreePath, err = os.Getwd()
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
 		hash, err := stack.PrepareAgentCredential(f.newCredential, client.Discovery.DatabaseID, command, f.operationID, r)
 		if err != nil {
 			return nil, err
 		}
 		r.CredentialHash = hash
+		if client.RemoteName != "" {
+			if err = stack.FinishTransferredCredential(f.newCredential, client.RemoteName, ref); err != nil {
+				return nil, err
+			}
+		}
 		body = r
 	case "agent attach", "agent rebind":
 		if f.runtimeFile != "" && f.runtimeID != "" {
@@ -240,6 +272,11 @@ func lifecycleCall(ctx context.Context, client *stack.Client, command string, f 
 				return nil, err
 			}
 			r.CredentialHash = hash
+			if client.RemoteName != "" {
+				if err = stack.FinishTransferredCredential(f.newCredential, client.RemoteName, ref); err != nil {
+					return nil, err
+				}
+			}
 		}
 		body = r
 	case "agent observe":

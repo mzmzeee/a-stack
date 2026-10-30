@@ -81,12 +81,14 @@ func buildVersion() string {
 func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	var state, credential, kind, listen, destination, herdrExecutable, orchestrator, shell, remote string
+	var state, credential, kind, listen, destination, herdrExecutable, orchestrator, shell, remote, agentFiles, joinCode string
 	var share bool
 	var machine, help, noBrowser, resume, project, refresh, check, noRestart, noRefresh, all bool
 	var release versionFlag
 	fs.StringVar(&state, "state-dir", "", "State directory (default "+stateDirDefault+")")
 	fs.StringVar(&remote, "remote", "", "Named HTTPS remote profile")
+	fs.StringVar(&joinCode, "code", "", "One-time owner or Session invitation code")
+	fs.StringVar(&agentFiles, "agent-files", "", "Private JSON map of Agent IDs to credential paths for sharing")
 	fs.BoolVar(&share, "share", false, "Expose the loopback service through Tailscale Serve")
 	fs.StringVar(&credential, "credential-file", "", "Credential file (default: operator.json)")
 	fs.StringVar(&kind, "as", "", "Credential kind: operator, agent or browser")
@@ -143,6 +145,11 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		connectArgs = command[1:]
 		cmd = "connect"
 	}
+	var sharingArgs []string
+	if len(command) >= 2 && isSharingCommand(strings.Join(command[:2], " ")) {
+		sharingArgs = command[2:]
+		cmd = strings.Join(command[:2], " ")
+	}
 	var sessionName string
 	if len(command) > 0 && command[0] == "new" {
 		if len(command) > 2 {
@@ -156,7 +163,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	if cmd != "" && cmd != "new" && !knownCommand(cmd) {
 		return unknownCommand(command, seen, stdout)
 	}
-	if cmd != "connect" && cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && !isCompletionCommand(cmd) && cmd != "mcp" {
+	if cmd != "connect-code" && cmd != "connect" && cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && !isCompletionCommand(cmd) && cmd != "mcp" {
 		return invalid("unknown command; use --help")
 	}
 	if kind != "" && kind != "operator" && kind != "agent" && kind != "browser" {
@@ -212,7 +219,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return updateCommand(release, check, noRestart, noRefresh, machine, stdout, stderr)
 	}
 	if cmd == "connect" {
-		return connectCommand(connectArgs, stdout)
+		return connectCommand(connectArgs, joinCode, stdout)
 	}
 	stateFlag := state
 	if state == "" {
@@ -229,6 +236,15 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return serviceCommand(cmd, state, machine, stdout, share)
 	}
 	ctx := context.Background()
+	if cmd == "connect-code" {
+		return connectCodeCommand(ctx, state, stdout)
+	}
+	if isSharingCommand(cmd) {
+		if kind != "" && kind != "operator" {
+			return invalid("Session sharing requires Operator credentials")
+		}
+		return sharingCommand(ctx, cmd, sharingArgs, state, credential, remote, agentFiles, joinCode, lifecycle, stdout)
+	}
 	if cmd == "statusline" {
 		statusLine(state, os.Stdin, stdout)
 		return nil

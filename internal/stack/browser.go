@@ -180,8 +180,8 @@ func (s *Store) RevokeViews(ctx context.Context, token string, r ViewRevokeReque
 	if err != nil {
 		return 0, err
 	}
-	if p.Kind != OperatorCapability {
-		return 0, failure("forbidden", "Operator credential required")
+	if p.Kind != OperatorCapability || (r.All && p.SessionID != "") {
+		return 0, failure("forbidden", "Operator credential for the requested scope required")
 	}
 	where, args := "", []any{}
 	if !r.All {

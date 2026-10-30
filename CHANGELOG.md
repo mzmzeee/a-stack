@@ -6,6 +6,8 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+- Accept `--code` in the command allowlists for `connect` and `session link`, so owner and friend enrollment work through the public CLI. A subprocess TLS walkthrough now covers both documented flows.
+
 - Urgent Task mail (schema 13): `mail send|reply --urgent` retains priority and nudges enrolled hooks at the next eligible tool boundary without the normal 30-second delay. Operator answers and overdue ACK reminders are urgent. Nudges stay generic and do not advance Agent cursors, acknowledge mail or re-arm Herdr notices; `hook status` shows urgent-mail availability.
 - Keep human panes quiet: Orchestrator bindings default to hook-only mail notices; choose `herdr bind --notices hook|pane`. Pane notices are short and at least 10 minutes apart, even after mail reads. Human prompts get a one-line mail count. Agent skills reserve mentions for action or final DONE.
 
@@ -19,11 +21,14 @@ The release workflow uses the section of a version as the notes of its GitHub re
 - Record trusted Tailscale Operator labels on actions and answers (schema 11). Shared Needs you answers show who answered and when; a second answer names the first answerer without sending duplicate mail.
 ### Added
 
+- Sharing review fixes: fence competing transfers with source release proofs, lock recovery journals, and allow corrected preflight arguments. Owner enrollment (`connect-code`, `connect --code`) and Session invitations now require expiring single-use codes as well as Tailscale identity. Explain missing local services and multi-machine unshare credentials.
+- Share, link, invite and unshare Sessions over a connected Tailscale service (schema 14). Transfers stage atomically, seal the unchanged source, and resume after interruptions. Invited Operators are limited to their Session; links open its server view. Agent credentials and exact local hook enrollment migrate without copying source capabilities. Remote discovery respects the hook deadline.
+
 - Explicit mail acknowledgements (schema 12): send or reply with `--ack-required`, optional `--ack-from` and `--ack-due`; recipients use `mail ack`. Mail checks and handoffs list pending obligations, the Now board shows overdue counts, and Herdr can submit one overdue reminder per obligation. Reading and Task completion do not acknowledge; unassignment withdraws outstanding obligations permanently.
 
 - `mail reply` routes a reply to the original Task and mentions its sender when still assigned. `mail recipients` previews the current assignees who can read mail and be mentioned. Handoff briefs show mail coverage, omitted earlier messages and a continuation cursor.
 
-- Tailscale remote foundation: `serve --share` and `service install --share` configure an owned HTTPS Serve rule over the fixed loopback port. The server accepts only its configured MagicDNS Host and matching Origin, with request identity kept separate from bearer authorization. `connect NAME URL`, `connect list`, `connect remove NAME` and `--remote NAME` add private HTTPS profiles with database pinning. See [Remote service](docs/remote.md); Session linking and remote notices are not included.
+- Tailscale remote foundation: `serve --share` and `service install --share` configure an owned HTTPS Serve rule over the fixed loopback port. The server accepts only its configured MagicDNS Host and matching Origin, with request identity kept separate from bearer authorization. `connect NAME URL`, `connect list`, `connect remove NAME` and `--remote NAME` add private HTTPS profiles with database pinning. See [Remote service](docs/remote.md). Cross-machine notice delivery requires a relay.
 
 - Hermetic CLI regression stories, a generated Task graph/mail model and a guard keeping test tooling out of production dependencies. Nightly CI adds five-minute fuzz runs, 100 seeded SIGKILL recovery checks and a targeted mutation-testing pilot. See [Regression gates](docs/quality.md#regression-gates).
 

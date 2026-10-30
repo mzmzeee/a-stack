@@ -32,6 +32,16 @@ func (s *Store) ListLifecycle(ctx context.Context, token, action string, r ListR
 	if p.Kind == BrowserCapability {
 		return nil, failure("forbidden", "browser views use Session snapshot endpoints")
 	}
+	if p.Kind == OperatorCapability && p.SessionID != "" {
+		session, err := loadSession(ctx, tx, p.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		if (r.SessionID != "" && r.SessionID != session.ID) || (r.WorkspaceID != "" && r.WorkspaceID != session.WorkspaceID) {
+			return nil, failure("forbidden", "credential is scoped to another Session")
+		}
+		r.Context = Context{WorkspaceID: session.WorkspaceID, SessionID: session.ID}
+	}
 	if p.Kind != OperatorCapability || r.SessionID != "" {
 		if _, err = ReadSession(ctx, tx, p, r.Context); err != nil {
 			return nil, err

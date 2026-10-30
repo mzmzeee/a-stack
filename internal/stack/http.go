@@ -261,6 +261,10 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 		s.redeemHTTP(w, r)
 		return
 	}
+	if shared && (r.URL.Path == "/v1/session/join" || r.URL.Path == "/v1/connect/join") {
+		s.sessionJoinHTTP(w, r)
+		return
+	}
 	values := r.Header.Values("Authorization")
 	if len(values) != 1 || !strings.HasPrefix(values[0], "Bearer ") {
 		writeError(w, failure("unauthorized", "valid bearer credential required"))
@@ -272,7 +276,7 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 		writeError(w, err)
 		return
 	}
-	if r.ContentLength > MaxRequestBytes {
+	if r.ContentLength > int64(apiSizeLimit(r.URL.Path)) {
 		writeError(w, failure("invalid_input", "request exceeds limit"))
 		return
 	}
@@ -307,8 +311,8 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 			writeError(w, failure("invalid_input", "GET required"))
 			return
 		}
-		if p.Kind != OperatorCapability {
-			writeError(w, failure("forbidden", "Operator credential required"))
+		if err := operator(p); err != nil {
+			writeError(w, err)
 			return
 		}
 		status, err := s.Store.Status()
@@ -322,8 +326,8 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 			writeError(w, failure("invalid_input", "POST required"))
 			return
 		}
-		if p.Kind != OperatorCapability {
-			writeError(w, failure("forbidden", "Operator credential required"))
+		if err := operator(p); err != nil {
+			writeError(w, err)
 			return
 		}
 		var request struct {
@@ -340,19 +344,25 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"data": status})
 	default:
-		if !s.notificationHTTP(w, r, token) && !s.herdrBindHTTP(w, r, token) && !s.herdrHTTP(w, r, token) && !s.browserHTTP(w, r, token) && !s.mailHTTP(w, r, token) && !s.taskHTTP(w, r, token) && !s.lifecycleHTTP(w, r, token) {
+		if !s.transferHTTP(w, r, token) && !s.notificationHTTP(w, r, token) && !s.herdrBindHTTP(w, r, token) && !s.herdrHTTP(w, r, token) && !s.browserHTTP(w, r, token) && !s.mailHTTP(w, r, token) && !s.taskHTTP(w, r, token) && !s.lifecycleHTTP(w, r, token) {
 			writeError(w, failure("not_found", "endpoint not found"))
 		}
 	}
 }
 
 type Client struct {
+	RemoteName string
 	Discovery  Discovery
 	Credential Credential
 	HTTP       *http.Client
 }
 
 func NewClient(dir, credentialFile string, kind CapabilityKind) (*Client, error) {
+	return NewClientContext(context.Background(), dir, credentialFile, kind)
+}
+
+// NewClientContext includes remote discovery in the caller's deadline.
+func NewClientContext(ctx context.Context, dir, credentialFile string, kind CapabilityKind) (*Client, error) {
 	if kind != "" && !validKind(kind) {
 		return nil, failure("invalid_input", "credential kind must be operator, agent or browser")
 	}
@@ -368,6 +378,9 @@ func NewClient(dir, credentialFile string, kind CapabilityKind) (*Client, error)
 	}
 	if kind != "" && kind != c.Kind {
 		return nil, failure("forbidden", "credential file has a different capability kind")
+	}
+	if c.Remote != "" {
+		return NewRemoteClient(ctx, c.Remote, credentialFile, kind)
 	}
 	d, err := ReadDiscovery(dir)
 	if err != nil {
@@ -392,7 +405,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 			return nil, failure("invalid_input", "invalid request body")
 		}
 	}
-	if len(data) > MaxRequestBytes {
+	if len(data) > apiSizeLimit(path) {
 		return nil, failure("invalid_input", "request exceeds limit")
 	}
 	if !strings.HasPrefix(path, "/v1/") || strings.ContainsAny(path, "?#\r\n") {
@@ -415,18 +428,18 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 		return nil, unreachable(serviceUnreachable)
 	}
 	defer response.Body.Close()
-	b, err := io.ReadAll(io.LimitReader(response.Body, MaxRequestBytes+1))
+	b, err := io.ReadAll(io.LimitReader(response.Body, int64(apiSizeLimit(path))+1))
 	if err != nil {
 		return nil, unreachable("the response from the a-stack service was cut off; run the same command again")
 	}
-	if len(b) > MaxRequestBytes {
+	if len(b) > apiSizeLimit(path) {
 		return nil, failure("storage_unavailable", "invalid or oversized service response")
 	}
 	var envelope struct {
 		Data  json.RawMessage `json:"data,omitempty"`
 		Error *Error          `json:"error,omitempty"`
 	}
-	if decodeJSON(b, &envelope) != nil || (envelope.Error == nil) == (len(envelope.Data) == 0) {
+	if json.Unmarshal(b, &envelope) != nil || (envelope.Error == nil) == (len(envelope.Data) == 0) {
 		return nil, failure("storage_unavailable", "invalid service response")
 	}
 	if envelope.Error != nil {
