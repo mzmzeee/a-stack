@@ -35,7 +35,7 @@ func TestMailAckExplicitIndependentAndIdempotent(t *testing.T) {
 
 	r := ackSend(t, f, nil, "1h")
 	first := f.read(t, f.b.Token, "", 10)
-	if len(first.Messages[0].Acks) != 2 || len(first.PendingAcks) != 2 {
+	if len(first.Messages[0].Acks) != 1 || len(first.PendingAcks) != 1 {
 		t.Fatal(first)
 	}
 
@@ -54,19 +54,22 @@ func TestMailAckExplicitIndependentAndIdempotent(t *testing.T) {
 
 	request := MailAckRequest{Context: f.ref(0), OperationID: opaqueID(), MessageID: r.ResourceID}
 
-	a, err := s.AckMail(ctx, f.a.Token, request)
+	_, err := s.AckMail(ctx, f.a.Token, request)
+	requireCode(t, err, "forbidden")
+
+	a, err := s.AckMail(ctx, f.b.Token, request)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	retry, err := s.AckMail(ctx, f.a.Token, request)
+	retry, err := s.AckMail(ctx, f.b.Token, request)
 	if err != nil || a != retry {
 		t.Fatal("retry changed receipt", err)
 	}
 
 	before := f.read(t, f.a.Token, "", 10).Messages[0].Acks
 	request.OperationID = opaqueID()
-	if _, err = s.AckMail(ctx, f.a.Token, request); err != nil {
+	if _, err = s.AckMail(ctx, f.b.Token, request); err != nil {
 		t.Fatal(err)
 	}
 
@@ -74,7 +77,7 @@ func TestMailAckExplicitIndependentAndIdempotent(t *testing.T) {
 		t.Fatal("repeat ack changed actor/time")
 	}
 
-	if len(ackCheck(t, f, f.a.Token).PendingAcks) != 0 || len(ackCheck(t, f, f.b.Token).PendingAcks) != 1 {
+	if len(ackCheck(t, f, f.a.Token).PendingAcks) != 0 || len(ackCheck(t, f, f.b.Token).PendingAcks) != 0 {
 		t.Fatal("another assignee acknowledged")
 	}
 
@@ -82,7 +85,7 @@ func TestMailAckExplicitIndependentAndIdempotent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if countTest(t, s, "SELECT count(*) FROM mail_acks WHERE acked_at<>''") != 2 || countTest(t, s, "SELECT count(*) FROM mail_messages") != 1 {
+	if countTest(t, s, "SELECT count(*) FROM mail_acks WHERE acked_at<>''") != 1 || countTest(t, s, "SELECT count(*) FROM mail_messages") != 1 {
 		t.Fatal("ack generated mail or obligation")
 	}
 }

@@ -342,7 +342,7 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Header.Get("X-A-Stack-Instance") != s.Discovery.InstanceID {
-		writeError(w, failure("conflict", "service instance changed; reload discovery"))
+		writeError(w, failure("conflict", "service instance changed; run the command again to reload service.json; if you copied discovery for SSH forwarding, copy the current service.json from the server first"))
 		return
 	}
 
@@ -457,6 +457,7 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 }
 
 type Client struct {
+	StateDir   string
 	RemoteName string
 	Discovery  Discovery
 	Credential Credential
@@ -506,7 +507,7 @@ func NewClientContext(ctx context.Context, dir, credentialFile string, kind Capa
 
 	transport := &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext, DisableKeepAlives: true}
 
-	return &Client{Discovery: d, Credential: c, HTTP: &http.Client{Timeout: 30 * time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	return &Client{StateDir: dir, Discovery: d, Credential: c, HTTP: &http.Client{Timeout: 30 * time.Second, Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
 // Do returns the complete JSON envelope; no stdout or automatic retry. Mutation
@@ -547,7 +548,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 			return nil, unreachable("cannot reach remote a-stack; check the server and Tailscale connection, then retry the same operation ID")
 		}
 
-		return nil, unreachable(serviceUnreachable)
+		return nil, unreachable(serviceHint(serviceUnreachable, c.StateDir))
 	}
 	defer response.Body.Close()
 
@@ -569,6 +570,10 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 	}
 
 	if envelope.Error != nil {
+		if envelope.Error.Code == "unauthorized" && c.Credential.Kind == AgentCapability {
+			envelope.Error.Message += "; this Agent credential may have been replaced or revoked; ask the Operator for the current credential file"
+		}
+
 		return nil, envelope.Error
 	}
 

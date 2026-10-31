@@ -179,6 +179,12 @@ In another terminal, run `a-stack health --json` and make sure that the database
 
 Never copy only a live main database file. Never mix a backup with old sidecar files, and never delete sidecar files to try a recovery. Keep the Agent credential files that you gave out in a separate place, because the database hashes cannot rebuild their tokens. See [credential delivery and recovery](lifecycle.md#credential-delivery-and-recovery).
 
+## Recover from connection and credential errors
+
+Service-down hints name the same `--state-dir` you used. Start that service, not a different default instance. After a service restart, run the command again to reload `service.json`. If you use a copied discovery file for SSH forwarding, copy the server's current `service.json` first. Keep the original operation ID when retrying a change.
+
+An unauthorized Agent credential may have been replaced by `agent rebind` or revoked. Ask the Operator for the current credential file; do not print its contents. Generated credentials must be outside Git checkouts, including through symlinked directories. `view revoke`, including `--all`, requires an Operator credential.
+
 ## Internal interfaces
 
 Endpoints in `internal/stack` use these interfaces:

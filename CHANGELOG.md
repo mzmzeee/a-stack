@@ -34,6 +34,8 @@ Orchestrator bindings now default to hook-only mail notices, so a-stack does not
 
 ### Fixed
 
+- Suppress pane-setup warnings when Herdr delivery is disabled or hook-only, while keeping uncertain-delivery warnings. Self-mentions no longer request an acknowledgement from the sender, and an urgent prompt nudge no longer hides the normal-mail count.
+- Check the credential parent used by `new --orchestrator`, reject root/home Workspace paths, and check cursor folders before fetching mail. Clarify custom-state service recovery, replaced credentials, invalid cursor paths, Git-checkout credentials, duration overflow and Operator-only view revocation. Correct the getting-started mail walkthrough and hand-off brief.
 - Keep the service's state lock and discovery until every SQLite connection finishes rollback and closes. A shutdown deadline reports an error while cleanup retains ownership, preventing a late WAL checkpoint from writing into a restarted service's database. Receipt expiry finishes its current transaction before stopping.
 - Accept hyphen-prefixed opaque IDs as positional CLI arguments, including `session link` Session IDs, and support `--` to end flag parsing. Hyphen-prefixed flag values remain intact.
 - Refuse an empty or missing state database beside an existing Operator credential, rather than silently creating an empty installation with a new identity. Interrupted first starts still recover.

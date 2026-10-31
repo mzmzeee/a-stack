@@ -55,7 +55,10 @@ func (h *home) run(ctx context.Context) error {
 			return answer
 		}
 
-		return errNoServiceForHandOff
+		err := *errNoServiceForHandOff
+		err.Message = strings.ReplaceAll(err.Message, "a-stack service install", "a-stack service install --state-dir "+shellQuote(h.state))
+		err.Message = strings.ReplaceAll(err.Message, "a-stack serve in", "a-stack serve --state-dir "+shellQuote(h.state)+" in")
+		return &err
 	}
 
 	err = serveForeground(ctx, h.state, "", "", func(ctx context.Context, service *stack.Service) error {
@@ -327,6 +330,12 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 
 	agents := filepath.Join(filepath.Dir(h.state), "a-stack-agents")
 	credential := filepath.Join(agents, row.SessionID, h.orchestrator+".json")
+	for _, dir := range []string{agents, filepath.Dir(credential)} {
+		if err := stack.EnsurePrivateDirectory(dir); err != nil {
+			return invalid("cannot use a private credential folder " + dir + ": " + err.Error())
+		}
+	}
+
 	if session.OrchestratorID != nil {
 		// The same hand-off again, for example from an agent that lost it:
 		// the Orchestrator's own credential file proves it, and nothing is made.
@@ -375,12 +384,6 @@ func (h *home) handOff(ctx context.Context, client *stack.Client, row sessionRow
 
 	if _, err := os.Lstat(credential); err == nil {
 		return invalid(credential + " already exists; choose another --orchestrator name")
-	}
-
-	for _, dir := range []string{agents, filepath.Dir(credential)} {
-		if err := stack.MkdirPrivate(dir); err != nil {
-			return invalid("cannot make the folder " + dir)
-		}
 	}
 
 	registerID := operationID()

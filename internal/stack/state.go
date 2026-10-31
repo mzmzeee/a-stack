@@ -20,6 +20,19 @@ import (
 
 const maxPrivateFile = 4096
 
+// EnsurePrivateDirectory creates a private folder or checks the existing one.
+func EnsurePrivateDirectory(dir string) error {
+	if _, err := statePath(dir); err != nil {
+		return err
+	}
+
+	if err := MkdirPrivate(dir); err != nil {
+		return err
+	}
+
+	return checkPrivateDirectory(dir)
+}
+
 // OpenServiceLog validates the directory and the opened file before truncating
 // a large log. The Windows console uses this before the service starts.
 func OpenServiceLog(dir string) (*os.File, error) {
@@ -355,6 +368,19 @@ var (
 	serviceUnreachable = "cannot reach the a-stack service; if it stopped, " + startHint
 )
 
+func serviceHint(message, dir string) string {
+	if dir == "" {
+		return message
+	}
+
+	quoted := "'" + strings.ReplaceAll(dir, "'", "'\"'\"'") + "'"
+	if runtime.GOOS == "windows" {
+		quoted = "'" + strings.ReplaceAll(dir, "'", "''") + "'"
+	}
+
+	return strings.Replace(message, startHint, "start it with a-stack serve --state-dir "+quoted+" in another terminal, or ask the Operator to start it; then run the same command again", 1)
+}
+
 // unreachable is retryable: a request that failed may still have committed,
 // and the same command with the same operation ID returns its receipt.
 func unreachable(message string) *Error {
@@ -371,7 +397,7 @@ func ReadDiscovery(dir string) (Discovery, error) {
 	var d Discovery
 	data, err := privateRead(filepath.Join(dir, "service.json"))
 	if err != nil {
-		return d, unreachable(serviceDown)
+		return d, unreachable(serviceHint(serviceDown, dir))
 	}
 
 	if decodeJSON(data, &d) != nil || !validToken(d.DatabaseID) || !validToken(d.InstanceID) || !strings.HasPrefix(d.URL, "http://127.0.0.1:") {

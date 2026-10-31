@@ -7,6 +7,7 @@ import (
 	"flag"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
@@ -220,6 +221,13 @@ func lifecycleCall(ctx context.Context, client *stack.Client, command string, f 
 	var body any
 	switch command {
 	case "workspace create":
+		if canonical, err := stack.ResolvePath(f.path); err == nil && filepath.IsAbs(f.path) {
+			home, _ := os.UserHomeDir()
+			if holdsHome(canonical, home) || filepath.Dir(canonical) == canonical {
+				return nil, invalid("workspace create needs a project folder, not your home folder or a folder above it: every agent started below it would join the Session; choose a project folder with --path")
+			}
+		}
+
 		body = stack.WorkspaceCreateRequest{OperationID: f.operationID, Path: f.path}
 	case "workspace list", "session list", "agent list":
 		body = stack.ListRequest{Context: ref, Limit: f.limit, After: f.after}

@@ -58,6 +58,7 @@ func TestNotificationsHoldBurstDespiteOwnRead(t *testing.T) {
 func TestNotificationsHoldStatusAndFailedRead(t *testing.T) {
 	f := noticeTestFixture(t)
 	f.service.notifier = f.n
+	f.service.Store.noticeWake = f.n.signal
 	defer func() { f.service.notifier = nil }()
 	f.send(t, f.a.Token, "First @03-worker")
 	f.drain(t, 4)

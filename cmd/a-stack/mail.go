@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"unicode/utf8"
 
@@ -85,6 +86,11 @@ func readMailCursors(path string) (map[string]string, error) {
 		}
 
 		defer file.Close()
+
+		if info, err := file.Stat(); err != nil || !info.Mode().IsRegular() {
+			return nil, invalid("cursor file must be a regular file, not a directory")
+		}
+
 		reader = file
 	}
 
@@ -171,6 +177,16 @@ type mailCheckOutput struct {
 // Concurrent saves are atomic and last-writer-wins; a lost save replays mail.
 func mailCheck(ctx context.Context, client *stack.Client, r stack.MailCheckRequest, path string, given bool, deliver func([]byte) error) ([]byte, error) {
 	save := given && path != "-"
+	if save {
+		probe, err := os.CreateTemp(filepath.Dir(path), ".a-stack-cursor-*")
+		if err != nil {
+			return nil, invalid("cannot write the cursor file; its folder must exist and be writable")
+		}
+
+		probe.Close()
+		os.Remove(probe.Name())
+	}
+
 	if given {
 		var err error
 		if r.Cursors, err = readMailCursors(path); err != nil {

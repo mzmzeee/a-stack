@@ -56,7 +56,7 @@ After 30 minutes the Now board, watch and notification status show **Stalled**. 
 
 ## Explicit acknowledgements
 
-Use `--ack-required` on `mail send` or `mail reply` when a handoff needs an explicit response. By default every mentioned current assignee must acknowledge, including the automatic reply mention. Repeat `--ack-from NAME` to select particular current assignees instead; these names also receive a mention. An empty recipient list is rejected. `--ack-due 30m` sets an optional deadline measured from the send. It accepts a positive Go duration, such as `30m` or `2h`; both acknowledgement options require `--ack-required`.
+Use `--ack-required` on `mail send` or `mail reply` when a handoff needs an explicit response. By default every mentioned current assignee except the sender must acknowledge, including the automatic reply mention. Self-mentions and selecting yourself with `--ack-from` create no acknowledgement obligation. Repeat `--ack-from NAME` to select particular current assignees instead; these names also receive a mention. An empty recipient list is rejected. `--ack-due 30m` sets an optional deadline measured from the send. It accepts a positive Go duration, such as `30m` or `2h`, up to `2562047h47m16.854775807s`; larger values are out of range; both acknowledgement options require `--ack-required`.
 
 ```sh
 # Add the normal credential, Workspace and Session flags.
@@ -123,7 +123,7 @@ A returned cursor points to the last message that the response actually contains
 
 ### The cursor file
 
-`mail check --cursor-file FILE` keeps your positions in a file that you own. The check reads the file, fetches mail, writes the complete response to stdout, and only then saves the returned positions. A failed or short stdout write leaves the file unchanged. A crash before the save can replay the batch. Run the command again while the output has `more: true`. The service stores no read position; the file is yours.
+`mail check --cursor-file FILE` keeps your positions in a file that you own. Before fetching mail or printing a page, the check verifies that the cursor folder exists and is writable and that an existing cursor is a regular file. It then reads the file, fetches mail, writes the complete response to stdout, and only then saves the returned positions. A failed or short stdout write leaves the file unchanged. A crash before the save can replay the batch. Run the command again while the output has `more: true`. The service stores no read position; the file is yours.
 
 A successful stdout write is not proof that a harness delivered its tool result or that an Agent understood it. This is an output checkpoint, not an acknowledgment. To replay history after a lost tool result, use a new cursor file or `mail read` without a cursor.
 

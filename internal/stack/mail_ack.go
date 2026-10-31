@@ -45,7 +45,7 @@ type MailAckRequest struct {
 	MessageID   string `json:"message_id"`
 }
 
-func appendMailAcks(ctx context.Context, tx *sql.Tx, r MailSendRequest, message string, mentions []string) error {
+func appendMailAcks(ctx context.Context, tx *sql.Tx, r MailSendRequest, message, sender string, mentions []string) error {
 	if !r.AckRequired {
 		if len(r.AckFrom) > 0 || r.AckDue != "" {
 			return failure("invalid_input", "ack-from and ack-due require ack-required")
@@ -75,13 +75,17 @@ func appendMailAcks(ctx context.Context, tx *sql.Tx, r MailSendRequest, message 
 	if r.AckDue != "" {
 		d, err := time.ParseDuration(r.AckDue)
 		if err != nil || d <= 0 {
-			return failure("invalid_input", "ack-due must be a positive duration")
+			return failure("invalid_input", "ack-due must be a positive duration within the supported range (at most 2562047h47m16.854775807s)")
 		}
 
 		due = clockNow().Add(d).UTC().Format(time.RFC3339Nano)
 	}
 
 	for _, id := range recipients {
+		if id == sender {
+			continue
+		}
+
 		if _, err := tx.ExecContext(ctx, "INSERT INTO mail_acks(message_id,task_id,recipient_id,due_at) VALUES(?,?,?,?)", message, r.TaskID, id, due); err != nil {
 			return err
 		}

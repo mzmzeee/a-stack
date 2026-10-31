@@ -9,9 +9,10 @@ import (
 // This uses only the CLI and wire fields, so it also runs against schema 11.
 func TestMailAcknowledgementCLI(t *testing.T) {
 	f := newTeam(t)
+	f.taskChange(f.orchFile, "ack-cli-assign-orch", 2, "assign", "--agent", f.orch)
 	args := f.scoped("mail", "send", "--task", f.task, "--body", "Confirm this handoff", "--ack-required", "--ack-from", "02-worker", "--ack-from", "02-worker", "--ack-due", "1h", "--operation-id", "ack-cli-send")
 
-	out, stderr, code := f.run(f.workerFile, args...)
+	out, stderr, code := f.run(f.orchFile, args...)
 	if code != 0 {
 		t.Fatalf("ack request: %d %s %s", code, out, stderr)
 	}
