@@ -29,6 +29,10 @@ NOTICE = "a-stack: new Task mail for you. If you are a registered a-stack Agent,
 SAMPLES, WARMUP = 20, 2
 
 
+class SnapshotConflict(AssertionError):
+    """A paged read must restart with a fresh Session revision."""
+
+
 def check(condition, message):
     if not condition:
         raise AssertionError(message)
@@ -313,6 +317,14 @@ class Run:
                 + str((result or {}).get("error", {}).get("code")),
             )
         else:
+            error = (result or {}).get("error", {})
+            if (
+                path == "/v1/session/page"
+                and response.status == 409
+                and error.get("code") == "conflict"
+                and isinstance(error.get("current_revision"), int)
+            ):
+                raise SnapshotConflict("Session changed during paged collection")
             check(
                 response.status in (200, 304),
                 "API request "
@@ -458,6 +470,15 @@ class Run:
         )
 
     def pages(self, kind, task=None, actor=None):
+        for attempt in range(3):
+            try:
+                return self.collect_pages(kind, task, actor)
+            except SnapshotConflict:
+                if attempt == 2:
+                    raise
+
+    def collect_pages(self, kind, task, actor):
+        # Restart the whole collection: a prefix from an older revision is invalid.
         revision = self.session()["read_revision"]
         after, items, cursors = "", [], set()
         while True:

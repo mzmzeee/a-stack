@@ -129,8 +129,11 @@ node --test contrib/opencode/a-stack.test.mjs
 npx --yes "oxlint@$OXLINT" --deny-warnings internal/stack/browser/app.js scripts/demo-overlay.js contrib/opencode/a-stack.js contrib/opencode/a-stack.test.mjs
 
 step "ruff $RUFF"
-python3 -m py_compile scripts/validate-v1.py scripts/demo-terminal.py scripts/bench.py
-uvx "ruff@$RUFF" check --no-cache scripts/validate-v1.py scripts/demo-terminal.py scripts/bench.py
+python3 -m py_compile "${python_files[@]}"
+uvx "ruff@$RUFF" check --no-cache "${python_files[@]}"
+
+step "validation runner regression tests"
+python3 scripts/test-validate-v1.py
 
 step "shellcheck $SHELLCHECK"
 uvx --from "shellcheck-py==$SHELLCHECK" shellcheck "${shell_files[@]}"

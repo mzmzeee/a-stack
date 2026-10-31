@@ -1,6 +1,6 @@
 # Validation
 
-The [validation runner](../scripts/validate-v1.py) tests the compiled CLI and the loopback HTTP service with private, disposable state. It uses only the Python standard library. It uses a strict fake Herdr executable and never a live agent. This page explains how to run it and records the measured results of v1. For everyday use, read [Getting started](getting-started.md) instead.
+The [validation runner](../scripts/validate-v1.py) tests the compiled CLI and the loopback HTTP service with private, disposable state. It uses only the Python standard library. It uses a strict fake Herdr executable and never a live agent. Workflow page collection restarts from a fresh snapshot on a Session revision conflict, discarding all partial results. It allows at most three collection attempts and does not retry other errors. `scripts/check.sh` runs regression tests for this behavior, including an own-mail read between snapshot capture and page retrieval against a disposable service. This page explains how to run it and records the measured results of v1. For everyday use, read [Getting started](getting-started.md) instead.
 
 ## Run the runner
 
