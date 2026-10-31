@@ -39,6 +39,10 @@ func prepareAgentCredential(path, databaseID, action, operationID string, reques
 		return "", failure("invalid_input", "new credential file must be an absolute file name")
 	}
 
+	if _, err := statePath(path); err != nil {
+		return "", err
+	}
+
 	err := checkPrivateDirectory(filepath.Dir(path))
 	if err != nil {
 		return "", failure("invalid_input", "create a private credential directory first")
@@ -56,10 +60,6 @@ func prepareAgentCredential(path, databaseID, action, operationID string, reques
 
 	enrollment := Enrollment{OperationID: operationID, Digest: hex.EncodeToString(sum[:]), DatabaseID: databaseID}
 	if _, err = os.Lstat(path); os.IsNotExist(err) {
-		if _, err = statePath(path); err != nil {
-			return "", err
-		}
-
 		credential := Credential{Kind: AgentCapability, Token: opaqueID(), AgentName: name, Enrollment: &enrollment}
 		switch r := request.(type) {
 		case AgentRegisterRequest:

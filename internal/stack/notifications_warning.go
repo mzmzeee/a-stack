@@ -69,7 +69,7 @@ func (s *Store) noticeWarningTx(ctx context.Context, tx *sql.Tx, session, agent 
 		return warning, nil
 	}
 
-	if hookOnly {
+	if hookOnly || s.noticeWake == nil {
 		return nil, nil
 	}
 
@@ -83,10 +83,6 @@ func (s *Store) noticeWarningTx(ctx context.Context, tx *sql.Tx, session, agent 
 
 	if warning := noticeWarning(reason); warning != nil {
 		return warning, nil
-	}
-
-	if s.noticeWake == nil {
-		return noticeWarning("integration_disabled"), nil
 	}
 
 	return nil, nil

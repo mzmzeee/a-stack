@@ -1,0 +1,18 @@
+# Self-mentions retain mail but do not create notices or ACK obligations.
+as WORKER mail send --task $TASK --body '@worker' --ack-required --operation-id blind-story-self
+as WORKER mail check
+stdout '@worker'
+! stdout pending_acks
+! stdout notice_warning
+
+# Reject cursor destinations before delivering a page.
+! as WORKER mail check --cursor-file $WORK/missing/mail.json
+stderr 'folder must exist'
+! stdout .
+! as WORKER mail check --cursor-file $WORK
+stderr 'not a directory'
+! stdout .
+
+! as WORKER view revoke --all
+stderr 'Operator'
+! stdout .

@@ -57,7 +57,7 @@ func TestNoticeWarningsOnOwnMailAndBrowserAgents(t *testing.T) {
 			}
 
 			for _, warning := range []*NoticeWarning{check.NoticeWarning, viewed} {
-				if reason == "submitted" {
+				if reason == "submitted" || reason == "integration_disabled" {
 					if warning != nil {
 						t.Fatal("healthy target got a warning", warning)
 					}

@@ -84,7 +84,11 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 
 	defer func() {
 		if urgent != "" {
-			text = urgent
+			if text != "" && in.Event == "UserPromptSubmit" {
+				text = urgent + "\n" + text
+			} else {
+				text = urgent
+			}
 		}
 	}()
 
@@ -113,7 +117,7 @@ func hookMailNudge(ctx context.Context, client *stack.Client, id hookIdentity, i
 			return err
 		}
 
-		if urgent != "" {
+		if urgent != "" && in.Event != "UserPromptSubmit" {
 			return nil // one urgent nudge covers the normal mail too
 		}
 

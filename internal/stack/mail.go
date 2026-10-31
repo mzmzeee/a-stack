@@ -330,7 +330,7 @@ func appendMailTx(ctx context.Context, tx *sql.Tx, p Principal, r MailSendReques
 		}
 	}
 
-	if err = appendMailAcks(ctx, tx, r, id, recipients); err != nil {
+	if err = appendMailAcks(ctx, tx, r, id, p.SubjectID, recipients); err != nil {
 		return Receipt{}, err
 	}
 

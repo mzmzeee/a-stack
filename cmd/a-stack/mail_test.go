@@ -199,8 +199,8 @@ func TestCLIMailInputIndependentCursorsRemovalAndRejoin(t *testing.T) {
 		}
 
 		var result stack.MailCheckPage
-		if json.Unmarshal(invoke(command, 0), &result) != nil || result.NoticeWarning == nil || result.NoticeWarning.Reason != "binding_incomplete" || !strings.Contains(result.NoticeWarning.Fix, "herdr bind") {
-			t.Fatal("mail check lacks the own-notices hint", machine, result.NoticeWarning)
+		if json.Unmarshal(invoke(command, 0), &result) != nil || result.NoticeWarning != nil {
+			t.Fatal("disabled notices produced a setup warning", machine, result.NoticeWarning)
 		}
 	}
 

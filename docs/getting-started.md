@@ -211,7 +211,7 @@ revision="$(as_agent "$worker_a_credential" task status --task "$task_a" --progr
   --expected-revision "$revision" --operation-id demo-finish-a | field data.revision)"
 ```
 
-Task A is now Finished. Tasks B and C do not change. This `mail check` shows the two messages of step 7, which the check in step 7 had not seen. Another check with the same file would show none.
+Task A is now Finished. Tasks B and C do not change. This `mail check` shows no new messages: the check in step 8 already returned the two messages of step 7 and the Operator's answer.
 
 Good to know: an assignee marks a Task finished only when the whole shared Task is complete. The other assignees do not need to approve it. A file reference is a path or URL that people can see and copy. a-stack does not read the file, so the file in this example does not need to exist.
 
@@ -309,6 +309,8 @@ cd ~/code/my-project
 a-stack new --orchestrator 01-orchestrator
 ```
 
+With a custom `--state-dir DIR`, the credential folder is `a-stack-agents/SESSION_ID/` beside `DIR`, not inside it. Its existing parent folder must be private (0700 on Unix) and outside Git checkouts. Use a private parent for throwaway state too, rather than placing the state directly under `/tmp`.
+
 It makes the Session (or opens the open Session of this folder's name), registers `01-orchestrator` with a credential file in `~/.local/state/a-stack-agents/SESSION_ID/`, so each Session has its own, appoints it, opens the view and prints a brief:
 
 ```text
@@ -320,8 +322,11 @@ Workspace: 8Ubp93kvNiGHpt0jk2NKd8NDRo1zNPeghWeMVauM9zQ   Session: 1UlNoilQZrq8U5
 Your name: 01-orchestrator   Your private folder: make one with mktemp -d
 Work in: /home/you/code/my-project
 Hooks: in that folder, run a-stack hook install --credential-file '/home/you/.local/state/a-stack-agents/1UlNoilQZrq8U5grIzWxI7y574ZB2dloXJl7yTEadt4/01-orchestrator.json' --claude (or --codex, --pi or --opencode for your harness) once. They work from the next start or resume of your session.
+Reachability: enroll your own hooks with me hook enroll and your harness flag, or bind in Herdr. Run me mail check --cursor-file /your/private/folder/mail.json at startup and between work steps, including while workers build. Check me session inspect for reachability warnings; a mention alone does not mean you received it.
 Goal: <describe the goal>. Plan the Tasks, link each one to the Tasks it depends on, register an Agent for each Task that you hand out and brief each Agent.
 ```
+
+When run inside Herdr (`HERDR_ENV=1`), the brief also adds a `Herdr:` line with the hook-only binding command and integration recovery steps. Outside Herdr it omits that line.
 
 Replace the goal line, and run `a-stack skill install` once if your coding agent does not have the skill yet. The brief names the credential file only by its path.
 

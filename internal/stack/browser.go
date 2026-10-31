@@ -189,10 +189,6 @@ type ViewRevokeRequest struct {
 // of all Sessions, and returns the number of view tokens. Open tabs lose access
 // at their next refresh.
 func (s *Store) RevokeViews(ctx context.Context, token string, r ViewRevokeRequest) (int64, error) {
-	if r.All == (r.WorkspaceID != "" || r.SessionID != "") {
-		return 0, failure("invalid_input", "give either --all or --workspace and --session")
-	}
-
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, storageError(err)
@@ -206,6 +202,10 @@ func (s *Store) RevokeViews(ctx context.Context, token string, r ViewRevokeReque
 
 	if p.Kind != OperatorCapability || (r.All && p.SessionID != "") {
 		return 0, failure("forbidden", "Operator credential for the requested scope required")
+	}
+
+	if r.All == (r.WorkspaceID != "" || r.SessionID != "") {
+		return 0, failure("invalid_input", "give either --all or --workspace and --session")
 	}
 
 	where, args := "", []any{}

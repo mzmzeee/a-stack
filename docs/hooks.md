@@ -185,7 +185,7 @@ The guard costs two reads at each stop: the assignments and the Task list. A wor
 
 ## Task mail nudge
 
-After a tool call, the hook checks the Agent's normal Task mail at most once every 30 seconds per harness session. A human prompt checks immediately, even inside that interval, and adds one line such as `5 new a-stack mails, run your mail check`. The count covers the bounded page fetched, not necessarily the whole backlog. It includes no Task titles or message bodies. Repeated prompts do not repeat mail already surfaced by that hook.
+After a tool call, the hook checks the Agent's normal Task mail at most once every 30 seconds per harness session. A human prompt checks immediately, even inside that interval, and adds one line such as `5 new a-stack mails, run your mail check`. The count covers the bounded page fetched, not necessarily the whole backlog. It includes no Task titles or message bodies. When urgent mail arrives at the same prompt, the hook shows the urgent nudge and the normal-mail count together. Repeated prompts do not repeat mail already surfaced by that hook.
 
 This is how a `herdr bind --notices hook` Agent learns about mail without typed pane notices. The Orchestrator uses this mode by default. Its hooks must be enrolled; without hooks it must check mail itself.
 

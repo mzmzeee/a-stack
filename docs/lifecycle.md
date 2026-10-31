@@ -6,7 +6,7 @@ The service gives each Workspace, Session and Agent a stable opaque ID. The CLI 
 
 ## Workspaces, Sessions and Agents
 
-A Workspace is an existing project directory. `workspace create --path ABSOLUTE_DIR` resolves symlinks to get the canonical path, and rejects a path that is already registered. It never uses the current directory. `a-stack new` sends the current folder as this path when no Workspace has exactly that folder, and otherwise reuses that Workspace.
+A Workspace is an existing project directory. `workspace create --path ABSOLUTE_DIR` resolves symlinks to get the canonical path, and rejects a path that is already registered. The CLI refuses the filesystem root, your home folder and its ancestors, just like `a-stack new`, so a Workspace cannot accidentally include every project. It never uses the current directory. `a-stack new` sends the current folder as this path when no Workspace has exactly that folder, and otherwise reuses that Workspace.
 
 A Session belongs to one Workspace. An Agent registration belongs to one Session for its whole lifetime. To link a separate working directory to the Workspace, use `agent register --worktree ABSOLUTE_DIR`. This does not make a new Workspace.
 

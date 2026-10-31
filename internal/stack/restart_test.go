@@ -201,7 +201,7 @@ func TestOwnedStateAndStoppedServiceMessages(t *testing.T) {
 	_, err := NewClient(dir, "", "")
 	requireCode(t, err, "storage_unavailable")
 
-	if e, ok := err.(*Error); !ok || !e.Retryable || !strings.Contains(e.Message, "start it with a-stack serve (or "+ServiceCommand("start")+"), or ask the Operator to start it") {
+	if e, ok := err.(*Error); !ok || !e.Retryable || !strings.Contains(e.Message, "start it with a-stack serve --state-dir") || !strings.Contains(e.Message, dir) {
 		t.Fatal("stopped service message", err)
 	}
 }
