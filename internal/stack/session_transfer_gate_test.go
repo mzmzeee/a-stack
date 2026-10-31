@@ -36,7 +36,7 @@ func TestTransferRejectsBeforeReadingBody(t *testing.T) {
 	execTest(t, f.service.Store, "INSERT INTO capabilities(token_hash,kind,subject_id,session_id) VALUES(?,'operator',?,'')", tokenHash(friend), opaqueID())
 	execTest(t, f.service.Store, "INSERT INTO session_operators(token_hash,session_id,login) VALUES(?,?,?)", tokenHash(friend), f.sessions[0], "friend@example.com")
 
-	for _, tc := range []struct{ name, path, token string }{{"agent import", "import", f.a.Token}, {"friend import", "import", friend}, {"agent export", "export", f.a.Token}, {"unknown import", "import", opaqueID()}} {
+	for _, tc := range []struct{ name, path, token string }{{"agent import", "import", f.a.Token}, {"friend import", "import", friend}, {"friend export", "export", friend}, {"agent export", "export", f.a.Token}, {"unknown import", "import", opaqueID()}} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := &transferProbeBody{}
 			req := httptest.NewRequest(http.MethodPost, "/v1/session/transfer/"+tc.path, body)

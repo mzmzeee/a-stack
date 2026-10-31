@@ -327,6 +327,10 @@ func newRemoteClient(ctx context.Context, name, credentialFile string, kind Capa
 		return nil, failure("forbidden", "credential file has a different capability kind")
 	}
 
+	if c.Enrollment == nil || c.Enrollment.DatabaseID != p.DatabaseID || (c.Remote != "" && c.Remote != name) {
+		return nil, failure("conflict", "credential was not enrolled for this remote profile and database; restore its original profile or enroll a new credential")
+	}
+
 	h, err := discoverRemote(ctx, client, p.URL)
 	if err != nil {
 		return nil, err

@@ -6,6 +6,9 @@ import (
 	"time"
 )
 
+// Trim Z in comparisons so legacy variable-width fractions order before later instants.
+const joinTimeFormat = "2006-01-02T15:04:05.000000000Z"
+
 // CreateOwnerCode stores only a hash. The Operator generates and displays the code locally.
 func (s *Store) CreateOwnerCode(ctx context.Context, token, hash string) error {
 	if !validHash(hash) {
@@ -29,7 +32,7 @@ func (s *Store) CreateOwnerCode(ctx context.Context, token, hash string) error {
 
 	// Owner-only issuance keeps its small rows permanently: retired hashes cannot be revived.
 	var retired bool
-	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM owner_join_codes WHERE code_hash=? AND (consumed_hash<>'' OR expires_at<=?))", hash, now()).Scan(&retired); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM owner_join_codes WHERE code_hash=? AND (consumed_hash<>'' OR rtrim(expires_at,'Z')<=rtrim(?,'Z')))", hash, clockNow().UTC().Format(joinTimeFormat)).Scan(&retired); err != nil {
 		return storageError(err)
 	}
 
@@ -37,7 +40,7 @@ func (s *Store) CreateOwnerCode(ctx context.Context, token, hash string) error {
 		return failure("conflict", "owner code hash has already been used or expired; generate a new code")
 	}
 
-	if _, err = tx.ExecContext(ctx, "INSERT INTO owner_join_codes(code_hash,expires_at) VALUES(?,?) ON CONFLICT DO NOTHING", hash, clockNow().UTC().Add(24*time.Hour).Format(time.RFC3339Nano)); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO owner_join_codes(code_hash,expires_at) VALUES(?,?) ON CONFLICT DO NOTHING", hash, clockNow().UTC().Add(24*time.Hour).Format(joinTimeFormat)); err != nil {
 		return storageError(err)
 	}
 
@@ -61,7 +64,7 @@ func (s *Store) JoinOwner(ctx context.Context, r SessionJoinRequest) error {
 	defer tx.Rollback()
 	var consumed, login string
 
-	err = tx.QueryRowContext(ctx, "SELECT consumed_hash,login FROM owner_join_codes WHERE code_hash=? AND expires_at>?", tokenHash(r.Code), now()).Scan(&consumed, &login)
+	err = tx.QueryRowContext(ctx, "SELECT consumed_hash,login FROM owner_join_codes WHERE code_hash=? AND rtrim(expires_at,'Z')>rtrim(?,'Z')", tokenHash(r.Code), clockNow().UTC().Format(joinTimeFormat)).Scan(&consumed, &login)
 	if err != nil && err != sql.ErrNoRows {
 		return storageError(err)
 	}

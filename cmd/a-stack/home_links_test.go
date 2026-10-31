@@ -16,6 +16,8 @@ import (
 func TestHomeLinkedSessionState(t *testing.T) {
 	for _, state := range []string{"open", "closed", "unreachable", "inspect-denied"} {
 		t.Run(state, func(t *testing.T) {
+			linkTestHome(t)
+
 			local, remote := newTeam(t), newTeam(t)
 			client, err := stack.NewClient(local.state, "", stack.OperatorCapability)
 			if err != nil {
@@ -37,6 +39,7 @@ func TestHomeLinkedSessionState(t *testing.T) {
 				want = "unreachable"
 			}
 
+			linkTestProfile(t, "linked", remoteClient.Discovery.DatabaseID)
 			credential := filepath.Join(remote.state, "operator.json")
 			ref := stack.Context{WorkspaceID: remote.workspace, SessionID: remote.session}
 

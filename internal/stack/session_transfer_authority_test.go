@@ -37,6 +37,17 @@ func TestTransferSealRejectsUnprovedSessionOperator(t *testing.T) {
 				t.Fatal(err)
 			}
 
+			for range 17 {
+				result, exportErr := f.service.Store.ExportTransfer(ctx, token, TransferExportRequest{Context: f.ref(0), TransferID: opaqueID(), Repository: bundle.Repository})
+				if exportErr == nil || len(result.Released) != 0 {
+					t.Fatal("non-owner exported or received release proofs")
+				}
+
+				if caller != "stranger" {
+					requireCode(t, exportErr, "forbidden")
+				}
+			}
+
 			_, err = f.service.Store.ChangeTransfer(ctx, token, "seal", TransferChangeRequest{Context: f.ref(0), TransferID: bundle.TransferID, DestinationDatabase: opaqueID()})
 			if caller != "stranger" {
 				requireCode(t, err, "forbidden")

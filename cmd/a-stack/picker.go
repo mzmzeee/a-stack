@@ -20,6 +20,8 @@ var errPickerCancelled = errors.New("picker cancelled")
 // names only, never credentials.
 type sessionRow struct {
 	Remote         string    `json:"remote,omitempty"`
+	DatabaseID     string    `json:"database_id,omitempty"`
+	LinkError      string    `json:"link_error,omitempty"`
 	CredentialFile string    `json:"-"`
 	WorkspaceID    string    `json:"workspace_id"`
 	WorkspacePath  string    `json:"workspace_path"`
@@ -179,6 +181,10 @@ func truncateLeft(s string, width int) string {
 }
 
 func rowState(r sessionRow) string {
+	if r.LinkError != "" {
+		return "needs re-link"
+	}
+
 	if r.Unreachable {
 		return "unreachable"
 	}

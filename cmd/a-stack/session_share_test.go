@@ -21,6 +21,13 @@ func TestCLIShareUnsharePreservesEnrollment(t *testing.T) {
 	t.Setenv("AppData", filepath.Join(home, "config"))
 	t.Chdir(source.project)
 
+	profileClient, err := stack.NewClient(destination.state, "", stack.OperatorCapability)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	linkTestProfile(t, "team", profileClient.Discovery.DatabaseID)
+
 	for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", "git@example.com:team/project.git"}} {
 		cmd := exec.Command("git", args...)
 		if out, err := cmd.CombinedOutput(); err != nil {

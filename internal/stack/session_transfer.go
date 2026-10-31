@@ -128,8 +128,8 @@ func (s *Store) ExportTransfer(ctx context.Context, token string, r TransferExpo
 		return result, err
 	}
 
-	if err = sessionOperator(p, r.SessionID); err != nil {
-		return result, err
+	if err = operator(p); err != nil {
+		return result, failure("forbidden", "only the service owner can export a transfer; ask the server owner to unshare")
 	}
 
 	session, err := ReadSession(ctx, tx, p, r.Context)

@@ -168,7 +168,11 @@ func TestTransferThroughTLSAndFriendLink(t *testing.T) {
 		t.Fatal("friend linked a different Session")
 	}
 
-	reverse := transferCall[TransferBundle](t, &friend, "/v1/session/transfer/export", TransferExportRequest{Context: ref, TransferID: opaqueID(), Repository: bundle.Repository})
+	reverseRequest := TransferExportRequest{Context: ref, TransferID: opaqueID(), Repository: bundle.Repository}
+	_, err = friend.Do(ctx, "POST", "/v1/session/transfer/export", reverseRequest)
+	requireCode(t, err, "forbidden")
+	reverse := transferCall[TransferBundle](t, destination, "/v1/session/transfer/export", reverseRequest)
+
 	for id := range hashes {
 		hashes[id] = tokenHash(opaqueID())
 	}

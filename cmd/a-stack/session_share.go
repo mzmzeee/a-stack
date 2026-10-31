@@ -83,6 +83,15 @@ func sessionLinks(ctx context.Context, client *stack.Client) ([]stack.SessionLin
 	return decodeData[[]stack.SessionLink](data)
 }
 
+func checkLinkProfile(remote, database string) error {
+	profile, err := stack.ReadRemote(remote)
+	if err != nil || profile.DatabaseID != database {
+		return &stack.Error{Code: "conflict", Message: "linked remote profile no longer identifies the original database; restore the original profile or re-link this folder to the intended server with session link"}
+	}
+
+	return nil
+}
+
 func sharingCommand(ctx context.Context, command string, args []string, state, credential, remote, agentFiles, code string, flags lifecycleFlags, out io.Writer) error {
 	if credential != "" {
 		absolute, err := filepath.Abs(credential)
@@ -206,6 +215,10 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 
 			for _, link := range links {
 				if link.Path == folder {
+					if err = checkLinkProfile(link.Remote, link.DatabaseID); err != nil {
+						continue
+					}
+
 					ref = link.Context
 					client, err = sharingRemoteClient(ctx, link.Remote, link.CredentialFile, stack.OperatorCapability)
 					break
@@ -292,12 +305,20 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 
 			for _, link := range links {
 				if link.Path == folder {
+					if err = checkLinkProfile(link.Remote, link.DatabaseID); err != nil {
+						continue
+					}
+
 					journal.Remote = link.Remote
 					journal.RemoteCredential = link.CredentialFile
 					journal.Source = link.Context
 					journal.Link = link
 					break
 				}
+			}
+
+			if err != nil {
+				return err
 			}
 
 			if journal.Source.SessionID == "" {
@@ -341,6 +362,12 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 
 	if journal.Started && ((remote != "" && remote != journal.Remote) || (credential != "" && credential != journal.RemoteCredential)) {
 		return invalid("transfer connection is pinned; retry with its original remote and credential")
+	}
+
+	if command == "session unshare" {
+		if err = checkLinkProfile(journal.Link.Remote, journal.Link.DatabaseID); err != nil {
+			return err
+		}
 	}
 
 	server, err := sharingRemoteClient(ctx, journal.Remote, journal.RemoteCredential, stack.OperatorCapability)
@@ -434,6 +461,10 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 	}
 
 	if _, err = source.Do(ctx, "POST", "/v1/session/transfer/seal", stack.TransferChangeRequest{Context: journal.Source, TransferID: journal.ID, DestinationDatabase: dest.Discovery.DatabaseID, Remote: targetRemote}); err != nil {
+		if e, ok := err.(*stack.Error); ok && e.Code == "conflict" && e.Message == "transfer is not prepared" {
+			return &stack.Error{Code: "conflict", Message: fmt.Sprintf("this transfer was superseded; resume the newer transfer. To start over while the source is still open, stop other transfer commands, remove the old recovery journal %q, then rerun %s", journalFile, command)}
+		}
+
 		if e, ok := err.(*stack.Error); ok && e.Code == "conflict" && strings.Contains(e.Message, "changed after export") {
 			if removeErr := os.Remove(journalFile); removeErr != nil {
 				return removeErr

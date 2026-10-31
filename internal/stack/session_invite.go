@@ -63,20 +63,26 @@ func (s *Store) InviteSession(ctx context.Context, token string, r SessionInvite
 		}
 
 		// Lost-response recovery authenticates the saved credential, not a retained invitation.
-		if _, err = tx.ExecContext(ctx, "DELETE FROM session_invites WHERE session_id=? AND (expires_at<=? OR consumed_hash<>'')", session.ID, now()); err != nil {
+		if _, err = tx.ExecContext(ctx, "DELETE FROM session_invites WHERE session_id=? AND (rtrim(expires_at,'Z')<=rtrim(?,'Z') OR consumed_hash<>'')", session.ID, clockNow().UTC().Format(joinTimeFormat)); err != nil {
 			return Receipt{}, err
 		}
 
-		var active int
-		if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM session_invites WHERE session_id=? AND login<>? AND consumed_hash='' AND expires_at>?", session.ID, r.Login, now()).Scan(&active); err != nil {
-			return Receipt{}, err
+		hash := r.CodeHash
+		if p.SessionID == "" {
+			// Keep trusted issuer provenance with the digest, including through transfers.
+			hash = "owner:" + hash
+		} else {
+			var active int
+			if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM session_invites WHERE session_id=? AND login<>? AND consumed_hash='' AND code_hash NOT LIKE 'owner:%' AND rtrim(expires_at,'Z')>rtrim(?,'Z')", session.ID, r.Login, clockNow().UTC().Format(joinTimeFormat)).Scan(&active); err != nil {
+				return Receipt{}, err
+			}
+
+			if active >= 16 {
+				return Receipt{}, &Error{Code: "rate_limited", Message: "Session has 16 active friend-issued invitations; wait for one to be used or expire, or ask the server owner to invite", Retryable: true, RetryAfter: 60}
+			}
 		}
 
-		if active >= 16 {
-			return Receipt{}, &Error{Code: "rate_limited", Message: "Session has 16 active invitations; wait for one to be used or expire", Retryable: true, RetryAfter: 60}
-		}
-
-		if _, err = tx.ExecContext(ctx, "INSERT INTO session_invites(session_id,login,code_hash,expires_at) VALUES(?,?,?,?) ON CONFLICT(session_id,login) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,consumed_hash=''", session.ID, r.Login, r.CodeHash, clockNow().UTC().Add(24*time.Hour).Format(time.RFC3339Nano)); err != nil {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO session_invites(session_id,login,code_hash,expires_at) VALUES(?,?,?,?) ON CONFLICT(session_id,login) DO UPDATE SET code_hash=excluded.code_hash,expires_at=excluded.expires_at,consumed_hash=''", session.ID, r.Login, hash, clockNow().UTC().Add(24*time.Hour).Format(joinTimeFormat)); err != nil {
 			return Receipt{}, err
 		}
 
@@ -111,7 +117,7 @@ func (s *Store) JoinSession(ctx context.Context, r SessionJoinRequest) (Context,
 	defer tx.Rollback()
 	var consumed string
 
-	err = tx.QueryRowContext(ctx, "SELECT consumed_hash FROM session_invites WHERE session_id=? AND login=? AND code_hash=? AND expires_at>?", r.SessionID, actor.Login, tokenHash(r.Code), now()).Scan(&consumed)
+	err = tx.QueryRowContext(ctx, "SELECT consumed_hash FROM session_invites WHERE session_id=? AND login=? AND code_hash IN (?,?) AND rtrim(expires_at,'Z')>rtrim(?,'Z')", r.SessionID, actor.Login, tokenHash(r.Code), "owner:"+tokenHash(r.Code), clockNow().UTC().Format(joinTimeFormat)).Scan(&consumed)
 	if err != nil && err != sql.ErrNoRows {
 		return Context{}, storageError(err)
 	}

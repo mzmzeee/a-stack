@@ -532,6 +532,10 @@ func (h *home) open(ctx context.Context, client *stack.Client, r sessionRow, oth
 
 func (h *home) openWith(ctx context.Context, client *stack.Client, r sessionRow, fields map[string]any, before, after []string) error {
 	if r.Remote != "" {
+		if err := checkLinkProfile(r.Remote, r.DatabaseID); err != nil {
+			return err
+		}
+
 		var err error
 		client, err = sharingRemoteClient(ctx, r.Remote, r.CredentialFile, stack.OperatorCapability)
 		if err != nil {
@@ -643,7 +647,13 @@ func (h *home) sessions(ctx context.Context, client *stack.Client) ([]sessionRow
 			workers.Go(func() {
 				for i := range jobs {
 					link := links[i]
-					r := sessionRow{WorkspaceID: link.WorkspaceID, WorkspacePath: link.Path, SessionID: link.SessionID, Name: link.Name, Remote: link.Remote, CredentialFile: link.CredentialFile, CurrentFolder: within(h.cwd, link.Path), Unreachable: true}
+					r := sessionRow{WorkspaceID: link.WorkspaceID, WorkspacePath: link.Path, SessionID: link.SessionID, Name: link.Name, Remote: link.Remote, DatabaseID: link.DatabaseID, CredentialFile: link.CredentialFile, CurrentFolder: within(h.cwd, link.Path), Unreachable: true}
+
+					if err := checkLinkProfile(link.Remote, link.DatabaseID); err != nil {
+						r.LinkError = err.Error()
+						linked[i] = r
+						continue
+					}
 
 					timeout := 2 * time.Second
 					if limited {

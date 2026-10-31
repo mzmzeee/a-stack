@@ -16,6 +16,8 @@ import (
 )
 
 func TestHomeMixedSlowHealthyLinks(t *testing.T) {
+	linkTestHome(t)
+
 	local, remote := newTeam(t), newTeam(t)
 	client, err := stack.NewClient(local.state, "", stack.OperatorCapability)
 	if err != nil {
@@ -28,6 +30,8 @@ func TestHomeMixedSlowHealthyLinks(t *testing.T) {
 	}
 
 	for _, name := range []string{"a-slow", "b-healthy"} {
+		linkTestProfile(t, name, remoteClient.Discovery.DatabaseID)
+
 		ref := stack.Context{WorkspaceID: remote.workspace, SessionID: remote.session}
 		if name == "a-slow" {
 			ref.SessionID = local.session
@@ -104,6 +108,8 @@ func TestHomeMixedSlowHealthyLinks(t *testing.T) {
 }
 
 func TestHomeSaturatedProbes(t *testing.T) {
+	linkTestHome(t)
+
 	local, remote := newTeam(t), newTeam(t)
 	client, err := stack.NewClient(local.state, "", stack.OperatorCapability)
 	if err != nil {
@@ -125,6 +131,8 @@ func TestHomeSaturatedProbes(t *testing.T) {
 			ref.SessionID = remote.session
 			path = remote.project
 		}
+
+		linkTestProfile(t, name, rc.Discovery.DatabaseID)
 
 		_, err = client.Do(context.Background(), "POST", "/v1/session/link", stack.SessionLinkRequest{Link: stack.SessionLink{Context: ref, Path: path, Remote: name, DatabaseID: rc.Discovery.DatabaseID, CredentialFile: filepath.Join(remote.state, "operator.json"), Name: name}})
 		if err != nil {
@@ -199,6 +207,8 @@ func TestHomeSaturatedProbes(t *testing.T) {
 func TestHomeHealthyLatency(t *testing.T) {
 	for _, count := range []int{1, 9} {
 		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			linkTestHome(t)
+
 			local, remote := newTeam(t), newTeam(t)
 			client, err := stack.NewClient(local.state, "", stack.OperatorCapability)
 			if err != nil {
@@ -217,6 +227,8 @@ func TestHomeHealthyLatency(t *testing.T) {
 					name = fmt.Sprintf("other-%d", i)
 					ref.SessionID = base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{byte(i)}, 32))
 				}
+
+				linkTestProfile(t, name, rc.Discovery.DatabaseID)
 
 				_, err = client.Do(context.Background(), "POST", "/v1/session/link", stack.SessionLinkRequest{Link: stack.SessionLink{Context: ref, Path: remote.project, Remote: name, DatabaseID: rc.Discovery.DatabaseID, CredentialFile: filepath.Join(remote.state, "operator.json"), Name: name}})
 				if err != nil {

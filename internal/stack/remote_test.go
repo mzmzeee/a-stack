@@ -171,7 +171,22 @@ func TestRemoteTLSProxyAndProfiles(t *testing.T) {
 		t.Fatal("overwrote existing profile")
 	}
 
-	client, err := newRemoteClient(ctx, "team", filepath.Join(dir, "operator.json"), OperatorCapability, trusted)
+	owner, err := ReadCredential(filepath.Join(dir, "operator.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	code := opaqueID()
+	if err = s.Store.CreateOwnerCode(ctx, owner.Token, tokenHash(code)); err != nil {
+		t.Fatal(err)
+	}
+
+	credentialFile := filepath.Join(privateTestDir(t), "remote-owner.json")
+	if _, err = joinRemoteCredentialUsing(ctx, "team", "", credentialFile, code, trusted); err != nil {
+		t.Fatal(err)
+	}
+
+	client, err := newRemoteClient(ctx, "team", credentialFile, OperatorCapability, trusted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -228,7 +243,7 @@ func TestRemoteTLSProxyAndProfiles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = newRemoteClient(ctx, "team", filepath.Join(dir, "operator.json"), OperatorCapability, trusted)
+	_, err = newRemoteClient(ctx, "team", credentialFile, OperatorCapability, trusted)
 	requireCode(t, err, "conflict")
 
 	if _, err = newRemoteClient(ctx, "team", "", OperatorCapability, trusted); err == nil {

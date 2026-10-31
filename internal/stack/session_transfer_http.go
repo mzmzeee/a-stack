@@ -58,11 +58,7 @@ func (s *Service) transferHTTP(w http.ResponseWriter, r *http.Request, token str
 	if r.URL.Path == "/v1/session/transfer/import" || r.URL.Path == "/v1/session/transfer/export" {
 		p, err := authenticate(r.Context(), s.Store.db, token)
 		if err == nil {
-			if r.URL.Path == "/v1/session/transfer/import" {
-				err = operator(p)
-			} else if p.Kind != OperatorCapability {
-				err = failure("forbidden", "Operator credential required")
-			}
+			err = operator(p)
 		}
 
 		if err != nil {
