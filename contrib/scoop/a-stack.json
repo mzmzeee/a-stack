@@ -1,5 +1,5 @@
 {
-    "version": "0.1.8",
+    "version": "0.1.9",
     "description": "Keep an eye on your AI coding agents",
     "homepage": "https://github.com/mzmzeee/a-stack",
     "license": "MIT",
@@ -10,12 +10,12 @@
     ],
     "architecture": {
         "64bit": {
-            "url": "https://github.com/mzmzeee/a-stack/releases/download/v0.1.8/a-stack_windows_amd64.zip",
-            "hash": "2c828a89d1b28c0b404eb671e3efd52328a8caef9b453a7ffc4f6c39c50d4312"
+            "url": "https://github.com/mzmzeee/a-stack/releases/download/v0.1.9/a-stack_windows_amd64.zip",
+            "hash": "16cbaa9ddccf04cb0137672faf9c8efd9090a5059eb981dd0257f6819e214772"
         },
         "arm64": {
-            "url": "https://github.com/mzmzeee/a-stack/releases/download/v0.1.8/a-stack_windows_arm64.zip",
-            "hash": "9eb6272646a81cf629185fb1f14c5dff14dee0f30efa5fa16ad7700bb7dd6ba7"
+            "url": "https://github.com/mzmzeee/a-stack/releases/download/v0.1.9/a-stack_windows_arm64.zip",
+            "hash": "93432a6093da83d26b03adab2a427f4a336291bc63dcf3afb64f5c4510392236"
         }
     },
     "bin": "a-stack.exe",

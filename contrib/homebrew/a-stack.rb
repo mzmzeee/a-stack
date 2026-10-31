@@ -7,23 +7,23 @@ class AStack < Formula
 
   on_macos do
     on_intel do
-      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.8/a-stack_darwin_amd64.tar.gz"
-      sha256 "31907dc926b02d37e09578b5330549d96521307b434f7b4c3b224196ec89ff61"
+      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.9/a-stack_darwin_amd64.tar.gz"
+      sha256 "6fea06021d334c74b543d70a972cd7effb6b85efc230023e4fb0a935ec09a9fc"
     end
     on_arm do
-      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.8/a-stack_darwin_arm64.tar.gz"
-      sha256 "817b711d27c06bb46994001115cf6f000dd6bf7fd0ef259a312cf9bed7642016"
+      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.9/a-stack_darwin_arm64.tar.gz"
+      sha256 "6fffac7a6d1bf74c38164bc5f0a14d8446cf122871073a77dd0c2f4850c7daa8"
     end
   end
 
   on_linux do
     on_intel do
-      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.8/a-stack_linux_amd64.tar.gz"
-      sha256 "35639aea5616a800b62717caa903b3626d0a0cff89c4ecc7c5bb79d1f2cb4966"
+      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.9/a-stack_linux_amd64.tar.gz"
+      sha256 "ac30bb16235c198052ab8b540704cfbc5b6829ae10ea64322a5e2bee438d4e31"
     end
     on_arm do
-      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.8/a-stack_linux_arm64.tar.gz"
-      sha256 "1f8d21e1ee73aa4f7675cb89bf143568da30c006cc9ba3a91a5d0a23e564ea5a"
+      url "https://github.com/mzmzeee/a-stack/releases/download/v0.1.9/a-stack_linux_arm64.tar.gz"
+      sha256 "fe297663b5e8370459c8626eb57b037aded623e45920b77249ae6ee45ce90528"
     end
   end
 

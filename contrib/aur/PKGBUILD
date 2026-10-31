@@ -4,7 +4,7 @@
 # contrib/README.md for how to publish a new version.
 
 pkgname=a-stack-bin
-pkgver=0.1.8
+pkgver=0.1.9
 pkgrel=1
 pkgdesc='Keep an eye on your AI coding agents: a local Task graph, Task mail and a read-only browser view'
 arch=('x86_64' 'aarch64')
@@ -19,8 +19,8 @@ source_x86_64=("a-stack-$pkgver-x86_64.tar.gz::$url/releases/download/v$pkgver/a
 source_aarch64=("a-stack-$pkgver-aarch64.tar.gz::$url/releases/download/v$pkgver/a-stack_linux_arm64.tar.gz")
 sha256sums=('a7fa5d609d454dae942631e26f6b461fe91902574f54cc6f08fae475b88e0f46'
             'a9b85fd5f10a0de80267e54dbd1518eda8fa488103d29a9695d06bb10ba130af')
-sha256sums_x86_64=('35639aea5616a800b62717caa903b3626d0a0cff89c4ecc7c5bb79d1f2cb4966')
-sha256sums_aarch64=('1f8d21e1ee73aa4f7675cb89bf143568da30c006cc9ba3a91a5d0a23e564ea5a')
+sha256sums_x86_64=('ac30bb16235c198052ab8b540704cfbc5b6829ae10ea64322a5e2bee438d4e31')
+sha256sums_aarch64=('fe297663b5e8370459c8626eb57b037aded623e45920b77249ae6ee45ce90528')
 
 package() {
   install -Dm755 a-stack "$pkgdir/usr/bin/a-stack"
