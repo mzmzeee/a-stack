@@ -109,6 +109,7 @@ func TestRemoteJoinRecoversSavedCredential(t *testing.T) {
 			}})
 			defer proxy.Close()
 			config := t.TempDir()
+			t.Setenv("HOME", config)
 			t.Setenv("XDG_CONFIG_HOME", config)
 			t.Setenv("AppData", config)
 

@@ -148,7 +148,7 @@ func (s *Store) orchestratorWarning(ctx context.Context, tx *sql.Tx, session Ses
 	var binding RuntimeBinding
 	_ = json.Unmarshal([]byte(encoded), &binding)
 
-	reachable := binding.Notices == "pane" && s.noticeWake != nil && completeHerdrBinding(binding) && verifiedHarness(binding)
+	reachable := !binding.RemoteMachine && binding.Notices == "pane" && s.noticeWake != nil && completeHerdrBinding(binding) && verifiedHarness(binding)
 	switch reason {
 	case "runtime_unavailable", "identity_changed", "unsupported_harness", "binding_incomplete", "herdr_unavailable", "unsupported_herdr", "runtime_blocked":
 		reachable = false

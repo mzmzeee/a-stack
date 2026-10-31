@@ -42,6 +42,7 @@ type TransferChangeRequest struct {
 	TransferID          string `json:"transfer_id"`
 	DestinationDatabase string `json:"destination_database,omitempty"`
 	Remote              string `json:"remote,omitempty"`
+	DestinationStopped  bool   `json:"destination_stopped,omitempty"`
 }
 type TransferStatus struct {
 	Context
@@ -174,7 +175,7 @@ func (s *Store) ExportTransfer(ctx context.Context, token string, r TransferExpo
 
 	// Revoke earlier owners in the same transaction that issues the new snapshot.
 	// Only then disclose their release proofs, allowing destinations to replace staging.
-	if _, err = tx.ExecContext(ctx, "UPDATE session_transfers SET state='superseded',payload='' WHERE session_id=? AND direction='out' AND state IN ('prepared','superseded')", session.ID); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE session_transfers SET state='superseded',payload='' WHERE session_id=? AND direction='out' AND state IN ('prepared','superseded','recovered')", session.ID); err != nil {
 		return result, storageError(err)
 	}
 
@@ -614,6 +615,10 @@ func (s *Store) ChangeTransfer(ctx context.Context, token, action string, r Tran
 		return result, err
 	}
 
+	if (action == "seal" || action == "recover") && operator(p) != nil {
+		return result, failure("forbidden", "only the service owner can cut over or recover a Session; ask the server owner to unshare")
+	}
+
 	if err = sessionOperator(p, r.SessionID); err != nil {
 		return result, err
 	}
@@ -700,11 +705,39 @@ func (s *Store) ChangeTransfer(ctx context.Context, token, action string, r Tran
 
 		_, err = tx.ExecContext(ctx, "INSERT INTO session_locations(session_id,transfer_id,state,peer_database,remote) VALUES(?,?,'sealed',?,?) ON CONFLICT(session_id) DO UPDATE SET transfer_id=excluded.transfer_id,state=excluded.state,peer_database=excluded.peer_database,remote=excluded.remote", session.ID, r.TransferID, r.DestinationDatabase, r.Remote)
 		if err == nil {
-			_, err = tx.ExecContext(ctx, "UPDATE session_transfers SET state='sealed',peer_database=?,remote=?,payload='' WHERE id=?", r.DestinationDatabase, r.Remote, r.TransferID)
+			_, err = tx.ExecContext(ctx, "UPDATE session_transfers SET state='sealed',peer_database=?,remote=?,payload='',was_closed=? WHERE id=?", r.DestinationDatabase, r.Remote, wasClosed, r.TransferID)
 		}
 
 		if err == nil {
 			_, err = tx.ExecContext(ctx, "UPDATE sessions SET closed=1 WHERE id=?", r.SessionID)
+		}
+	case "recover":
+		if !r.DestinationStopped {
+			return result, failure("invalid_input", "confirm the destination copy is stopped or discarded with --destination-stopped; recovery can otherwise create two writable copies")
+		}
+
+		var current bool
+		if err = tx.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM session_locations l JOIN session_transfers t ON t.id=l.transfer_id WHERE l.session_id=? AND l.transfer_id=? AND t.direction='out' AND ((l.state='sealed' AND t.state='sealed') OR (l.state='active' AND t.state='recovered')))", r.SessionID, r.TransferID).Scan(&current); err != nil {
+			return result, storageError(err)
+		}
+
+		if !current {
+			return result, failure("conflict", "only the current sealed outgoing transfer can be recovered")
+		}
+
+		if result.State == "recovered" {
+			return result, nil
+		}
+
+		// The source cannot observe remote activation. This is an explicit owner
+		// assertion that the destination was stopped, never an automatic rollback.
+		_, err = tx.ExecContext(ctx, "UPDATE sessions SET closed=(SELECT was_closed FROM session_transfers WHERE id=?) WHERE id=?", r.TransferID, r.SessionID)
+		if err == nil {
+			_, err = tx.ExecContext(ctx, "UPDATE session_transfers SET state='recovered' WHERE id=?", r.TransferID)
+		}
+
+		if err == nil {
+			_, err = tx.ExecContext(ctx, "UPDATE session_locations SET state='active' WHERE session_id=? AND transfer_id=?", r.SessionID, r.TransferID)
 		}
 	case "activate":
 		if err = operator(p); err != nil {

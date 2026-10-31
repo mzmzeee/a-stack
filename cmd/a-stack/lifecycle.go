@@ -12,7 +12,7 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-var lifecycleCommands = []string{"workspace create", "workspace list", "workspace orders show", "workspace orders set", "workspace orders clear", "session create", "session list", "session inspect", "session export", "session share", "session unshare", "session link", "session invite", "session close", "session reopen", "session appoint", "agent register", "agent list", "agent attach", "agent rebind", "agent observe"}
+var lifecycleCommands = []string{"workspace create", "workspace list", "workspace orders show", "workspace orders set", "workspace orders clear", "session create", "session list", "session inspect", "session export", "session share", "session unshare", "session recover-transfer", "session link", "session invite", "session close", "session reopen", "session appoint", "agent register", "agent list", "agent attach", "agent rebind", "agent observe"}
 
 func isLifecycleCommand(command string) bool {
 	for _, c := range lifecycleCommands {
@@ -29,6 +29,8 @@ type lifecycleFlags struct {
 	revision                                                                                                                   int64
 	limit                                                                                                                      int
 	clearRuntime                                                                                                               bool
+	transferID                                                                                                                 string
+	destinationStopped                                                                                                         bool
 	// afters has each --after: task create takes several prerequisites; the
 	// other commands take one cursor, after.
 	afters []string
@@ -36,6 +38,8 @@ type lifecycleFlags struct {
 }
 
 func (f *lifecycleFlags) register(fs *flag.FlagSet) {
+	fs.StringVar(&f.transferID, "transfer-id", "", "Exact outgoing transfer ID to recover (service owner only)")
+	fs.BoolVar(&f.destinationStopped, "destination-stopped", false, "Confirm the destination copy is stopped or discarded; never resume it after recovery")
 	fs.StringVar(&f.workspace, "workspace", "", "Workspace ID")
 	fs.StringVar(&f.session, "session", "", "Session ID")
 	fs.StringVar(&f.operationID, "operation-id", "", "Your ID for this change: 8–128 letters, digits, _ or -; reuse it to retry")
@@ -168,6 +172,8 @@ func acceptedFlags(command string) string {
 		allowed += "workspace session markdown output include-archived "
 	case "session close", "session reopen":
 		allowed += "workspace session operation-id expected-revision "
+	case "session recover-transfer":
+		allowed += "workspace session transfer-id destination-stopped "
 	case "session appoint":
 		allowed += "workspace session operation-id expected-revision agent "
 	case "agent register":
@@ -227,6 +233,8 @@ func lifecycleCall(ctx context.Context, client *stack.Client, command string, f 
 		body = stack.SessionCreateRequest{OperationID: f.operationID, WorkspaceID: f.workspace, Name: f.name}
 	case "session inspect":
 		body = ref
+	case "session recover-transfer":
+		return client.Do(ctx, "POST", "/v1/session/transfer/recover", stack.TransferChangeRequest{Context: ref, TransferID: f.transferID, DestinationStopped: f.destinationStopped})
 	case "session close", "session reopen", "session appoint":
 		body = stack.SessionChangeRequest{Context: ref, OperationID: f.operationID, ExpectedRevision: f.revision, AgentID: f.agent}
 	case "agent register":

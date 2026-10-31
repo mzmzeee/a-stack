@@ -103,7 +103,11 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 		return err
 	}
 
-	local, err := stack.NewClient(state, "", stack.OperatorCapability)
+	var local *stack.Client
+	if command != "session invite" || remote == "" || flags.session == "" {
+		local, err = stack.NewClient(state, "", stack.OperatorCapability)
+	}
+
 	if err != nil {
 		if command == "session link" {
 			return invalid(fmt.Sprintf("session link needs a running local service; run a-stack --state-dir %q service install, then retry", state))
@@ -112,7 +116,11 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 		return err
 	}
 
-	private, err := transferDirectory()
+	var private string
+	if command != "session invite" {
+		private, err = transferDirectory()
+	}
+
 	if err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -55,6 +56,31 @@ func TestSessionLinkExplainsLocalService(t *testing.T) {
 	var out, stderr bytes.Buffer
 	if run([]string{"session", "link", "team", "unused", "--state-dir", filepath.Join(home, "missing")}, &out, &stderr) == 0 || !strings.Contains(stderr.String(), "service install") {
 		t.Fatal("missing actionable local-service guidance")
+	}
+}
+
+func TestRemoteInviteWithoutLocalService(t *testing.T) {
+	server := newTeam(t)
+	home := hookHome(t)
+	t.Chdir(home)
+	missing := filepath.Join(home, "no-local-service")
+	original := sharingRemoteClient
+	sharingRemoteClient = func(_ context.Context, name, credential string, kind stack.CapabilityKind) (*stack.Client, error) {
+		if name != "team" || kind != stack.OperatorCapability {
+			t.Fatal("wrong remote selection")
+		}
+
+		return stack.NewClient(server.state, "", stack.OperatorCapability)
+	}
+	t.Cleanup(func() { sharingRemoteClient = original })
+
+	var out, stderr bytes.Buffer
+	if run([]string{"session", "invite", "friend@example.com", "--remote", "team", "--workspace", server.workspace, "--session", server.session, "--state-dir", missing}, &out, &stderr) != 0 {
+		t.Fatal(stderr.String())
+	}
+
+	if _, err := os.Stat(missing); !os.IsNotExist(err) {
+		t.Fatal("remote invite touched local state", err)
 	}
 }
 

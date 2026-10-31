@@ -113,7 +113,7 @@ func (s *Service) transferHTTP(w http.ResponseWriter, r *http.Request, token str
 		if err = transferJSON(w, r, &request); err == nil {
 			data, err = s.Store.ImportTransfer(r.Context(), token, request)
 		}
-	case "/v1/session/transfer/status", "/v1/session/transfer/seal", "/v1/session/transfer/activate":
+	case "/v1/session/transfer/status", "/v1/session/transfer/seal", "/v1/session/transfer/activate", "/v1/session/transfer/recover":
 		var request TransferChangeRequest
 		if err = requestJSON(w, r, &request); err == nil {
 			data, err = s.Store.ChangeTransfer(r.Context(), token, strings.TrimPrefix(r.URL.Path, "/v1/session/transfer/"), request)

@@ -77,6 +77,7 @@ func TestTransferThroughTLSAndFriendLink(t *testing.T) {
 	destination := &Client{Discovery: server.service.Discovery, Credential: server.operator, HTTP: proxy.Client()}
 	destination.Discovery.URL = proxy.URL
 	config := t.TempDir()
+	t.Setenv("HOME", config)
 	t.Setenv("XDG_CONFIG_HOME", config)
 	t.Setenv("AppData", config)
 
@@ -173,7 +174,12 @@ func TestTransferThroughTLSAndFriendLink(t *testing.T) {
 	}
 
 	restored := transferCall[TransferStatus](t, local, "/v1/session/transfer/import", TransferImportRequest{Bundle: reverse, AgentHashes: hashes, Machine: "laptop", LocalRuntime: true})
-	transferCall[TransferStatus](t, &friend, "/v1/session/transfer/seal", TransferChangeRequest{Context: ref, TransferID: reverse.TransferID, DestinationDatabase: source.service.Store.id})
+	cutover := TransferChangeRequest{Context: ref, TransferID: reverse.TransferID, DestinationDatabase: source.service.Store.id}
+	_, err = friend.Do(ctx, "POST", "/v1/session/transfer/seal", cutover)
+	requireCode(t, err, "forbidden")
+	// Friends collaborate in the Session; the source service owner approves cutover.
+	login.Store("owner@example.com")
+	transferCall[TransferStatus](t, destination, "/v1/session/transfer/seal", cutover)
 	transferCall[TransferStatus](t, local, "/v1/session/transfer/activate", TransferChangeRequest{Context: restored.Context, TransferID: reverse.TransferID})
 	assertPriority(source.service.Store)
 

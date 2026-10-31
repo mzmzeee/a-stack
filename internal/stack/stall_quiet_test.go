@@ -72,9 +72,13 @@ func TestHookOnlyOrchestratorNeedsRecentEvidence(t *testing.T) {
 	f.appoint(t, 0, f.bID, 2)
 
 	f.service.Store.noticeWake = f.n.signal
-	for _, mode := range []string{"hook", "", "pane"} {
+	for _, mode := range []string{"hook", "", "pane", "remote"} {
 		binding := f.config.Binding
 		binding.Notices = mode
+		if mode == "remote" {
+			binding.Notices = "pane"
+			binding.RemoteMachine = true
+		}
 
 		encoded, err := json.Marshal(binding)
 		if err != nil {
@@ -86,6 +90,19 @@ func TestHookOnlyOrchestratorNeedsRecentEvidence(t *testing.T) {
 		session, err := f.service.Store.InspectSession(ctx, f.b.Token, f.ref(0))
 		if err != nil || (session.OrchestratorWarning == "") != (mode == "pane") {
 			t.Fatal(mode, session, err)
+		}
+
+		if mode == "remote" {
+			for _, column := range []string{"observed_at", "last_mail_read_at"} {
+				execTest(t, f.service.Store, "UPDATE agents SET "+column+"=? WHERE id=?", time.Now().UTC().Format(time.RFC3339Nano), f.bID)
+
+				session, err = f.service.Store.InspectSession(ctx, f.b.Token, f.ref(0))
+				if err != nil || session.OrchestratorWarning != "" {
+					t.Fatal("remote recent evidence ignored", column, err)
+				}
+
+				execTest(t, f.service.Store, "UPDATE agents SET "+column+"='' WHERE id=?", f.bID)
+			}
 		}
 	}
 }

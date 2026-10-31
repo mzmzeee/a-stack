@@ -206,7 +206,7 @@ func writePrivate(path string, v any, replace bool) error {
 	}
 
 	if errors.Is(err, os.ErrExist) {
-		return failure("conflict", "private file already exists")
+		return failure("conflict", fmt.Sprintf("private file already exists at %q; refusing to overwrite it", path))
 	}
 
 	if err != nil {

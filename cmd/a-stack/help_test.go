@@ -43,7 +43,7 @@ func TestHelpTopLevelAndAliases(t *testing.T) {
 	}
 
 	for _, c := range allCommands() {
-		if !strings.Contains(top, "\n  "+c+" ") && !strings.Contains(top, "\n  "+c+" [NAME] ") {
+		if !strings.Contains(top, "\n  "+c+" ") && !strings.Contains(top, "\n  "+c+"\n") && !strings.Contains(top, "\n  "+c+" [NAME] ") {
 			t.Fatalf("top help misses %q", c)
 		}
 
@@ -151,7 +151,7 @@ func TestHelpJSONStaysCompatible(t *testing.T) {
 		t.Fatalf("commands changed: %v", help.Data.Commands)
 	}
 
-	added := map[string]bool{"--notices": true, "--urgent": true, "--code": true, "--agent-files": true, "--ack-required": true, "--ack-from": true, "--ack-due": true, "--message": true, "--no-mention-sender": true, "--remote": true, "--share": true, "--harness": true, "--native-session": true, "--native-agent": true, "--shell": true, "--no-restart": true, "--no-refresh": true, "-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true, "--all": true, "--notify": true, "--notify-text": true, "--claude": true, "--codex": true, "--pi": true, "--opencode": true, "--orchestrator": true, "--no-stop-guard": true, "--no-mail-nudge": true, "--assign": true, "--question-id": true, "--text": true, "--markdown": true, "--output": true, "--include-archived": true}
+	added := map[string]bool{"--transfer-id": true, "--destination-stopped": true, "--notices": true, "--urgent": true, "--code": true, "--agent-files": true, "--ack-required": true, "--ack-from": true, "--ack-due": true, "--message": true, "--no-mention-sender": true, "--remote": true, "--share": true, "--harness": true, "--native-session": true, "--native-agent": true, "--shell": true, "--no-restart": true, "--no-refresh": true, "-h": true, "-r": true, "--resume": true, "--version": true, "--project": true, "--refresh": true, "--check": true, "--all": true, "--notify": true, "--notify-text": true, "--claude": true, "--codex": true, "--pi": true, "--opencode": true, "--orchestrator": true, "--no-stop-guard": true, "--no-mail-nudge": true, "--assign": true, "--question-id": true, "--text": true, "--markdown": true, "--output": true, "--include-archived": true}
 	before := []string{}
 	for _, f := range help.Data.Flags {
 		if !added[f] {

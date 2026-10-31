@@ -70,7 +70,8 @@ var helpGroups = []helpGroup{
 		{"session list", "", "List the Sessions of a Workspace"},
 		{"session inspect", "", "Show one Session"},
 		{"session share", "", "Move this folder's Session to a connected server"},
-		{"session unshare", "", "Move a linked Session back to this machine"},
+		{"session unshare", "", "Move a linked Session back to this machine (server owner)"},
+		{"session recover-transfer", "", "Recover an exact sealed transfer after stopping its destination (service owner)"},
 		{"session link", "session link REMOTE-or-URL SESSION --code CODE", "Link an invited shared Session into this folder"},
 		{"session invite", "session invite LOGIN", "Invite a Tailscale login to this Session"},
 		{"session export", "", "Export a Session's Tasks and reports, without mail bodies"},
@@ -157,7 +158,7 @@ var (
 	requiredFlags  = map[string]string{
 		"open": "workspace session", "storage backup": "destination", "mcp": "credential-file",
 		"workspace create": "path", "session create": "workspace name",
-		"session list": "workspace", "agent register": "name new-credential-file",
+		"session list": "workspace", "session recover-transfer": "transfer-id destination-stopped", "agent register": "name new-credential-file",
 		"workspace orders show": "workspace", "workspace orders set": "workspace", "workspace orders clear": "workspace",
 		"session appoint": "agent", "agent attach": "agent", "agent rebind": "agent new-credential-file",
 		"agent observe": "agent runtime-id runtime-state", "task assign": "agent", "task unassign": "agent",
@@ -347,8 +348,8 @@ func flagLabel(fs *flag.FlagSet, name string) string {
 // no help shows the fallback VALUE.
 var flagValues = map[string]string{
 	"harness": "NAME", "native-session": "ID", "native-agent": "ID",
-	"remote": "NAME",
-	"code":   "CODE", "state-dir": "DIR", "agent-files": "FILE", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE", "output": "FILE",
+	"remote": "NAME", "transfer-id": "ID",
+	"code": "CODE", "state-dir": "DIR", "agent-files": "FILE", "credential-file": "FILE", "as": "KIND", "listen": "ADDR", "destination": "FILE", "output": "FILE",
 	"herdr-executable": "FILE", "workspace": "ID", "session": "ID", "operation-id": "ID", "path": "DIR",
 	"name": "NAME", "orchestrator": "NAME", "agent": "ID", "worktree": "DIR", "new-credential-file": "FILE", "runtime-id": "ID",
 	"runtime-file": "FILE", "runtime-state": "STATE", "expected-revision": "N", "limit": "N", "after": "CURSOR",

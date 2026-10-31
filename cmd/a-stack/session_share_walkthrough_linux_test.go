@@ -156,6 +156,7 @@ func TestSharingDocumentedCLIWorkflow(t *testing.T) {
 	cli(ownerHome, owner.project, owner.state, true, "connect", "team", proxy.URL, "--code", ownerCode)
 	shared := cli(ownerHome, owner.project, owner.state, true, "session", "share", "--remote", "team", "--agent-files", manifest)
 	session := value(shared, "session_id")
+	cli(ownerHome, owner.project, filepath.Join(root, "missing-owner-service"), true, "session", "invite", "other@example.com", "--remote", "team", "--workspace", value(shared, "workspace_id"), "--session", session)
 	inviteCode := value(cli(ownerHome, owner.project, owner.state, true, "session", "invite", "friend@example.com"), "code")
 	login.Store("friend@example.com")
 	cli(friendHome, friend.project, friend.state, true, "connect", "team", proxy.URL)
@@ -166,6 +167,7 @@ func TestSharingDocumentedCLIWorkflow(t *testing.T) {
 	login.Store("friend@example.com")
 	linked := cli(friendHome, friend.project, friend.state, true, "session", "link", "--code", inviteCode, "--", "team", session)
 	friendCredential := value(linked, "credential_file")
+	cli(friendHome, friend.project, filepath.Join(root, "missing-friend-service"), true, "session", "invite", "third@example.com", "--remote", "team", "--credential-file", friendCredential, "--workspace", value(shared, "workspace_id"), "--session", session)
 	cli(friendHome, friend.project, friend.state, true, "session", "link", "--code", inviteCode, "--", "team", session)
 	cli(friendHome, friend.project, friend.state, true, "session", "inspect", "--remote", "team", "--credential-file", friendCredential)
 	// A separate client credential cannot consume the invitation again.
