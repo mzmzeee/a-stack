@@ -164,7 +164,7 @@ func statePath(path string) (string, error) {
 func privateRead(path string) ([]byte, error) {
 	f, err := openPrivate(path, false)
 	if err != nil {
-		return nil, failure("invalid_input", fmt.Sprintf("private file %q is missing or inaccessible", path))
+		return nil, failure("invalid_input", fmt.Sprintf(`private file "%s" is missing or inaccessible`, path))
 	}
 	defer f.Close()
 
@@ -219,7 +219,7 @@ func writePrivate(path string, v any, replace bool) error {
 	}
 
 	if errors.Is(err, os.ErrExist) {
-		return failure("conflict", fmt.Sprintf("private file already exists at %q; refusing to overwrite it", path))
+		return failure("conflict", fmt.Sprintf(`private file already exists at "%s"; refusing to overwrite it`, path))
 	}
 
 	if err != nil {

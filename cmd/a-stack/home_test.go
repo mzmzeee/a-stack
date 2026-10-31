@@ -613,8 +613,12 @@ func TestOrchestratorResumesUnappointedAgent(t *testing.T) {
 
 			session := receiptResult(t, common("session", "create", "--workspace", workspace.ResourceID, "--name", "resume", "--operation-id", "resume-session"))
 			credential := filepath.Join(root, "a-stack-agents", session.ResourceID, "01-orch.json")
-			if err := stack.MkdirPrivate(filepath.Dir(credential)); err != nil {
-				t.Fatal(err)
+			// Both folders private, as a-stack new makes them; on Windows a
+			// parent made by MkdirAll inherits the temporary folder's ACL.
+			for _, folder := range []string{filepath.Dir(filepath.Dir(credential)), filepath.Dir(credential)} {
+				if err := stack.MkdirPrivate(folder); err != nil {
+					t.Fatal(err)
+				}
 			}
 
 			register := func(name, path string) stack.Receipt {

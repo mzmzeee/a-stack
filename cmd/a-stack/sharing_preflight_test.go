@@ -60,7 +60,7 @@ func TestSharingMissingFileDiagnostics(t *testing.T) {
 		{[]string{"session", "link", "team", f.session, "--code", "unused", "--state-dir", f.state}, "team.json"},
 	} {
 		var out, stderr bytes.Buffer
-		if run(tc.args, &out, &stderr) == 0 || !strings.Contains(stderr.String(), tc.want) {
+		if run(tc.args, &out, &stderr) == 0 || !strings.Contains(blindErrorMessage(t, stderr.String()), tc.want) {
 			t.Errorf("missing %q diagnostic: %s", tc.want, stderr.String())
 		}
 	}

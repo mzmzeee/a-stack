@@ -154,7 +154,15 @@ func TestLinkedCredentialPinConflictKeepsGuidance(t *testing.T) {
 
 	linkTestProfile(t, "team", rc.Discovery.DatabaseID)
 
-	file := filepath.Join(t.TempDir(), "copied-operator.json")
+	// A private folder: on Windows a plain temporary folder fails the ACL
+	// check before the pin check this test is about.
+	dir := filepath.Join(t.TempDir(), "private")
+	if err = stack.MkdirPrivate(dir); err != nil {
+		t.Fatal(err)
+	}
+
+	file := filepath.Join(dir, "copied-operator.json")
+
 	link := stack.SessionLink{Context: stack.Context{WorkspaceID: remote.workspace, SessionID: remote.session}, Path: local.project, Remote: "team", DatabaseID: rc.Discovery.DatabaseID, CredentialFile: file, Name: "Old shared Session"}
 	if _, err = lc.Do(context.Background(), "POST", "/v1/session/link", stack.SessionLinkRequest{Link: link}); err != nil {
 		t.Fatal(err)
