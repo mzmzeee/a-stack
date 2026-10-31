@@ -196,6 +196,81 @@ func TestHomeSaturatedProbes(t *testing.T) {
 	}
 }
 
+func TestHomeHealthyLatency(t *testing.T) {
+	for _, count := range []int{1, 9} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			local, remote := newTeam(t), newTeam(t)
+			client, err := stack.NewClient(local.state, "", stack.OperatorCapability)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			rc, err := stack.NewClient(remote.state, "", stack.OperatorCapability)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for i := 0; i < count; i++ {
+				ref := stack.Context{WorkspaceID: remote.workspace, SessionID: remote.session}
+				name := "a-healthy"
+				if i > 0 {
+					name = fmt.Sprintf("other-%d", i)
+					ref.SessionID = base64.RawURLEncoding.EncodeToString(bytes.Repeat([]byte{byte(i)}, 32))
+				}
+
+				_, err = client.Do(context.Background(), "POST", "/v1/session/link", stack.SessionLinkRequest{Link: stack.SessionLink{Context: ref, Path: remote.project, Remote: name, DatabaseID: rc.Discovery.DatabaseID, CredentialFile: filepath.Join(remote.state, "operator.json"), Name: name}})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			original := sharingRemoteClient
+			sharingRemoteClient = func(ctx context.Context, name, file string, kind stack.CapabilityKind) (*stack.Client, error) {
+				if name != "a-healthy" {
+					return nil, invalid("missing profile")
+				}
+
+				timer := time.NewTimer(700 * time.Millisecond)
+				defer timer.Stop()
+
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-timer.C:
+					return rc, nil
+				}
+			}
+			t.Cleanup(func() { sharingRemoteClient = original })
+			var out bytes.Buffer
+			h := &home{state: local.state, cwd: remote.project, stdout: &out, machine: true, noBrowser: true}
+			start := time.Now()
+
+			rows, err := h.sessions(context.Background(), client)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			for _, row := range rows {
+				if row.Remote == "a-healthy" && row.Unreachable {
+					t.Error("healthy 700ms link was cut off with time left")
+				}
+			}
+
+			if time.Since(start) > 3*time.Second {
+				t.Fatal("listing exceeded overall deadline")
+			}
+
+			if err = h.last(context.Background(), client); err != nil {
+				t.Fatal(err)
+			}
+
+			if !strings.Contains(out.String(), remote.session) {
+				t.Fatal("bare shortcut excluded slow healthy remote")
+			}
+		})
+	}
+}
+
 func TestLinkedSummaryUnknown(t *testing.T) {
 	// A remote Session timestamp is not complete Task activity and must not rank as such.
 	remote := sessionRow{Remote: "team", SessionID: "a", ChangedAt: time.Now().Add(time.Hour)}

@@ -215,8 +215,17 @@ func (s *Store) ReadCredentialContext(ctx context.Context, token string) (Creden
 	defer tx.Rollback()
 
 	p, err := authenticate(ctx, tx, token)
-	if err != nil || p.Kind != AgentCapability {
-		return CredentialContext{Kind: p.Kind}, err
+	if err != nil {
+		return CredentialContext{}, err
+	}
+
+	if p.Kind == OperatorCapability && p.SessionID != "" {
+		session, err := loadSession(ctx, tx, p.SessionID)
+		return CredentialContext{Kind: p.Kind, WorkspaceID: session.WorkspaceID, SessionID: p.SessionID}, err
+	}
+
+	if p.Kind != AgentCapability {
+		return CredentialContext{Kind: p.Kind}, nil
 	}
 
 	agent, err := agentInSession(ctx, tx, p.SubjectID, p.SessionID)

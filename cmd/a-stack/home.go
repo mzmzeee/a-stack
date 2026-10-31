@@ -625,40 +625,68 @@ func (h *home) sessions(ctx context.Context, client *stack.Client) ([]sessionRow
 
 	linked := make([]sessionRow, len(links))
 
-	jobs := make(chan int)
-	var workers sync.WaitGroup
-	for range min(8, len(links)) {
-		workers.Go(func() {
-			for i := range jobs {
-				link := links[i]
-
-				r := sessionRow{WorkspaceID: link.WorkspaceID, WorkspacePath: link.Path, SessionID: link.SessionID, Name: link.Name, Remote: link.Remote, CredentialFile: link.CredentialFile, CurrentFolder: within(h.cwd, link.Path), Unreachable: true}
-
-				probeCtx, stopProbe := context.WithTimeout(remoteCtx, 600*time.Millisecond)
-				remote, err := sharingRemoteClient(probeCtx, link.Remote, link.CredentialFile, stack.OperatorCapability)
-				if err == nil {
-					if session, err := inspectSession(probeCtx, remote, link.Context); err == nil {
-						r.Closed, r.Unreachable = session.Closed, false
-					}
-				}
-
-				stopProbe()
-				linked[i] = r
-			}
-		})
-	}
-
 	// Current-folder links get the first slots; output order is independent of scheduling.
+	order := make([]int, 0, len(links))
 	for _, currentOnly := range []bool{true, false} {
 		for i, link := range links {
 			if within(h.cwd, link.Path) == currentOnly {
-				jobs <- i
+				order = append(order, i)
 			}
 		}
 	}
 
-	close(jobs)
-	workers.Wait()
+	timedOut := make([]bool, len(links))
+	probe := func(order []int, limited bool) {
+		jobs := make(chan int)
+		var workers sync.WaitGroup
+		for range min(8, len(order)) {
+			workers.Go(func() {
+				for i := range jobs {
+					link := links[i]
+					r := sessionRow{WorkspaceID: link.WorkspaceID, WorkspacePath: link.Path, SessionID: link.SessionID, Name: link.Name, Remote: link.Remote, CredentialFile: link.CredentialFile, CurrentFolder: within(h.cwd, link.Path), Unreachable: true}
+
+					timeout := 2 * time.Second
+					if limited {
+						timeout = 600 * time.Millisecond
+					}
+
+					probeCtx, stopProbe := context.WithTimeout(remoteCtx, timeout)
+					remote, err := sharingRemoteClient(probeCtx, link.Remote, link.CredentialFile, stack.OperatorCapability)
+					if err == nil {
+						if session, err := inspectSession(probeCtx, remote, link.Context); err == nil {
+							r.Closed, r.Unreachable = session.Closed, false
+						}
+					}
+
+					timedOut[i] = r.Unreachable && probeCtx.Err() == context.DeadlineExceeded
+					stopProbe()
+					linked[i] = r
+				}
+			})
+		}
+
+		for _, i := range order {
+			jobs <- i
+		}
+
+		close(jobs)
+		workers.Wait()
+	}
+
+	probe(order, len(links) > 8)
+
+	if remoteCtx.Err() == nil {
+		retry := make([]int, 0)
+		for _, i := range order {
+			if timedOut[i] {
+				retry = append(retry, i)
+			}
+		}
+
+		// With the queue served once, spend unused budget on slow-but-healthy links.
+		probe(retry, false)
+	}
+
 	rows = append(rows, linked...)
 
 	sortRows(rows)

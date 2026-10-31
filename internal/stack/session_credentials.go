@@ -114,7 +114,17 @@ func joinRemoteCredentialUsing(ctx context.Context, remote, session, path, code 
 
 	data, err := client.Do(ctx, "POST", endpoint, SessionJoinRequest{SessionID: session, CredentialHash: tokenHash(c.Token), Code: code})
 	if err != nil {
-		return ref, err
+		// A join may have committed before its response was lost and its code replaced.
+		// Authenticate the saved secret itself; a caller-supplied hash is not proof.
+		client.Credential = c
+
+		recovered, recoveryErr := recoverJoinedCredential(ctx, &client, session)
+		if recoveryErr != nil {
+			return ref, err
+		}
+
+		c.WorkspaceID = recovered.WorkspaceID
+		return recovered, writePrivate(path, c, true)
 	}
 
 	var envelope struct {
@@ -128,4 +138,27 @@ func joinRemoteCredentialUsing(ctx context.Context, remote, session, path, code 
 	c.WorkspaceID = ref.WorkspaceID
 
 	return ref, writePrivate(path, c, true)
+}
+
+func recoverJoinedCredential(ctx context.Context, client *Client, session string) (Context, error) {
+	data, err := client.Do(ctx, "GET", "/v1/credential", nil)
+	if err != nil {
+		return Context{}, err
+	}
+
+	var envelope struct {
+		Data CredentialContext `json:"data"`
+	}
+	if json.Unmarshal(data, &envelope) != nil || envelope.Data.Kind != OperatorCapability || envelope.Data.SessionID != session {
+		return Context{}, failure("forbidden", "saved credential does not own the requested enrollment")
+	}
+
+	ref := Context{WorkspaceID: envelope.Data.WorkspaceID, SessionID: session}
+	if session != "" {
+		if _, err = client.Do(ctx, "POST", "/v1/session/inspect", ref); err != nil {
+			return Context{}, err
+		}
+	}
+
+	return ref, nil
 }

@@ -61,7 +61,7 @@ func (s *Store) JoinOwner(ctx context.Context, r SessionJoinRequest) error {
 	defer tx.Rollback()
 	var consumed, login string
 
-	err = tx.QueryRowContext(ctx, "SELECT consumed_hash,login FROM owner_join_codes WHERE code_hash=? AND (expires_at>? OR (consumed_hash=? AND expires_at>?))", tokenHash(r.Code), now(), r.CredentialHash, clockNow().UTC().Add(-joinRecoveryWindow).Format(time.RFC3339Nano)).Scan(&consumed, &login)
+	err = tx.QueryRowContext(ctx, "SELECT consumed_hash,login FROM owner_join_codes WHERE code_hash=? AND expires_at>?", tokenHash(r.Code), now()).Scan(&consumed, &login)
 	if err != nil && err != sql.ErrNoRows {
 		return storageError(err)
 	}

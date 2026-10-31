@@ -46,8 +46,8 @@ func TestSessionInvitationLimitAndCleanup(t *testing.T) {
 		}
 	}
 
-	if successes != 16 || countTest(t, s, "SELECT count(*) FROM session_invites WHERE consumed_hash=''") != 16 || countTest(t, s, "SELECT count(*) FROM session_invites") != 17 {
-		t.Fatal("active invitation cap or consumed recovery row lost")
+	if successes != 16 || countTest(t, s, "SELECT count(*) FROM session_invites WHERE consumed_hash=''") != 16 || countTest(t, s, "SELECT count(*) FROM session_invites") != 16 {
+		t.Fatal("active invitation cap or retired-row cleanup failed")
 	}
 
 	if got := countTest(t, s, "SELECT count(*) FROM lifecycle_history") - before; got != 16 {
@@ -69,21 +69,17 @@ func TestSessionInvitationLimitAndCleanup(t *testing.T) {
 		t.Fatal("replace at capacity", err)
 	}
 
-	// Issuance preserves both enrolled credentials and exact lost-response recovery.
+	// Issuance preserves the enrolled credential, which the client uses for recovery.
 	if _, err = s.InspectSession(ctx, secret, f.ref(0)); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err = s.JoinSession(actor, join); err != nil {
-		t.Fatal("unrelated invitations lost join recovery", err)
-	}
+	_, err = s.JoinSession(actor, join)
+	requireCode(t, err, "forbidden")
 
+	// The cap, not a consumed-login cooldown, is the only reason this fresh invite fails.
 	_, err = s.InviteSession(ctx, secret, SessionInviteRequest{Context: f.ref(0), OperationID: opaqueID(), Login: "friend@example.com", CodeHash: tokenHash(opaqueID())})
-	requireCode(t, err, "conflict")
-
-	if _, err = s.JoinSession(actor, join); err != nil {
-		t.Fatal("same-login reissue lost join recovery", err)
-	}
+	requireCode(t, err, "rate_limited")
 
 	// Legacy expired rows are cleaned in the same transaction as a fresh invitation.
 	execTest(t, s, "UPDATE session_invites SET expires_at='2000-01-01T00:00:00Z'")
@@ -99,7 +95,7 @@ func TestSessionInvitationLimitAndCleanup(t *testing.T) {
 		t.Fatal("injected issuance failure ignored")
 	}
 
-	if countTest(t, s, "SELECT count(*) FROM session_invites") != 117 {
+	if countTest(t, s, "SELECT count(*) FROM session_invites") != 116 {
 		t.Fatal("failed issuance committed cleanup")
 	}
 
