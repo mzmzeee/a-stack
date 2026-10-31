@@ -41,6 +41,8 @@ func TestStaleLinkNeverProbesReusedProfile(t *testing.T) {
 	linkTestHome(t)
 
 	local, remote := newTeam(t), newTeam(t)
+	local.receipt("", local.scoped("session", "close", "--expected-revision", "2", "--operation-id", "close-local-link-fixture")...)
+
 	client, err := stack.NewClient(local.state, "", stack.OperatorCapability)
 	if err != nil {
 		t.Fatal(err)

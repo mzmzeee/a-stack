@@ -116,6 +116,7 @@ func TestSharingDocumentedCLIWorkflow(t *testing.T) {
 			args = append([]string{"--state-dir", localState}, args...)
 		}
 
+		args = append([]string{"--json"}, args...)
 		encoded, _ := json.Marshal(args)
 		c := exec.Command(os.Args[0], "-test.run=^TestSharingRealCLIChild$")
 		c.Dir = cwd
@@ -168,6 +169,7 @@ func TestSharingDocumentedCLIWorkflow(t *testing.T) {
 	linked := cli(friendHome, friend.project, friend.state, true, "session", "link", "--code", inviteCode, "--", "friendteam", session)
 	friendCredential := value(linked, "credential_file")
 	cli(friendHome, friend.project, filepath.Join(root, "missing-friend-service"), true, "session", "invite", "third@example.com", "--remote", "friendteam", "--credential-file", friendCredential, "--workspace", value(shared, "workspace_id"), "--session", session)
+	cli(friendHome, friend.project, filepath.Join(root, "missing-friend-service"), true, "session", "invite", "fourth@example.com", "--credential-file", friendCredential)
 	cli(friendHome, friend.project, friend.state, true, "session", "link", "--code", inviteCode, "--", "friendteam", session)
 	cli(friendHome, friend.project, friend.state, true, "session", "inspect", "--remote", "friendteam", "--credential-file", friendCredential)
 	// A separate client credential cannot consume the invitation again.

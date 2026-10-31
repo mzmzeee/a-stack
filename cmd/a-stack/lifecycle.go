@@ -67,6 +67,10 @@ func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 // acceptedFlags lists the flags a command accepts, space-separated with a
 // space at both ends. Help uses the same list.
 func acceptedFlags(command string) string {
+	if command == "connect-code" {
+		return " state-dir json help "
+	}
+
 	if isSharingCommand(command) {
 		flags := " state-dir credential-file as json help "
 		switch command {

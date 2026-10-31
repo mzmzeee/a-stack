@@ -234,6 +234,20 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return err
 	}
 
+	if cmd == "session recover-transfer" {
+		if lifecycle.transferID == "" {
+			return invalid("transfer ID required: give --transfer-id")
+		}
+
+		if !stack.ValidID(lifecycle.transferID) {
+			return invalid("malformed --transfer-id; use the exact ID from the transfer journal")
+		}
+
+		if !lifecycle.destinationStopped {
+			return invalid("--destination-stopped required: stop or discard the destination copy and its retry processes before confirming")
+		}
+	}
+
 	if isTaskCommand(cmd) {
 		if err := tasks.readText(cmd, seen); err != nil {
 			return err
@@ -291,7 +305,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 			return invalid("Session sharing requires Operator credentials")
 		}
 
-		return sharingCommand(ctx, cmd, sharingArgs, state, credential, remote, agentFiles, joinCode, lifecycle, stdout)
+		return sharingCommand(ctx, cmd, sharingArgs, state, credential, remote, agentFiles, joinCode, lifecycle, machine, stdout)
 	}
 
 	if cmd == "statusline" {

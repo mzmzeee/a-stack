@@ -151,7 +151,7 @@ func statePath(path string) (string, error) {
 func privateRead(path string) ([]byte, error) {
 	f, err := openPrivate(path, false)
 	if err != nil {
-		return nil, failure("invalid_input", "private file is missing or inaccessible")
+		return nil, failure("invalid_input", fmt.Sprintf("private file %q is missing or inaccessible", path))
 	}
 	defer f.Close()
 

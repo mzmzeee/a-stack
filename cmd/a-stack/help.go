@@ -170,6 +170,10 @@ var (
 )
 
 func flagRequired(command, name string) bool {
+	if command == "session invite" {
+		return false
+	}
+
 	if strings.Contains(alwaysRequired, " "+name+" ") || strings.Contains(" "+requiredFlags[command]+" ", " "+name+" ") {
 		return true
 	}
@@ -373,6 +377,17 @@ func flagText(fs *flag.FlagSet, command, name string) string {
 	text := fs.Lookup(name).Usage
 	if hook, ok := hookFlagText[name]; ok && isHookCommand(command) {
 		text = hook
+	}
+
+	if command == "session invite" {
+		switch name {
+		case "session":
+			text = "Session ID; choose explicitly when this folder has several open Sessions"
+		case "workspace":
+			text = "Workspace ID; defaults to this folder or the credential context"
+		case "operation-id":
+			text = "Mutation ID (generated when omitted)"
+		}
 	}
 
 	if command == "task create" && name == "after" {

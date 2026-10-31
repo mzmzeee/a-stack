@@ -92,7 +92,7 @@ func checkLinkProfile(remote, database string) error {
 	return nil
 }
 
-func sharingCommand(ctx context.Context, command string, args []string, state, credential, remote, agentFiles, code string, flags lifecycleFlags, out io.Writer) error {
+func sharingCommand(ctx context.Context, command string, args []string, state, credential, remote, agentFiles, code string, flags lifecycleFlags, machine bool, out io.Writer) error {
 	if credential != "" {
 		absolute, err := filepath.Abs(credential)
 		if err != nil {
@@ -113,8 +113,13 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 	}
 
 	var local *stack.Client
-	if command != "session invite" || remote == "" || flags.session == "" {
-		local, err = stack.NewClient(state, "", stack.OperatorCapability)
+	if command != "session invite" || remote == "" {
+		localCredential := ""
+		if command == "session invite" {
+			localCredential = credential
+		}
+
+		local, err = stack.NewClient(state, localCredential, stack.OperatorCapability)
 	}
 
 	if err != nil {
@@ -193,71 +198,7 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 	}
 
 	if command == "session invite" {
-		if len(args) != 1 {
-			return invalid("session invite takes one exact Tailscale login")
-		}
-
-		client := local
-		ref := stack.Context{WorkspaceID: flags.workspace, SessionID: flags.session}
-
-		if remote != "" {
-			client, err = sharingRemoteClient(ctx, remote, credential, stack.OperatorCapability)
-			if err != nil {
-				return err
-			}
-		}
-
-		if ref.SessionID == "" {
-			links, e := sessionLinks(ctx, local)
-			if e != nil {
-				return e
-			}
-
-			for _, link := range links {
-				if link.Path == folder {
-					if err = checkLinkProfile(link.Remote, link.DatabaseID); err != nil {
-						continue
-					}
-
-					ref = link.Context
-					client, err = sharingRemoteClient(ctx, link.Remote, link.CredentialFile, stack.OperatorCapability)
-					break
-				}
-			}
-
-			if err != nil {
-				return err
-			}
-
-			if ref.SessionID == "" {
-				session, e := localFolderSession(ctx, local, folder)
-				if e != nil {
-					return e
-				}
-
-				ref = stack.Context{WorkspaceID: session.WorkspaceID, SessionID: session.ID}
-			}
-		}
-
-		operation := flags.operationID
-		if operation == "" {
-			operation = operationID()
-		}
-
-		invitation := newJoinCode()
-		digest := sha256.Sum256([]byte(invitation))
-
-		data, e := client.Do(ctx, "POST", "/v1/session/invite", stack.SessionInviteRequest{Context: ref, OperationID: operation, Login: args[0], CodeHash: hex.EncodeToString(digest[:])})
-		if e != nil {
-			return e
-		}
-
-		receipt, e := decodeData[stack.Receipt](data)
-		if e != nil {
-			return e
-		}
-
-		return json.NewEncoder(out).Encode(map[string]any{"data": map[string]any{"receipt": receipt, "code": invitation, "expires_in": "24h"}})
+		return inviteSession(ctx, local, folder, args, credential, remote, flags, machine, out)
 	}
 
 	if len(args) != 0 {
