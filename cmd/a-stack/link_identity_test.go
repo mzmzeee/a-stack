@@ -136,3 +136,105 @@ func TestStaleLinkNeverProbesReusedProfile(t *testing.T) {
 		t.Fatal("unshare still selected stale link")
 	}
 }
+
+func TestLinkedCredentialPinConflictKeepsGuidance(t *testing.T) {
+	linkTestHome(t)
+	local, remote := newTeam(t), newTeam(t)
+	local.receipt("", local.scoped("session", "close", "--expected-revision", "2", "--operation-id", "close-legacy-link-fixture")...)
+
+	lc, err := stack.NewClient(local.state, "", stack.OperatorCapability)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rc, err := stack.NewClient(remote.state, "", stack.OperatorCapability)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	linkTestProfile(t, "team", rc.Discovery.DatabaseID)
+
+	file := filepath.Join(t.TempDir(), "copied-operator.json")
+	link := stack.SessionLink{Context: stack.Context{WorkspaceID: remote.workspace, SessionID: remote.session}, Path: local.project, Remote: "team", DatabaseID: rc.Discovery.DatabaseID, CredentialFile: file, Name: "Old shared Session"}
+	if _, err = lc.Do(context.Background(), "POST", "/v1/session/link", stack.SessionLinkRequest{Link: link}); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(local.project)
+
+	h := home{state: local.state, cwd: local.project}
+	for _, scenario := range []string{"legacy", "database", "alias", "offline", "inspect"} {
+		t.Run(scenario, func(t *testing.T) {
+			credential := rc.Credential
+			switch scenario {
+			case "database":
+				credential.Enrollment = &stack.Enrollment{DatabaseID: shareToken()}
+			case "alias":
+				credential.Enrollment = &stack.Enrollment{DatabaseID: rc.Discovery.DatabaseID}
+				credential.Remote = "old-name"
+			}
+
+			if err := stack.ReplacePrivate(file, credential); err != nil {
+				t.Fatal(err)
+			}
+
+			original := sharingRemoteClient
+			if scenario == "offline" {
+				sharingRemoteClient = func(context.Context, string, string, stack.CapabilityKind) (*stack.Client, error) {
+					return nil, &stack.Error{Code: "storage_unavailable", Message: "offline", Retryable: true}
+				}
+			} else if scenario == "inspect" {
+				// A reachable server lacking the linked Session is not a profile-pin error.
+				sharingRemoteClient = func(context.Context, string, string, stack.CapabilityKind) (*stack.Client, error) { return lc, nil }
+			}
+
+			t.Cleanup(func() { sharingRemoteClient = original })
+
+			rows, err := h.sessions(context.Background(), lc)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			found := false
+			for _, row := range rows {
+				if row.Remote == "" {
+					continue
+				}
+
+				found = true
+
+				if !row.Unreachable {
+					t.Error("failed link became openable")
+				}
+
+				if scenario == "offline" || scenario == "inspect" {
+					if rowState(row) != "unreachable" || row.LinkError != "" {
+						t.Error("ordinary failure mislabeled as re-link")
+					}
+				} else if rowState(row) != "needs re-link" || !strings.Contains(row.LinkError, "enroll") {
+					t.Errorf("lost pin guidance: state=%s error=%q", rowState(row), row.LinkError)
+				}
+			}
+
+			if !found {
+				t.Fatal("linked row missing")
+			}
+
+			if scenario == "offline" || scenario == "inspect" {
+				return
+			}
+
+			for _, explicit := range []bool{false, true} {
+				args := []string{"session", "invite", "friend@example.com", "--state-dir", local.state}
+				if explicit {
+					args = append(args, "--workspace", remote.workspace, "--session", remote.session)
+				}
+
+				var out, stderr bytes.Buffer
+				if run(args, &out, &stderr) == 0 || !strings.Contains(stderr.String(), "enroll") {
+					t.Error("invite lost pin guidance", stderr.String())
+				}
+			}
+		})
+	}
+}

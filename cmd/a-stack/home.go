@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -668,6 +669,11 @@ func (h *home) sessions(ctx context.Context, client *stack.Client) ([]sessionRow
 					if err == nil {
 						if session, err := inspectSession(probeCtx, remote, link.Context); err == nil {
 							r.Closed, r.Unreachable = session.Closed, false
+						}
+					} else {
+						var pinError *stack.Error
+						if errors.As(err, &pinError) && pinError.Code == "conflict" {
+							r.LinkError = pinError.Message
 						}
 					}
 
