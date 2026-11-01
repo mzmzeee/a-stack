@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestTransferKeepsOtherMachineRemote(t *testing.T) {
+func TestTransferKeepsMachineLabelWithoutRuntime(t *testing.T) {
 	source, dest := tasksFixture(t), tasksFixture(t)
 	binding, _ := json.Marshal(RuntimeBinding{Machine: "other-laptop", RemoteMachine: true})
 	if _, err := source.service.Store.db.Exec("UPDATE agents SET binding=? WHERE id=?", string(binding), source.aID); err != nil {
@@ -27,7 +27,7 @@ func TestTransferKeepsOtherMachineRemote(t *testing.T) {
 	}
 
 	var got RuntimeBinding
-	if json.Unmarshal([]byte(raw), &got) != nil || got.Machine != "other-laptop" || !got.RemoteMachine {
-		t.Fatal("remote binding was reassigned to the importing machine")
+	if json.Unmarshal([]byte(raw), &got) != nil || got != (RuntimeBinding{Machine: "other-laptop"}) {
+		t.Fatal("transfer lost machine label or retained runtime routing")
 	}
 }

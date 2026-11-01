@@ -10,6 +10,7 @@ Upgrading from v0.1.9: the first start saves `state.db.pre-v15` (or a numbered c
 
 ### Fixed
 
+- Transfers use format 2 and clear every imported runtime attachment, including same-machine bindings; Agents must bind or enroll afresh with the new credentials. Machine labels, consumed extra-notice budgets and pane cooldowns survive. Portable snapshots omit routing and relay proofs, while a source fingerprint fences lease, binding and hold changes before sealing. Both services must run matching schema and transfer formats.
 - Extra-notice budgets no longer depend on machine-local delivery history. Successful pane delivery records a portable cooldown that survives clearing or rebinding an Agent. Relay-ready bindings namespace runtime identities by machine and are never probed or focused through the server's local Herdr.
 
 ### Added

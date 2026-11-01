@@ -11,15 +11,17 @@ import (
 // TransferBundle is a Session snapshot, never a database backup. The fixed table
 // list excludes capabilities, browser grants and machine-local delivery state.
 type TransferBundle struct {
-	ReleaseHash    string            `json:"release_hash"`
-	Released       map[string]string `json:"released,omitempty"`
-	Schema         int               `json:"schema"`
-	SourceDatabase string            `json:"source_database"`
-	TransferID     string            `json:"transfer_id"`
-	Repository     string            `json:"repository"`
-	Session        Session           `json:"session"`
-	Orders         StandingOrders    `json:"orders"`
-	Tables         []TransferTable   `json:"tables"`
+	Format            int               `json:"format"`
+	SourceFingerprint string            `json:"source_fingerprint"`
+	ReleaseHash       string            `json:"release_hash"`
+	Released          map[string]string `json:"released,omitempty"`
+	Schema            int               `json:"schema"`
+	SourceDatabase    string            `json:"source_database"`
+	TransferID        string            `json:"transfer_id"`
+	Repository        string            `json:"repository"`
+	Session           Session           `json:"session"`
+	Orders            StandingOrders    `json:"orders"`
+	Tables            []TransferTable   `json:"tables"`
 }
 type TransferTable struct {
 	Name string  `json:"name"`
@@ -148,6 +150,9 @@ func (s *Store) ExportTransfer(ctx context.Context, token string, r TransferExpo
 			return result, failure("conflict", "transfer ID already used")
 		}
 
+		if result.Format != transferFormat || result.Schema != schemaVersion {
+			return result, failure("conflict", "transfer format or schema changed; start a fresh transfer")
+		}
 		return result, nil
 	}
 
@@ -205,14 +210,10 @@ func (s *Store) ExportTransfer(ctx context.Context, token string, r TransferExpo
 
 	release := opaqueID()
 
-	result = TransferBundle{ReleaseHash: tokenHash(release), Released: released, Schema: schemaVersion, SourceDatabase: s.id, TransferID: r.TransferID, Repository: r.Repository, Session: session, Orders: orders}
-	for _, spec := range transferTables {
-		_, rows, err := transferRows(ctx, tx, spec, session.ID)
-		if err != nil {
-			return result, storageError(err)
-		}
-
-		result.Tables = append(result.Tables, TransferTable{Name: spec.name, Rows: rows})
+	result = TransferBundle{Format: transferFormat, ReleaseHash: tokenHash(release), Released: released, Schema: schemaVersion, SourceDatabase: s.id, TransferID: r.TransferID, Repository: r.Repository, Session: session, Orders: orders}
+	result.Tables, result.SourceFingerprint, err = transferProjection(ctx, tx, session.ID)
+	if err != nil {
+		return result, storageError(err)
 	}
 
 	data, err := json.Marshal(result)
@@ -303,7 +304,10 @@ func (s *Store) ImportTransfer(ctx context.Context, token string, r TransferImpo
 		}
 	}
 
-	if !validHash(b.ReleaseHash) || b.Schema != schemaVersion || !validToken(b.TransferID) || !validToken(b.SourceDatabase) || b.SourceDatabase == s.id || !validToken(b.Session.ID) || b.Repository == "" || len(b.Repository) > 4096 || len(b.Tables) != len(transferTables) {
+	if b.Format != transferFormat || b.Schema != schemaVersion {
+		return result, failure("invalid_input", "transfer format or schema differs; upgrade both services and start a fresh transfer")
+	}
+	if !validHash(b.SourceFingerprint) || !validHash(b.ReleaseHash) || b.Schema != schemaVersion || !validToken(b.TransferID) || !validToken(b.SourceDatabase) || b.SourceDatabase == s.id || !validToken(b.Session.ID) || b.Repository == "" || len(b.Repository) > 4096 || len(b.Tables) != len(transferTables) {
 		return result, failure("invalid_input", "invalid Session transfer snapshot")
 	}
 
@@ -489,7 +493,7 @@ func (s *Store) ImportTransfer(ctx context.Context, token string, r TransferImpo
 								binding.Machine = r.Machine
 							}
 
-							binding.RemoteMachine = !r.LocalRuntime || binding.Machine != r.Machine
+							binding = RuntimeBinding{Machine: binding.Machine}
 
 							encoded, err := json.Marshal(binding)
 							if err != nil {
@@ -498,6 +502,8 @@ func (s *Store) ImportTransfer(ctx context.Context, token string, r TransferImpo
 
 							values[j] = string(encoded)
 						}
+					case "runtime_id":
+						values[j] = nil
 					case "runtime_state":
 						values[j] = "unknown"
 					case "observed_at":
@@ -519,6 +525,10 @@ func (s *Store) ImportTransfer(ctx context.Context, token string, r TransferImpo
 				return result, failure("conflict", "transfer row collides or violates a data constraint")
 			}
 		}
+	}
+
+	if _, err = tx.ExecContext(ctx, "UPDATE agents SET revision=revision+1 WHERE session_id=?", b.Session.ID); err != nil {
+		return result, storageError(err)
 	}
 
 	var agentCount int
@@ -577,6 +587,7 @@ func clearTransferredSession(ctx context.Context, tx *sql.Tx, session string) er
 		"DELETE FROM notice_ack_refs WHERE batch_id IN (SELECT id FROM notice_batches WHERE recipient_id IN (SELECT id FROM agents WHERE session_id=?))",
 		"DELETE FROM notice_batch_refs WHERE batch_id IN (SELECT id FROM notice_batches WHERE recipient_id IN (SELECT id FROM agents WHERE session_id=?))",
 		"DELETE FROM notice_batches WHERE recipient_id IN (SELECT id FROM agents WHERE session_id=?)",
+		"DELETE FROM notice_relay_leases WHERE session_id=?",
 		"DELETE FROM notice_targets WHERE recipient_id IN (SELECT id FROM agents WHERE session_id=?)",
 		"DELETE FROM runtime_claims WHERE agent_id IN (SELECT id FROM agents WHERE session_id=?)",
 		"DELETE FROM capabilities WHERE token_hash IN (SELECT token_hash FROM session_operators WHERE session_id=?)",
@@ -677,6 +688,9 @@ func (s *Store) ChangeTransfer(ctx context.Context, token, action string, r Tran
 			return result, storageError()
 		}
 
+		if current.Format != transferFormat || current.Schema != schemaVersion {
+			return result, failure("conflict", "transfer format or schema changed; start a fresh transfer")
+		}
 		current.Session = session
 
 		current.Orders, err = loadOrders(ctx, tx, session.WorkspaceID)
@@ -684,14 +698,9 @@ func (s *Store) ChangeTransfer(ctx context.Context, token, action string, r Tran
 			return result, err
 		}
 
-		current.Tables = nil
-		for _, spec := range transferTables {
-			_, rows, readErr := transferRows(ctx, tx, spec, session.ID)
-			if readErr != nil {
-				return result, storageError(readErr)
-			}
-
-			current.Tables = append(current.Tables, TransferTable{Name: spec.name, Rows: rows})
+		current.Tables, current.SourceFingerprint, err = transferProjection(ctx, tx, session.ID)
+		if err != nil {
+			return result, storageError(err)
 		}
 
 		encoded, encodeErr := json.Marshal(current)

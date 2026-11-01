@@ -151,23 +151,6 @@ func prepareShareAgents(ctx context.Context, state string, source, dest *stack.C
 			return nil, invalid("cannot locate the private credential for Agent " + agent.Name + "; give --agent-files with its explicit path before sharing")
 		}
 
-		// A source enrollment may migrate only with its exact local machine and
-		// credential generation. A folder match is never enrollment evidence.
-		file, e := enrollmentFile(agent.ID)
-		if e != nil {
-			return nil, e
-		}
-
-		if data, e := os.ReadFile(file); e == nil {
-			var enrollment hookEnrollment
-			machine, e := hookMachine(false)
-			if e != nil || json.Unmarshal(data, &enrollment) != nil || machine == "" || enrollment.Machine != machine || enrollment.Credential != credentialGeneration(old) || enrollment.Revision != agent.Revision || enrollment.Session == "" {
-				return nil, invalid("Agent enrollment does not match this machine, credential and revision; explicitly enroll it before sharing")
-			}
-		} else if !os.IsNotExist(e) {
-			return nil, e
-		}
-
 		newPath := old + "." + bundle.TransferID + ".json"
 		request := stack.AgentRegisterRequest{Context: ref, OperationID: bundle.TransferID, Name: agent.Name, WorktreePath: agent.WorktreePath}
 
@@ -255,47 +238,8 @@ func migrateShareHooks(agents map[string]shareAgent, source, dest stack.Context)
 		}
 	}
 
-	for id, agent := range agents {
-		file, e := enrollmentFile(id)
-		if e != nil {
-			return e
-		}
-
-		data, e := os.ReadFile(file)
-		if os.IsNotExist(e) {
-			continue
-		}
-
-		if e != nil {
-			return e
-		}
-
-		var enrollment hookEnrollment
-		machine, e := hookMachine(false)
-		if e != nil || json.Unmarshal(data, &enrollment) != nil || machine == "" || enrollment.Machine != machine || enrollment.Session == "" {
-			return invalid("cannot migrate an enrollment from another machine")
-		}
-
-		oldGeneration, newGeneration := credentialGeneration(agent.Old), credentialGeneration(agent.New)
-		if enrollment.Credential == newGeneration {
-			continue
-		}
-
-		if enrollment.Credential != oldGeneration {
-			return invalid("enrollment credential changed during transfer")
-		}
-
-		enrollment.Credential = newGeneration
-
-		data, e = json.Marshal(enrollment)
-		if e != nil {
-			return e
-		}
-
-		if e = writeAtomic(file, data, 0o600); e != nil {
-			return e
-		}
-	}
+	// Enrollment stays tied to its old credential. Imported Agents must bind or
+	// enroll afresh; changing a hook's credential path is not enrollment.
 
 	return nil
 }

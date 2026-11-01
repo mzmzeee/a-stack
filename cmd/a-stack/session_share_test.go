@@ -13,7 +13,7 @@ import (
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-func TestCLIShareUnsharePreservesEnrollment(t *testing.T) {
+func TestCLIShareUnshareRequiresFreshEnrollment(t *testing.T) {
 	source := newTeam(t)
 	destination := newTeam(t)
 	home := hookHome(t)
@@ -149,8 +149,8 @@ func TestCLIShareUnsharePreservesEnrollment(t *testing.T) {
 		t.Fatal("enrollment")
 	}
 
-	if after.Credential == before.Credential || after.Machine != before.Machine || after.Session != before.Session || after.Revision != before.Revision {
-		t.Fatal("exact enrollment was not preserved")
+	if after.Credential != before.Credential || after.Machine != before.Machine || after.Session != before.Session || after.Revision != before.Revision {
+		t.Fatal("transfer must not authorize an old native enrollment with new credentials")
 	}
 
 	out.Reset()
@@ -175,7 +175,7 @@ func TestCLIShareUnsharePreservesEnrollment(t *testing.T) {
 	}
 
 	var restored hookEnrollment
-	if json.Unmarshal(data, &restored) != nil || restored.Session != before.Session || restored.Machine != before.Machine || restored.Credential == after.Credential {
+	if json.Unmarshal(data, &restored) != nil || restored.Session != before.Session || restored.Machine != before.Machine || restored.Credential != after.Credential {
 		t.Fatal("return enrollment")
 	}
 }
