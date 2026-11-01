@@ -51,6 +51,20 @@ All 15 stories run after the `18-enroll` implementation. Identity stories explic
 
 Before submitting a fix, run the new story against a disposable copy with the fix reverted or a narrowly seeded fault. Record the failing assertion and the corrected run. Do not mutate a shared worktree for this check.
 
+### Authority and state matrices
+
+Run the permanent matrices with:
+
+```sh
+go test -race ./internal/stack -run '^(TestEndpointCallerMatrix|TestStateCommandMatrix)$' -count=1
+```
+
+`endpoint_matrix_test.go` inventories the real Service router and tests every API route against ten caller kinds. One-time-code endpoints use valid codes and trusted Serve identity rather than bearer authority. Transfer import/export refusals must not read the request body. `state_matrix_test.go` inventories the CLI command tables and help table, then tests Session and Task admission through the commands' HTTP operations. A new route or command fails until it has a row. SQLite state constraints are checked too.
+
+Both tests share a private, resettable database fixture. Outcome groups use defaults and explicit exceptions; a named prerequisite refusal is not an authorization success. Session and Task axes are independent. Archived means a Finished Task with its archive flag set. Linked means an active destination with a local link record, not another server lifecycle state. Composite commands test their state-sensitive service boundary; their CLI recovery and transport stories remain in the existing command tests. Machine-local installers, updates, completions and protocol entry points have explicit inventory-only rows and are not executed by this matrix.
+
+When changing a permission or state rule, update the expected cell only after checking the documented policy. Keep an observed policy question as a commented expectation until it is decided. Verify the inventory gate by adding an unlisted route or command in a disposable source copy, and verify a guard by temporarily removing it there. Never mutate the shared service for these checks.
+
 ### Formatting
 
 Run `scripts/fmt.sh` before committing. It applies pinned gofumpt, golangci-lint readability fixes and import grouping, Prettier for JS/CSS/HTML, Ruff for Python and shfmt for shell scripts. `scripts/check.sh` checks the same files without changing them; `scripts/check.sh --format check` runs only that gate. Versions live in `scripts/check.sh`; tools stay in `.tmp/bin` or the npx/uvx caches. `.editorconfig` sets indentation and preserves Markdown hard breaks. See [rule choices](docs/quality.md#rule-choices) for the whitespace settings.

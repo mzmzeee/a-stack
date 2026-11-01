@@ -6,6 +6,10 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+### Added
+
+- Permanent endpoint-by-caller and Session/Task-state-by-command regression matrices, with router/command inventory gates, live schema state checks and transfer refusal-before-body-read assertions.
+
 ## [0.1.9] - 2026-10-31
 
 Upgrading from v0.1.8: run `a-stack update`; it restarts a running installed service and refreshes unchanged skill and hook files itself. Homebrew and Scoop users must upgrade with their package manager, restart the service and run `a-stack update --refresh`. The first start copies the database to `state.db.pre-v10`, then moves it from schema 10 to 15. Allow free space of three times the size of `state.db`; with less, the service stops before the copy and migration. Older versions cannot open schema 15. To go back, install v0.1.8, stop the service and restore the pre-migration copy in a new state directory in the same place; later changes are lost. Use the exact copy name printed by the service, which may have a numbered suffix, and delete Agent mail cursor files and the hooks' cursor folder after restoring. See [Go back to an older version](docs/install.md#go-back-to-an-older-version).
