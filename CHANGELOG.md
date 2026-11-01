@@ -8,7 +8,7 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ### Added
 
-- Permanent endpoint-by-caller and Session/Task-state-by-command regression matrices, with router/command inventory gates, live schema state checks and transfer refusal-before-body-read assertions.
+- Permanent endpoint-by-caller and Session/Task-state-by-command regression matrices, with fail-closed router/command inventory gates, independent source checks, live schema state checks and transfer refusal-before-body-read assertions. Bounded hook/MCP adapter cases cover closed-Session silence and Session/Task tool admission.
 
 ## [0.1.9] - 2026-10-31
 

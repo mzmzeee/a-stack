@@ -1,13 +1,9 @@
 package stack
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -46,7 +42,9 @@ var stateMatrix = []stateMatrixRow{
 	{"workspace orders show", "workspace/orders/show", "owner", "allowed", "allowed"},
 	{"workspace orders set", "workspace/orders/set", "owner", "allowed", "allowed"},
 	{"workspace orders clear", "workspace/orders/clear", "owner", "allowed", "allowed"},
-	{"hook enroll|hook status", "session/inspect", "worker", "allowed allowed conflict conflict allowed", "allowed"},
+	// Protocol adapters also have bounded adapter-specific state cases in
+	// cmd/a-stack/TestProtocolStateMatrix (not just these HTTP admission cells).
+	{"hook|mcp|hook enroll|hook status", "session/inspect", "worker", "allowed allowed conflict conflict allowed", "allowed"},
 	{"agent register", "agent/register", "orchestrator", "allowed session_closed conflict conflict allowed", "allowed"},
 	{"agent list", "agent/list", "owner", "allowed allowed conflict conflict allowed", "allowed"},
 	{"agent attach", "agent/attach", "worker", "allowed session_closed conflict conflict allowed", "allowed"},
@@ -98,94 +96,27 @@ var stateMatrix = []stateMatrixRow{
 	{"connect-code", "connect/code", "owner", "allowed", "allowed"},
 }
 
-// These commands manage the client machine or establish a long-running protocol,
-// rather than accepting Session/Task state. Inventory them without installing,
+// These commands manage the client machine. Inventory them without installing,
 // updating or starting services on the machine running go test.
 var matrixLocalCommands = []string{
-	"serve", "version", "connect", "update", "service install", "service uninstall", "service status",
-	"skill install", "skill uninstall", "hook install", "hook uninstall", "hook", "mcp",
+	"serve", "version", "update", "service install", "service uninstall", "service status",
+	"skill install", "skill uninstall", "hook install", "hook uninstall",
 	"completion bash", "completion zsh", "completion fish", "completion powershell", "completion install", "completion uninstall",
 }
+
+// Connect probes/enrolls a remote service, but takes no Session or Task action.
+var matrixStateIndependentCommands = []string{"connect"}
 
 // Commands with spaces are separated by |, unlike routes/outcome words.
 func matrixCommands(t *testing.T) []string {
 	t.Helper()
-	found := map[string]bool{}
 
-	files, err := filepath.Glob("../../cmd/a-stack/*.go")
+	commands, err := matrixParseCommands(matrixSourceFiles(t, "../../cmd/a-stack/*.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for _, path := range files {
-		if strings.HasSuffix(path, "_test.go") {
-			continue
-		}
-
-		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		for _, decl := range file.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok {
-				continue
-			}
-
-			for _, spec := range gen.Specs {
-				v, ok := spec.(*ast.ValueSpec)
-				if !ok {
-					continue
-				}
-
-				for i, name := range v.Names {
-					if i >= len(v.Values) {
-						continue
-					}
-
-					switch name.Name {
-					case "lifecycleCommands", "taskCommands", "mailCommands":
-						ast.Inspect(v.Values[i], func(n ast.Node) bool {
-							lit, ok := n.(*ast.BasicLit)
-							if ok && lit.Kind == token.STRING {
-								s, _ := strconv.Unquote(lit.Value)
-								found[s] = true
-							}
-
-							return true
-						})
-					case "helpGroups":
-						ast.Inspect(v.Values[i], func(n ast.Node) bool {
-							row, ok := n.(*ast.CompositeLit)
-							if !ok || len(row.Elts) != 3 {
-								return true
-							}
-
-							lit, ok := row.Elts[0].(*ast.BasicLit)
-							if ok && lit.Kind == token.STRING {
-								s, _ := strconv.Unquote(lit.Value)
-								if s != "" {
-									found[s] = true
-								}
-							}
-
-							return true
-						})
-					}
-				}
-			}
-		}
-	}
-
-	out := []string{}
-	for name := range found {
-		out = append(out, name)
-	}
-
-	slices.Sort(out)
-
-	return out
+	return commands
 }
 
 func matrixStateInventory(t *testing.T, f *matrixFixture) {
@@ -279,6 +210,10 @@ func TestStateCommandMatrix(t *testing.T) {
 		rows[command] = stateMatrixRow{caller: "local"}
 	}
 
+	for _, command := range matrixStateIndependentCommands {
+		rows[command] = stateMatrixRow{caller: "state-independent"}
+	}
+
 	for _, command := range commands {
 		if _, ok := rows[command]; !ok {
 			t.Errorf("unlisted command %q: add state matrix row", command)
@@ -300,7 +235,7 @@ func TestStateCommandMatrix(t *testing.T) {
 
 	for _, command := range commands {
 		row := rows[command]
-		if row.caller == "local" {
+		if row.caller == "local" || row.caller == "state-independent" {
 			continue
 		}
 

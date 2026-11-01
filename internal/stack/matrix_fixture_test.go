@@ -3,15 +3,11 @@ package stack
 import (
 	"bytes"
 	"encoding/json"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -458,73 +454,10 @@ func (f *matrixFixture) request(t *testing.T, route string) any {
 func matrixRoutes(t *testing.T) []string {
 	t.Helper()
 
-	files, err := filepath.Glob("*.go")
+	routes, err := matrixParseRoutes(matrixSourceFiles(t, "*.go"))
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	found := map[string]bool{}
-	for _, path := range files {
-		if strings.HasSuffix(path, "_test.go") {
-			continue
-		}
-
-		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		for _, decl := range file.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Recv == nil {
-				continue
-			}
-
-			recv, ok := fn.Recv.List[0].Type.(*ast.StarExpr)
-			if !ok {
-				continue
-			}
-
-			id, ok := recv.X.(*ast.Ident)
-			if !ok || id.Name != "Service" {
-				continue
-			}
-
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				// browserAsset's parameterized route is parts[1] == "view",
-				// rather than a full path literal. Read that actual discriminator.
-				if comparison, ok := n.(*ast.BinaryExpr); ok && comparison.Op == token.EQL {
-					if index, ok := comparison.X.(*ast.IndexExpr); ok {
-						array, named := index.X.(*ast.Ident)
-
-						position, numbered := index.Index.(*ast.BasicLit)
-						value, literal := comparison.Y.(*ast.BasicLit)
-						if named && array.Name == "parts" && numbered && position.Value == "1" && literal && value.Kind == token.STRING {
-							segment, _ := strconv.Unquote(value.Value)
-							found["/"+segment+"/{workspace}/{session}"] = true
-						}
-					}
-				}
-
-				lit, ok := n.(*ast.BasicLit)
-				if ok && lit.Kind == token.STRING {
-					s, _ := strconv.Unquote(lit.Value)
-					if (strings.HasPrefix(s, "/v1/") || strings.HasPrefix(s, "/assets/")) && !strings.HasSuffix(s, "/") {
-						found[s] = true
-					}
-				}
-
-				return true
-			})
-		}
-	}
-
-	routes := []string{}
-	for path := range found {
-		routes = append(routes, path)
-	}
-
-	slices.Sort(routes)
 
 	return routes
 }
