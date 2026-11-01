@@ -30,7 +30,7 @@ func newMatrixFixture(t *testing.T) *matrixFixture {
 	t.Helper()
 
 	home := privateTestDir(t)
-	for _, name := range []string{"HOME", "AppData", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"} {
+	for _, name := range []string{"HOME", "USERPROFILE", "AppData", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"} {
 		t.Setenv(name, home)
 	}
 

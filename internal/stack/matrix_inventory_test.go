@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"maps"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -73,6 +74,8 @@ func matrixString(expr ast.Expr) (string, error) {
 	return strconv.Unquote(lit.Value)
 }
 
+var matrixRoutePrefixes = []string{"/v1/session/transfer/"}
+
 func matrixParseRoutes(files []*ast.File) ([]string, error) {
 	found := map[string]bool{}
 	for _, file := range files {
@@ -108,7 +111,7 @@ func matrixParseRoutes(files []*ast.File) ([]string, error) {
 					value = "/" + value + "/{workspace}/{session}"
 				}
 
-				if strings.HasPrefix(value, "/") && !strings.HasSuffix(value, "/") {
+				if strings.HasPrefix(value, "/") {
 					found[value] = true
 				}
 			}
@@ -147,7 +150,10 @@ func matrixParseRoutes(files []*ast.File) ([]string, error) {
 				case *ast.CallExpr:
 					if len(node.Args) == 2 && matrixPathExpr(node.Args[0]) {
 						if method, ok := node.Fun.(*ast.SelectorExpr); ok && method.Sel.Name == "HasPrefix" {
-							add(node.Args[1], false)
+							prefix, err := matrixString(node.Args[1])
+							if err != nil || !slices.Contains(matrixRoutePrefixes, prefix) {
+								parseErr = fmt.Errorf("unsupported route prefix in %s: %q (%v)", fn.Name.Name, prefix, err)
+							}
 						}
 					}
 				}
@@ -196,6 +202,43 @@ func matrixParseCommands(files []*ast.File) ([]string, error) {
 						}
 
 						sources[name.Name] = entries
+					}
+				}
+			}
+		}
+	}
+
+	for _, file := range files {
+		for _, decl := range file.Decls {
+			fn, ok := decl.(*ast.FuncDecl)
+			if !ok || fn.Body == nil {
+				continue
+			}
+
+			classifier := strings.HasPrefix(fn.Name.Name, "is") && strings.HasSuffix(fn.Name.Name, "Command")
+			for node := range ast.Preorder(fn.Body) {
+				if loop, ok := node.(*ast.RangeStmt); ok && classifier {
+					source, named := loop.X.(*ast.Ident)
+					if !named || len(sources[source.Name]) == 0 {
+						return nil, fmt.Errorf("unsupported command source in %s", fn.Name.Name)
+					}
+				}
+
+				var writes []ast.Expr
+				switch node := node.(type) {
+				case *ast.AssignStmt:
+					writes = node.Lhs
+				case *ast.CallExpr:
+					if builtin, ok := node.Fun.(*ast.Ident); ok && len(node.Args) > 0 && (builtin.Name == "copy" || builtin.Name == "clear") {
+						writes = node.Args[:1]
+					}
+				}
+
+				for _, lhs := range writes {
+					for target := range ast.Preorder(lhs) {
+						if id, ok := target.(*ast.Ident); ok && sources[id.Name] != nil {
+							return nil, fmt.Errorf("write to command source %s outside declaration", id.Name)
+						}
 					}
 				}
 			}
@@ -270,15 +313,7 @@ func matrixCommandTable(expr ast.Expr, help bool) ([]string, error) {
 	return commands, nil
 }
 
-func matrixNames(found map[string]bool) []string {
-	out := []string{}
-	for name := range found {
-		out = append(out, name)
-	}
-
-	slices.Sort(out)
-	return out
-}
+func matrixNames(found map[string]bool) []string { return slices.Sorted(maps.Keys(found)) }
 
 func TestMatrixInventoryRejectsPartialParse(t *testing.T) {
 	const commands = `package main

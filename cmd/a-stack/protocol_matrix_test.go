@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -21,12 +22,12 @@ type protocolMatrixFixture struct {
 func newProtocolMatrixFixture(t *testing.T) protocolMatrixFixture {
 	t.Helper()
 
-	home := hookHome(t)
+	home := filepath.Join(hookHome(t), "private")
 	if err := stack.MkdirPrivate(home); err != nil {
 		t.Fatal(err)
 	}
 
-	for _, name := range []string{"AppData", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"} {
+	for _, name := range []string{"HOME", "USERPROFILE", "AppData", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"} {
 		t.Setenv(name, home)
 	}
 
