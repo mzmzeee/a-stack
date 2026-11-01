@@ -10,12 +10,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/mzmzeee/a-stack/internal/stack"
 )
 
-var mailCommands = []string{"mail ack", "mail send", "mail reply", "mail recipients", "mail read", "mail check"}
+var mailCommands = []string{"mail ack", "mail send", "mail reply", "mail recipients", "mail read", "mail check", "mail wait"}
 
 func isMailCommand(command string) bool {
 	for _, c := range mailCommands {
@@ -28,6 +29,7 @@ func isMailCommand(command string) bool {
 }
 
 type mailFlags struct {
+	timeout                                time.Duration
 	cursor, cursorFile, afterTask, message string
 	urgent                                 bool
 	ackRequired                            bool
@@ -39,6 +41,7 @@ type mailFlags struct {
 }
 
 func (f *mailFlags) register(fs *flag.FlagSet) {
+	fs.DurationVar(&f.timeout, "timeout", 30*time.Minute, "Mail wait deadline (default 30m)")
 	fs.BoolVar(&f.urgent, "urgent", false, "Nudge enrolled hooks at the next eligible tool boundary")
 	fs.BoolVar(&f.ackRequired, "ack-required", false, "Ask selected assignees for an explicit acknowledgement")
 	fs.Func("ack-from", "Assignee to acknowledge; repeat for more", func(name string) error { f.ackFrom = append(f.ackFrom, name); return nil })
@@ -66,6 +69,8 @@ func mailAllowedFlags(command string) string {
 		return "task cursor limit"
 	case "mail check":
 		return "cursor-file after-task task-limit limit"
+	case "mail wait":
+		return "cursor-file timeout all"
 	}
 
 	return ""
@@ -163,6 +168,10 @@ func mailRequest(ctx context.Context, client *stack.Client, command string, l li
 	return client.Do(ctx, "POST", "/v1/"+strings.ReplaceAll(command, " ", "/"), body)
 }
 
+func mailCursorIdentity(client *stack.Client, ref stack.Context) string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(client.Discovery.DatabaseID+"\n"+ref.WorkspaceID+"\n"+ref.SessionID+"\n"+client.Credential.Token)))
+}
+
 // scanKey keeps the Task scan continuation in a cursor file. It is never a
 // Task ID, so the check takes it out of the map before it sends the map.
 const scanKey = "next_task"
@@ -194,7 +203,7 @@ func mailCheck(ctx context.Context, client *stack.Client, r stack.MailCheckReque
 		}
 	}
 
-	identity := fmt.Sprintf("%x", sha256.Sum256([]byte(client.Discovery.DatabaseID+"\n"+r.WorkspaceID+"\n"+r.SessionID+"\n"+client.Credential.Token)))
+	identity := mailCursorIdentity(client, r.Context)
 	partial := false
 	if save {
 		if len(r.Cursors) > 0 && r.Cursors["identity"] != identity {

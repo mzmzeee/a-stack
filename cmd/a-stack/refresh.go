@@ -21,6 +21,7 @@ import (
 // header or a matching filename alone is not evidence that a file is ours.
 var installedHashes = map[string][]string{
 	"a-stack/SKILL.md": {
+		"e2ec36df960620c8fcaa1f7961cd10707776cb51dff4eaca7cd6cb80a36503a1", // v0.1.9
 		"8add2662937810591eb8b2bbef96dd9e44fe16025c548488001b4fce2aae1bbc", // pre-quiet development install
 		"53b9655db7cdd9936c14f94e246e00d6f3c1ddeda09e00a531b09638e67afb6b",
 		"196de764c002295babe1481128d98118713516c779f0dae0e50d0c148608c77e",
@@ -29,6 +30,7 @@ var installedHashes = map[string][]string{
 		"fb5c304cd5d9e1d39a5ea43eaa6806d67dfd63ea5e7c82146883cb986c3c2a8e",
 	},
 	"a-stack/references/commands.md": {
+		"8522fc6b9bc86c278427698f87288506ea2adab4665a5d7009aff8a662521bec", // v0.1.9
 		"8569bfadcc001cf294d1f73f9ed4fd76facd1c4d9a551bad3ade23c11107361d",
 		"7e39a943254c75f532851334d84ab0dced7d3b4669c63453acc82dbacd5944d1",
 		"27bd06fb857831056420dbd15540fd9871f4cb803b9cf92d347434ac0b9905ee",
@@ -36,6 +38,7 @@ var installedHashes = map[string][]string{
 		"836b537dcf2e1eee3d0d4dfc3345a11b24e1a357636b6ae9dad3fc50616d46ac",
 	},
 	"a-stack/references/orchestrator.md": {
+		"0a4316fb2054e372e9dff1cc63f07392a602202680bbece53f093f674f1e3d07", // v0.1.9
 		"f6f1910c4924afac67a6f9438507ce6a298f8cb1d1a9e18face8b0c059d8441e", // pre-quiet development install
 		"1028c12ff992947f722189640fe4f8454a307e41b12d3c20f125d7bc1253b007",
 		"29f27be25417eaba465287b85c0cf1ce47a8bed1725a600a5571e93607bea137",

@@ -22,9 +22,8 @@ type stateMatrixRow struct {
 	sessions, tasks string
 }
 
-// Policy question: terminal/archived Tasks still accept definition, report,
-// reference and mail writes. Record that behavior, rather than silently imposing
-// the stricter status/claim rule on those commands.
+// Decided policy: finished, cancelled and archived Tasks keep description,
+// report, reference and mail writes. Status and claim changes require reopening.
 var stateMatrix = []stateMatrixRow{
 	{"session inspect", "session/inspect", "owner", "allowed allowed conflict conflict allowed", "allowed"},
 	{"session close", "session/close", "owner", "allowed allowed conflict conflict allowed", "allowed"},
@@ -83,7 +82,9 @@ var stateMatrix = []stateMatrixRow{
 	{"mail ack", "mail/ack", "worker", "allowed session_closed conflict conflict allowed", "allowed"},
 	{"mail read", "mail/read", "worker", "allowed allowed conflict conflict allowed", "allowed"},
 	{"mail recipients", "mail/recipients", "worker", "allowed allowed conflict conflict allowed", "allowed"},
-	{"mail check", "mail/check", "worker", "allowed allowed conflict conflict allowed", "allowed"},
+	{"mail check|mail wait", "mail/check", "worker", "allowed allowed conflict conflict allowed", "allowed"},
+	// mail wait also inspects the Session and rejects closed locally; its bounded
+	// CLI state tests cover that adapter behavior while retained reads stay allowed.
 	{"herdr bind", "herdr/bind", "worker", "allowed session_closed conflict conflict allowed", "allowed"},
 	{"herdr focus", "herdr/focus", "owner", "integration_unavailable integration_unavailable conflict conflict integration_unavailable", "integration_unavailable"},
 	{"notifications status", "notifications/status", "worker", "allowed allowed conflict conflict allowed", "allowed"},

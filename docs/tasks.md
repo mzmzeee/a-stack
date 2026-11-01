@@ -75,7 +75,7 @@ The last completion summary stays in the Task's `result` field, also after a lat
 
 ## Archived Tasks
 
-An archived Task is a Finished or Cancelled Task that the browser view hides by default. Archiving changes no progress and deletes nothing. A Task counts as archived when one of three rules applies, and the first one that applies is its `archived_reason`:
+An archived Task is a Finished or Cancelled Task that the browser view hides by default. Archiving changes no progress and deletes nothing. Finished and archived Tasks still allow description, report, reference and mail writes; status and claim changes require reopening. A Task counts as archived when one of three rules applies, and the first one that applies is its `archived_reason`:
 
 1. `command`: the Orchestrator or the Operator ran `task archive`.
 2. `chain`: the Task has at least one dependent, and every dependent is Finished or Cancelled. So the last Task of a chain stays visible, and so does finished work that a live Task depends on.

@@ -126,6 +126,8 @@ Never mention the same Agent again until it answered or 10 minutes passed.
 
 ## 6. Watch the work
 
+If your runtime has no notice delivery, such as Claude Code without enrolled mail hooks, keep `me mail wait --cursor-file /your/private/folder/mail.json` running in a harness background tool while workers are active. Have the harness notify you when it exits. On a wake (exit 0), run `mail check` with that same file until `more` is false, answer the mail, then restart the wait. Restart after a timeout (exit 5) too; handle other errors before restarting. Keep the Operator’s pane hook-only, rather than binding pane notices to it.
+
 - `me task list` shows each Task's `progress`, `needs_you` and `unassigned`.
 - `me session snapshot --known-revision N` returns `unchanged: true` while nothing changed since read revision N. Then you need not read the pages again.
 - `me task show --task T` shows the report, and `me task history --task T` shows every change.

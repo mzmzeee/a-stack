@@ -57,6 +57,10 @@ func writeError(stderr io.Writer, err error) int {
 		return 4 // a damaged database, or a newer or unknown schema
 	}
 
+	if e == errMailWaitTimeout {
+		return 5
+	}
+
 	if e.Code == "invalid_input" {
 		return 2
 	}
@@ -432,6 +436,19 @@ func execute(args []string, stdout, stderr io.Writer) error {
 
 	if isNotificationCommand(cmd) {
 		data, err := notificationRequest(ctx, client, cmd, lifecycle)
+		if err != nil {
+			return err
+		}
+
+		return writeData(stdout, data)
+	}
+
+	if cmd == "mail wait" {
+		if lifecycle.workspace == "" || lifecycle.session == "" {
+			return missingContext
+		}
+
+		data, err := mailWait(ctx, client, ref, mail.cursorFile, mail.timeout, all, pauseMailWait)
 		if err != nil {
 			return err
 		}

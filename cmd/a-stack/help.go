@@ -121,6 +121,7 @@ var helpGroups = []helpGroup{
 		{"mail recipients", "", "List current assignees who can read mail and be mentioned"},
 		{"mail read", "", "Read the mail of one Task"},
 		{"mail check", "", "Check new mail on all your Tasks"},
+		{"mail wait", "", "Wait for addressed mail without advancing your cursor (timeout exit 5)"},
 	}},
 	{"Herdr", []helpRow{
 		{"herdr bind", "", "Bind your Agent to its own Herdr pane; replace a proven stale target (live: Operator agent rebind --clear-runtime first)"},
@@ -164,7 +165,7 @@ var (
 		"agent observe": "agent runtime-id runtime-state", "task assign": "agent", "task unassign": "agent",
 		"task claim": "path", "task unclaim": "path", "task create": "title", "task status": "progress", "task reference add": "location",
 		"task reference remove": "reference", "dependency add": "from to", "dependency remove": "from to",
-		"mail ack": "message operation-id", "mail reply": "message", "mail recipients": "task",
+		"mail wait": "cursor-file", "mail ack": "message operation-id", "mail reply": "message", "mail recipients": "task",
 		"session page": "page-kind", "answer": "question-id", "herdr bind": "agent", "herdr focus": "agent",
 	}
 )
@@ -361,7 +362,7 @@ var flagValues = map[string]string{
 	"reason": "TEXT", "summary": "TEXT", "question": "TEXT", "question-id": "ID", "text": "TEXT", "note": "TEXT", "location": "PATH",
 	"reference-revision": "REV", "reference": "ID", "from": "ID", "to": "ID", "body-file": "FILE",
 	"page-kind": "KIND", "read-revision": "N", "known-revision": "N", "body": "TEXT", "ack-from": "NAME", "ack-due": "DURATION", "mention": "NAME", "message": "ID",
-	"cursor": "CURSOR", "cursor-file": "FILE", "after-task": "TOKEN", "task-limit": "N", "assign": "AGENT", "shell": "SHELL",
+	"timeout": "DURATION", "cursor": "CURSOR", "cursor-file": "FILE", "after-task": "TOKEN", "task-limit": "N", "assign": "AGENT", "shell": "SHELL",
 }
 
 // hookFlagText is the text of shared flags that mean something else in the
@@ -377,6 +378,15 @@ func flagText(fs *flag.FlagSet, command, name string) string {
 	text := fs.Lookup(name).Usage
 	if hook, ok := hookFlagText[name]; ok && isHookCommand(command) {
 		text = hook
+	}
+
+	if command == "mail wait" {
+		switch name {
+		case "all":
+			text = "Any new mail on your Tasks, except your own"
+		case "cursor-file":
+			text = "Your mail check cursor file; read without changing it"
+		}
 	}
 
 	if command == "session invite" {

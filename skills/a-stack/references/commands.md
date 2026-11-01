@@ -95,6 +95,12 @@ me mail check --cursor-file /your/private/folder/mail.json
 
 Ask for an explicit acknowledgement when a handoff needs confirmation: add `--ack-required` to send or reply, optionally `--ack-from NAME` (repeatable; otherwise all mentions) and `--ack-due 30m`. Check your own `pending_acks` in `mail check`, even when `tasks` is empty; read the message, then use `mail ack --message ID --operation-id YOUR_ID` if you accept it. If you cannot accept it, explain in Task mail instead. Acknowledgements are informational, not proof of completed work or a condition for finishing a Task. Unassignment withdraws an obligation permanently. A handoff includes pending acknowledgements; when `more_acks` is true, inspect each message’s `acks` through paged `mail read`.
 
+### Wait for addressed mail
+
+`me mail wait --cursor-file /your/private/folder/mail.json` blocks until unread mail mentions you, is urgent, requests your acknowledgement or is an Operator answer. `--all` also wakes for other new mail on your assigned Tasks; your own mail never wakes it. `--timeout DURATION` defaults to `30m` and must be positive. The cursor file is required (not `-`); wait reads it but never creates or advances it. Already waiting mail returns immediately.
+
+Exit 0 returns `data.count` and `data.tasks[]` with `task_id` and `count` for matching mail on the returned page. Run `mail check` with the same file afterwards. Exit 5 (`mail_wait_timeout`) means no match before the deadline. Closed Sessions and revoked credentials return their normal errors. Polling starts at 5 seconds and backs off to 30 seconds, or longer when the service requests it.
+
 ### Read only new mail with a cursor file
 
 Always give `mail check` a cursor file in your private folder. The check saves in it how far you have read, and the next check shows only newer mail. The CLI creates the file if it is missing. With a cursor file, the output lists only the Tasks with new mail; `"tasks": []` means there is none.
@@ -108,6 +114,7 @@ Always give `mail check` a cursor file in your private folder. The check saves i
 
 | `error.code` | Exit | Meaning and what to do |
 | --- | --- | --- |
+| `mail_wait_timeout` | 5 | `mail wait` reached its deadline without matching mail. Restart it while workers remain active. |
 | `invalid_input` | 2 | A flag, ID or text is wrong. The message names it, and may suggest a close command or flag. Fix the command; use a new operation ID. |
 | `conflict` | 1 | The revision changed (`current_revision`, `current_progress`), or a question is already open (`current_question`). Read again, rethink, retry with a new operation ID. |
 | `operation_conflict` | 1 | This operation ID was already used for a different change. Use a new ID. |
@@ -138,7 +145,7 @@ me task archive --task T --expected-revision R --operation-id orch-archive-api-1
 me task unarchive --task T --expected-revision R --operation-id orch-unarchive-api-1
 ```
 
-`task archive` takes only a Finished or Cancelled Task. It hides the Task in the Operator's graph and keeps everything. Task data shows `archived` and `archived_reason`: `command`, `chain` (every dependent is done) or `age` (it ended a day ago).
+`task archive` takes only a Finished or Cancelled Task. It hides the Task in the Operator's graph and keeps everything. Finished and archived Tasks still allow description, report, reference and mail writes; status and claim changes require reopening. Task data shows `archived` and `archived_reason`: `command`, `chain` (every dependent is done) or `age` (it ended a day ago).
 
 `task create` links and assigns the new Task in the same operation: `--after A` (repeatable) makes it depend on A, and `--assign` (repeatable) adds an assignee. It needs no revision, and its receipt's `revision` is 1 plus the number of assignees. Without `--after`, while other Tasks are open, it prints a hint on stderr. `--agent` and `--assign` take an Agent name or ID.
 

@@ -30,6 +30,16 @@ a-stack mail check --as agent --credential-file "$worker_a_credential" \
 
 `--body-file -` reads the body from stdin. You cannot use it together with `--body`. A body must not be blank, must be valid UTF-8 and can be 65,536 bytes at most. For larger documents or results, use Task file references. a-stack rejects a body that is too long. It never cuts it. Mail counts toward the sender's [write budget](foundation.md#write-budget): about 127 sends of maximum size at once, then about 16 a minute. `--mention NAME` takes a name without `@`. You can repeat it.
 
+## Wait for new mail
+
+Run `a-stack mail wait --cursor-file /private/worker-a/mail.json` with your Agent credential to wait for addressed mail. Use the same cursor file as `mail check`. A harness can run this command in a background tool and notify the Agent when it exits.
+
+- By default, unread mentions of you, urgent mail, acknowledgement requests for you and Operator answers wake the wait. Other Agents’ status chatter does not. `--all` wakes on any new mail on your assigned Tasks, but never your own mail.
+- `--cursor-file FILE` is required; stdin (`-`) is not supported. The file may be missing. Wait never creates or advances it, and matching unread mail already present returns immediately. Run `mail check` afterwards to read the mail and save your positions, then restart the wait while workers are active.
+- `--timeout DURATION` takes a positive duration such as `10m` or `1h`; the default is `30m`.
+- Exit 0 prints JSON with `data.count` and `data.tasks[]`, each with `task_id` and `count`, for matching messages on the returned page. This is a wake hint, not a complete inbox count. Exit 5 prints error code `mail_wait_timeout`. Restart after a timeout if workers are still active. A closed Session returns `session_closed`; a revoked credential returns `unauthorized`. Handle those errors instead of restarting blindly.
+- Wait uses existing Session and mail reads with `peek`, so it does not re-arm notices, clear unread-mention waits or acknowledge mail. It holds scan positions only in memory. Polls start 5 seconds apart and back off to 30 seconds; `rate_limited` can request a longer delay through `retry_after_seconds`. The timeout bounds those delays and network reads.
+
 ## Reply and recipients
 
 `mail reply --message ID --body 'Your reply' --operation-id ID` sends to the original message's Task in your authenticated Session. It is shared Task mail, not a private reply. The response includes the Task title and ID and says `shared with all current assignees`. You must still be assigned to that Task. A conflicting `--task` is rejected; body text cannot change the destination. `--body-file` works as with `mail send`.
@@ -85,7 +95,7 @@ All endpoints take authenticated `POST` JSON under `/v1/mail/`. They use the sam
 | `ack` | `message_id`, `operation_id` | A receipt with the message `resource_id` and `outcome: "acknowledged"` |
 | `recipients` | `task_id` | `task_id`, `task_title`, `audience` and `recipients` (Agent IDs and names) |
 | `read` | `task_id`, optional `cursor` and `limit` | `task_id`, `messages`, `cursor`, `more`, and `total` when nonzero |
-| `check` | optional `cursors` map, `after_task`, `task_limit`, `limit` and `peek` (hooks only; does not re-arm notices) | A `tasks` array of read pages, `next_task` when more Tasks follow, and `more` |
+| `check` | optional `cursors` map, `after_task`, `task_limit`, `limit` and `peek` (hooks and mail wait; does not re-arm notices) | A `tasks` array of read pages, `next_task` when more Tasks follow, and `more` |
 
 The hook-only `urgent` endpoint takes optional `positions` and `after_task`. It returns at most 100 assigned Tasks' body-free high-water marks, `next_task`, and an `urgent` boolean covering new urgent mail or overdue ACK reminders. Follow the continuation to complete a round. Only Agent credentials can use it. It changes no server state; normal mail checks and browser reads do not consume these marks.
 
