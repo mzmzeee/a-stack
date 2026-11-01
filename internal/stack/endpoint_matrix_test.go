@@ -39,6 +39,9 @@ var endpointMatrix = []struct{ routes, outcomes string }{
 	{"mail/read", "forbidden forbidden allowed allowed forbidden forbidden allowed"},
 	{"mail/recipients", "forbidden forbidden allowed allowed forbidden forbidden forbidden"},
 	{"mail/check mail/urgent", "forbidden forbidden allowed allowed forbidden forbidden forbidden"},
+	// This fixture has no machine proof. Positive self grants and replay fences
+	// run through the real HTTP relay fixture in relay_protocol_test.go.
+	{"relay/claim relay/begin relay/result", "forbidden forbidden forbidden forbidden forbidden forbidden forbidden"},
 	{"notifications/drain", "integration_unavailable forbidden forbidden forbidden forbidden forbidden forbidden"},
 	{"herdr/focus", "integration_unavailable forbidden forbidden forbidden forbidden forbidden forbidden"},
 	// These three authenticate a one-time code (and trusted Serve login for join),
@@ -127,6 +130,9 @@ func TestEndpointCallerMatrix(t *testing.T) {
 					t.Errorf("refused transfer read body %d times", reads)
 				}
 
+				if strings.HasPrefix(route, "/v1/relay/") && (caller == "owner" || caller == "friend" || caller == "foreign-operator" || caller == "browser" || caller == "none" || caller == "bad" || caller == "revoked") && reads != 0 {
+					t.Errorf("refused relay read body %d times", reads)
+				}
 				if public {
 					t.Run("invalid-code", func(t *testing.T) {
 						f.reset(t)

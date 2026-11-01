@@ -90,6 +90,7 @@ type Health struct {
 	SharedURL     string `json:"shared_url,omitempty"`
 }
 type Service struct {
+	relayInFlight atomic.Int32
 	transferBusy  atomic.Bool  // bounds snapshot decoding and encoding per service
 	serveHost     atomic.Value // string; configured HTTPS name, empty for local-only
 	Store         *Store
@@ -106,6 +107,8 @@ type Service struct {
 	notifier      *notifier
 	receiptCancel context.CancelFunc
 	receiptDone   chan struct{}
+	relayCancel   context.CancelFunc
+	relayDone     chan struct{}
 }
 
 // lastPortFile remembers the port of the last start without --listen, so that
@@ -230,6 +233,7 @@ func Start(ctx context.Context, dir, address string) (*Service, error) {
 
 	success = true
 	s.startReceiptExpiry()
+	s.startRelayExpiry()
 
 	return s, nil
 }
@@ -302,6 +306,10 @@ func (s *Service) shutdown(ctx context.Context) error {
 		<-s.receiptDone
 	}
 
+	if s.relayCancel != nil {
+		s.relayCancel()
+		<-s.relayDone
+	}
 	if err := s.Store.db.Close(); err != nil {
 		closeErr = storageError(err)
 	}
@@ -450,7 +458,7 @@ func (s *Service) dispatch(w http.ResponseWriter, r *http.Request) {
 
 		writeJSON(w, http.StatusOK, map[string]any{"data": status})
 	default:
-		if !s.transferHTTP(w, r, token) && !s.notificationHTTP(w, r, token) && !s.herdrBindHTTP(w, r, token) && !s.herdrHTTP(w, r, token) && !s.browserHTTP(w, r, token) && !s.mailHTTP(w, r, token) && !s.taskHTTP(w, r, token) && !s.lifecycleHTTP(w, r, token) {
+		if !s.relayHTTP(w, r, token, p) && !s.transferHTTP(w, r, token) && !s.notificationHTTP(w, r, token) && !s.herdrBindHTTP(w, r, token) && !s.herdrHTTP(w, r, token) && !s.browserHTTP(w, r, token) && !s.mailHTTP(w, r, token) && !s.taskHTTP(w, r, token) && !s.lifecycleHTTP(w, r, token) {
 			writeError(w, failure("not_found", "endpoint not found"))
 		}
 	}

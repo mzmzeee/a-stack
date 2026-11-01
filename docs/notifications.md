@@ -142,6 +142,16 @@ After a failure, a-stack waits 5, 10, 20 and then 30 seconds before it tries the
 
 A notice that has passed the final preflight can still finish during a concurrent close, rebind or removal. Herdr 0.9.5 has no atomic check that the expected Agent is still in the pane between the lookup and the input, so this race remains. That is why notices stay generic, and why each later mail read checks the current assignment again. See the [tagged Herdr prompt contract](https://github.com/herdrdev/herdr/blob/v0.9.5/docs/next/website/src/content/docs/agent-automation.mdx).
 
+## Relay protocol
+
+Relay-bound Agents use three POST endpoints: `/v1/relay/claim`, `/v1/relay/begin` and `/v1/relay/result`. Each request requires the current Agent credential, binding revision, raw runtime ID and per-binding secret. Operator credentials cannot deliver on an Agent's behalf. Replies contain only lease identity and timing, never mail text or local routing paths.
+
+A claim reserves the Agent for at most 60 seconds. Begin captures at most 500 eligible references and grants one attempt; repeating begin cannot grant another. It also reserves a durable pane cooldown through lease expiry plus ten minutes. After begin, failures and ambiguous outcomes are uncertain, never pending. A result changes only the captured references still submitting; later mail and withdrawn references are not consumed.
+
+The server retires all old relay leases and orphaned submitting relay batches before startup admits requests. During operation, a 30-second sweep retires at most 100 expired leases or orphan batches. Rebinding and transfer sealing retire affected work in their own transactions. Local notifier drains never recover relay-owned batches. These operations preserve pane cooldowns, including after a lost result.
+
+A grant cannot cancel external input already authorized before closure or rebinding. This protocol does not provide exactly-once input or control harness lifecycle. Mail checks remain the correctness fallback.
+
 ## Diagnostics and maintenance
 
 ```sh

@@ -409,6 +409,8 @@ func (f *matrixFixture) request(t *testing.T, route string) any {
 		return MailCheckRequest{Context: ref}
 	case "/v1/mail/urgent":
 		return UrgentMailRequest{Context: ref}
+	case "/v1/relay/claim", "/v1/relay/begin", "/v1/relay/result":
+		return RelayRequest{Context: ref, Generation: 1, RuntimeID: "unbound", Proof: opaqueID()}
 	case "/v1/notifications/status", "/v1/notifications/drain":
 		return NoticeRequest{Context: ref}
 	case "/v1/herdr/focus":

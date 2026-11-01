@@ -171,6 +171,9 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 	if err = s.recoverNotices(ctx); err != nil {
 		return nil, err
 	}
+	if err = s.recoverRelayStartup(ctx); err != nil {
+		return nil, err
+	}
 
 	if err = db.QueryRowContext(ctx, "SELECT value FROM metadata WHERE key='database_id'").Scan(&s.id); err != nil || !validToken(s.id) {
 		return nil, storageError()

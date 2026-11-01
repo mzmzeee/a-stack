@@ -39,27 +39,27 @@ func (s *Store) recoverNotices(ctx context.Context) error {
 
 	_, err = tx.ExecContext(ctx, `INSERT INTO notice_targets
  SELECT b.session_id,b.recipient_id,'recovery_uncertain',0,0,? FROM notice_batches b JOIN agents a ON a.id=b.recipient_id
- WHERE b.state='submitting' AND b.binding_revision=a.revision
+ WHERE b.state='submitting' AND b.delivery_owner='local' AND b.binding_revision=a.revision
  ON CONFLICT(session_id,recipient_id) DO UPDATE SET reason=excluded.reason,failures=0,next_attempt=0,updated_at=excluded.updated_at`, now())
 	if err != nil {
 		return storageError()
 	}
 
 	_, err = tx.ExecContext(ctx, `UPDATE mail_mentions SET notice_state='uncertain',state_at=? WHERE notice_state='submitting' AND EXISTS(
- SELECT 1 FROM notice_batch_refs r JOIN notice_batches b ON b.id=r.batch_id WHERE b.state='submitting' AND r.message_id=mail_mentions.message_id AND r.recipient_id=mail_mentions.recipient_id)`, now())
+ SELECT 1 FROM notice_batch_refs r JOIN notice_batches b ON b.id=r.batch_id WHERE b.state='submitting' AND b.delivery_owner='local' AND r.message_id=mail_mentions.message_id AND r.recipient_id=mail_mentions.recipient_id)`, now())
 	if err != nil {
 		return storageError()
 	}
 
-	if _, err = tx.ExecContext(ctx, `UPDATE mail_acks SET reminder_state='uncertain' WHERE reminder_state='submitting' AND EXISTS(SELECT 1 FROM notice_ack_refs r JOIN notice_batches b ON b.id=r.batch_id WHERE b.state='submitting' AND r.message_id=mail_acks.message_id AND r.recipient_id=mail_acks.recipient_id)`); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE mail_acks SET reminder_state='uncertain' WHERE reminder_state='submitting' AND EXISTS(SELECT 1 FROM notice_ack_refs r JOIN notice_batches b ON b.id=r.batch_id WHERE b.state='submitting' AND b.delivery_owner='local' AND r.message_id=mail_acks.message_id AND r.recipient_id=mail_acks.recipient_id)`); err != nil {
 		return storageError()
 	}
 
-	if _, err = tx.ExecContext(ctx, "UPDATE sessions SET read_revision=read_revision+1 WHERE id IN (SELECT session_id FROM notice_batches WHERE state='submitting')"); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE sessions SET read_revision=read_revision+1 WHERE id IN (SELECT session_id FROM notice_batches WHERE state='submitting' AND delivery_owner='local')"); err != nil {
 		return storageError()
 	}
 
-	if _, err = tx.ExecContext(ctx, "UPDATE notice_batches SET state='uncertain',reason='recovery_uncertain',updated_at=? WHERE state='submitting'", now()); err != nil {
+	if _, err = tx.ExecContext(ctx, "UPDATE notice_batches SET state='uncertain',reason='recovery_uncertain',updated_at=? WHERE state='submitting' AND delivery_owner='local'", now()); err != nil {
 		return storageError()
 	}
 
@@ -263,7 +263,16 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
 		return empty, storageError()
 	}
 	defer tx.Rollback()
+	batch, err := n.capture(ctx, tx, t, opaqueID(), "local")
+	if err == nil {
+		err = tx.Commit()
+	}
+	return batch, err
+}
 
+// An empty ID checks eligibility without capturing references.
+func (n *notifier) capture(ctx context.Context, tx *sql.Tx, t noticeTarget, id, owner string) (noticeBatch, error) {
+	empty := noticeBatch{}
 	open, same, err := currentNoticeTarget(ctx, tx, t)
 	if err != nil {
 		return empty, storageError()
@@ -280,7 +289,7 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
 		return empty, storageError()
 	}
 
-	if paneNotBefore > n.clock().UnixMilli() {
+	if paneNotBefore > n.clock().UnixMilli() || next == noticeParked || (next > n.clock().UnixMilli() && reason != "notice_waiting_idle") {
 		return empty, nil
 	}
 
@@ -289,15 +298,11 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
 		return empty, err
 	}
 
-	if (reason == "notice_waiting_mail" || reason == "mail_checked") && next > n.clock().UnixMilli() {
-		return empty, nil
-	}
-
 	// Hook observations are sent only by an enrolled runtime. Unknown state
 	// keeps the ordinary first-notice behavior; Herdr still verifies identity.
 	if state == "working" && observed != "" && reason != "notice_waiting_mail" && len(extraIDs) == 0 {
 		if reason != "notice_waiting_idle" {
-			if err = recordNoticeTarget(ctx, tx, t, "notice_waiting_idle", true, n.clock()); err != nil || tx.Commit() != nil {
+			if err = recordNoticeTarget(ctx, tx, t, "notice_waiting_idle", true, n.clock()); err != nil {
 				return empty, storageError()
 			}
 
@@ -333,9 +338,13 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
 		return empty, nil
 	}
 
-	batch := noticeBatch{id: opaqueID(), target: t, extra: extra}
+	batch := noticeBatch{id: id, target: t, extra: extra}
+	if id == "" {
+		batch.id = "eligible"
+		return batch, nil
+	}
 	stamp := now()
-	if _, err = tx.ExecContext(ctx, "INSERT INTO notice_batches(id,session_id,recipient_id,binding_revision,binding_hash,state,reason,created_at,updated_at) VALUES(?,?,?,?,?,'submitting','captured',?,?)", batch.id, t.session, t.agent, t.revision, tokenHash(t.bindingJSON), stamp, stamp); err != nil {
+	if _, err = tx.ExecContext(ctx, "INSERT INTO notice_batches(id,session_id,recipient_id,binding_revision,binding_hash,state,reason,created_at,updated_at,delivery_owner) VALUES(?,?,?,?,?,'submitting','captured',?,?,?)", batch.id, t.session, t.agent, t.revision, tokenHash(t.bindingJSON), stamp, stamp, owner); err != nil {
 		return empty, storageError()
 	}
 
@@ -357,10 +366,6 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
 		if _, err = tx.ExecContext(ctx, "UPDATE mail_acks SET reminder_state='submitting' WHERE message_id=? AND recipient_id=? AND reminder_state='pending'", id, t.agent); err != nil {
 			return empty, storageError()
 		}
-	}
-
-	if tx.Commit() != nil {
-		return empty, storageError()
 	}
 
 	return batch, nil
@@ -441,8 +446,15 @@ func (n *notifier) finish(b noticeBatch, state NoticeState, reason string) error
 	}
 	defer tx.Rollback()
 
+	if err = n.finishTx(ctx, tx, b, state, reason); err != nil {
+		return err
+	}
+	return storageOrNil(tx.Commit())
+}
+
+func (n *notifier) finishTx(ctx context.Context, tx *sql.Tx, b noticeBatch, state NoticeState, reason string) error {
 	var old string
-	if err = tx.QueryRowContext(ctx, "SELECT state FROM notice_batches WHERE id=?", b.id).Scan(&old); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT state FROM notice_batches WHERE id=?", b.id).Scan(&old); err != nil {
 		return storageError()
 	}
 
@@ -501,10 +513,6 @@ func (n *notifier) finish(b noticeBatch, state NoticeState, reason string) error
 	}
 
 	if err = recordNoticeTarget(ctx, tx, b.target, reason, state != NoticePending || count == 0, n.clock()); err != nil {
-		return storageError()
-	}
-
-	if tx.Commit() != nil {
 		return storageError()
 	}
 

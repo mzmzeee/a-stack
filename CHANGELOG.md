@@ -15,6 +15,7 @@ Upgrading from v0.1.9: the first start saves `state.db.pre-v15` (or a numbered c
 
 ### Added
 
+- Body-free per-Agent relay claim/begin/result API with one-use begin grants, machine-bound proof, durable cooldowns and explicit delivery ownership. Startup, lease expiry, rebinding and transfer sealing retire begun relay work as uncertain rather than retrying input.
 - `mail wait --cursor-file FILE` waits for addressed unread mail without advancing the cursor or marking mail read, with `--all`, a 30-minute default timeout (exit 5), gentle polling and rate-limit backoff. Orchestrators without notices can keep it running in a harness background tool. Finished and archived Tasks remain writable for descriptions, reports, references and mail; status and claim changes require reopening.
 - Permanent endpoint-by-caller and Session/Task-state-by-command regression matrices, with a bounded fail-closed router/command syntax contract (including prefix routes and table writes), independent source checks, live schema state checks and transfer refusal-before-body-read assertions. Bounded hook/MCP adapter cases cover closed-Session silence and Session/Task tool admission.
 

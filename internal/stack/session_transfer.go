@@ -712,6 +712,16 @@ func (s *Store) ChangeTransfer(ctx context.Context, token, action string, r Tran
 			return result, failure("conflict", "Session changed after export; start a new transfer")
 		}
 
+		agents, retireErr := readIDs(ctx, tx, "SELECT id FROM agents WHERE session_id=?", session.ID)
+		if retireErr != nil {
+			return result, storageError(retireErr)
+		}
+		for _, agent := range agents {
+			if retireErr = retireAgentRelay(ctx, tx, agent); retireErr != nil {
+				return result, retireErr
+			}
+		}
+
 		_, err = tx.ExecContext(ctx, "INSERT INTO session_locations(session_id,transfer_id,state,peer_database,remote) VALUES(?,?,'sealed',?,?) ON CONFLICT(session_id) DO UPDATE SET transfer_id=excluded.transfer_id,state=excluded.state,peer_database=excluded.peer_database,remote=excluded.remote", session.ID, r.TransferID, r.DestinationDatabase, r.Remote)
 		if err == nil {
 			_, err = tx.ExecContext(ctx, "UPDATE session_transfers SET state='sealed',peer_database=?,remote=?,payload='',was_closed=? WHERE id=?", r.DestinationDatabase, r.Remote, wasClosed, r.TransferID)

@@ -440,7 +440,7 @@ func sharingCommand(ctx context.Context, command string, args []string, state, c
 		return err
 	}
 
-	return json.NewEncoder(out).Encode(map[string]any{"data": map[string]any{"transfer_id": journal.ID, "session_id": journal.Destination.SessionID, "workspace_id": journal.Destination.WorkspaceID, "outcome": strings.TrimPrefix(command, "session ") + "d"}})
+	return json.NewEncoder(out).Encode(map[string]any{"data": map[string]any{"transfer_id": journal.ID, "session_id": journal.Destination.SessionID, "workspace_id": journal.Destination.WorkspaceID, "outcome": strings.TrimPrefix(command, "session ") + "d", "next": "Update hand-written helpers to the new credential paths. Every Agent must bind or enroll its native session afresh; runtime attachments and hook enrollment do not migrate."}})
 }
 
 type (
