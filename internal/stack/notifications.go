@@ -469,13 +469,14 @@ func (n *notifier) finishTx(ctx context.Context, tx *sql.Tx, b noticeBatch, stat
 	}
 
 	mentionState := state
+	// Only a definite pre-input failure restores an extra's allowance.
 	retryExtra := b.extra && state == NoticePending
 	if retryExtra {
 		mentionState = NoticeSubmitted
 	}
 
-	result, err := tx.ExecContext(ctx, `UPDATE mail_mentions SET notice_state=?,state_at=CASE WHEN ? THEN state_at ELSE ? END WHERE notice_state='submitting' AND EXISTS(
- SELECT 1 FROM notice_batch_refs r WHERE r.batch_id=? AND r.message_id=mail_mentions.message_id AND r.recipient_id=mail_mentions.recipient_id)`, mentionState, retryExtra, n.clock().UTC().Format(time.RFC3339Nano), b.id)
+	result, err := tx.ExecContext(ctx, `UPDATE mail_mentions SET notice_state=?,extra_consumed=CASE WHEN ? THEN 0 ELSE extra_consumed END,state_at=CASE WHEN ? THEN state_at ELSE ? END WHERE notice_state='submitting' AND EXISTS(
+ SELECT 1 FROM notice_batch_refs r WHERE r.batch_id=? AND r.message_id=mail_mentions.message_id AND r.recipient_id=mail_mentions.recipient_id)`, mentionState, retryExtra, retryExtra, n.clock().UTC().Format(time.RFC3339Nano), b.id)
 	if err != nil {
 		return storageError()
 	}
