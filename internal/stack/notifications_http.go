@@ -13,6 +13,7 @@ type NoticeRequest struct {
 }
 type NoticeTargetStatus struct {
 	MailWaits           []MailWait          `json:"mail_waits,omitempty"`
+	Relay               bool                `json:"relay"`
 	AgentID             string              `json:"agent_id"`
 	AgentName           string              `json:"agent_name"`
 	Reason              string              `json:"reason"`
@@ -74,7 +75,7 @@ func (s *Service) notificationStatus(ctx context.Context, token string, r Notice
 		}
 
 		row := NoticeTargetStatus{AgentID: id, Counts: map[NoticeState]int{}}
-		if err = tx.QueryRowContext(ctx, "SELECT a.name,COALESCE(d.reason,'pending'),COALESCE(d.next_attempt,0),COALESCE(d.updated_at,'') FROM agents a LEFT JOIN notice_targets d ON d.recipient_id=a.id AND d.session_id=a.session_id WHERE a.id=?", id).Scan(&row.AgentName, &row.Reason, &row.NextAttempt, &row.UpdatedAt); err != nil {
+		if err = tx.QueryRowContext(ctx, "SELECT a.name,COALESCE(d.reason,'pending'),COALESCE(d.next_attempt,0),COALESCE(d.updated_at,''),COALESCE(json_extract(a.binding,'$.relay_machine'),'')<>'' FROM agents a LEFT JOIN notice_targets d ON d.recipient_id=a.id AND d.session_id=a.session_id WHERE a.id=?", id).Scan(&row.AgentName, &row.Reason, &row.NextAttempt, &row.UpdatedAt, &row.Relay); err != nil {
 			return result, storageError()
 		}
 
@@ -113,12 +114,13 @@ func (s *Service) notificationStatus(ctx context.Context, token string, r Notice
 			if row.Reason != "recovery_uncertain" {
 				row.Reason = "delivery_uncertain"
 			}
-		} else if s.notifier == nil {
+		} else if s.notifier == nil && !row.Relay {
 			row.Reason = "integration_disabled"
 		} else if session.Closed {
 			row.Reason = "session_closed"
 		}
 
+		result.Enabled = result.Enabled || row.Relay
 		result.Targets = append(result.Targets, row)
 	}
 

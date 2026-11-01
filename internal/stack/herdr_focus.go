@@ -20,6 +20,7 @@ func (h *herdrAdapter) focus(ctx context.Context, b RuntimeBinding) (string, err
 	if b.RemoteMachine || b.RelayMachine != "" {
 		return "", failure("integration_unavailable", "remote panes must be focused on their own machine")
 	}
+
 	if !completeHerdrBinding(b) {
 		return "", failure("integration_unavailable", "the Agent has no complete Herdr binding; it can run a-stack herdr bind")
 	}

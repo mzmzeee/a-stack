@@ -263,10 +263,12 @@ func (n *notifier) claim(ctx context.Context, t noticeTarget) (noticeBatch, erro
 		return empty, storageError()
 	}
 	defer tx.Rollback()
+
 	batch, err := n.capture(ctx, tx, t, opaqueID(), "local")
 	if err == nil {
 		err = tx.Commit()
 	}
+
 	return batch, err
 }
 
@@ -343,6 +345,7 @@ func (n *notifier) capture(ctx context.Context, tx *sql.Tx, t noticeTarget, id, 
 		batch.id = "eligible"
 		return batch, nil
 	}
+
 	stamp := now()
 	if _, err = tx.ExecContext(ctx, "INSERT INTO notice_batches(id,session_id,recipient_id,binding_revision,binding_hash,state,reason,created_at,updated_at,delivery_owner) VALUES(?,?,?,?,?,'submitting','captured',?,?,?)", batch.id, t.session, t.agent, t.revision, tokenHash(t.bindingJSON), stamp, stamp, owner); err != nil {
 		return empty, storageError()
@@ -428,9 +431,11 @@ func (n *notifier) preflight(ctx context.Context, b noticeBatch) (NoticeState, s
 			return "", "", storageError(err)
 		}
 	}
+
 	if err = tx.Commit(); err != nil {
 		return "", "", storageError(err)
 	}
+
 	return "", "", nil
 }
 
@@ -449,6 +454,7 @@ func (n *notifier) finish(b noticeBatch, state NoticeState, reason string) error
 	if err = n.finishTx(ctx, tx, b, state, reason); err != nil {
 		return err
 	}
+
 	return storageOrNil(tx.Commit())
 }
 
@@ -507,6 +513,7 @@ func (n *notifier) finishTx(ctx context.Context, tx *sql.Tx, b noticeBatch, stat
 
 	if batchState == NoticeSubmitted {
 		reason = "notice_waiting_mail"
+
 		if _, err = tx.ExecContext(ctx, "UPDATE agents SET pane_not_before=max(pane_not_before,?) WHERE id=?", n.clock().Add(noticeCooldown).UnixMilli(), b.target.agent); err != nil {
 			return storageError(err)
 		}

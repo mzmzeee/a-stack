@@ -30,6 +30,7 @@ type lifecycleFlags struct {
 	revision                                                                                                                   int64
 	limit                                                                                                                      int
 	clearRuntime                                                                                                               bool
+	relay                                                                                                                      bool
 	transferID                                                                                                                 string
 	destinationStopped                                                                                                         bool
 	// afters has each --after: task create takes several prerequisites; the
@@ -54,6 +55,7 @@ func (f *lifecycleFlags) register(fs *flag.FlagSet) {
 	fs.StringVar(&f.newCredential, "new-credential-file", "", "New private credential file for the Agent")
 	fs.StringVar(&f.runtimeID, "runtime-id", "", "ID of the running instance")
 	fs.StringVar(&f.runtimeFile, "runtime-file", "", "Private JSON file with the runtime binding")
+	fs.BoolVar(&f.relay, "relay", false, "Stage a machine-local notice relay binding (requires --notices pane)")
 	fs.StringVar(&f.notices, "notices", "", "hook (no typed notices) or pane; default hook for the Orchestrator, pane for workers")
 	fs.BoolVar(&f.clearRuntime, "clear-runtime", false, "Clear the runtime binding (Operator)")
 	fs.StringVar(&f.state, "runtime-state", "", "unknown, working, idle, done, stopped or blocked")
@@ -147,8 +149,10 @@ func acceptedFlags(command string) string {
 		allowed += "workspace session agent limit after "
 	case "herdr focus":
 		allowed += "workspace session agent "
+	case "relay":
+		allowed += "config once "
 	case "herdr bind":
-		allowed += "workspace session agent expected-revision operation-id herdr-executable notices "
+		allowed += "workspace session agent expected-revision operation-id herdr-executable notices relay "
 	case "notifications drain":
 		allowed += "workspace session limit "
 	case "view revoke":

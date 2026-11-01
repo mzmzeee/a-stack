@@ -310,6 +310,7 @@ func (s *Service) shutdown(ctx context.Context) error {
 		s.relayCancel()
 		<-s.relayDone
 	}
+
 	if err := s.Store.db.Close(); err != nil {
 		closeErr = storageError(err)
 	}
@@ -566,6 +567,10 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 	}
 
 	if len(b) > apiSizeLimit(path) {
+		if strings.HasPrefix(path, "/v1/relay/") {
+			return nil, failure("invalid_input", "invalid or oversized relay response")
+		}
+
 		return nil, failure("storage_unavailable", "invalid or oversized service response")
 	}
 
@@ -574,6 +579,10 @@ func (c *Client) Do(ctx context.Context, method, path string, body any) (json.Ra
 		Error *Error          `json:"error,omitempty"`
 	}
 	if json.Unmarshal(b, &envelope) != nil || (envelope.Error == nil) == (len(envelope.Data) == 0) {
+		if strings.HasPrefix(path, "/v1/relay/") {
+			return nil, failure("invalid_input", "invalid relay response")
+		}
+
 		return nil, failure("storage_unavailable", "invalid service response")
 	}
 

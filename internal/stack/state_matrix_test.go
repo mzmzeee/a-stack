@@ -85,6 +85,7 @@ var stateMatrix = []stateMatrixRow{
 	{"mail check|mail wait", "mail/check", "worker", "allowed allowed conflict conflict allowed", "allowed"},
 	// mail wait also inspects the Session and rejects closed locally; its bounded
 	// CLI state tests cover that adapter behavior while retained reads stay allowed.
+	{"relay", "relay/claim", "worker", "allowed session_closed conflict conflict allowed", "allowed"},
 	{"herdr bind", "herdr/bind", "worker", "allowed session_closed conflict conflict allowed", "allowed"},
 	{"herdr focus", "herdr/focus", "owner", "integration_unavailable integration_unavailable conflict conflict integration_unavailable", "integration_unavailable"},
 	{"notifications status", "notifications/status", "worker", "allowed allowed conflict conflict allowed", "allowed"},

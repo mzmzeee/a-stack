@@ -8,6 +8,12 @@ Each command prints `{"data": ...}` on stdout. A change returns a receipt: `data
 
 After installing hooks, run `me hook enroll --claude` (or `--codex`, `--pi`, `--opencode`) from your own session in the hook working folder. It detects native session metadata; it does not install config files. With no flag it requires one unambiguous harness. If metadata is missing, pass `--native-session NATIVE_ID` or use your own `me herdr bind`. This local command needs no operation ID or expected revision. Success prints `enrolled: true` with `--json`. Every new native session must enroll; compaction/resume of the same ID needs no repeat.
 
+## Relay from your own machine
+
+For an unattended pane connected to a remote service, use `me herdr bind --agent YOUR_ID --expected-revision R --operation-id UNIQUE_ID --relay --notices pane --herdr-executable /absolute/path/to/herdr`. Run inside the pane. Success captures its local target and secret, attaches it and enrolls its native hook session. Human panes use `--notices hook` without relay.
+
+Foreground `a-stack relay --config /private/relay.json` uses only the absolute Agent credential paths listed in that private config; `--once` attempts at most four entries. Follow [relay setup and recovery](../../../docs/notifications.md#relay-notices-on-the-recipients-machine). Do not start a relay without the Operator's authorization or alter their configuration. If enrollment cannot recover its exact staged capture, request Operator clear/credential rotation; retain local interval records. Relay never reads or acknowledges Task mail for you.
+
 ## Read the Session
 
 | Command | What you get |

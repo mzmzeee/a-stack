@@ -18,10 +18,12 @@ func transferProjection(ctx context.Context, tx *sql.Tx, session string) ([]Tran
 		if err != nil {
 			return nil, "", err
 		}
+
 		copyRows := make([][]any, len(rows))
 		for i, row := range rows {
 			copyRows[i] = append([]any(nil), row...)
 		}
+
 		full = append(full, TransferTable{Name: spec.name, Rows: rows})
 		if spec.name == "agents" {
 			for _, row := range copyRows {
@@ -29,13 +31,16 @@ func transferProjection(ctx context.Context, tx *sql.Tx, session string) ([]Tran
 					switch col {
 					case "binding":
 						var binding RuntimeBinding
+
 						encoded, _ := row[j].(string)
 						if encoded == "" {
 							encoded = "{}"
 						}
+
 						if err = json.Unmarshal([]byte(encoded), &binding); err != nil {
 							return nil, "", err
 						}
+
 						value, _ := json.Marshal(RuntimeBinding{Machine: binding.Machine})
 						row[j] = string(value)
 					case "runtime_id":
@@ -48,8 +53,10 @@ func transferProjection(ctx context.Context, tx *sql.Tx, session string) ([]Tran
 				}
 			}
 		}
+
 		portable = append(portable, TransferTable{Name: spec.name, Rows: copyRows})
 	}
+
 	for _, spec := range []transferTableSpec{
 		{"notice_relay_leases", "session_id=?", "recipient_id"},
 		{"notice_targets", "session_id=?", "recipient_id"},
@@ -62,11 +69,14 @@ func transferProjection(ctx context.Context, tx *sql.Tx, session string) ([]Tran
 		if err != nil {
 			return nil, "", err
 		}
+
 		full = append(full, TransferTable{Name: spec.name, Rows: rows})
 	}
+
 	data, err := json.Marshal(full)
 	if err != nil {
 		return nil, "", err
 	}
+
 	return portable, tokenHash(string(data)), nil
 }

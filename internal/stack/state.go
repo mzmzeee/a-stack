@@ -162,6 +162,10 @@ func statePath(path string) (string, error) {
 }
 
 func privateRead(path string) ([]byte, error) {
+	return privateReadLimit(path, maxPrivateFile)
+}
+
+func privateReadLimit(path string, limit int64) ([]byte, error) {
 	f, err := openPrivate(path, false)
 	if err != nil {
 		return nil, failure("invalid_input", fmt.Sprintf(`private file "%s" is missing or inaccessible`, path))
@@ -177,12 +181,12 @@ func privateRead(path string) ([]byte, error) {
 		return nil, err
 	}
 
-	data, err := io.ReadAll(io.LimitReader(f, maxPrivateFile+1))
+	data, err := io.ReadAll(io.LimitReader(f, limit+1))
 	if err != nil {
 		return nil, storageError(err)
 	}
 
-	if len(data) > maxPrivateFile {
+	if int64(len(data)) > limit {
 		return nil, failure("invalid_input", "private file is too large")
 	}
 

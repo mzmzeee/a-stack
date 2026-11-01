@@ -1,5 +1,62 @@
 package stack
 
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+)
+
+// Rebuild inside the migration transaction; malformed or colliding bindings abort it.
+func rebuildRuntimeClaims(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, "SELECT id,binding FROM agents WHERE binding IS NOT NULL")
+	if err != nil {
+		return err
+	}
+
+	type claim struct{ agent, key string }
+	var claims []claim
+	for rows.Next() {
+		var id, raw string
+		if err = rows.Scan(&id, &raw); err != nil {
+			rows.Close()
+			return err
+		}
+
+		var binding RuntimeBinding
+		if err = json.Unmarshal([]byte(raw), &binding); err == nil {
+			err = validateBinding(&binding, false)
+		}
+
+		if err != nil {
+			rows.Close()
+			return err
+		}
+
+		for _, key := range concreteRuntimeKeys(&binding) {
+			claims = append(claims, claim{id, key})
+		}
+	}
+
+	err = rows.Err()
+	rows.Close()
+
+	if err != nil {
+		return err
+	}
+
+	if _, err = tx.ExecContext(ctx, "DELETE FROM runtime_claims"); err != nil {
+		return err
+	}
+
+	for _, c := range claims {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO runtime_claims(binding_key,agent_id) VALUES(?,?)", c.key, c.agent); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 const migration16 = `
 ALTER TABLE agents ADD COLUMN pane_not_before INTEGER NOT NULL DEFAULT 0;
 UPDATE agents SET pane_not_before=COALESCE((SELECT max(0,next_attempt) FROM notice_targets d WHERE d.recipient_id=agents.id AND d.reason IN ('notice_waiting_mail','mail_checked')),0);

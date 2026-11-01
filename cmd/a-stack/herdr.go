@@ -61,6 +61,14 @@ func herdrRequest(ctx context.Context, client *stack.Client, command string, f l
 		return nil, invalid("--notices must be hook or pane")
 	}
 
+	if f.relay {
+		return relayBind(ctx, client, f, executable, credential)
+	}
+
+	if client.RemoteName != "" && f.notices != "hook" {
+		return nil, invalid("remote pane notices require --relay --notices pane; use --notices hook for hook-only enrollment")
+	}
+
 	// The pane gets the Agent's own name.
 	name, err := agentName(ctx, client, ref, f.agent)
 	if err != nil {

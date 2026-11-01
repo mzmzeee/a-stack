@@ -99,6 +99,10 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	fs := flag.NewFlagSet("a-stack", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	var state, credential, kind, listen, destination, herdrExecutable, orchestrator, shell, remote, agentFiles, joinCode string
+	var relayConfig string
+	var relayOnce bool
+	fs.StringVar(&relayConfig, "config", "", "Private relay configuration file")
+	fs.BoolVar(&relayOnce, "once", false, "Run one bounded relay pass")
 	var share bool
 	var machine, help, noBrowser, resume, project, refresh, check, noRestart, noRefresh, all bool
 	var release versionFlag
@@ -192,7 +196,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return unknownCommand(command, seen, stdout)
 	}
 
-	if cmd != "connect-code" && cmd != "connect" && cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && !isCompletionCommand(cmd) && cmd != "mcp" {
+	if cmd != "connect-code" && cmd != "connect" && cmd != "" && cmd != "new" && cmd != "serve" && cmd != "health" && cmd != "storage status" && cmd != "storage backup" && cmd != "open" && cmd != "view revoke" && !isLifecycleCommand(cmd) && !isTaskCommand(cmd) && !isMailCommand(cmd) && !isNotificationCommand(cmd) && !isHerdrCommand(cmd) && !isSkillCommand(cmd) && cmd != "update" && !isServiceCommand(cmd) && cmd != "version" && !isWatchCommand(cmd) && !isHookCommand(cmd) && cmd != "statusline" && !isCompletionCommand(cmd) && cmd != "mcp" && cmd != "relay" {
 		return invalid("unknown command; use --help")
 	}
 
@@ -230,7 +234,7 @@ func execute(args []string, stdout, stderr io.Writer) error {
 		return invalid("--after is given more than once")
 	}
 
-	if !herdrSupported && (isHerdrCommand(cmd) || seen["herdr-executable"]) {
+	if !herdrSupported && (cmd == "relay" || isHerdrCommand(cmd) || seen["herdr-executable"]) {
 		return invalid("Herdr is not supported on Windows; a-stack works without it, and Task mail reaches Agents through mail check")
 	}
 
@@ -300,6 +304,10 @@ func execute(args []string, stdout, stderr io.Writer) error {
 	}
 
 	ctx := context.Background()
+	if cmd == "relay" {
+		return runRelay(ctx, relayConfig, relayOnce, stdout)
+	}
+
 	if cmd == "connect-code" {
 		return connectCodeCommand(ctx, state, stdout)
 	}

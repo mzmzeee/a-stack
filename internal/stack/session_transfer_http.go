@@ -11,6 +11,10 @@ import (
 const MaxTransferBytes = 64 << 20
 
 func apiSizeLimit(path string) int {
+	if path == "/v1/relay/claim" || path == "/v1/relay/begin" || path == "/v1/relay/result" {
+		return 8192
+	}
+
 	if path == "/v1/session/transfer/export" || path == "/v1/session/transfer/import" {
 		return MaxTransferBytes
 	}

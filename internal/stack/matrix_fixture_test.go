@@ -22,6 +22,7 @@ type matrixFixture struct {
 	path                                                    string
 	inviteCode, ownerCode, viewCode                         string
 	importing                                               TransferImportRequest
+	relays                                                  map[string]matrixRelay
 }
 
 var matrixCallers = []string{"none", "bad", "owner", "friend", "orchestrator", "worker", "foreign-agent", "foreign-operator", "browser", "revoked"}
@@ -88,6 +89,7 @@ func newMatrixFixture(t *testing.T) *matrixFixture {
 	}
 
 	f.message = m.ResourceID
+	f.prepareRelays(t)
 
 	b, err := f.service.Store.ExportTransfer(ctx, f.operator.Token, TransferExportRequest{Context: f.ref(0), TransferID: opaqueID(), Repository: "example.com/matrix"})
 	if err != nil {
@@ -256,6 +258,10 @@ func (f *matrixFixture) call(t *testing.T, route, caller string) (string, int) {
 			bearer = f.b.Token
 		}
 
+		if relay, ok := f.relays[route]; ok && caller == "worker" {
+			bearer = relay.token
+		}
+
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	}
 
@@ -410,7 +416,7 @@ func (f *matrixFixture) request(t *testing.T, route string) any {
 	case "/v1/mail/urgent":
 		return UrgentMailRequest{Context: ref}
 	case "/v1/relay/claim", "/v1/relay/begin", "/v1/relay/result":
-		return RelayRequest{Context: ref, Generation: 1, RuntimeID: "unbound", Proof: opaqueID()}
+		return f.relays[route].request
 	case "/v1/notifications/status", "/v1/notifications/drain":
 		return NoticeRequest{Context: ref}
 	case "/v1/herdr/focus":

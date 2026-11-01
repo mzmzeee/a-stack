@@ -153,6 +153,7 @@ func (s *Store) ExportTransfer(ctx context.Context, token string, r TransferExpo
 		if result.Format != transferFormat || result.Schema != schemaVersion {
 			return result, failure("conflict", "transfer format or schema changed; start a fresh transfer")
 		}
+
 		return result, nil
 	}
 
@@ -307,6 +308,7 @@ func (s *Store) ImportTransfer(ctx context.Context, token string, r TransferImpo
 	if b.Format != transferFormat || b.Schema != schemaVersion {
 		return result, failure("invalid_input", "transfer format or schema differs; upgrade both services and start a fresh transfer")
 	}
+
 	if !validHash(b.SourceFingerprint) || !validHash(b.ReleaseHash) || b.Schema != schemaVersion || !validToken(b.TransferID) || !validToken(b.SourceDatabase) || b.SourceDatabase == s.id || !validToken(b.Session.ID) || b.Repository == "" || len(b.Repository) > 4096 || len(b.Tables) != len(transferTables) {
 		return result, failure("invalid_input", "invalid Session transfer snapshot")
 	}
@@ -691,6 +693,7 @@ func (s *Store) ChangeTransfer(ctx context.Context, token, action string, r Tran
 		if current.Format != transferFormat || current.Schema != schemaVersion {
 			return result, failure("conflict", "transfer format or schema changed; start a fresh transfer")
 		}
+
 		current.Session = session
 
 		current.Orders, err = loadOrders(ctx, tx, session.WorkspaceID)
@@ -716,6 +719,7 @@ func (s *Store) ChangeTransfer(ctx context.Context, token, action string, r Tran
 		if retireErr != nil {
 			return result, storageError(retireErr)
 		}
+
 		for _, agent := range agents {
 			if retireErr = retireAgentRelay(ctx, tx, agent); retireErr != nil {
 				return result, retireErr

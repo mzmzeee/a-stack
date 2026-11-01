@@ -18,7 +18,42 @@ To turn on notices, start the service with an installed Herdr executable:
 a-stack serve --state-dir "$state_dir" --herdr-executable /absolute/path/to/herdr --json
 ```
 
-Without this flag, notices are off and mail works as usual. Herdr does not run on Windows; there, `--herdr-executable` and the `herdr` commands stop with an error, and mail works as usual. If the integration data is missing or not supported, the notices stay pending with a diagnostic, and a-stack tries again with a bounded backoff. Mail and Task updates still work. a-stack configures no accounts, no background agent launcher and no global Herdr settings.
+Without this flag, service-local notices are off. A per-machine relay can still deliver notices, and mail works as usual. Herdr does not run on Windows; there, `--herdr-executable` and the `herdr` commands stop with an error, and mail works as usual. If the integration data is missing or not supported, the notices stay pending with a diagnostic, and a-stack tries again with a bounded backoff. Mail and Task updates still work. a-stack configures no accounts, no background agent launcher and no global Herdr settings.
+
+## Relay notices on the recipient's machine
+
+A foreground relay pulls body-free grants using explicitly listed Agent credentials. It opens no inbound port and needs no Herdr adapter on the a-stack server. Run enrollment inside the recipient's own Herdr pane, using its current revision:
+
+```sh
+a-stack herdr bind --as agent --credential-file /private/worker.json \
+  --agent "$worker_id" --expected-revision 1 --operation-id worker-relay-bind-1 \
+  --relay --notices pane --herdr-executable /absolute/path/to/herdr
+```
+
+For a remote service, use its enrolled Agent credential and remote profile. Remote pane bindings require `--relay`; human panes should use `--notices hook` without relay. Enrollment verifies a supported local target, saves a private capture and machine secret before attach, then enrolls the native hook identity. It does not install hooks or launch a harness. Only the secret's hash is sent to the service. Runtime IDs and target claims are namespaced by the machine marker.
+
+Create a private JSON config (owner-only file and directory):
+
+```json
+{
+  "herdr_executable": "/absolute/path/to/herdr",
+  "credentials": ["/private/worker.json"]
+}
+```
+
+```sh
+a-stack relay --config /private/relay.json
+# One scheduler tick, attempting at most four entries:
+a-stack relay --config /private/relay.json --once
+```
+
+The config accepts 1–64 distinct absolute credential paths. It never discovers credentials. The foreground process reloads config, polls each eligible entry no sooner than five seconds plus jitter, and schedules at most four attempts per tick in round-robin order. HTTP calls have ten-second deadlines. Service failures back off up to sixty seconds plus jitter; longer valid retry deadlines are retained. Unauthorized or malformed responses park an entry until its credential or config changes. Windows refuses relay before opening its config.
+
+Machine-local enrollment and interval records live beneath the platform user config directory at `a-stack/relay/`. Their filenames hash the credential path or database/Agent identity. Do not copy, edit or delete these records to bypass a hold. An OS lock serializes attempts for one database/Agent, across binding generations. Before begin, the relay atomically persists an eleven-minute minimum interval. A restart cannot execute an old grant, even when the service fabricates another grant. Missing/corrupt interval data and detected backward clocks disable input; explicit repair must preserve any outstanding interval.
+
+An exact enrollment retry uses the same operation ID, revision, credential and staged local capture. A missing or mismatched capture, or replacement of an existing relay binding, requires the Operator to clear the runtime and rotate the credential, followed by fresh local enrollment using the new credential file. Transfer clears all runtime bindings; enroll afresh at the destination. Transfer does not clear mail budgets or pane holds.
+
+The server remains trusted for mail eligibility: it can fabricate one generic wake on an opted-in pane. It cannot select local executable/socket/pane paths or prompt text. Copying an Agent credential alone does not supply the machine secret, but copying the complete credential and enrollment bundle defeats this bearer boundary. Herdr has no atomic expected-occupant check: closure, rebinding or suspend can race after the last check of an already authorized prompt. No exactly-once delivery or cancellation guarantee is made. Native suspend/clock behavior requires platform validation; ordinary mail checks remain the fallback.
 
 ## Supported combinations
 
@@ -55,7 +90,7 @@ The command does these steps:
 3. The pane must hold Claude Code, Codex, Pi or OpenCode, with a native session that Herdr's integration reported. For Claude Code, Codex and OpenCode that is the session ID. Herdr's Pi integration reports the absolute path of Pi's session file, and a-stack keeps that path as the native session. Otherwise it fails with `integration_missing`, and the message names the `herdr integration install` command.
 4. If the pane's agent has no Herdr name yet, it names it `a-` plus the lowercase a-stack name, cut to 32 characters, with `herdr agent rename`. It renames only its own pane. If Herdr refuses the name, it fails with `conflict`.
 5. It runs the harness's own `--version`, such as `codex --version`, and keeps the first `MAJOR.MINOR.PATCH`.
-6. It sends the binding to the service, with the instance ID `herdr:` plus the terminal ID. With its Herdr adapter enabled, the service checks the new target before it changes a binding. Without the adapter, only a fresh attach works. The binding never goes to a file, and the receipt does not show it.
+6. It sends the binding to the service, with the instance ID `herdr:` plus the terminal ID. With its Herdr adapter enabled, the service checks the new target before it changes a binding. Without the adapter, only a fresh attach works. For legacy local enrollment, the binding never goes to a file; relay enrollment keeps a private local capture. The receipt does not show the binding.
 
 The authenticated `POST /v1/herdr/bind` takes the same fields as `agent attach`; only the named Agent's own credential can use it. The service, not a client flag, decides whether the old target is stale.
 

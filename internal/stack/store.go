@@ -171,6 +171,7 @@ func openStore(ctx context.Context, path string) (*Store, error) {
 	if err = s.recoverNotices(ctx); err != nil {
 		return nil, err
 	}
+
 	if err = s.recoverRelayStartup(ctx); err != nil {
 		return nil, err
 	}
@@ -641,6 +642,10 @@ func (s *Store) migrate(ctx context.Context, migration string) error {
 
 	if version < 16 {
 		if _, err = tx.ExecContext(ctx, migration16+"PRAGMA user_version=16;"); err != nil {
+			return storageError(err)
+		}
+
+		if err = rebuildRuntimeClaims(ctx, tx); err != nil {
 			return storageError(err)
 		}
 	}

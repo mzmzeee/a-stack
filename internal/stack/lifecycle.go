@@ -747,6 +747,7 @@ func (s *Store) bindAgent(ctx context.Context, token, action string, r AgentBind
 		if err = retireAgentRelay(ctx, tx, agent.ID); err != nil {
 			return Receipt{}, err
 		}
+
 		_, err = tx.ExecContext(ctx, "UPDATE agents SET runtime_id=?,binding=?,runtime_state='unknown',observed_at='',revision=revision+1,updated_at=? WHERE id=?", runtimeID, binding, now(), agent.ID)
 		if err != nil {
 			return Receipt{}, err
@@ -852,10 +853,12 @@ func concreteRuntimeKeys(binding *RuntimeBinding) []string {
 	add := func(kind string, values ...string) {
 		b, _ := json.Marshal(values)
 		digest := sha256.Sum256(b)
+
 		prefix := ""
 		if binding.RelayMachine != "" {
 			prefix = "relay:" + binding.RelayMachine + ":"
 		}
+
 		keys = append(keys, prefix+kind+":"+hex.EncodeToString(digest[:]))
 	}
 	if binding.Endpoint != "" && binding.PaneID != "" {

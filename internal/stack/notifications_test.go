@@ -1007,8 +1007,10 @@ func TestNotificationsClosureAndRebindDuringSubmission(t *testing.T) {
 				if f.drain(t, 4).Submitted != 0 {
 					t.Fatal("rebind bypassed portable cooldown")
 				}
+
 				f.n.clock = func() time.Time { return time.Now().Add(noticeCooldown) }
 			}
+
 			if f.drain(t, 4).Submitted != 1 || f.prompts(t) != 2 {
 				t.Fatal("cooldown/new binding did not drain remaining fresh work")
 			}

@@ -1014,9 +1014,29 @@ def scenario(run):
         run.status(run.b)["targets"][0]["next_attempt_unix_ms"] > 0,
         "own read shortened pane cooldown",
     )
-    # Use a fresh disposable runtime for the delivery-failure checks.
+    # Rebinding preserves the Agent's pane hold. Use a new Agent, not a new
+    # runtime on the held Agent, to exercise independent delivery failures.
     run.binding(run.b, "b-next", rebind=True)
-    run.mail(shared, "Mail works without integration @03-worker")
+    run.b = run.register("04-notice-worker", run.orch)
+    run.assign(shared, run.b)
+    run.cli(
+        "session",
+        "appoint",
+        *run.context,
+        "--agent",
+        run.b["id"],
+        "--expected-revision",
+        run.session()["revision"],
+        "--operation-id",
+        run.op(),
+    )
+    run.orch = run.b
+    run.stop()
+    run.start()
+    run.binding(run.b, "b-failure")
+    run.stop()
+    run.start(notices=True, missing=True)
+    run.mail(shared, "Mail works without integration @04-notice-worker")
     run.wait(
         lambda: run.status(run.b)["targets"][0]["reason"] == "herdr_unavailable",
         "missing integration lacks diagnostic",
@@ -1034,7 +1054,7 @@ def scenario(run):
     run.set_fake(mode="crash")
     run.start(notices=True)
     check(len(run.prompts()) == calls_before, "uncertain notice retried on restart")
-    crash_op, crash_body = run.op(), "Crash after simulated input @03-worker"
+    crash_op, crash_body = run.op(), "Crash after simulated input @04-notice-worker"
     run.mail(shared, crash_body, operation=crash_op, ambiguous=True)
     check(
         run.process.wait(timeout=10) == -signal.SIGKILL,
@@ -1050,11 +1070,11 @@ def scenario(run):
         "restart did not quarantine captured refs",
     )
     calls_before = len(run.prompts())
-    run.mail(shared, "New after uncertainty @03-worker")
+    run.mail(shared, "New after uncertainty @04-notice-worker")
     run.wait(
         lambda: (
             len(run.prompts()) == calls_before + 1
-            and run.status(run.b)["targets"][0]["counts"].get("submitted", 0) == 2
+            and run.status(run.b)["targets"][0]["counts"].get("submitted", 0) == 1
         ),
         "fresh notice blocked by uncertainty",
     )
@@ -1071,7 +1091,7 @@ def scenario(run):
     )
     run.orch = run.b
     run.set_fake(status="unknown")
-    run.mail(shared, "Paused closed work @03-worker")
+    run.mail(shared, "Paused closed work @04-notice-worker")
     run.wait(
         lambda: run.status(run.b)["targets"][0]["counts"].get("pending", 0) == 1,
         "pending notice missing",

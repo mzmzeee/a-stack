@@ -124,6 +124,7 @@ var helpGroups = []helpGroup{
 		{"mail wait", "", "Wait for addressed mail without advancing your cursor (timeout exit 5)"},
 	}},
 	{"Herdr", []helpRow{
+		{"relay", "", "Run a foreground machine-local notice relay from private config"},
 		{"herdr bind", "", "Bind your Agent to its own Herdr pane; replace a proven stale target (live: Operator agent rebind --clear-runtime first)"},
 		{"herdr focus", "", "Show an Agent's Herdr pane (Operator)"},
 	}},
@@ -216,7 +217,7 @@ func writeHelp(fs *flag.FlagSet, words []string, machine bool, stdout io.Writer)
 				flags = append(flags, "--"+f.Name)
 			}
 		})
-		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus", "completion bash", "completion zsh", "completion fish", "completion powershell", "completion install", "completion uninstall", "mcp", "connect", "hook enroll", "hook status", "connect-code")...), "flags": flags}})
+		return json.NewEncoder(stdout).Encode(map[string]any{"data": map[string]any{"commands": append([]string{"serve", "open", "version", "health", "storage status", "storage backup", "notifications status", "notifications drain"}, append(append(append(lifecycleCommands, taskCommands...), mailCommands...), "new", "skill install", "skill uninstall", "update", "view revoke", "service install", "service uninstall", "service status", "status", "watch", "hook install", "hook uninstall", "hook", "statusline", "herdr bind", "herdr focus", "completion bash", "completion zsh", "completion fish", "completion powershell", "completion install", "completion uninstall", "mcp", "connect", "hook enroll", "hook status", "connect-code", "relay")...), "flags": flags}})
 	}
 
 	command := strings.Join(words, " ")
