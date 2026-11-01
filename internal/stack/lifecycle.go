@@ -522,7 +522,7 @@ func (s *Store) RegisterAgent(ctx context.Context, token string, r AgentRegister
 	var path string
 	var prepareErr error
 	if r.WorktreePath != "" {
-		if _, remote := ActorFromContext(ctx); remote && r.Machine != "" {
+		if sharedRequest(ctx) && r.Machine != "" {
 			path = r.WorktreePath
 			absolute := filepath.IsAbs(path) || len(path) > 2 && path[1] == ':' && (path[2] == '\\' || path[2] == '/')
 			if !absolute || len(path) > 1024 || validPlainText("worktree", path, 1024) != nil {
@@ -573,8 +573,7 @@ func (s *Store) RegisterAgent(ctx context.Context, token string, r AgentRegister
 				return Receipt{}, err
 			}
 
-			_, remote := ActorFromContext(ctx)
-			encoded, _ := json.Marshal(RuntimeBinding{Machine: r.Machine, RemoteMachine: remote})
+			encoded, _ := json.Marshal(RuntimeBinding{Machine: r.Machine, RemoteMachine: sharedRequest(ctx)})
 			metadata = string(encoded)
 		}
 
@@ -693,7 +692,7 @@ func (s *Store) bindAgent(ctx context.Context, token, action string, r AgentBind
 				value.Machine = agent.Machine
 			}
 
-			if _, remote := ActorFromContext(ctx); remote {
+			if sharedRequest(ctx) {
 				value.RemoteMachine = true
 			}
 

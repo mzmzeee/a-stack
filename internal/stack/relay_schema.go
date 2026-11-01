@@ -8,7 +8,8 @@ import (
 
 // Rebuild inside the migration transaction; malformed or colliding bindings abort it.
 func rebuildRuntimeClaims(ctx context.Context, tx *sql.Tx) error {
-	rows, err := tx.QueryContext(ctx, "SELECT id,binding FROM agents WHERE binding IS NOT NULL")
+	// Unattached Agents may have Machine-only display metadata, not a runtime.
+	rows, err := tx.QueryContext(ctx, "SELECT id,binding FROM agents WHERE runtime_id IS NOT NULL")
 	if err != nil {
 		return err
 	}

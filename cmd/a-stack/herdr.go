@@ -89,6 +89,7 @@ func herdrRequest(ctx context.Context, client *stack.Client, command string, f l
 	}
 
 	binding.Notices = f.notices
+	binding.RemoteMachine = client.RemoteName != ""
 
 	worktree, err := os.Getwd()
 	if err != nil {

@@ -20,7 +20,16 @@ type RequestActor struct {
 	Login string `json:"login"`
 	Name  string `json:"name"`
 }
-type requestActorKey struct{}
+type (
+	requestActorKey  struct{}
+	sharedRequestKey struct{}
+)
+
+// Transport provenance survives missing or invalid optional login attribution.
+func sharedRequest(ctx context.Context) bool {
+	shared, _ := ctx.Value(sharedRequestKey{}).(bool)
+	return shared
+}
 
 func ActorFromContext(ctx context.Context) (RequestActor, bool) {
 	a, ok := ctx.Value(requestActorKey{}).(RequestActor)
@@ -78,6 +87,7 @@ func (s *Service) prepareRequest(r *http.Request) (*http.Request, bool, error) {
 	}
 
 	if shared {
+		r = r.WithContext(context.WithValue(r.Context(), sharedRequestKey{}, true))
 		r = requestWithActor(r)
 	}
 

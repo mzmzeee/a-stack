@@ -85,8 +85,7 @@ func (s *Store) prepareHerdrBind(ctx context.Context, token string, r AgentBindi
 	var old RuntimeBinding
 
 	_ = json.Unmarshal([]byte(encoded), &old)
-	_, remoteCaller := ActorFromContext(ctx)
-	if remoteCaller || r.Runtime.RemoteMachine || r.Runtime.RelayMachine != "" || old.RemoteMachine || old.RelayMachine != "" {
+	if sharedRequest(ctx) || r.Runtime.RemoteMachine || r.Runtime.RelayMachine != "" || old.RemoteMachine || old.RelayMachine != "" {
 		if agent.RuntimeAttached {
 			return false, liveBindingConflict(agent.Name)
 		}

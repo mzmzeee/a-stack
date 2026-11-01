@@ -49,6 +49,10 @@ func TestServeHostOriginAndActor(t *testing.T) {
 			}
 
 			prepared, shared, err := s.prepareRequest(r)
+			if sharedRequest(prepared.Context()) != (shared && err == nil) {
+				t.Fatal("untrusted or missing shared-ingress provenance")
+			}
+
 			if shared && err == nil {
 				actor, ok := ActorFromContext(prepared.Context())
 				if !ok || actor.Login != "alice@example.com" || actor.Name != "Alice" {
