@@ -23,6 +23,7 @@ jobs:
           - {package: './cmd/a-stack', target: FuzzSplitFlags}
           - {package: './cmd/a-stack', target: FuzzExtractTarGz}
           - {package: './cmd/a-stack', target: FuzzExtractZip}
+          - {package: './cmd/a-stack', target: FuzzRelayGrant}
           - {package: './internal/stack', target: FuzzMentionNames}
           - {package: './internal/stack', target: FuzzMailCursor}
           - {package: './internal/stack', target: FuzzMailCheckCursor}

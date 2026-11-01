@@ -19,13 +19,14 @@ func transferProjection(ctx context.Context, tx *sql.Tx, session string) ([]Tran
 			return nil, "", err
 		}
 
-		copyRows := make([][]any, len(rows))
-		for i, row := range rows {
-			copyRows[i] = append([]any(nil), row...)
-		}
-
+		copyRows := rows
 		full = append(full, TransferTable{Name: spec.name, Rows: rows})
 		if spec.name == "agents" {
+			copyRows = make([][]any, len(rows))
+			for i, row := range rows {
+				copyRows[i] = append([]any(nil), row...)
+			}
+
 			for _, row := range copyRows {
 				for j, col := range columns {
 					switch col {

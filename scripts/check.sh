@@ -111,7 +111,7 @@ step go test -race
 go test -race -count=1 ./...
 
 step "fuzz smoke (3 seconds per target)"
-for target in FuzzSplitFlags FuzzExtractTarGz FuzzExtractZip; do
+for target in FuzzSplitFlags FuzzExtractTarGz FuzzExtractZip FuzzRelayGrant; do
   go test ./cmd/a-stack -run '^$' -fuzz "^$target$" -fuzztime=3s -parallel=2
 done
 for target in FuzzMentionNames FuzzMailCursor FuzzMailCheckCursor; do
