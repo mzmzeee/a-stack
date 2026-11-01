@@ -456,7 +456,9 @@ func TestNotificationsPreinputBackoffAndUncertain(t *testing.T) {
 			f.write(t)
 
 			if mode == "hang" {
-				f.n.adapter.timeout = 100 * time.Millisecond
+				// Long enough for the fake Herdr, the test binary run through a
+				// shell script, to start and record the prompt on a busy runner.
+				f.n.adapter.timeout = time.Second
 			}
 
 			clock := time.Now()
