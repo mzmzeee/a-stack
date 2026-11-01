@@ -71,7 +71,7 @@ func TestMigration9KeepsAgentMailAndAllowsOperatorMail(t *testing.T) {
 		t.Fatal("no copy before the migration:", err)
 	}
 
-	if !strings.Contains(s.Migrated, "from schema 8 to 15") {
+	if !strings.Contains(s.Migrated, "from schema 8 to 16") {
 		t.Fatal("migration line:", s.Migrated)
 	}
 
@@ -94,7 +94,7 @@ func TestMigration9KeepsAgentMailAndAllowsOperatorMail(t *testing.T) {
 		"Agent mail without a sender":          insert + "('op-1','" + tasks[0] + "',4,'agent',NULL,'now','x')",
 		"another sender kind":                  insert + "('op-1','" + tasks[0] + "',4,'browser',NULL,'now','x')",
 		"mail from no Agent":                   insert + "('op-1','" + tasks[0] + "',4,'agent','missing','now','x')",
-		"mention of a message of another Task": "INSERT INTO mail_mentions VALUES('" + message + "','" + tasks[1] + "','" + f.aID + "','self','now')",
+		"mention of a message of another Task": "INSERT INTO mail_mentions(message_id,task_id,recipient_id,notice_state,state_at) VALUES('" + message + "','" + tasks[1] + "','" + f.aID + "','self','now')",
 		"mention moved to another Task":        "UPDATE mail_mentions SET task_id='" + tasks[1] + "' WHERE message_id='" + message + "'",
 	} {
 		if _, err := s.db.Exec(statement); err == nil || !strings.Contains(err.Error(), "constraint failed") {
@@ -103,7 +103,7 @@ func TestMigration9KeepsAgentMailAndAllowsOperatorMail(t *testing.T) {
 	}
 
 	// What a-stack answer stores: Operator mail that mentions an assignee.
-	if _, err := s.db.Exec(insert+"('op-1',?,4,'operator',NULL,'now','The answer');INSERT INTO mail_mentions VALUES('op-1',?,?,'pending','now')", tasks[0], tasks[0], f.bID); err != nil {
+	if _, err := s.db.Exec(insert+"('op-1',?,4,'operator',NULL,'now','The answer');INSERT INTO mail_mentions(message_id,task_id,recipient_id,notice_state,state_at) VALUES('op-1',?,?,'pending','now')", tasks[0], tasks[0], f.bID); err != nil {
 		t.Fatal(err)
 	}
 

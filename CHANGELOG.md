@@ -6,6 +6,12 @@ The release workflow uses the section of a version as the notes of its GitHub re
 
 ## [Unreleased]
 
+Upgrading from v0.1.9: the first start saves `state.db.pre-v15` (or a numbered copy) before migrating schema 15 to 16. Allow the usual three-times-database free space. Older binaries cannot open schema 16; rollback requires the pre-migration copy and loses later changes. Previously submitted mentions conservatively consume their extra-notice allowance because older transfers may have discarded that history. Existing pane cooldowns are preserved.
+
+### Fixed
+
+- Extra-notice budgets no longer depend on machine-local delivery history. Successful pane delivery records a portable cooldown that survives clearing or rebinding an Agent. Relay-ready bindings namespace runtime identities by machine and are never probed or focused through the server's local Herdr.
+
 ### Added
 
 - `mail wait --cursor-file FILE` waits for addressed unread mail without advancing the cursor or marking mail read, with `--all`, a 30-minute default timeout (exit 5), gentle polling and rate-limit backoff. Orchestrators without notices can keep it running in a harness background tool. Finished and archived Tasks remain writable for descriptions, reports, references and mail; status and claim changes require reopening.

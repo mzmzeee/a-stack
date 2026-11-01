@@ -85,7 +85,7 @@ func TestMigration11FromSchema10(t *testing.T) {
 		t.Fatal("schema/FK check")
 	}
 
-	if !strings.Contains(s.Migrated, "from schema 10 to 15") {
+	if !strings.Contains(s.Migrated, "from schema 10 to 16") {
 		t.Fatal(s.Migrated)
 	}
 

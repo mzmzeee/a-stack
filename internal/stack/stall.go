@@ -31,13 +31,13 @@ type MailWait struct {
 	Text          string `json:"text"`
 }
 
-// Exact successful/uncertain batch refs are the durable one-extra ledger.
+// The portable extra budget survives transfer without machine-local batches.
 // Stored times are UTC; trimming Z keeps nanoseconds (julianday rounds to milliseconds).
 const escalatableMentionSQL = `m.notice_state='submitted'
  AND rtrim(m.state_at,'Z')<=rtrim(?,'Z')
  AND (a.last_mail_read_at IS NULL OR rtrim(msg.received_at,'Z')>rtrim(a.last_mail_read_at,'Z'))
  AND EXISTS(SELECT 1 FROM task_assignees x WHERE x.task_id=m.task_id AND x.agent_id=a.id AND rtrim(x.added_at,'Z')<=rtrim(msg.received_at,'Z'))
- AND (SELECT count(*) FROM notice_batch_refs r JOIN notice_batches b ON b.id=r.batch_id WHERE r.message_id=m.message_id AND r.recipient_id=m.recipient_id AND b.state IN ('submitted','uncertain','submitting'))<2`
+ AND m.extra_consumed=0`
 
 const unreadMentionSQL = ` FROM mail_mentions m JOIN mail_messages msg ON msg.id=m.message_id
  JOIN agents a ON a.id=m.recipient_id

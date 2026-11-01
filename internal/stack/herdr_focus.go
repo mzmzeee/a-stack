@@ -17,6 +17,9 @@ type HerdrFocusRequest struct {
 // focus shows the bound pane in the Operator's Herdr after the same identity
 // check as a notice. A blocked or unverified harness can still be focused.
 func (h *herdrAdapter) focus(ctx context.Context, b RuntimeBinding) (string, error) {
+	if b.RemoteMachine || b.RelayMachine != "" {
+		return "", failure("integration_unavailable", "remote panes must be focused on their own machine")
+	}
 	if !completeHerdrBinding(b) {
 		return "", failure("integration_unavailable", "the Agent has no complete Herdr binding; it can run a-stack herdr bind")
 	}

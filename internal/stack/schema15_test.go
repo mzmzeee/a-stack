@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-const undoMigration15 = `DROP INDEX notice_batch_refs_message; ALTER TABLE agents DROP COLUMN last_mail_read_at; PRAGMA user_version=14;`
+const undoMigration15 = undoMigration16 + `DROP INDEX notice_batch_refs_message; ALTER TABLE agents DROP COLUMN last_mail_read_at; PRAGMA user_version=14;`
 
 func TestMigration15PreservesPopulatedRows(t *testing.T) {
 	f := mailFixture(t)
@@ -27,11 +27,11 @@ func TestMigration15PreservesPopulatedRows(t *testing.T) {
 	}
 	defer s.db.Close()
 
-	if countTest(t, s, "PRAGMA user_version") != 15 || countTest(t, s, "SELECT count(*) FROM pragma_foreign_key_check") != 0 {
+	if countTest(t, s, "PRAGMA user_version") != schemaVersion || countTest(t, s, "SELECT count(*) FROM pragma_foreign_key_check") != 0 {
 		t.Fatal("schema/FK check")
 	}
 
-	if !strings.Contains(s.Migrated, "from schema 14 to 15") {
+	if !strings.Contains(s.Migrated, "from schema 14 to 16") {
 		t.Fatal(s.Migrated)
 	}
 
@@ -51,7 +51,7 @@ func TestMigration15Rollback(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	execFile(t, path, "ALTER TABLE agents DROP COLUMN last_mail_read_at; PRAGMA user_version=14;") // duplicate index forces failure after the column
+	execFile(t, path, undoMigration16+"ALTER TABLE agents DROP COLUMN last_mail_read_at; PRAGMA user_version=14;") // duplicate index forces failure after the column
 
 	if _, err := openStore(ctx, path); err == nil {
 		t.Fatal("expected migration failure")

@@ -163,9 +163,9 @@ func TestMigration8RowidTablesKeepReadsAndConstraints(t *testing.T) {
 	}
 
 	for name, statement := range map[string]string{
-		"mention of a message of another Task": "INSERT INTO mail_mentions VALUES('" + message + "','" + tasks[1] + "','" + f.aID + "','self','now')",
+		"mention of a message of another Task": "INSERT INTO mail_mentions(message_id,task_id,recipient_id,notice_state,state_at) VALUES('" + message + "','" + tasks[1] + "','" + f.aID + "','self','now')",
 		"mention moved to another Task":        "UPDATE mail_mentions SET task_id='" + tasks[1] + "' WHERE message_id='" + message + "'",
-		"mention of no message":                "INSERT INTO mail_mentions VALUES('missing','" + tasks[0] + "','" + f.aID + "','self','now')",
+		"mention of no message":                "INSERT INTO mail_mentions(message_id,task_id,recipient_id,notice_state,state_at) VALUES('missing','" + tasks[0] + "','" + f.aID + "','self','now')",
 		"text without an ID":                   "INSERT INTO task_content VALUES(NULL,'" + tasks[0] + "','report','x','" + f.aID + "','now')",
 		"message without an ID":                "INSERT INTO mail_messages(id,task_id,sequence,sender_id,received_at,body) VALUES(NULL,'" + tasks[0] + "',99,'" + f.aID + "','now','x')",
 		"second message ID":                    "INSERT INTO mail_messages(id,task_id,sequence,sender_id,received_at,body) VALUES('" + message + "','" + tasks[1] + "',99,'" + f.aID + "','now','x')",

@@ -82,6 +82,16 @@ func (s *Store) prepareHerdrBind(ctx context.Context, token string, r AgentBindi
 		return false, failure("invalid_input", "complete Herdr binding required")
 	}
 
+	var old RuntimeBinding
+	_ = json.Unmarshal([]byte(encoded), &old)
+	_, remoteCaller := ActorFromContext(ctx)
+	if remoteCaller || r.Runtime.RemoteMachine || r.Runtime.RelayMachine != "" || old.RemoteMachine || old.RelayMachine != "" {
+		if agent.RuntimeAttached {
+			return false, liveBindingConflict(agent.Name)
+		}
+		return false, nil
+	}
+
 	if _, reason := h.current(ctx, *r.Runtime); reason != "" {
 		return false, failure("integration_unavailable", "the new Herdr pane could not be verified: "+reason)
 	}
@@ -90,7 +100,6 @@ func (s *Store) prepareHerdrBind(ctx context.Context, token string, r AgentBindi
 		return false, nil
 	}
 
-	var old RuntimeBinding
 	if json.Unmarshal([]byte(encoded), &old) != nil || !h.stale(ctx, old) {
 		return false, liveBindingConflict(agent.Name)
 	}

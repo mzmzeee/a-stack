@@ -34,7 +34,7 @@ func TestMigration10FromV017(t *testing.T) {
 		t.Fatal("schema or foreign keys")
 	}
 
-	if !strings.Contains(s.Migrated, "from schema 9 to 15") {
+	if !strings.Contains(s.Migrated, "from schema 9 to 16") {
 		t.Fatal(s.Migrated)
 	}
 
@@ -97,7 +97,7 @@ func upgradeRows(t *testing.T, path string) map[string][]string {
 
 			var row []string
 			for i, v := range values {
-				if columns[i] == "actor_login" || columns[i] == "actor_name" || columns[i] == "priority" || columns[i] == "last_mail_read_at" {
+				if columns[i] == "actor_login" || columns[i] == "actor_name" || columns[i] == "priority" || columns[i] == "last_mail_read_at" || columns[i] == "pane_not_before" || columns[i] == "extra_consumed" {
 					continue
 				}
 

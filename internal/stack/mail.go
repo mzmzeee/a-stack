@@ -325,7 +325,7 @@ func appendMailTx(ctx context.Context, tx *sql.Tx, p Principal, r MailSendReques
 			state = NoticeSelf
 		}
 
-		if _, err = tx.ExecContext(ctx, "INSERT INTO mail_mentions VALUES(?,?,?,?,?)", id, r.TaskID, recipient, state, timestamp); err != nil {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO mail_mentions(message_id,task_id,recipient_id,notice_state,state_at) VALUES(?,?,?,?,?)", id, r.TaskID, recipient, state, timestamp); err != nil {
 			return Receipt{}, err
 		}
 	}

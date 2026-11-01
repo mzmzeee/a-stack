@@ -94,7 +94,7 @@ func (s *Store) AnswerQuestion(ctx context.Context, token string, r AnswerReques
 			return Receipt{}, err
 		}
 
-		if _, err = tx.ExecContext(ctx, "INSERT INTO mail_mentions SELECT ?,task_id,agent_id,?,? FROM task_assignees WHERE task_id=?", id, NoticePending, timestamp, task.ID); err != nil {
+		if _, err = tx.ExecContext(ctx, "INSERT INTO mail_mentions(message_id,task_id,recipient_id,notice_state,state_at) SELECT ?,task_id,agent_id,?,? FROM task_assignees WHERE task_id=?", id, NoticePending, timestamp, task.ID); err != nil {
 			return Receipt{}, err
 		}
 

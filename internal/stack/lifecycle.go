@@ -93,6 +93,8 @@ type Agent struct {
 // InstanceID names the running instance, independently of reusable panes/names.
 // Herdr verification is a later adapter's job; this slice executes no harness.
 type RuntimeBinding struct {
+	RelayMachine    string `json:"relay_machine,omitempty"`
+	RelayKeyHash    string `json:"relay_key_hash,omitempty"`
 	Machine         string `json:"machine,omitempty"`
 	RemoteMachine   bool   `json:"remote_machine,omitempty"`
 	Notices         string `json:"notices,omitempty"`
@@ -602,6 +604,12 @@ func validateBinding(binding *RuntimeBinding, required bool) error {
 		return nil
 	}
 
+	if binding.RelayMachine != "" || binding.RelayKeyHash != "" {
+		if !validHash(binding.RelayMachine) || !validHash(binding.RelayKeyHash) || !completeHerdrBinding(*binding) {
+			return failure("invalid_input", "complete relay binding and machine proof hash required")
+		}
+	}
+
 	if binding.Notices != "" && binding.Notices != "hook" && binding.Notices != "pane" {
 		return failure("invalid_input", "runtime notices must be hook or pane")
 	}
@@ -670,7 +678,7 @@ func (s *Store) bindAgent(ctx context.Context, token, action string, r AgentBind
 		var runtimeID, binding any
 		if r.Runtime != nil {
 			var occupied int
-			if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM agents WHERE runtime_id=? AND id!=?", r.Runtime.InstanceID, agent.ID).Scan(&occupied); err != nil {
+			if err = tx.QueryRowContext(ctx, "SELECT count(*) FROM agents WHERE runtime_id=? AND COALESCE(json_extract(binding,'$.relay_machine'),'')=? AND id!=?", r.Runtime.InstanceID, r.Runtime.RelayMachine, agent.ID).Scan(&occupied); err != nil {
 				return Receipt{}, err
 			}
 
@@ -841,7 +849,11 @@ func concreteRuntimeKeys(binding *RuntimeBinding) []string {
 	add := func(kind string, values ...string) {
 		b, _ := json.Marshal(values)
 		digest := sha256.Sum256(b)
-		keys = append(keys, kind+":"+hex.EncodeToString(digest[:]))
+		prefix := ""
+		if binding.RelayMachine != "" {
+			prefix = "relay:" + binding.RelayMachine + ":"
+		}
+		keys = append(keys, prefix+kind+":"+hex.EncodeToString(digest[:]))
 	}
 	if binding.Endpoint != "" && binding.PaneID != "" {
 		add("pane", binding.Endpoint, binding.PaneID)
